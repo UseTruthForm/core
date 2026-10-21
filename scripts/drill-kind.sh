@@ -85,7 +85,8 @@ for d, _, files in os.walk(sys.argv[1]):
                 yaml.safe_load(fh)
             count += 1
 print(f"strict YAML 1.1 (PyYAML): all {count} snapshot files parse")
-PYelse
+PY
+else
   echo "SKIPPED: PyYAML not installed, YAML 1.1 portability not checked"
 fi
 

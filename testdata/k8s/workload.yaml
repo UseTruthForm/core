@@ -1,0 +1,118 @@
+# Drill fixture: a small but realistic app, chosen to exercise the parts of
+# capture and restore that break in practice: a CRD and an instance of it
+# (restore ordering), a Secret (value withholding), a Service (allocated
+# cluster IP), a PVC (volume binding), RBAC, and objects a controller owns
+# (ReplicaSet and Pods from the Deployment, which must NOT be captured).
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: widgets.example.stackdna.org
+spec:
+  group: example.stackdna.org
+  names: {kind: Widget, plural: widgets, singular: widget}
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                size: {type: integer}
+                colour: {type: string}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+  labels: {team: platform}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: shop-api, namespace: shop}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: read-config, namespace: shop}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: shop-api-read-config, namespace: shop}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: read-config}
+subjects:
+  - {kind: ServiceAccount, name: shop-api, namespace: shop}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: shop-config, namespace: shop}
+data:
+  LOG_LEVEL: info
+  FEATURES: "checkout,search"
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: shop-db, namespace: shop}
+type: Opaque
+stringData:
+  username: shop
+  password: drill-only-not-a-real-password
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: shop-data, namespace: shop}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: {requests: {storage: 1Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: shop-api, namespace: shop, labels: {app: shop-api}}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: shop-api}}
+  template:
+    metadata: {labels: {app: shop-api}}
+    spec:
+      serviceAccountName: shop-api
+      containers:
+        - name: api
+          image: nginx:1.27-alpine
+          ports: [{containerPort: 80}]
+          envFrom:
+            - configMapRef: {name: shop-config}
+            - secretRef: {name: shop-db}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: shop-api, namespace: shop}
+spec:
+  selector: {app: shop-api}
+  ports: [{port: 80, targetPort: 80}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: shop-api-ingress, namespace: shop}
+spec:
+  podSelector: {matchLabels: {app: shop-api}}
+  ingress:
+    - ports: [{port: 80}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: shop, namespace: shop}
+spec:
+  rules:
+    - host: shop.example.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: shop-api, port: {number: 80}}}

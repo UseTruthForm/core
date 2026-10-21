@@ -1,0 +1,6 @@
+# Applied after the CRD is established: a custom resource no StackDNA code
+# knows about, captured and restored purely through discovery.
+apiVersion: example.stackdna.org/v1
+kind: Widget
+metadata: {name: blue-widget, namespace: shop}
+spec: {size: 3, colour: blue}

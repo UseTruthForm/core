@@ -1,0 +1,33 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+      - run: go build -o bin/stackdna ./cmd/stackdna
+  # A green check must mean a real restore worked, not only that the code
+  # compiles: this runs the same drill as scripts/drill-kind.sh on two kind
+  # clusters (capture, determinism, exact capture set, restore, zero diff).
+  drill:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - run: KEEP=0 bash scripts/drill-kind.sh

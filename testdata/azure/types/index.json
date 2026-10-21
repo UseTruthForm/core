@@ -1,0 +1,28 @@
+{
+ "resources": {
+  "Microsoft.Compute/virtualMachines@2025-04-01": {
+   "$ref": "compute_1/microsoft.compute/2025-04-01/types.json#/485"
+  },
+  "Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31": {
+   "$ref": "msi/microsoft.managedidentity/2023-01-31/types.json#/18"
+  },
+  "Microsoft.Network/networkSecurityGroups@2025-07-01": {
+   "$ref": "network/microsoft.network/2025-07-01/types.json#/608"
+  },
+  "Microsoft.Network/virtualNetworks@2025-07-01": {
+   "$ref": "network/microsoft.network/2025-07-01/types.json#/613"
+  },
+  "Microsoft.Resources/resourceGroups@2024-11-01": {
+   "$ref": "resources_11/microsoft.resources/2024-11-01/types.json#/7"
+  },
+  "Microsoft.Storage/storageAccounts@2025-08-01": {
+   "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/229"
+  },
+  "Microsoft.Web/serverfarms@2024-11-01": {
+   "$ref": "web/microsoft.web/2024-11-01/types.json#/27"
+  },
+  "Microsoft.Web/sites@2024-11-01": {
+   "$ref": "web/microsoft.web/2024-11-01/types.json#/257"
+  }
+ }
+}

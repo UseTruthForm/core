@@ -45,10 +45,10 @@ jobs:
       - run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt needed"; exit 1; }
       - run: go vet ./...
       - run: go test -count=1 ./...
-      # The AWS inventory reads with many goroutines; the race detector needs
-      # cgo, which the Windows dev machines lack, so it runs here, on that
-      # package only (a few seconds).
-      - run: go test -race -count=1 ./internal/awscc/
+      # The AWS and Azure inventories read with many goroutines; the race
+      # detector needs cgo, which the Windows dev machines lack, so it runs
+      # here, on those packages only (a few seconds).
+      - run: go test -race -count=1 ./internal/awscc/ ./internal/azarm/
   drill-kind:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-drill')
     needs: test

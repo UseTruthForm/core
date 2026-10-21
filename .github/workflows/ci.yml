@@ -33,7 +33,15 @@ jobs:
         with:
           path: ~/.cache/stackdna/envtest
           key: envtest-1.37.0
-      - run: echo "STACKDNA_KUBE_ASSETS=$(scripts/envtest-assets.sh)" >> "$GITHUB_ENV"
+      # Fetched into a variable first: inside `echo "X=$(...)"` a failing
+      # script is ignored and the step passes with an empty path (PR #5's
+      # first run did exactly that, and only the tests' guard caught it).
+      - name: Fetch etcd and kube-apiserver
+        run: |
+          assets="$(bash scripts/envtest-assets.sh)"
+          test -d "$assets" || { echo "envtest assets missing: '$assets'"; exit 1; }
+          ls "$assets"
+          echo "STACKDNA_KUBE_ASSETS=$assets" >> "$GITHUB_ENV"
       - run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt needed"; exit 1; }
       - run: go vet ./...
       - run: go test -count=1 ./...

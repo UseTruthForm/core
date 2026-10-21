@@ -21,6 +21,7 @@ stackdna capture --context kind-src --out snap/ [--baseline base/] [--include-sy
 stackdna restore --context kind-dst --from snap/ [--secrets-from-context kind-src]
 stackdna diff    --context kind-dst --from snap/ [--baseline base/]
 stackdna compare snap-a/ snap-b/
+stackdna schema-diff old/ new/
 ```
 
 - **capture** discovers every resource type the cluster serves, including custom
@@ -37,6 +38,29 @@ stackdna compare snap-a/ snap-b/
 Exit codes: `0` ok · `1` error · `2` differences found · `3` incomplete (the
 snapshot was written, but some types couldn't be read, or a restore applied only
 some objects).
+
+## API fields keep up by themselves
+
+Terraform and Pulumi build each API's fields into a provider release, so a
+field an API added last month doesn't exist for them until a new provider
+ships. StackDNA keeps no field list in its code:
+
+- **Capture** reads whatever the live API returns, so new fields are captured
+  as soon as the API serves them.
+- **Each snapshot fingerprints the schema** that each captured type published
+  at that moment, in `schemas/<group>/<version>/<kind>.yaml`. The field paths
+  come from the API's own OpenAPI document.
+- **`stackdna schema-diff old/ new/`** shows exactly what each API added or
+  removed between two captures, for example across a cluster or operator
+  upgrade:
+
+  ```
+  changed       example.stackdna.org/v1 Widget
+      + spec.shape
+  ```
+
+- **Restore uses strict field validation,** so a field the target API doesn't
+  know about fails loudly instead of being dropped.
 
 ## Rules it keeps
 

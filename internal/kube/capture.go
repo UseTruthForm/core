@@ -105,6 +105,21 @@ func Capture(ctx context.Context, c *Clients, p Policy) (snapshot.Snapshot, erro
 		}
 	}
 	sort.Slice(snap.Objects, func(i, j int) bool { return snap.Objects[i].Key() < snap.Objects[j].Key() })
+
+	captured := map[schema.GroupVersionKind]bool{}
+	for _, o := range snap.Objects {
+		gv, err := schema.ParseGroupVersion(o.APIVersion())
+		if err == nil {
+			captured[gv.WithKind(o.Kind())] = true
+		}
+	}
+	schemas, err := typeSchemas(c, captured)
+	if err != nil {
+		// Captured objects are still valid; only change tracking is lost, and
+		// the capture says so instead of writing an empty schema set.
+		return snap, fmt.Errorf("objects captured, but schemas could not be read: %w", err)
+	}
+	snap.Schemas = schemas
 	return snap, nil
 }
 

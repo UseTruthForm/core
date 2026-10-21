@@ -117,7 +117,10 @@ func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapsho
 	}
 	ri := c.Dynamic.Resource(mapping.Resource)
 	force := true
-	po := metav1.PatchOptions{FieldManager: FieldManager, Force: &force}
+	// Strict: server-side apply already rejects undeclared fields on built-in
+	// types and structural CRDs (verified on kind v1.36), but stating it means
+	// a change in the server default cannot make restore drop fields quietly.
+	po := metav1.PatchOptions{FieldManager: FieldManager, Force: &force, FieldValidation: "Strict"}
 	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
 		_, err = ri.Namespace(o.Namespace()).Patch(ctx, o.Name(), types.ApplyPatchType, data, po)
 	} else {

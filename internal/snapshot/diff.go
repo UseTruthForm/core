@@ -99,3 +99,61 @@ func join(p, k string) string {
 	}
 	return p + "." + k
 }
+
+// SchemaChange is how one type's live schema differs between two snapshots.
+type SchemaChange struct {
+	Type    string // apiVersion Kind
+	Kind    string // "added type", "removed type", "changed", "untracked"
+	Added   []string
+	Removed []string
+}
+
+// CompareSchemas reports what each API added or removed between old and new.
+// This is how StackDNA keeps up with APIs without anyone maintaining field
+// lists: the fields are whatever the live API publishes, and this shows the
+// difference.
+func CompareSchemas(old, new Snapshot) []SchemaChange {
+	idx := func(s Snapshot) map[string]TypeSchema {
+		m := map[string]TypeSchema{}
+		for _, t := range s.Schemas {
+			m[t.APIVersion+" "+t.Kind] = t
+		}
+		return m
+	}
+	o, n := idx(old), idx(new)
+	var out []SchemaChange
+	for k, nt := range n {
+		ot, ok := o[k]
+		switch {
+		case !ok:
+			out = append(out, SchemaChange{Type: k, Kind: "added type"})
+		case nt.Digest == "" || ot.Digest == "":
+			if nt.Digest != ot.Digest {
+				out = append(out, SchemaChange{Type: k, Kind: "untracked"})
+			}
+		case nt.Digest != ot.Digest:
+			out = append(out, SchemaChange{Type: k, Kind: "changed", Added: minus(nt.Fields, ot.Fields), Removed: minus(ot.Fields, nt.Fields)})
+		}
+	}
+	for k := range o {
+		if _, ok := n[k]; !ok {
+			out = append(out, SchemaChange{Type: k, Kind: "removed type"})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Type < out[j].Type })
+	return out
+}
+
+func minus(a, b []string) []string {
+	in := map[string]bool{}
+	for _, x := range b {
+		in[x] = true
+	}
+	var out []string
+	for _, x := range a {
+		if !in[x] {
+			out = append(out, x)
+		}
+	}
+	return out
+}

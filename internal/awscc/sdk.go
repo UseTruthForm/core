@@ -15,12 +15,10 @@ import (
 
 // SDK is CloudControl backed by AWS.
 //
-// UNVERIFIED: this compiles against aws-sdk-go-v2 but has not yet run
-// against a real account. Everything above it is proven against Fake, which
-// follows the registry schemas; what Fake cannot know (which types reject
-// their own read output on create, list parameters a schema omits, how
-// throttling behaves across ~1,300 list calls) is what the first recording
-// session against a sandbox account is for.
+// Verified against a real account only for List, Get and Create on the six
+// types scripts/drill-aws.sh uses (2026-10-21). Throttling across a
+// full-registry capture and the long-running create path (types that take
+// minutes) have not been exercised.
 type SDK struct {
 	c *cloudcontrol.Client
 }

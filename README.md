@@ -10,7 +10,9 @@ that you can review, commit and diff.
 
 **Status: early development.** Kubernetes works end to end. AWS (every
 Cloud Control type in the CloudFormation registry) passes its restore drill
-against a schema-driven fake; it has not yet run against a real account. See
+against a schema-driven fake. It also passed the disaster drill against a
+real account (`scripts/drill-aws.sh`: 6 free-tier resources deleted and
+restored with no diff), but most types haven't met real AWS yet. See
 [AWS](docs/architecture.md#aws-cloud-control-driven-by-the-registry). Other
 platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.

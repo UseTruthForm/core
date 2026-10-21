@@ -2,6 +2,7 @@ package awscc
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,41 @@ func tags(kv ...string) []any {
 	return out
 }
 
+// newAccount returns a fake account that behaves as AWS was observed to.
+func newAccount(w *World, account string) *Fake {
+	f := w.Account(account, region)
+	// Creating a REST API also creates its root resource "/", which Cloud
+	// Control lists. Seen in the first real-account drill (2026-10-21):
+	// without this the fake drill passed while the real one would have
+	// tried to create the root and failed for want of a ParentId.
+	//
+	// A subnet created with a zone name is read back with the zone ID too,
+	// and a create carrying both is refused (same drill): restore must
+	// drop one or every subnet fails.
+	f.AfterCreate = func(typ string, props map[string]any) {
+		switch typ {
+		case "AWS::ApiGateway::RestApi":
+			id := f.Seed("AWS::ApiGateway::Resource", map[string]any{"RestApiId": props["RestApiId"]})
+			props["RootResourceId"] = strings.Split(id, "|")[1]
+		case "AWS::EC2::Subnet":
+			if az, ok := props["AvailabilityZone"].(string); ok {
+				props["AvailabilityZoneId"] = "use1-az" + az[len(az)-1:]
+			} else if id, ok := props["AvailabilityZoneId"].(string); ok {
+				props["AvailabilityZone"] = region + id[len(id)-1:]
+			}
+		}
+	}
+	f.Validate = func(typ string, d map[string]any) error {
+		_, name := d["AvailabilityZone"]
+		_, id := d["AvailabilityZoneId"]
+		if typ == "AWS::EC2::Subnet" && name && id {
+			return fmt.Errorf("Invalid request provided: Both AvailabilityZone and AvailabilityZoneId cannot be specified")
+		}
+		return nil
+	}
+	return f
+}
+
 // defaultVPC is what AWS puts in every account and region.
 func defaultVPC(f *Fake) string {
 	return f.Seed("AWS::EC2::VPC", map[string]any{"CidrBlock": "172.31.0.0/16"})
@@ -50,7 +86,7 @@ func defaultVPC(f *Fake) string {
 func seedShop(t *testing.T, f *Fake) {
 	defVPC := defaultVPC(f)
 	vpc := mustCreate(t, f, "AWS::EC2::VPC", map[string]any{"CidrBlock": "10.0.0.0/16", "Tags": tags("Name", "main", "team", "shop")})
-	mustCreate(t, f, "AWS::EC2::Subnet", map[string]any{"VpcId": vpc["VpcId"], "CidrBlock": "10.0.1.0/24", "Tags": tags("Name", "app")})
+	mustCreate(t, f, "AWS::EC2::Subnet", map[string]any{"VpcId": vpc["VpcId"], "CidrBlock": "10.0.1.0/24", "AvailabilityZone": region + "a", "Tags": tags("Name", "app")})
 	// A subnet someone added to the default VPC: the VPC is AWS's own and
 	// is skipped as baseline, but the subnet is not and must be remapped
 	// to the target account's default VPC.
@@ -112,7 +148,7 @@ func newEnv(t *testing.T) env {
 	reg := fixtures(t)
 	w := NewWorld(reg)
 	// The baseline is a capture of a fresh account: just the default VPC.
-	fresh := w.Account("333333333333", region)
+	fresh := newAccount(w, "333333333333")
 	defaultVPC(fresh)
 	base, err := Capture(context.Background(), fresh, reg, region, Policy{})
 	if err != nil {
@@ -121,7 +157,7 @@ func newEnv(t *testing.T) env {
 	if len(base.Objects) != 1 {
 		t.Fatalf("baseline should hold only the default VPC, got %d objects", len(base.Objects))
 	}
-	e := env{reg: reg, src: w.Account(srcAccount, region), dst: w.Account(dstAccount, region)}
+	e := env{reg: reg, src: newAccount(w, srcAccount), dst: newAccount(w, dstAccount)}
 	e.pol = Policy{}.WithBaseline(base, "sha256:test-baseline")
 	seedShop(t, e.src)
 	defaultVPC(e.dst)
@@ -238,6 +274,7 @@ func TestSnapshotOnDisk(t *testing.T) {
 		"AWS::S3::Bucket/legacy-stack-bucket":     "managed by CloudFormation stack legacy",
 		"AWS::IAM::Role/AWSServiceRoleForSupport": "service-linked role",
 		"AWS::EC2::VPC/":                          "identical to the account baseline",
+		"AWS::ApiGateway::Resource/h-":            "created by AWS with AWS::ApiGateway::RestApi/shop (its RootResourceId)",
 	}
 	for _, s := range snap.Skips {
 		for k, reason := range want {
@@ -299,7 +336,7 @@ func TestRestoreWithoutWriteOnlyValues(t *testing.T) {
 func TestRestoreMissingDependency(t *testing.T) {
 	e := newEnv(t)
 	snap, _ := e.adapter(e.src).Capture(context.Background())
-	empty := NewWorld(e.reg).Account(dstAccount, region)
+	empty := newAccount(NewWorld(e.reg), dstAccount)
 	for _, r := range e.adapter(empty).Restore(context.Background(), snap) {
 		if strings.HasSuffix(r.Key, "legacy-app") {
 			if r.OK || !strings.Contains(r.Detail, "depends on AWS::EC2::VPC/h-") || !strings.Contains(r.Detail, "is not in the target") {
@@ -316,7 +353,7 @@ func TestRestoreMissingDependency(t *testing.T) {
 func TestFakeRefusesForeignIDs(t *testing.T) {
 	reg := fixtures(t)
 	w := NewWorld(reg)
-	a, b := w.Account(srcAccount, region), w.Account(dstAccount, region)
+	a, b := newAccount(w, srcAccount), newAccount(w, dstAccount)
 	vpc := mustCreate(t, a, "AWS::EC2::VPC", map[string]any{"CidrBlock": "10.0.0.0/16"})
 	_, err := b.Create(context.Background(), "AWS::EC2::Subnet", map[string]any{"VpcId": vpc["VpcId"], "CidrBlock": "10.0.1.0/24"})
 	if err == nil || !strings.Contains(err.Error(), "belongs to account "+srcAccount) {

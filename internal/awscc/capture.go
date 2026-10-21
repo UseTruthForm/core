@@ -43,11 +43,21 @@ type Policy struct {
 	BaselineDigest string
 }
 
-// WithBaseline loads a baseline snapshot into the policy.
+// WithBaseline adds a baseline snapshot to the policy. It can be called once
+// per region: a cross-region restore is diffed against the target region,
+// whose default subnets sit in other zones, so both regions' baselines must
+// be in the policy the snapshot was captured with.
 func (p Policy) WithBaseline(b snapshot.Snapshot, digest string) Policy {
-	p.Baseline = map[string]map[string]any{}
+	merged := map[string]map[string]any{}
+	for k, v := range p.Baseline {
+		merged[k] = v
+	}
 	for _, o := range b.Objects {
-		p.Baseline[o.Key()] = o.Body
+		merged[o.Key()] = o.Body
+	}
+	p.Baseline = merged
+	if p.BaselineDigest != "" {
+		digest = p.BaselineDigest + "," + digest
 	}
 	p.BaselineDigest = digest
 	return p
@@ -91,6 +101,10 @@ type resource struct {
 	stat  map[string]any // read-only values, kept for reference mapping
 	base  string         // logical name chosen by the user, if any
 	name  string         // final logical name
+	// createdBy is the resource AWS created this one with, as a side effect
+	// (a REST API's root resource). attr is the parent's property holding it.
+	createdBy *resource
+	createdAt string
 }
 
 func (r *resource) key() string { return APIVersion + "|" + r.t.Name + "||" + r.name }
@@ -106,7 +120,10 @@ func Capture(ctx context.Context, api CloudControl, reg *Registry, region string
 		}
 		obj := toObject(r)
 		skip := ""
-		if !p.CaptureManaged {
+		if r.createdBy != nil {
+			skip = fmt.Sprintf("created by AWS with %s/%s (its %s); restoring that recreates it", r.createdBy.t.Name, r.createdBy.name, r.createdAt)
+		}
+		if skip == "" && !p.CaptureManaged {
 			skip = managedBy(r)
 		}
 		if skip == "" && p.Baseline != nil {
@@ -177,8 +194,53 @@ func (in *inv) named() []*resource {
 	for _, n := range sortedKeys(in.got) {
 		out = append(out, in.got[n]...)
 	}
+	markCreatedBy(out)
 	name(out)
 	return out
+}
+
+// markCreatedBy finds resources AWS creates as a side effect of creating
+// another: the other resource reports the child's generated ID as one of its
+// own read-only properties. API Gateway lists a REST API's root resource "/"
+// (found in the first real-account drill, 2026-10-21); the REST API reports
+// it as RootResourceId. A VPC reports its default security group and network
+// ACL the same way. Restoring such a child would fail (the root has no
+// ParentId) or duplicate it, so it is skipped, and references to its ID are
+// made through the parent's property instead.
+func markCreatedBy(rs []*resource) {
+	type src struct {
+		r    *resource
+		attr string
+	}
+	reported := map[string]src{}
+	for _, r := range rs {
+		for _, k := range sortedKeys(r.stat) {
+			v, ok := r.stat[k].(string)
+			if !ok || k == "identifier" || strings.Contains(k, ".") || hasString(r.t.PrimaryIdentifier, k) {
+				continue
+			}
+			if _, taken := reported[v]; !taken {
+				reported[v] = src{r, k}
+			}
+		}
+	}
+	for _, r := range rs {
+		for _, p := range r.t.PrimaryIdentifier {
+			v, _ := r.props[p].(string)
+			if s, ok := reported[v]; ok && v != "" && r.t.IsReadOnly(p) && s.r != r {
+				r.createdBy, r.createdAt = s.r, s.attr
+			}
+		}
+	}
+}
+
+func hasString(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }
 
 // read lists and reads every resource of a type, listing its parents first
@@ -281,6 +343,21 @@ func (in *inv) read(n string) []*resource {
 	return out
 }
 
+// aliases lists properties AWS returns together but refuses together on
+// create, because one is another name for the other. The registry schemas
+// do not declare it, so this is the one place StackDNA knows something about
+// a type that its schema does not say; each entry names the failure that
+// found it. The first property present is kept in spec; the others move to
+// status, where they stay visible but are never sent back.
+var aliases = map[string][][]string{
+	// "Both AvailabilityZone and AvailabilityZoneId cannot be specified":
+	// first real-account drill, us-east-2, 2026-10-21. The ID is kept
+	// because zone names are shuffled per account while the ID names the
+	// physical zone, so it means the same in any account; the name in spec
+	// would also show as drift in every cross-account diff.
+	"AWS::EC2::Subnet": {{"AvailabilityZoneId", "AvailabilityZone"}},
+}
+
 // normalize splits what AWS returned into what someone configured (spec) and
 // what AWS generated (read-only values, kept in status for reference
 // mapping and never sent back).
@@ -292,6 +369,18 @@ func normalize(t *TypeInfo, id string, props map[string]any) *resource {
 			stat[strings.Join(segments(ptr), ".")] = v
 		}
 		removePointer(spec, ptr)
+	}
+	for _, set := range aliases[t.Name] {
+		kept := false
+		for _, p := range set {
+			if v, ok := spec[p]; ok {
+				if kept {
+					stat[p] = v
+					delete(spec, p)
+				}
+				kept = true
+			}
+		}
 	}
 	// AWS does not return write-only values, but that is not trusted: a
 	// value that did come back is dropped, so a snapshot can never hold one.
@@ -423,7 +512,21 @@ func canon(v any) string { b, _ := json.Marshal(v); return string(b) }
 // resource differently in every account.
 func name(rs []*resource) {
 	owners := map[string]refTarget{}
+	// Parents claim values first: a reference to the root resource's ID
+	// must become the REST API's RootResourceId, which restore can resolve,
+	// not a token for a resource that is never restored.
+	ordered := make([]*resource, 0, len(rs))
 	for _, r := range rs {
+		if r.createdBy == nil {
+			ordered = append(ordered, r)
+		}
+	}
+	for _, r := range rs {
+		if r.createdBy != nil {
+			ordered = append(ordered, r)
+		}
+	}
+	for _, r := range ordered {
 		for _, k := range sortedKeys(r.stat) {
 			if s, ok := r.stat[k].(string); ok && refable(k, s) {
 				if _, taken := owners[s]; !taken {

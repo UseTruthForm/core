@@ -179,17 +179,56 @@ that never remapped anything would pass. Mutation checks confirm that
 disabling tokenization, set sorting or the managed-resource skip each fails
 the suite.
 
-**Not yet verified against AWS.** `sdk.go` compiles against aws-sdk-go-v2,
-but it has never called AWS. The first sandbox recording session is meant to
-find what the fake can't know:
+**Proof against real AWS: `scripts/drill-aws.sh`.** This is the disaster
+case, run in one region:
 
-- types that reject their own read output on create (for example, a subnet
-  returning both `AvailabilityZone` and `AvailabilityZoneId`);
-- list parameters that a schema leaves out;
-- whether API Gateway lists the root resource;
-- throttling across about 1,300 list calls.
+1. seed an app with the plain AWS CLI;
+2. capture it twice, requiring identical digests;
+3. delete the app;
+4. restore from the snapshot;
+5. require an empty diff;
+6. delete everything again, then require that the region diffs clean against
+   its pre-drill baseline, so a leaked resource fails the run.
+
+It uses free-tier resources only (VPC, subnet, SQS, SSM Standard parameter,
+API Gateway REST API and resource) and takes about 6 minutes. It passed in
+us-east-2 on 2026-10-21 with 6 of 6 resources restored under new IDs.
+
+The first runs found four things the fake had not modelled. Each one is now
+pinned in the fake tests:
+
+- **API Gateway lists each REST API's root resource**, which AWS creates
+  along with the API. Capture now skips any resource whose generated ID
+  another resource reports as a read-only property (here the API's
+  `RootResourceId`), and routes references through that parent. The same
+  rule covers a VPC's default security group and network ACL.
+- **A subnet reads back both `AvailabilityZone` and `AvailabilityZoneId`,
+  but a create with both is refused.** The schema doesn't declare this. The
+  zone name is an account-relative alias, so it moves to `status` and the
+  spec keeps the ID. This is the only type-specific entry (`aliases` in
+  `capture.go`), and it names the failure that found it.
+- **List APIs are eventually consistent.** A capture taken seconds after a
+  create missed an SQS queue, so the two captures differed. The drill now
+  waits until Cloud Control lists what it created. A real capture can
+  likewise miss anything created in the last minute or so.
+- **SQS holds a deleted queue's name for 60 seconds.** A restore right after
+  a deletion fails with `QueueDeletedRecently`.
+
+**Still unverified against AWS:**
+
+- the 1,600 or so types beyond the 6 the drill used;
+- throttling across a full-registry capture;
+- IAM (the sandbox user can list roles but not read them);
+- cross-account restore;
+- the Lambda and Secrets Manager write-only paths, which are proven only in
+  the fake.
+
+Cross-region restore also needs a zone mapping. Zone IDs are region-specific,
+so a subnet captured in one region can't be created in another as it stands.
 
 **Known limits:**
+
+- Cross-region restore of subnets needs a zone mapping (see above).
 
 - S3 bucket names are global, so a cross-account restore of a user-named
   bucket fails while the source bucket exists.
@@ -202,7 +241,7 @@ find what the fake can't know:
 | Step | What |
 |---|---|
 | Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so); `--json` output |
-| AWS | One recording session against a sandbox account, which turns `sdk.go` from unverified into verified, keeps the session as replay fixtures, and fixes what it finds; account-ID tokens; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
+| AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; a zone mapping for cross-region restore; account-ID tokens; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
 | Platforms | Azure via Resource Graph plus ARM `GET`/`PUT` per resource ID; GCP via Cloud Asset Inventory |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |
 | Agents | A small MCP server (`discover`, `diff`, `snapshot`, `explain`), read-only against live systems by default. Agents watch for drift and open PRs; CI regenerates snapshots deterministically, so a PR shows only real change |

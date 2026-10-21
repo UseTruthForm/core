@@ -43,6 +43,13 @@ type Fake struct {
 	// Unsupported types answer ErrUnsupported, as a service missing from a
 	// region does.
 	Unsupported map[string]bool
+	// AfterCreate lets a test add what AWS does as a side effect of a
+	// create, such as the root resource of a REST API. The fake itself
+	// knows no AWS type. It runs without the lock held and may Seed.
+	AfterCreate func(typeName string, props map[string]any)
+	// Validate lets a test refuse what AWS refuses although the schema
+	// allows it.
+	Validate func(typeName string, desired map[string]any) error
 }
 
 // Account returns a new empty account in the world.
@@ -104,6 +111,11 @@ func (f *Fake) Create(_ context.Context, typeName string, desired map[string]any
 	if bad != nil {
 		return "", bad
 	}
+	if f.Validate != nil {
+		if err := f.Validate(typeName, props); err != nil {
+			return "", err
+		}
+	}
 	f.generate(t, props)
 	id, ok := Identifier(t, props)
 	if !ok {
@@ -117,6 +129,11 @@ func (f *Fake) Create(_ context.Context, typeName string, desired map[string]any
 	}
 	f.res[typeName][id] = props
 	f.order[typeName] = append(f.order[typeName], id)
+	if f.AfterCreate != nil {
+		f.w.mu.Unlock()
+		f.AfterCreate(typeName, props)
+		f.w.mu.Lock()
+	}
 	return id, nil
 }
 

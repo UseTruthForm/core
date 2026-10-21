@@ -51,14 +51,19 @@ func (a *awsFlags) policy() (awscc.Policy, error) {
 			p.Types = append(p.Types, t)
 		}
 	}
-	if a.baseline != "" {
-		b, err := snapshot.Read(a.baseline)
-		if err != nil {
-			return p, fmt.Errorf("baseline: %w", err)
+	// Comma-separated: one baseline per region involved, in a fixed order,
+	// because the order is part of the policy name diff compares.
+	for _, dir := range strings.Split(a.baseline, ",") {
+		if dir = strings.TrimSpace(dir); dir == "" {
+			continue
 		}
-		d, err := snapshot.Digest(a.baseline)
+		b, err := snapshot.Read(dir)
 		if err != nil {
-			return p, fmt.Errorf("baseline: %w", err)
+			return p, fmt.Errorf("baseline %s: %w", dir, err)
+		}
+		d, err := snapshot.Digest(dir)
+		if err != nil {
+			return p, fmt.Errorf("baseline %s: %w", dir, err)
 		}
 		p = p.WithBaseline(b, d)
 	}

@@ -2,6 +2,8 @@ package awscc
 
 import (
 	"testing"
+
+	"github.com/stackdna/core/internal/snapshot"
 )
 
 // AWS does not return write-only values, but normalize must not rely on
@@ -60,5 +62,17 @@ func TestRefable(t *testing.T) {
 		if got := refable(c.attr, c.v); got != c.want {
 			t.Errorf("refable(%q, %q) = %v, want %v", c.attr, c.v, got, c.want)
 		}
+	}
+}
+
+// A cross-region diff needs both regions' baselines in one policy; adding a
+// second must keep the first, or the source region's defaults would be
+// captured as the application.
+func TestPolicyBaselinesMerge(t *testing.T) {
+	one := snapshot.Snapshot{Objects: []snapshot.Object{{Body: map[string]any{"apiVersion": APIVersion, "kind": "AWS::EC2::VPC", "metadata": map[string]any{"name": "a"}}}}}
+	two := snapshot.Snapshot{Objects: []snapshot.Object{{Body: map[string]any{"apiVersion": APIVersion, "kind": "AWS::EC2::VPC", "metadata": map[string]any{"name": "b"}}}}}
+	p := Policy{}.WithBaseline(one, "sha256:1").WithBaseline(two, "sha256:2")
+	if len(p.Baseline) != 2 || p.Name() != "default+baseline:sha256:1,sha256:2" {
+		t.Fatalf("baseline %d objects, name %q", len(p.Baseline), p.Name())
 	}
 }

@@ -83,6 +83,18 @@ type Coverage struct {
 	NotCaptured string `json:"notCaptured,omitempty"`
 }
 
+// TypeSchema is the fingerprint of one type's live schema at capture time:
+// its flattened field paths and their digest. Fields come from the API
+// itself, never from a list in code, so schema-diff can show what an API
+// added or removed between two captures.
+type TypeSchema struct {
+	APIVersion string   `json:"apiVersion"`
+	Kind       string   `json:"kind"`
+	Digest     string   `json:"digest,omitempty"`
+	Note       string   `json:"note,omitempty"`
+	Fields     []string `json:"fields,omitempty"`
+}
+
 // Snapshot is a complete capture of one system.
 type Snapshot struct {
 	Platform      string
@@ -94,6 +106,7 @@ type Snapshot struct {
 	Objects       []Object
 	Coverage      []Coverage
 	Skips         []Skip
+	Schemas       []TypeSchema
 }
 
 type manifest struct {
@@ -119,8 +132,10 @@ func (s Snapshot) Write(dir string) error {
 	if err := ensureOwnedOrEmpty(dir); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(filepath.Join(dir, "objects")); err != nil {
-		return fmt.Errorf("clear old objects: %w", err)
+	for _, sub := range []string{"objects", "schemas"} {
+		if err := os.RemoveAll(filepath.Join(dir, sub)); err != nil {
+			return fmt.Errorf("clear old %s: %w", sub, err)
+		}
 	}
 
 	files := map[string][]byte{}
@@ -135,6 +150,14 @@ func (s Snapshot) Write(dir string) error {
 			return fmt.Errorf("encode %s: %w", o.Key(), err)
 		}
 		files[objectPath(o)] = b
+	}
+
+	for _, ts := range s.Schemas {
+		b, err := encodeYAML(ts)
+		if err != nil {
+			return fmt.Errorf("encode schema %s %s: %w", ts.APIVersion, ts.Kind, err)
+		}
+		files[schemaPath(ts)] = b
 	}
 
 	cov := coverageDoc{Types: append([]Coverage(nil), s.Coverage...), Skips: append([]Skip(nil), s.Skips...)}
@@ -201,6 +224,27 @@ func Read(dir string) (Snapshot, error) {
 			return fmt.Errorf("parse %s: %w", rel, err)
 		}
 		s.Objects = append(s.Objects, Object{Body: body})
+		return nil
+	})
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return Snapshot{}, err
+	}
+	schDir := filepath.Join(dir, "schemas")
+	err = filepath.WalkDir(schDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".yaml") {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		files[filepath.ToSlash(rel)] = b
+		var ts TypeSchema
+		if err := yaml.Unmarshal(b, &ts); err != nil {
+			return fmt.Errorf("parse %s: %w", rel, err)
+		}
+		s.Schemas = append(s.Schemas, ts)
 		return nil
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -345,6 +389,14 @@ func objectPath(o Object) string {
 		ns = "_cluster"
 	}
 	return strings.Join([]string{"objects", seg(group), seg(version), seg(o.Kind()), seg(ns), seg(o.Name()) + ".yaml"}, "/")
+}
+
+func schemaPath(ts TypeSchema) string {
+	group, version := "core", ts.APIVersion
+	if i := strings.LastIndex(version, "/"); i >= 0 {
+		group, version = version[:i], version[i+1:]
+	}
+	return strings.Join([]string{"schemas", seg(group), seg(version), seg(ts.Kind) + ".yaml"}, "/")
 }
 
 // seg makes a path segment safe on every OS. Kubernetes names can contain ':'

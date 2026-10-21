@@ -66,6 +66,28 @@ live system ──discover──▶ list every type ──policy──▶ normal
    (including the baseline digest) is recorded in the snapshot, so a diff can't
    accidentally compare two different rule sets.
 
+## Schema reflection: fields are never hard-coded
+
+This is the one thing other IaC tools struggle with. A provider release
+freezes each API's fields, and keeping up means shipping releases forever.
+StackDNA's rule is that no adapter may contain a field list:
+
+- **Values** come from the live API as-is (the Kubernetes dynamic client).
+- **Shape** comes from the schema the API publishes (Kubernetes OpenAPI v3).
+  Each captured type's schema is flattened to field paths and fingerprinted
+  into the snapshot.
+- **Change** is what `schema-diff` reports between two snapshots. It is
+  derived, not maintained.
+- **Restore** validates strictly, so a field the target doesn't serve is an
+  error, never a silent drop.
+
+Each future adapter follows the same rule, using the platform's own
+published schema: CloudFormation registry schemas for AWS Cloud Control
+(`readOnlyProperties`, `createOnlyProperties`, `writeOnlyProperties`), the
+Azure REST API specs (`readOnly`), GCP discovery documents (output-only
+fields), and vendor OpenAPI specs for SaaS. A refreshed schema arrives as a
+schema-diff, not as a code change.
+
 ## Secrets
 
 Values never enter a snapshot. A Secret is captured with its key names and

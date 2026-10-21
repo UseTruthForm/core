@@ -29,6 +29,7 @@ const usage = `stackdna: capture what is running so it can be recreated.
   stackdna restore --context <kube-context> --from <dir> [--secrets-from-context <kube-context>]
   stackdna diff    --context <kube-context> --from <dir> [--baseline <dir>]
   stackdna compare <dir-a> <dir-b>
+  stackdna schema-diff <old-dir> <new-dir>
 `
 
 func main() {
@@ -47,6 +48,8 @@ func main() {
 		code = diff(ctx, os.Args[2:])
 	case "compare":
 		code = compare(os.Args[2:])
+	case "schema-diff":
+		code = schemaDiff(os.Args[2:])
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		code = 1
@@ -201,6 +204,38 @@ func compare(args []string) int {
 		return fail(fmt.Errorf("snapshots use different capture policies (%s vs %s); the difference would be the policy, not drift", a.Policy, b.Policy))
 	}
 	return report(snapshot.Compare(a, b), args[0], args[1])
+}
+
+// schemaDiff shows what each API added or removed between two captures,
+// read from the schemas the live APIs published, not from any list in code.
+func schemaDiff(args []string) int {
+	if len(args) != 2 {
+		fmt.Fprintln(os.Stderr, "schema-diff: give the older and the newer snapshot directory")
+		return 1
+	}
+	a, err := snapshot.Read(args[0])
+	if err != nil {
+		return fail(err)
+	}
+	b, err := snapshot.Read(args[1])
+	if err != nil {
+		return fail(err)
+	}
+	changes := snapshot.CompareSchemas(a, b)
+	if len(changes) == 0 {
+		fmt.Printf("no schema changes across %d types\n", len(b.Schemas))
+		return 0
+	}
+	for _, c := range changes {
+		fmt.Printf("%-13s %s\n", c.Kind, c.Type)
+		for _, f := range c.Added {
+			fmt.Println("    + " + f)
+		}
+		for _, f := range c.Removed {
+			fmt.Println("    - " + f)
+		}
+	}
+	return 2
 }
 
 func report(changes []snapshot.Change, want, got string) int {

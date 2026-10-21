@@ -150,6 +150,11 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 			strOf(claim["namespace"]) + "/" + strOf(claim["name"]) + "; recreated when the claim is restored. Volume DATA is not captured"
 	case group == "" && resource == "secrets" && strOf(obj["type"]) == "helm.sh/release.v1":
 		return "Helm release history; recreated when the release is installed again"
+	case annotation(md, "control-plane.alpha.kubernetes.io/leader") != "":
+		// Older controllers (Istio among them) keep leader election in a
+		// ConfigMap or Endpoints annotation that is rewritten every few
+		// seconds. Captured, it shows up as drift in every scheduled capture.
+		return "leader-election record, rewritten continuously by its owner"
 	}
 
 	for _, o := range list(md["ownerReferences"]) {

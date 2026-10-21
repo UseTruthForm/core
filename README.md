@@ -95,3 +95,19 @@ a CRD and a custom resource) into the source, then:
 4. checks the secret values arrived intact, comparing them by hash.
 
 CI runs the same drill on every pull request.
+
+## Local dev loop
+
+```bash
+tilt up --port 10352   # 10350 belongs to a platform Tilt
+```
+
+| Resource | When it runs | What it does |
+|---|---|---|
+| `build`, `unit-tests` | Every save | Build and test in about 14 seconds warm |
+| `restore-drill` | On click | The full kind round trip above, about 2 minutes |
+| `capture-platform` | On click | A read-only capture of the platform cluster (`kind-tiltdev`). It compares with the previous capture, and `schema-diff` shows which API fields a platform or operator upgrade added or removed |
+
+All of it is local and free. Snapshots of real clusters go to `.stackdna/`,
+which is gitignored. Resources for other platforms are added along with their
+adapters, never before.

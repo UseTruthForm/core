@@ -30,4 +30,5 @@ jobs:
       - uses: helm/kind-action@v1
         with:
           install_only: true
+      - run: pip install pyyaml
       - run: KEEP=0 bash scripts/drill-kind.sh

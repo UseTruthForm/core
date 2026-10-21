@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"sigs.k8s.io/yaml"
 )
 
 func obj(apiVersion, kind, ns, name string, extra map[string]any) Object {
@@ -166,5 +168,28 @@ func TestCompare(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Regression: a CRD enum containing "=" (alertmanagerconfigs.monitoring.coreos.com)
+// was written unquoted, and YAML 1.1 readers such as PyYAML rejected the whole
+// snapshot ("could not determine a constructor for tag:yaml.org,2002:value").
+func TestYAML11SpecialScalarsAreQuoted(t *testing.T) {
+	b, err := encodeYAML(map[string]any{"enum": []any{"=", "<<", "plain", "yes", "on", "12:30", "2001-12-14", "v1.2.3"}, "text": "line one\nline two\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(b)
+	for _, want := range []string{`- "="`, `- "<<"`, "- plain", `- "yes"`, `- "on"`, `- "12:30"`, `- "2001-12-14"`, "- v1.2.3"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %s in:\n%s", want, out)
+		}
+	}
+	var back map[string]any
+	if err := yaml.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back["text"] != "line one\nline two\n" || back["enum"].([]any)[0] != "=" {
+		t.Fatalf("round trip changed values: %#v", back)
 	}
 }

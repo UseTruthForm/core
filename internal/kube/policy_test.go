@@ -151,3 +151,61 @@ func TestBaselineSkipsOnlyIdenticalObjects(t *testing.T) {
 		t.Fatalf("policy name must record the baseline, got %s", p.Name())
 	}
 }
+
+// Regression from the tilt platform cluster: 335 of 632 captured objects were
+// rendered by Flux HelmReleases. Captured alongside their HelmRelease, a
+// restore makes two owners fight over every field.
+func TestRenderedObjectsAreSkipped(t *testing.T) {
+	lbl := func(kv ...string) map[string]any {
+		m := map[string]any{}
+		for i := 0; i < len(kv); i += 2 {
+			m[kv[i]] = kv[i+1]
+		}
+		return map[string]any{"labels": m}
+	}
+	cases := []struct {
+		name string
+		md   map[string]any
+		want string
+	}{
+		{"flux helmrelease", lbl("helm.toolkit.fluxcd.io/name", "cert-manager", "helm.toolkit.fluxcd.io/namespace", "cert-manager"), "Flux HelmRelease cert-manager/cert-manager"},
+		{"flux kustomization", lbl("kustomize.toolkit.fluxcd.io/name", "apps", "kustomize.toolkit.fluxcd.io/namespace", "flux-system"), "Flux Kustomization flux-system/apps"},
+		{"argo cd", lbl("argocd.argoproj.io/instance", "shop"), "Argo CD application shop"},
+		{"crossplane", lbl("crossplane.io/composite", "db-x7k"), "Crossplane composite db-x7k"},
+		{"plain helm cli install is kept", lbl("app.kubernetes.io/managed-by", "Helm"), ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := Policy{}.skipReason("apps", "deployments", k8sObj("Deployment", "shop", "api", c.md, nil))
+			if c.want == "" && got != "" {
+				t.Fatalf("expected capture, got skip: %s", got)
+			}
+			if c.want != "" && !strings.Contains(got, c.want) {
+				t.Fatalf("reason %q does not contain %q", got, c.want)
+			}
+			if c.want != "" {
+				if r := (Policy{CaptureRendered: true}).skipReason("apps", "deployments", k8sObj("Deployment", "shop", "api", c.md, nil)); r != "" {
+					t.Fatalf("--capture-rendered must keep it, got skip: %s", r)
+				}
+			}
+		})
+	}
+}
+
+// A restored claim with an empty volume looks exactly like one with its data,
+// so the skip reason for a dynamic PV must say the data is not captured.
+func TestDynamicPVSaysDataIsNotCaptured(t *testing.T) {
+	pv := k8sObj("PersistentVolume", "", "pvc-123", map[string]any{"annotations": map[string]any{"pv.kubernetes.io/provisioned-by": "rancher.io/local-path"}},
+		map[string]any{"spec": map[string]any{"claimRef": map[string]any{"namespace": "shop", "name": "shop-data"}}})
+	got := Policy{}.skipReason("", "persistentvolumes", pv)
+	if !strings.Contains(got, "claim shop/shop-data") || !strings.Contains(got, "DATA is not captured") {
+		t.Fatalf("reason %q", got)
+	}
+}
+
+func TestHelmReleaseSecretIsSkipped(t *testing.T) {
+	s := k8sObj("Secret", "monitoring", "sh.helm.release.v1.prometheus.v3", nil, map[string]any{"type": "helm.sh/release.v1"})
+	if got := (Policy{}).skipReason("", "secrets", s); !strings.Contains(got, "Helm release history") {
+		t.Fatalf("reason %q", got)
+	}
+}

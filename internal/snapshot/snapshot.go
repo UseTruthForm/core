@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	yaml3 "go.yaml.in/yaml/v3"
 	"sigs.k8s.io/yaml"
@@ -328,7 +329,7 @@ func encodeYAML(v any) ([]byte, error) {
 		return nil, err
 	}
 	var n yaml3.Node
-	if err := yaml3.Unmarshal(j, &n); err != nil {
+	if err := yaml3.Unmarshal(yamlReadable(j), &n); err != nil {
 		return nil, err
 	}
 	setStyles(&n)
@@ -342,6 +343,34 @@ func encodeYAML(v any) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// yamlReadable escapes the characters JSON leaves raw but a YAML reader
+// refuses or misreads: DEL, the C1 controls (NEL among them, which YAML
+// reads as a line break), the byte-order mark and the two
+// noncharacters. A full AWS capture failed after 32 minutes, unable to write
+// any of it, on one AWS-published SSM document that contained such a
+// character. JSON strings may hold \uXXXX escapes, and so may YAML
+// double-quoted strings, so the text stays valid for both and the emitter
+// writes the value back out escaped.
+func yamlReadable(j []byte) []byte {
+	var out []byte
+	for i, r := range string(j) {
+		if r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == 0xfeff || r == 0xfffe || r == 0xffff {
+			if out == nil {
+				out = append([]byte(nil), j[:i]...)
+			}
+			out = fmt.Appendf(out, `\u%04x`, r)
+			continue
+		}
+		if out != nil {
+			out = utf8.AppendRune(out, r)
+		}
+	}
+	if out == nil {
+		return j
+	}
+	return out
 }
 
 // setStyles turns the JSON-shaped tree (flow collections, every string

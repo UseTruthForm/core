@@ -150,7 +150,7 @@ func newEnv(t *testing.T) env {
 	// The baseline is a capture of a fresh account: just the default VPC.
 	fresh := newAccount(w, "333333333333")
 	defaultVPC(fresh)
-	base, err := Capture(context.Background(), fresh, reg, region, Policy{})
+	base, err := Capture(context.Background(), fresh, reg, region, Policy{}, Tuning{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +367,7 @@ func TestUnsupportedTypeIsNotAFailure(t *testing.T) {
 	reg := fixtures(t)
 	f := NewWorld(reg).Account(srcAccount, region)
 	f.Unsupported["AWS::SSM::Parameter"] = true
-	snap, err := Capture(context.Background(), f, reg, region, Policy{})
+	snap, err := Capture(context.Background(), f, reg, region, Policy{}, Tuning{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,5 +378,38 @@ func TestUnsupportedTypeIsNotAFailure(t *testing.T) {
 		if strings.HasPrefix(c.NotCaptured, "list failed") {
 			t.Errorf("%s reported as failed: %s", c.Resource, c.NotCaptured)
 		}
+	}
+}
+
+// Reading in parallel must not change the snapshot: one reader and sixteen
+// produce the same objects, names and coverage.
+func TestParallelCaptureIsDeterministic(t *testing.T) {
+	e := newEnv(t)
+	var progress int
+	a := e.adapter(e.src)
+	a.Tuning = Tuning{Parallel: 1}
+	one, err := a.Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Tuning = Tuning{Parallel: 16, Progress: func(Progress) { progress++ }}
+	many, err := a.Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	da, db := t.TempDir(), t.TempDir()
+	if err := one.Write(da); err != nil {
+		t.Fatal(err)
+	}
+	if err := many.Write(db); err != nil {
+		t.Fatal(err)
+	}
+	x, _ := snapshot.Digest(da)
+	y, _ := snapshot.Digest(db)
+	if x != y {
+		t.Fatalf("parallel capture differs: %v", snapshot.Compare(one, many))
+	}
+	if progress != len(e.reg.Types) {
+		t.Errorf("progress called %d times for %d types", progress, len(e.reg.Types))
 	}
 }

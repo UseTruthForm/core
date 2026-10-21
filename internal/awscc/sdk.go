@@ -5,12 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/ratelimit"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudcontrol"
 	"github.com/aws/aws-sdk-go-v2/service/cloudcontrol/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 // SDK is CloudControl backed by AWS.
@@ -20,7 +25,8 @@ import (
 // full-registry capture and the long-running create path (types that take
 // minutes) have not been exercised.
 type SDK struct {
-	c *cloudcontrol.Client
+	c   *cloudcontrol.Client
+	sts *sts.Client
 }
 
 // NewSDK connects with the standard AWS credential chain. profile may be
@@ -34,11 +40,29 @@ func NewSDK(ctx context.Context, profile, region string) (*SDK, error) {
 	if err != nil {
 		return nil, fmt.Errorf("aws config: %w", err)
 	}
-	// A full capture lists every type in the region; the default three
-	// attempts turn ordinary throttling into "list failed" coverage gaps.
-	cfg.RetryMode = aws.RetryModeAdaptive
-	cfg.RetryMaxAttempts = 10
-	return &SDK{c: cloudcontrol.NewFromConfig(cfg)}, nil
+	// The SDK retries briefly; throttling is retried by the inventory with
+	// the in-flight slot released (see inv.call). What the full captures
+	// taught: the default client retry budget ran dry and dropped 188 types
+	// ("retry quota exceeded"), so it is removed; adaptive mode slowed the
+	// whole client whenever one service throttled (52 minutes); and long
+	// SDK retries held the slots while sleeping, stalling everything for 21
+	// minutes on reads that fail with HTTP 500.
+	cfg.Retryer = func() aws.Retryer {
+		return retry.NewStandard(func(so *retry.StandardOptions) {
+			so.MaxAttempts = 4
+			so.RateLimiter = ratelimit.None
+		})
+	}
+	return &SDK{c: cloudcontrol.NewFromConfig(cfg), sts: sts.NewFromConfig(cfg)}, nil
+}
+
+// Account asks STS who the caller is. It needs no permissions.
+func (s *SDK) Account(ctx context.Context) (string, error) {
+	out, err := s.sts.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return "", fmt.Errorf("identify the account: %w", err)
+	}
+	return aws.ToString(out.Account), nil
 }
 
 // List returns one page of identifiers.
@@ -55,7 +79,7 @@ func (s *SDK) List(ctx context.Context, typeName string, model map[string]any, t
 	}
 	out, err := s.c.ListResources(ctx, in)
 	if err != nil {
-		return nil, "", classify(err)
+		return nil, "", classifyList(err)
 	}
 	ids := make([]string, 0, len(out.ResourceDescriptions))
 	for _, d := range out.ResourceDescriptions {
@@ -133,6 +157,36 @@ func classify(err error) error {
 		return fmt.Errorf("%w: %v", ErrUnsupported, err)
 	case errors.As(err, &rnf):
 		return fmt.Errorf("%w: %v", ErrNotFound, err)
+	}
+	return err
+}
+
+// The reasons a list fails because of the account rather than StackDNA are
+// only in the handlers' messages; there is no error code for them. These
+// patterns come from the full us-east-2 capture (2026-10-21). Anything they
+// do not match stays a failure, so a new message is loud, not hidden.
+var (
+	needsInputRE  = regexp.MustCompile(`(?i)required property|must not be null|is required to list|is required for list|is required argument|arn is required|cannot be empty|must be provided|missing or invalid resourcemodel|should be one of arn|is not present|missing \w*identifier|\bundefined does not exist|list operation is not supported`)
+	notSetUpRE    = regexp.MustCompile(`(?i)not subscribed|not registered|complete .{0,40}setup|does not have access to the|landing zone|could not assume the|not onboarded|isn['’]t onboarded|is not enabled|isn['’]t enabled|subscription does not exist|only existing .{0,60}customers|no longer available to new customers|service role not found|instance does not exist|no default admin could be found|no detector was found|must be a .{0,40}delegated administrator|account not found for the request`)
+	notInRegionRE = regexp.MustCompile(`(?i)region is not supported|UnknownHostException|unable to execute http request: connect to`)
+)
+
+func classifyList(err error) error {
+	err = classify(err)
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "not authorized to perform"), strings.Contains(msg, "Throttling"), strings.Contains(msg, "Rate exceeded"):
+		return err // a permission gap or throttling: a real failure
+	case notInRegionRE.MatchString(msg):
+		// The service's endpoint does not exist in this region.
+		return fmt.Errorf("%w: %s", ErrUnsupported, cleanMessage(msg))
+	case needsInputRE.MatchString(msg):
+		return fmt.Errorf("%w: %s", ErrNeedsInput, cleanMessage(msg))
+	case notSetUpRE.MatchString(msg):
+		return fmt.Errorf("%w: %s", ErrNotSetUp, cleanMessage(msg))
+	case errors.Is(err, ErrNotFound):
+		// A list that answers "not found" has nothing to list.
+		return fmt.Errorf("%w: %s", ErrNotSetUp, cleanMessage(msg))
 	}
 	return err
 }

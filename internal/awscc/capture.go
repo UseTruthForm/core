@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"path"
 	"reflect"
@@ -110,8 +109,11 @@ type resource struct {
 func (r *resource) key() string { return APIVersion + "|" + r.t.Name + "||" + r.name }
 
 // Capture reads every selected type and writes it as snapshot objects.
-func Capture(ctx context.Context, api CloudControl, reg *Registry, region string, p Policy) (snapshot.Snapshot, error) {
-	in := inventory(ctx, api, reg, p.selected)
+func Capture(ctx context.Context, api CloudControl, reg *Registry, region string, p Policy, tun Tuning) (snapshot.Snapshot, error) {
+	in, err := inventory(ctx, api, reg, p.selected, tun)
+	if err != nil {
+		return snapshot.Snapshot{}, err
+	}
 	snap := snapshot.Snapshot{Platform: "aws", ServerVersion: "cloudcontrol/" + region, Policy: p.Name()}
 
 	for _, r := range in.named() {
@@ -144,6 +146,21 @@ func Capture(ctx context.Context, api CloudControl, reg *Registry, region string
 		snap.Objects = append(snap.Objects, snapshot.Object{Body: obj})
 	}
 
+	for _, s := range in.early {
+		if !p.selected(s.Resource) {
+			continue
+		}
+		snap.Skips = append(snap.Skips, s)
+		cov := in.cov[s.Resource]
+		if cov.Skipped == nil {
+			cov.Skipped = map[string]int{}
+		}
+		reason := s.Reason
+		if i := strings.Index(reason, ": "); i >= 0 {
+			reason = reason[:i]
+		}
+		cov.Skipped[reason]++
+	}
 	for _, n := range sortedKeys(in.cov) {
 		c := in.cov[n]
 		if !p.selected(n) {
@@ -163,28 +180,6 @@ func Capture(ctx context.Context, api CloudControl, reg *Registry, region string
 		return a.Resource+"|"+a.Name < b.Resource+"|"+b.Name
 	})
 	return snap, nil
-}
-
-// inv holds what was read, per type, and why any type was not.
-type inv struct {
-	ctx  context.Context
-	api  CloudControl
-	reg  *Registry
-	got  map[string][]*resource
-	cov  map[string]*snapshot.Coverage
-	busy map[string]bool
-}
-
-func inventory(ctx context.Context, api CloudControl, reg *Registry, want func(string) bool) *inv {
-	in := &inv{ctx: ctx, api: api, reg: reg, got: map[string][]*resource{}, cov: map[string]*snapshot.Coverage{}, busy: map[string]bool{}}
-	for _, n := range sortedKeys(reg.Types) {
-		if want(n) {
-			in.read(n)
-		} else if in.cov[n] == nil {
-			in.cov[n] = &snapshot.Coverage{Resource: n, Kind: n}
-		}
-	}
-	return in
 }
 
 // named returns every resource read, with logical names and references
@@ -216,7 +211,7 @@ func markCreatedBy(rs []*resource) {
 	for _, r := range rs {
 		for _, k := range sortedKeys(r.stat) {
 			v, ok := r.stat[k].(string)
-			if !ok || k == "identifier" || strings.Contains(k, ".") || hasString(r.t.PrimaryIdentifier, k) {
+			if !ok || k == "identifier" || strings.Contains(k, ".") || hasString(r.t.PrimaryIdentifier, k) || isAccountID(v) {
 				continue
 			}
 			if _, taken := reported[v]; !taken {
@@ -234,6 +229,23 @@ func markCreatedBy(rs []*resource) {
 	}
 }
 
+// isAccountID reports a 12-digit AWS account ID. It names the account, not
+// a resource: the full us-east-2 capture skipped Organizations::Account and
+// IoT::EncryptionConfiguration as "created by" a Cost Explorer anomaly
+// subscription because all three carry it, and it would have become a
+// reference token wherever it appeared.
+func isAccountID(v string) bool {
+	if len(v) != 12 {
+		return false
+	}
+	for _, c := range v {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func hasString(list []string, s string) bool {
 	for _, x := range list {
 		if x == s {
@@ -241,106 +253,6 @@ func hasString(list []string, s string) bool {
 		}
 	}
 	return false
-}
-
-// read lists and reads every resource of a type, listing its parents first
-// when the type can only be listed per parent. Every way it can fail ends
-// in the coverage report, never in a silently smaller snapshot.
-func (in *inv) read(n string) []*resource {
-	if rs, ok := in.got[n]; ok {
-		return rs
-	}
-	if c := in.cov[n]; c != nil && c.NotCaptured != "" {
-		return nil
-	}
-	c := &snapshot.Coverage{Resource: n, Kind: n}
-	in.cov[n] = c
-	t := in.reg.Types[n]
-	switch {
-	case len(t.Handlers) == 0:
-		c.NotCaptured = "legacy type: CloudFormation only, Cloud Control has no handlers for it"
-		return nil
-	case !t.Capturable():
-		c.NotCaptured = "Cloud Control cannot list or read this type"
-		return nil
-	}
-	in.busy[n] = true
-	defer delete(in.busy, n)
-
-	plan, reason := in.reg.Plan(t)
-	switch {
-	case reason != "":
-		c.NotCaptured = "parent not derivable from the schemas: " + reason
-		return nil
-	case plan.ParentType != "" && in.busy[plan.ParentType]:
-		c.NotCaptured = "parent types form a cycle"
-		return nil
-	}
-	models := []map[string]any{{}}
-	if plan.ParentType != "" {
-		models = nil
-		for _, pr := range in.read(plan.ParentType) {
-			m := map[string]any{}
-			for param, prop := range plan.FromParent {
-				if v, ok := pr.props[prop]; ok {
-					m[param] = v
-				}
-			}
-			if len(m) == len(plan.FromParent) {
-				models = append(models, m)
-			}
-		}
-		if pc := in.cov[plan.ParentType]; pc.NotCaptured != "" {
-			c.NotCaptured = "list failed: parent " + plan.ParentType + " could not be read (" + pc.NotCaptured + ")"
-			return nil
-		}
-	}
-	for _, param := range sortedKeys(plan.Enums) {
-		var next []map[string]any
-		for _, m := range models {
-			for _, v := range plan.Enums[param] {
-				mm := map[string]any{param: v}
-				for k, x := range m {
-					mm[k] = x
-				}
-				next = append(next, mm)
-			}
-		}
-		models = next
-	}
-
-	out := []*resource{}
-	for _, model := range models {
-		token := ""
-		for {
-			ids, next, err := in.api.List(in.ctx, n, model, token)
-			if err != nil {
-				if errors.Is(err, ErrUnsupported) {
-					c.NotCaptured = "not available in this account or region"
-				} else {
-					c.NotCaptured = "list failed: " + err.Error()
-				}
-				return nil
-			}
-			for _, id := range ids {
-				props, err := in.api.Get(in.ctx, n, id)
-				if errors.Is(err, ErrNotFound) {
-					continue // deleted between list and read
-				}
-				if err != nil {
-					c.NotCaptured = "list failed: read " + id + ": " + err.Error()
-					return nil
-				}
-				out = append(out, normalize(t, id, props))
-			}
-			if next == "" {
-				break
-			}
-			token = next
-		}
-	}
-	in.got[n] = out
-	return out
 }
 
 // aliases lists properties AWS returns together but refuses together on
@@ -617,7 +529,7 @@ type refTarget struct {
 // status word ("available") is not an identity and must never be swapped
 // for a token wherever it appears.
 func refable(attr, v string) bool {
-	if len(v) < 4 || strings.Contains(attr, ".") {
+	if len(v) < 4 || strings.Contains(attr, ".") || isAccountID(v) {
 		return false
 	}
 	return attr == "identifier" || strings.HasPrefix(v, "arn:") ||

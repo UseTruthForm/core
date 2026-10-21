@@ -20,6 +20,7 @@ import (
 type awsFlags struct {
 	region, profile, types, schemas, baseline string
 	managed                                   bool
+	parallel                                  int
 }
 
 func (a *awsFlags) register(fs *flag.FlagSet) {
@@ -28,6 +29,7 @@ func (a *awsFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&a.types, "types", "", "comma-separated type patterns, e.g. 'AWS::S3::*,AWS::IAM::Role' (default: every type)")
 	fs.StringVar(&a.schemas, "schemas", "", "registry schema bundle (.zip) or directory (default: AWS's public bundle, cached for a day)")
 	fs.BoolVar(&a.managed, "capture-managed", false, "also capture resources a CloudFormation stack or an AWS service owns")
+	fs.IntVar(&a.parallel, "parallel", 8, "AWS API calls in flight at once; lower it if the account is throttled")
 }
 
 func (a *awsFlags) registry() (*awscc.Registry, error) {
@@ -86,7 +88,24 @@ func (a *awsFlags) connect(ctx context.Context) (*awscc.Adapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &awscc.Adapter{API: api, Registry: reg, Region: a.region, Policy: pol}, nil
+	return &awscc.Adapter{API: api, Registry: reg, Region: a.region, Policy: pol,
+		Tuning: awscc.Tuning{Parallel: a.parallel, Progress: progressPrinter()}}, nil
+}
+
+// progressPrinter reports on stderr every few seconds. A full-registry
+// capture reads ~1,300 types; without this, a hung run and a working one
+// look the same.
+func progressPrinter() func(awscc.Progress) {
+	start := time.Now()
+	last := start
+	return func(p awscc.Progress) {
+		if time.Since(last) < 5*time.Second && p.Types != p.TotalTypes {
+			return
+		}
+		last = time.Now()
+		fmt.Fprintf(os.Stderr, "  read %d/%d types, %d resources, %s (last: %s)\n",
+			p.Types, p.TotalTypes, p.Resources, time.Since(start).Round(time.Second), p.Type)
+	}
 }
 
 func captureAWS(ctx context.Context, a *awsFlags, out string) int {
@@ -104,21 +123,50 @@ func captureAWS(ctx context.Context, a *awsFlags, out string) int {
 	d, _ := snapshot.Digest(out)
 	read, notCaptured, failed := summarize(snap)
 	fmt.Printf("captured %d resources across %d types into %s (%s)\n", len(snap.Objects), read, out, d)
-	fmt.Printf("%d types not captured by design, %d skipped resources; see %s/coverage.yaml\n", notCaptured, len(snap.Skips), out)
-	for _, r := range topReasons(snap.Skips, 8) {
+	var notSetUp, needsInput int
+	for _, c := range snap.Coverage {
+		switch {
+		case strings.HasPrefix(c.NotCaptured, awscc.NotSetUp):
+			notSetUp++
+		case strings.HasPrefix(c.NotCaptured, awscc.NeedsInput):
+			needsInput++
+		}
+	}
+	var skips, unreadable []snapshot.Skip
+	for _, s := range snap.Skips {
+		if strings.HasPrefix(s.Reason, awscc.Unreadable) {
+			unreadable = append(unreadable, s)
+		} else {
+			skips = append(skips, s)
+		}
+	}
+	fmt.Printf("%d types not captured by design, %d skipped resources; see %s/coverage.yaml\n", notCaptured, len(skips), out)
+	for _, r := range topReasons(skips, 8) {
 		fmt.Println("  skipped:", r)
 	}
+	// Separate lines, because each means something different: nothing to
+	// capture, versus resources that may exist but cannot be enumerated.
+	fmt.Printf("  of which %d are services not set up in this account (nothing to capture)\n", notSetUp)
+	fmt.Printf("  of which %d cannot be listed without input their schema does not declare; such resources are NOT captured if they exist\n", needsInput)
 	// Said on every capture, because a restore that recreates a bucket or a
 	// queue empty looks exactly like one that recreated its contents.
 	fmt.Println("NOTE: configuration only. Data (S3 objects, queue messages, table rows) and write-only values (Lambda code, secret values) are NOT in this snapshot")
+	if len(failed) == 0 && len(unreadable) == 0 {
+		return 0
+	}
 	if len(failed) > 0 {
 		fmt.Println("INCOMPLETE: these types could not be read and are NOT in the snapshot:")
 		for _, f := range failed {
 			fmt.Println("  ", f)
 		}
-		return 3
 	}
-	return 0
+	if len(unreadable) > 0 {
+		fmt.Println("INCOMPLETE: these resources were listed but could not be read, and are NOT in the snapshot:")
+		for _, s := range unreadable {
+			fmt.Printf("   %s %s: %s\n", s.Resource, s.Name, strings.TrimPrefix(s.Reason, awscc.Unreadable))
+		}
+	}
+	return 3
 }
 
 // restoreAWS reads write-only values from a file the operator controls; they

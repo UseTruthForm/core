@@ -36,10 +36,10 @@ func NewWorld(reg *Registry) *World {
 // parent-scoped lists, and pages lists two at a time so pagination is
 // always exercised.
 type Fake struct {
-	w               *World
-	Account, Region string
-	res             map[string]map[string]map[string]any // type -> id -> props
-	order           map[string][]string                  // creation order, per type
+	w          *World
+	ID, Region string
+	res        map[string]map[string]map[string]any // type -> id -> props
+	order      map[string][]string                  // creation order, per type
 	// Unsupported types answer ErrUnsupported, as a service missing from a
 	// region does.
 	Unsupported map[string]bool
@@ -50,11 +50,17 @@ type Fake struct {
 	// Validate lets a test refuse what AWS refuses although the schema
 	// allows it.
 	Validate func(typeName string, desired map[string]any) error
+	// ListError lets a test refuse a list for some inputs, as AWS refuses
+	// WAFv2 Scope CLOUDFRONT outside us-east-1.
+	ListError func(typeName string, model map[string]any) error
+	// Unreadable resources are listed but fail on read, as AWS's own
+	// built-ins do (CodePipeline's "Source|S3|1"). Keyed "Type|identifier".
+	Unreadable map[string]bool
 }
 
 // Account returns a new empty account in the world.
 func (w *World) Account(account, region string) *Fake {
-	return &Fake{w: w, Account: account, Region: region,
+	return &Fake{w: w, ID: account, Region: region,
 		res: map[string]map[string]map[string]any{}, order: map[string][]string{}, Unsupported: map[string]bool{}}
 }
 
@@ -101,8 +107,8 @@ func (f *Fake) Create(_ context.Context, typeName string, desired map[string]any
 				bad = fmt.Errorf("%s: unresolved StackDNA reference %q sent to AWS", typeName, s)
 			}
 			for v, acct := range f.w.owner {
-				if acct != f.Account && strings.Contains(s, v) {
-					bad = fmt.Errorf("%s: %q refers to %s, which belongs to account %s and does not exist in %s", typeName, s, v, acct, f.Account)
+				if acct != f.ID && strings.Contains(s, v) {
+					bad = fmt.Errorf("%s: %q refers to %s, which belongs to account %s and does not exist in %s", typeName, s, v, acct, f.ID)
 				}
 			}
 		}
@@ -182,7 +188,7 @@ func (f *Fake) generate(t *TypeInfo, props map[string]any) {
 
 func (f *Fake) newValue(t *TypeInfo, prop string, props map[string]any) string {
 	f.w.seq++
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s/%d", f.Account, f.w.seq)))
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s/%d", f.ID, f.w.seq)))
 	x := hex.EncodeToString(h[:])
 	var v string
 	switch {
@@ -193,7 +199,7 @@ func (f *Fake) newValue(t *TypeInfo, prop string, props map[string]any) string {
 	default:
 		v = strings.ToLower(prop) + "-" + x[:8]
 	}
-	f.w.owner[v] = f.Account
+	f.w.owner[v] = f.ID
 	return v
 }
 
@@ -210,15 +216,15 @@ func (f *Fake) named(t *TypeInfo, prop string, props map[string]any) string {
 	svc := strings.ToLower(t.Service())
 	var v string
 	if strings.HasSuffix(prop, "Url") {
-		v = "https://" + svc + "." + f.Region + ".amazonaws.com/" + f.Account + "/" + name
+		v = "https://" + svc + "." + f.Region + ".amazonaws.com/" + f.ID + "/" + name
 	} else {
 		region := f.Region
 		if svc == "iam" {
 			region = ""
 		}
-		v = "arn:aws:" + svc + ":" + region + ":" + f.Account + ":" + strings.ToLower(t.Short()) + "/" + name
+		v = "arn:aws:" + svc + ":" + region + ":" + f.ID + ":" + strings.ToLower(t.Short()) + "/" + name
 	}
-	f.w.owner[v] = f.Account
+	f.w.owner[v] = f.ID
 	return v
 }
 
@@ -233,6 +239,9 @@ func (f *Fake) Get(_ context.Context, typeName, id string) (map[string]any, erro
 	p, ok := f.res[typeName][id]
 	if !ok {
 		return nil, fmt.Errorf("%s %s: %w", typeName, id, ErrNotFound)
+	}
+	if f.Unreadable[typeName+"|"+id] {
+		return nil, fmt.Errorf("%s Handler returned status FAILED: Service returned error code InternalFailure (Service: Fake, Request ID: 1234)", typeName)
 	}
 	out := deepCopy(p)
 	for _, ptr := range t.WriteOnly {
@@ -263,6 +272,11 @@ func (f *Fake) List(_ context.Context, typeName string, model map[string]any, to
 	t, err := f.typ(typeName)
 	if err != nil {
 		return nil, "", err
+	}
+	if f.ListError != nil {
+		if err := f.ListError(typeName, model); err != nil {
+			return nil, "", err
+		}
 	}
 	for _, r := range t.ListRequires {
 		if _, ok := model[r]; !ok {
@@ -295,6 +309,9 @@ func (f *Fake) List(_ context.Context, typeName string, model map[string]any, to
 	}
 	return ids[start:end], fmt.Sprint(end), nil
 }
+
+// Account returns the fake account's ID.
+func (f *Fake) Account(context.Context) (string, error) { return f.ID, nil }
 
 // Count returns how many resources the account holds, for tests.
 func (f *Fake) Count() map[string]int {

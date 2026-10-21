@@ -214,10 +214,50 @@ pinned in the fake tests:
 - **SQS holds a deleted queue's name for 60 seconds.** A restore right after
   a deletion fails with `QueueDeletedRecently`.
 
+**Full-registry capture against real AWS.** It runs read-only across all
+1,498 types in us-east-2: 4m52s at 8 calls in flight, nothing lost to
+throttling, and two consecutive runs byte-identical. Getting there took
+six runs. Each one found something that only a real account shows:
+
+| Run | Time | What went wrong, and the fix |
+|---|---|---|
+| Serial | 32 min | Writing failed on one AWS SSM document containing a character YAML refuses (DEL, C1 controls), so nothing was saved. Such characters are now escaped, and PyYAML reads them back exactly. |
+| 8 in flight | 7 min | 188 types lost to "retry quota exceeded", the SDK's client retry budget. Also, 2,391 "resources" were captured, about 2,300 of them AWS's own: managed IAM policies, public SSM documents, RAM permissions, default parameter groups. |
+| Adaptive retry | 52 min | Adaptive mode slows the whole client when any one service throttles. |
+| Standard retry | 40 min | Long SDK retries held the in-flight slots while sleeping. 34 reads that always fail with HTTP 500 (CodePipeline's built-in action types) stalled everything for 21 minutes. |
+| Retry outside the slot | 4m52s | The SDK retries briefly. The inventory retries throttling with the slot released, and work is interleaved across services. |
+
+**AWS-owned resources are skipped by rule, not by a list.** There are
+three rules:
+
+- an ARN in AWS's namespace (`arn:aws:iam::aws:…`, or an empty account
+  with a region set);
+- an ARN naming a different account (AWS's patch baselines belong to
+  `733109147000`, and a resource can also be shared in from elsewhere);
+- a name prefix AWS reserves (SSM `aws*`, KMS `alias/aws/`, and others).
+
+Only a resource's own read-only ARN counts. A customer role that points
+at an AWS-managed policy stays the customer's. In the sandbox this
+reduced 2,391 "resources" to 86, and skipped 2,958 with reasons.
+
+**Every type that isn't captured is in one of five groups:**
+
+- AWS-owned;
+- not set up in this account (53 types, such as Audit Manager and
+  Control Tower);
+- needing list input that its schema doesn't declare (63 types, such as
+  lifecycle hooks, which need an Auto Scaling group). These are real gaps,
+  and the summary says so;
+- permission denials;
+- AWS's own handler errors.
+
+Only the last two count as incomplete: 23 types, plus 41 AWS built-ins
+whose read handlers fail.
+
 **Still unverified against AWS:**
 
-- the 1,600 or so types beyond the 6 the drill used;
-- throttling across a full-registry capture;
+- restore beyond the 6 types the drill used (the full capture proves
+  reading, not recreating);
 - IAM (the sandbox user can list roles but not read them);
 - cross-account restore;
 - the Lambda and Secrets Manager write-only paths, which are proven only in

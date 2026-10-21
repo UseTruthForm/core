@@ -19,6 +19,10 @@ type CloudControl interface {
 	Get(ctx context.Context, typeName, identifier string) (map[string]any, error)
 	// Create creates a resource and waits for it, returning its identifier.
 	Create(ctx context.Context, typeName string, desired map[string]any) (string, error)
+	// Account returns the 12-digit ID of the account being read, so that
+	// resources another account owns (AWS's own, or shared in) are told
+	// apart from this account's.
+	Account(ctx context.Context) (string, error)
 }
 
 // ErrUnsupported means the type cannot be used in this account or region
@@ -28,6 +32,17 @@ var ErrUnsupported = errors.New("type not available in this account or region")
 
 // ErrNotFound means the identifier does not exist.
 var ErrNotFound = errors.New("resource not found")
+
+// ErrNotSetUp means the service has not been set up or subscribed to in
+// this account (Audit Manager, Control Tower, Cloud9), so it holds nothing.
+// It is not a permission gap: "not authorized to perform" stays a failure.
+var ErrNotSetUp = errors.New("service not set up in this account")
+
+// ErrNeedsInput means the type cannot be listed without input its schema
+// does not declare (lifecycle hooks need an Auto Scaling group name). That
+// is a stable gap in the registry, reported apart from failures so it is
+// neither hidden nor mistaken for a broken run.
+var ErrNeedsInput = errors.New("list needs input the schema does not declare")
 
 // Identifier joins a resource's primary identifier values the way Cloud
 // Control expects compound identifiers ("RestApiId|ResourceId").
@@ -41,4 +56,22 @@ func Identifier(t *TypeInfo, props map[string]any) (string, bool) {
 		parts = append(parts, v)
 	}
 	return strings.Join(parts, "|"), true
+}
+
+// cleanMessage keeps the handler's own sentence and drops request IDs,
+// which change on every run and would make coverage.yaml differ each time.
+func cleanMessage(msg string) string {
+	if i := strings.Index(msg, "Handler returned status FAILED: "); i >= 0 {
+		msg = msg[i+len("Handler returned status FAILED: "):]
+	} else if i := strings.LastIndex(msg, "Exception: "); i >= 0 {
+		msg = msg[i+len("Exception: "):]
+	}
+	for _, cut := range []string{" (Service:", " (HandlerErrorCode:", ", RequestId", ", model: ResourceModel"} {
+		if i := strings.Index(msg, cut); i >= 0 {
+			msg = msg[:i]
+		}
+	}
+	// Handlers' messages can run over several lines (Java stack frames);
+	// one line keeps coverage.yaml and the summary readable.
+	return strings.Join(strings.Fields(msg), " ")
 }

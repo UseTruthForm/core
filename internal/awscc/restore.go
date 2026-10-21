@@ -26,7 +26,7 @@ var tokenRE = regexp.MustCompile(`\{\{stackdna\|([^|{}]+)\|([^|{}]+)\|([^|{}]+)\
 // generated. It never modifies or deletes what already exists: an object
 // already present and identical is reported applied, and one present but
 // different is reported not applied, with the fields that differ.
-func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Snapshot, opt RestoreOptions) []snapshot.Result {
+func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Snapshot, opt RestoreOptions, tun Tuning) []snapshot.Result {
 	// The target is read with the same naming rules first, so existing
 	// resources (a previous partial restore, the default VPC a token points
 	// at) are recognised by logical name instead of being created twice.
@@ -37,7 +37,14 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 			need[m[1]] = true
 		}
 	}
-	in := inventory(ctx, api, reg, func(n string) bool { return need[n] })
+	in, err := inventory(ctx, api, reg, func(n string) bool { return need[n] }, tun)
+	if err != nil {
+		results := make([]snapshot.Result, 0, len(s.Objects))
+		for _, o := range s.Objects {
+			results = append(results, snapshot.Result{Key: o.Key(), Detail: "cannot read the target: " + err.Error()})
+		}
+		return results
+	}
 	existing := map[string]*resource{}
 	resolved := map[string]map[string]any{} // Kind/name -> live properties
 	for _, r := range in.named() {
@@ -222,6 +229,7 @@ type Adapter struct {
 	Region   string
 	Policy   Policy
 	Options  RestoreOptions
+	Tuning   Tuning
 }
 
 // Name identifies the platform.
@@ -229,12 +237,12 @@ func (a *Adapter) Name() string { return "aws" }
 
 // Capture captures the account and region.
 func (a *Adapter) Capture(ctx context.Context) (snapshot.Snapshot, error) {
-	return Capture(ctx, a.API, a.Registry, a.Region, a.Policy)
+	return Capture(ctx, a.API, a.Registry, a.Region, a.Policy, a.Tuning)
 }
 
 // Restore restores a snapshot into the account and region.
 func (a *Adapter) Restore(ctx context.Context, s snapshot.Snapshot) []snapshot.Result {
-	return Restore(ctx, a.API, a.Registry, s, a.Options)
+	return Restore(ctx, a.API, a.Registry, s, a.Options, a.Tuning)
 }
 
 // String is used in errors and logs.

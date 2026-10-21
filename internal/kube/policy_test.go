@@ -209,3 +209,15 @@ func TestHelmReleaseSecretIsSkipped(t *testing.T) {
 		t.Fatalf("reason %q", got)
 	}
 }
+
+// Regression from kind-tiltdev: three Istio leader-election ConfigMaps changed
+// between two captures a minute apart, so every scheduled capture would have
+// reported drift that nobody made.
+func TestLeaderElectionRecordsAreSkipped(t *testing.T) {
+	cm := k8sObj("ConfigMap", "istio-system", "istio-leader", map[string]any{"annotations": map[string]any{
+		"control-plane.alpha.kubernetes.io/leader": `{"holderIdentity":"istiod-1","renewTime":"2026-10-21T05:00:00Z"}`,
+	}}, nil)
+	if got := (Policy{}).skipReason("", "configmaps", cm); !strings.Contains(got, "leader-election") {
+		t.Fatalf("reason %q", got)
+	}
+}

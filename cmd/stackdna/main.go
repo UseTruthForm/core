@@ -1,0 +1,276 @@
+// Command stackdna captures what is running into a snapshot that can recreate
+// it, restores snapshots, and diffs them against live systems.
+//
+// Exit codes are part of the interface, so scripts and CI can tell outcomes
+// apart:
+//
+//	0  success (capture complete, restore fully applied, no differences)
+//	1  error (bad flags, cannot connect, cannot read a snapshot)
+//	2  differences found (diff, compare)
+//	3  incomplete: the snapshot was written but some types could not be
+//	   read, or a restore applied only some objects
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	"github.com/stackdna/core/internal/kube"
+	"github.com/stackdna/core/internal/snapshot"
+)
+
+const usage = `stackdna: capture what is running so it can be recreated.
+
+  stackdna capture --context <kube-context> --out <dir> [--include-system] [--baseline <dir>]
+  stackdna restore --context <kube-context> --from <dir> [--secrets-from-context <kube-context>]
+  stackdna diff    --context <kube-context> --from <dir> [--baseline <dir>]
+  stackdna compare <dir-a> <dir-b>
+`
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Fprint(os.Stderr, usage)
+		os.Exit(1)
+	}
+	ctx := context.Background()
+	var code int
+	switch os.Args[1] {
+	case "capture":
+		code = capture(ctx, os.Args[2:])
+	case "restore":
+		code = restore(ctx, os.Args[2:])
+	case "diff":
+		code = diff(ctx, os.Args[2:])
+	case "compare":
+		code = compare(os.Args[2:])
+	default:
+		fmt.Fprint(os.Stderr, usage)
+		code = 1
+	}
+	os.Exit(code)
+}
+
+func capture(ctx context.Context, args []string) int {
+	fs := flag.NewFlagSet("capture", flag.ExitOnError)
+	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig (default: standard loading rules)")
+	kctx := fs.String("context", "", "kubeconfig context to capture")
+	out := fs.String("out", "", "snapshot directory to write")
+	includeSystem := fs.Bool("include-system", false, "also capture system namespaces and platform-created objects")
+	baseline := fs.String("baseline", "", "snapshot of a fresh cluster of the same distribution; objects identical to it are skipped")
+	_ = fs.Parse(args)
+	if *out == "" || fs.NArg() > 0 {
+		fmt.Fprintln(os.Stderr, "capture: --out is required and no positional arguments are accepted")
+		return 1
+	}
+	c, err := kube.Connect(*kubeconfig, *kctx)
+	if err != nil {
+		return fail(err)
+	}
+	pol := kube.Policy{IncludeSystem: *includeSystem}
+	if *baseline != "" {
+		if pol, err = withBaseline(pol, *baseline); err != nil {
+			return fail(err)
+		}
+	}
+	snap, err := kube.Capture(ctx, c, pol)
+	if err != nil {
+		return fail(err)
+	}
+	if err := snap.Write(*out); err != nil {
+		return fail(err)
+	}
+	d, _ := snapshot.Digest(*out)
+	read, notCaptured, failed := summarize(snap)
+	fmt.Printf("captured %d objects across %d types into %s (%s)\n", len(snap.Objects), read, *out, d)
+	fmt.Printf("%d types not captured by design, %d skipped objects; see %s/coverage.yaml\n", notCaptured, len(snap.Skips), *out)
+	for _, r := range topReasons(snap.Skips, 8) {
+		fmt.Println("  skipped:", r)
+	}
+	if len(failed) > 0 {
+		fmt.Println("INCOMPLETE: these types could not be read and are NOT in the snapshot:")
+		for _, f := range failed {
+			fmt.Println("  ", f)
+		}
+		return 3
+	}
+	return 0
+}
+
+func restore(ctx context.Context, args []string) int {
+	fs := flag.NewFlagSet("restore", flag.ExitOnError)
+	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
+	kctx := fs.String("context", "", "kubeconfig context to restore into")
+	from := fs.String("from", "", "snapshot directory")
+	secretsFrom := fs.String("secrets-from-context", "", "live cluster to read withheld secret values from")
+	_ = fs.Parse(args)
+	if *from == "" || *kctx == "" {
+		fmt.Fprintln(os.Stderr, "restore: --from and --context are required (restore never guesses its target)")
+		return 1
+	}
+	snap, err := snapshot.Read(*from)
+	if err != nil {
+		return fail(err)
+	}
+	c, err := kube.Connect(*kubeconfig, *kctx)
+	if err != nil {
+		return fail(err)
+	}
+	var opt kube.RestoreOptions
+	if *secretsFrom != "" {
+		if opt.SecretSource, err = kube.Connect(*kubeconfig, *secretsFrom); err != nil {
+			return fail(err)
+		}
+	}
+	results := kube.Restore(ctx, c, snap, opt)
+	ok := 0
+	for _, r := range results {
+		if r.OK {
+			ok++
+			continue
+		}
+		fmt.Printf("NOT APPLIED %s: %s\n", r.Key, r.Detail)
+	}
+	fmt.Printf("applied %d of %d objects to %s\n", ok, len(results), *kctx)
+	if ok != len(results) {
+		return 3
+	}
+	return 0
+}
+
+func diff(ctx context.Context, args []string) int {
+	fs := flag.NewFlagSet("diff", flag.ExitOnError)
+	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
+	kctx := fs.String("context", "", "kubeconfig context to compare against")
+	from := fs.String("from", "", "snapshot directory")
+	baseline := fs.String("baseline", "", "the baseline the snapshot was captured with, if any")
+	_ = fs.Parse(args)
+	if *from == "" || *kctx == "" {
+		fmt.Fprintln(os.Stderr, "diff: --from and --context are required")
+		return 1
+	}
+	want, err := snapshot.Read(*from)
+	if err != nil {
+		return fail(err)
+	}
+	c, err := kube.Connect(*kubeconfig, *kctx)
+	if err != nil {
+		return fail(err)
+	}
+	pol := kube.Policy{IncludeSystem: strings.HasPrefix(want.Policy, "include-system")}
+	if *baseline != "" {
+		if pol, err = withBaseline(pol, *baseline); err != nil {
+			return fail(err)
+		}
+	}
+	// The live side must be filtered exactly as the snapshot was, or the
+	// difference in rules shows up as drift.
+	if pol.Name() != want.Policy {
+		return fail(fmt.Errorf("snapshot was captured with policy %q but this diff would use %q; pass the same --baseline", want.Policy, pol.Name()))
+	}
+	got, err := kube.Capture(ctx, c, pol)
+	if err != nil {
+		return fail(err)
+	}
+	return report(snapshot.Compare(want, got), *from, *kctx)
+}
+
+func compare(args []string) int {
+	if len(args) != 2 {
+		fmt.Fprintln(os.Stderr, "compare: give exactly two snapshot directories")
+		return 1
+	}
+	a, err := snapshot.Read(args[0])
+	if err != nil {
+		return fail(err)
+	}
+	b, err := snapshot.Read(args[1])
+	if err != nil {
+		return fail(err)
+	}
+	if a.Policy != b.Policy {
+		return fail(fmt.Errorf("snapshots use different capture policies (%s vs %s); the difference would be the policy, not drift", a.Policy, b.Policy))
+	}
+	return report(snapshot.Compare(a, b), args[0], args[1])
+}
+
+func report(changes []snapshot.Change, want, got string) int {
+	if len(changes) == 0 {
+		fmt.Printf("no differences: %s matches %s\n", got, want)
+		return 0
+	}
+	for _, ch := range changes {
+		switch ch.Kind {
+		case "changed":
+			fmt.Printf("changed  %s: %s\n", ch.Key, strings.Join(ch.Fields, ", "))
+		default:
+			fmt.Printf("%-8s %s\n", ch.Kind, ch.Key)
+		}
+	}
+	fmt.Printf("%d differences between %s and %s\n", len(changes), want, got)
+	return 2
+}
+
+func summarize(s snapshot.Snapshot) (read, notCaptured int, failed []string) {
+	for _, c := range s.Coverage {
+		switch {
+		case c.NotCaptured == "":
+			read++
+		case strings.HasPrefix(c.NotCaptured, "list failed") || strings.HasPrefix(c.NotCaptured, "API group discovery failed"):
+			failed = append(failed, c.Resource+": "+c.NotCaptured)
+		default:
+			notCaptured++
+		}
+	}
+	sort.Strings(failed)
+	return
+}
+
+func topReasons(skips []snapshot.Skip, n int) []string {
+	count := map[string]int{}
+	for _, s := range skips {
+		count[s.Reason]++
+	}
+	type kv struct {
+		r string
+		n int
+	}
+	var all []kv
+	for r, c := range count {
+		all = append(all, kv{r, c})
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].n != all[j].n {
+			return all[i].n > all[j].n
+		}
+		return all[i].r < all[j].r
+	})
+	var out []string
+	for i, x := range all {
+		if i == n {
+			break
+		}
+		out = append(out, fmt.Sprintf("%d x %s", x.n, x.r))
+	}
+	return out
+}
+
+func withBaseline(p kube.Policy, dir string) (kube.Policy, error) {
+	b, err := snapshot.Read(dir)
+	if err != nil {
+		return p, fmt.Errorf("baseline: %w", err)
+	}
+	d, err := snapshot.Digest(dir)
+	if err != nil {
+		return p, fmt.Errorf("baseline: %w", err)
+	}
+	return p.WithBaseline(b, d), nil
+}
+
+func fail(err error) int {
+	fmt.Fprintln(os.Stderr, "stackdna:", err)
+	return 1
+}

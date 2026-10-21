@@ -8,8 +8,11 @@ APIs and writes a normalised snapshot that can recreate it. The live system is
 the source of truth, so there is no state to manage. The snapshot is plain YAML
 that you can review, commit and diff.
 
-**Status: early development.** Kubernetes works end to end. Other platforms are
-on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
+**Status: early development.** Kubernetes works end to end. AWS (every
+Cloud Control type in the CloudFormation registry) passes its restore drill
+against a schema-driven fake; it has not yet run against a real account. See
+[AWS](docs/architecture.md#aws-cloud-control-driven-by-the-registry). Other
+platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.
 
 ## Commands
@@ -22,6 +25,10 @@ stackdna restore --context kind-dst --from snap/ [--secrets-from-context kind-sr
 stackdna diff    --context kind-dst --from snap/ [--baseline base/]
 stackdna compare snap-a/ snap-b/
 stackdna schema-diff old/ new/
+
+stackdna capture --platform aws --region eu-west-1 --profile sandbox --out snap/ [--types 'AWS::S3::*,AWS::IAM::Role']
+stackdna restore --platform aws --region eu-west-1 --profile dr --from snap/ [--values write-only.yaml]
+stackdna aws-coverage   # offline: what the public registry lets StackDNA capture
 ```
 
 - **capture** discovers every resource type the cluster serves, including custom

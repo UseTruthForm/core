@@ -25,9 +25,18 @@ import (
 
 const usage = `stackdna: capture what is running so it can be recreated.
 
+Kubernetes:
   stackdna capture --context <kube-context> --out <dir> [--include-system] [--baseline <dir>]
   stackdna restore --context <kube-context> --from <dir> [--secrets-from-context <kube-context>]
   stackdna diff    --context <kube-context> --from <dir> [--baseline <dir>]
+
+AWS (Cloud Control, every type in the CloudFormation registry):
+  stackdna capture --platform aws --region <r> [--profile <p>] --out <dir> [--types <patterns>] [--baseline <dir>]
+  stackdna restore --platform aws --region <r> [--profile <p>] --from <dir> [--values <file>]
+  stackdna diff    --platform aws --region <r> [--profile <p>] --from <dir> [--types <patterns>] [--baseline <dir>]
+  stackdna aws-coverage [--schemas <bundle.zip>]
+
+Any platform:
   stackdna compare <dir-a> <dir-b>
   stackdna schema-diff <old-dir> <new-dir>
 `
@@ -50,6 +59,8 @@ func main() {
 		code = compare(os.Args[2:])
 	case "schema-diff":
 		code = schemaDiff(os.Args[2:])
+	case "aws-coverage":
+		code = awsCoverage(os.Args[2:])
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		code = 1
@@ -65,10 +76,17 @@ func capture(ctx context.Context, args []string) int {
 	includeSystem := fs.Bool("include-system", false, "also capture system namespaces and platform-created objects")
 	baseline := fs.String("baseline", "", "snapshot of a fresh cluster of the same distribution; objects identical to it are skipped")
 	rendered := fs.Bool("capture-rendered", false, "also capture objects rendered by Flux, Argo CD or Crossplane (skipped by default: restoring their source recreates them)")
+	platform := fs.String("platform", "kubernetes", "kubernetes or aws")
+	var aws awsFlags
+	aws.register(fs)
 	_ = fs.Parse(args)
 	if *out == "" || fs.NArg() > 0 {
 		fmt.Fprintln(os.Stderr, "capture: --out is required and no positional arguments are accepted")
 		return 1
+	}
+	if *platform == "aws" {
+		aws.baseline = *baseline
+		return captureAWS(ctx, &aws, *out)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx)
 	if err != nil {
@@ -115,14 +133,24 @@ func restore(ctx context.Context, args []string) int {
 	kctx := fs.String("context", "", "kubeconfig context to restore into")
 	from := fs.String("from", "", "snapshot directory")
 	secretsFrom := fs.String("secrets-from-context", "", "live cluster to read withheld secret values from")
+	platform := fs.String("platform", "kubernetes", "kubernetes or aws")
+	values := fs.String("values", "", "aws: YAML file of write-only values keyed 'Kind/name' (Lambda code, secret values); read, sent to AWS, never written")
+	var aws awsFlags
+	aws.register(fs)
 	_ = fs.Parse(args)
-	if *from == "" || *kctx == "" {
-		fmt.Fprintln(os.Stderr, "restore: --from and --context are required (restore never guesses its target)")
+	if *from == "" || (*kctx == "" && *platform != "aws") {
+		fmt.Fprintln(os.Stderr, "restore: --from and a target (--context, or --platform aws --region) are required (restore never guesses its target)")
 		return 1
 	}
 	snap, err := snapshot.Read(*from)
 	if err != nil {
 		return fail(err)
+	}
+	if err := samePlatform(snap, *platform); err != nil {
+		return fail(err)
+	}
+	if *platform == "aws" {
+		return restoreAWS(ctx, &aws, snap, *values)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx)
 	if err != nil {
@@ -156,14 +184,24 @@ func diff(ctx context.Context, args []string) int {
 	kctx := fs.String("context", "", "kubeconfig context to compare against")
 	from := fs.String("from", "", "snapshot directory")
 	baseline := fs.String("baseline", "", "the baseline the snapshot was captured with, if any")
+	platform := fs.String("platform", "kubernetes", "kubernetes or aws")
+	var aws awsFlags
+	aws.register(fs)
 	_ = fs.Parse(args)
-	if *from == "" || *kctx == "" {
-		fmt.Fprintln(os.Stderr, "diff: --from and --context are required")
+	if *from == "" || (*kctx == "" && *platform != "aws") {
+		fmt.Fprintln(os.Stderr, "diff: --from and a target (--context, or --platform aws --region) are required")
 		return 1
 	}
 	want, err := snapshot.Read(*from)
 	if err != nil {
 		return fail(err)
+	}
+	if err := samePlatform(want, *platform); err != nil {
+		return fail(err)
+	}
+	if *platform == "aws" {
+		aws.baseline = *baseline
+		return diffAWS(ctx, &aws, want, *from)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx)
 	if err != nil {
@@ -319,6 +357,16 @@ func withBaseline(p kube.Policy, dir string) (kube.Policy, error) {
 		return p, fmt.Errorf("baseline: %w", err)
 	}
 	return p.WithBaseline(b, d), nil
+}
+
+// samePlatform refuses to apply a snapshot to a different kind of platform:
+// a Kubernetes restore of an AWS snapshot would try to apply every resource
+// as an unknown kind and fail object by object.
+func samePlatform(s snapshot.Snapshot, platform string) error {
+	if s.Platform != platform {
+		return fmt.Errorf("snapshot is from platform %q; pass --platform %s", s.Platform, s.Platform)
+	}
+	return nil
 }
 
 func fail(err error) int {

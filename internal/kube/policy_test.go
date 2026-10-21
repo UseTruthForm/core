@@ -221,3 +221,21 @@ func TestLeaderElectionRecordsAreSkipped(t *testing.T) {
 		t.Fatalf("reason %q", got)
 	}
 }
+
+// Regression from the Windows API-server drill: managers are named after the
+// executable ("kube-apiserver.exe"), so the platform rule silently matched
+// nothing and an auto-registered APIService plus a Service's IPAddress record
+// were captured as if someone had made them.
+func TestPlatformManagerOnWindowsAndDerivedAPIObjects(t *testing.T) {
+	winPlatform := map[string]any{"managedFields": []any{map[string]any{"manager": "kube-apiserver.exe"}}}
+	if got := (Policy{}).skipReason("", "configmaps", k8sObj("ConfigMap", "shop", "x", winPlatform, nil)); !strings.Contains(got, "only by the platform") {
+		t.Fatalf("kube-apiserver.exe not recognised as the platform: %q", got)
+	}
+	auto := map[string]any{"labels": map[string]any{"kube-aggregator.kubernetes.io/automanaged": "true"}}
+	if got := (Policy{}).skipReason("apiregistration.k8s.io", "apiservices", k8sObj("APIService", "", "v1.example.stackdna.org", auto, nil)); !strings.Contains(got, "registered automatically") {
+		t.Fatalf("auto-registered APIService not skipped: %q", got)
+	}
+	if got := (Policy{}).typeExcluded("networking.k8s.io", "ipaddresses"); got == "" {
+		t.Fatal("IPAddress records must be excluded as derived from Services")
+	}
+}

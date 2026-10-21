@@ -18,14 +18,17 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
+	yaml3 "go.yaml.in/yaml/v3"
 	"sigs.k8s.io/yaml"
 )
 
@@ -127,7 +130,7 @@ func (s Snapshot) Write(dir string) error {
 			return fmt.Errorf("duplicate object %s", o.Key())
 		}
 		seen[o.Key()] = true
-		b, err := yaml.Marshal(o.Body)
+		b, err := encodeYAML(o.Body)
 		if err != nil {
 			return fmt.Errorf("encode %s: %w", o.Key(), err)
 		}
@@ -140,7 +143,7 @@ func (s Snapshot) Write(dir string) error {
 		a, b := cov.Skips[i], cov.Skips[j]
 		return a.Resource+"|"+a.Namespace+"|"+a.Name < b.Resource+"|"+b.Namespace+"|"+b.Name
 	})
-	cb, err := yaml.Marshal(cov)
+	cb, err := encodeYAML(cov)
 	if err != nil {
 		return fmt.Errorf("encode coverage: %w", err)
 	}
@@ -235,6 +238,86 @@ func Digest(dir string) (string, error) {
 		return "", err
 	}
 	return m.Digest, nil
+}
+
+// A string is written unquoted only if every YAML reader would read it back
+// as that exact string. Go's encoders reason in YAML 1.2, but YAML 1.1 readers
+// (sigs.k8s.io/yaml, which StackDNA itself reads with; PyYAML; many CI tools)
+// resolve more plain words: "yes"/"on"/"no" become booleans, "=" is the value
+// tag, "<<" the merge key. Found when a CRD enum containing "=" made a whole
+// snapshot unreadable to PyYAML; the test for that then showed "yes" being
+// written bare, which would have restored as the boolean true.
+var yaml11Special = map[string]bool{"=": true, "<<": true}
+
+// YAML 1.1 also resolves base-60 numbers ("12:30" is 750) and dates
+// ("2001-12-14"). Go's parsers implement neither, so asking them cannot catch
+// these; PyYAML does implement them, so they are matched explicitly.
+var (
+	yaml11Sexagesimal = regexp.MustCompile(`^[-+]?[0-9][0-9_]*(:[0-5]?[0-9])+(\.[0-9_]*)?$`)
+	yaml11Timestamp   = regexp.MustCompile(`^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}`)
+)
+
+func needsQuote(v string) bool {
+	if yaml11Special[v] || yaml11Sexagesimal.MatchString(v) || yaml11Timestamp.MatchString(v) {
+		return true
+	}
+	if strings.Contains(v, "\n") {
+		return false // written as a literal block, never resolved
+	}
+	var a any
+	if err := yaml.Unmarshal([]byte(v), &a); err != nil || a != any(v) {
+		return true
+	}
+	var b any
+	if err := yaml3.Unmarshal([]byte(v), &b); err != nil || b != any(v) {
+		return true
+	}
+	return false
+}
+
+// encodeYAML writes v as YAML with sorted keys (from JSON), two-space
+// indentation, and every ambiguous string quoted, so a snapshot opens in any
+// YAML tool, reads back identically, and the bytes are stable.
+func encodeYAML(v any) ([]byte, error) {
+	j, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var n yaml3.Node
+	if err := yaml3.Unmarshal(j, &n); err != nil {
+		return nil, err
+	}
+	setStyles(&n)
+	var buf bytes.Buffer
+	enc := yaml3.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(&n); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// setStyles turns the JSON-shaped tree (flow collections, every string
+// double-quoted) into block YAML that quotes only where needed.
+func setStyles(n *yaml3.Node) {
+	switch n.Kind {
+	case yaml3.MappingNode, yaml3.SequenceNode:
+		n.Style = 0
+	case yaml3.ScalarNode:
+		if n.Tag == "!!str" {
+			if needsQuote(n.Value) {
+				n.Style = yaml3.DoubleQuotedStyle
+			} else {
+				n.Style = 0
+			}
+		}
+	}
+	for _, c := range n.Content {
+		setStyles(c)
+	}
 }
 
 func digest(files map[string][]byte) string {

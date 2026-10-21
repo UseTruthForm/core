@@ -56,6 +56,12 @@ var platformManagers = map[string]bool{
 // Policy decides, per object, whether it belongs in a recreation backup.
 type Policy struct {
 	IncludeSystem bool
+	// CaptureRendered keeps objects that a higher-level source (a Flux
+	// HelmRelease or Kustomization, an Argo CD application, a Crossplane
+	// composite) renders. By default they are skipped: restoring the source
+	// recreates them, and restoring both makes two owners fight over every
+	// field. On the tilt platform cluster this was 335 of 632 objects.
+	CaptureRendered bool
 	// Baseline is a capture of a fresh, empty cluster of the same
 	// distribution (kind, EKS, AKS...). Objects identical to it are the
 	// distribution's own add-ons, which a new cluster brings by itself; a
@@ -102,6 +108,9 @@ func (p Policy) Name() string {
 	if p.IncludeSystem {
 		n = "include-system"
 	}
+	if p.CaptureRendered {
+		n += "+rendered"
+	}
 	if p.BaselineDigest != "" {
 		n += "+baseline:" + p.BaselineDigest
 	}
@@ -126,6 +135,21 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		if group == "" && resource == "namespaces" && (systemNamespaces[name] || name == "default") {
 			return "namespace created by the cluster itself"
 		}
+	}
+
+	if !p.CaptureRendered {
+		if why := renderedBy(md); why != "" {
+			return why
+		}
+	}
+
+	switch {
+	case group == "" && resource == "persistentvolumes" && annotation(md, "pv.kubernetes.io/provisioned-by") != "":
+		claim, _ := obj["spec"].(map[string]any)["claimRef"].(map[string]any)
+		return "provisioned by " + annotation(md, "pv.kubernetes.io/provisioned-by") + " for claim " +
+			strOf(claim["namespace"]) + "/" + strOf(claim["name"]) + "; recreated when the claim is restored. Volume DATA is not captured"
+	case group == "" && resource == "secrets" && strOf(obj["type"]) == "helm.sh/release.v1":
+		return "Helm release history; recreated when the release is installed again"
 	}
 
 	for _, o := range list(md["ownerReferences"]) {
@@ -158,6 +182,33 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		return "written only by the platform (" + strings.Join(mgrs, ", ") + ")"
 	}
 	return ""
+}
+
+// renderedBy reports which higher-level source applied an object, from the
+// labels those tools stamp on everything they create, or "".
+func renderedBy(md map[string]any) string {
+	labels, _ := md["labels"].(map[string]any)
+	l := func(k string) string { return strOf(labels[k]) }
+	switch {
+	case l("helm.toolkit.fluxcd.io/name") != "":
+		return "rendered by Flux HelmRelease " + l("helm.toolkit.fluxcd.io/namespace") + "/" + l("helm.toolkit.fluxcd.io/name") + "; restoring the HelmRelease recreates it"
+	case l("kustomize.toolkit.fluxcd.io/name") != "":
+		return "applied by Flux Kustomization " + l("kustomize.toolkit.fluxcd.io/namespace") + "/" + l("kustomize.toolkit.fluxcd.io/name") + "; restoring it recreates this"
+	case l("argocd.argoproj.io/instance") != "" || annotation(md, "argocd.argoproj.io/tracking-id") != "":
+		app := l("argocd.argoproj.io/instance")
+		if app == "" {
+			app = strings.SplitN(annotation(md, "argocd.argoproj.io/tracking-id"), ":", 2)[0]
+		}
+		return "managed by Argo CD application " + app + "; restoring the application recreates it"
+	case l("crossplane.io/composite") != "":
+		return "composed by Crossplane composite " + l("crossplane.io/composite") + "; restoring the composite recreates it"
+	}
+	return ""
+}
+
+func annotation(md map[string]any, k string) string {
+	a, _ := md["annotations"].(map[string]any)
+	return strOf(a[k])
 }
 
 // serverOwnedMetadata is metadata the API server sets. Kept, it would make

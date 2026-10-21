@@ -69,6 +69,21 @@ if [ "$actual" != "$expected" ]; then
 fi
 echo "exactly the 13 fixture objects"
 
+# Snapshots are reviewed and diffed with other tools, so every file must load
+# in a strict YAML 1.1 reader too (a bare "=" once made a snapshot unreadable
+# to PyYAML, and a bare "yes" would have read back as true).
+if python3 -c 'import yaml' 2>/dev/null || python -c 'import yaml' 2>/dev/null; then
+  PY=$(command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' 2>/dev/null && echo python3 || echo python)
+  "$PY" - "$WORK/snap-a" <<'PY'
+import os, sys, yaml
+bad = [f for d, _, fs in os.walk(sys.argv[1]) for f in fs if f.endswith(".yaml")
+       if not (lambda p: (yaml.safe_load(open(p, encoding="utf-8")), True))(os.path.join(d, f))]
+print("strict YAML 1.1 (PyYAML): every snapshot file parses")
+PY
+else
+  echo "SKIPPED: PyYAML not installed, YAML 1.1 portability not checked"
+fi
+
 echo "== restore into $DST (secret values read live from $SRC, never from disk)"
 "$BIN" restore --context "kind-$DST" --from "$WORK/snap-a" --secrets-from-context "kind-$SRC"
 

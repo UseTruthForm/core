@@ -61,6 +61,7 @@ func capture(ctx context.Context, args []string) int {
 	out := fs.String("out", "", "snapshot directory to write")
 	includeSystem := fs.Bool("include-system", false, "also capture system namespaces and platform-created objects")
 	baseline := fs.String("baseline", "", "snapshot of a fresh cluster of the same distribution; objects identical to it are skipped")
+	rendered := fs.Bool("capture-rendered", false, "also capture objects rendered by Flux, Argo CD or Crossplane (skipped by default: restoring their source recreates them)")
 	_ = fs.Parse(args)
 	if *out == "" || fs.NArg() > 0 {
 		fmt.Fprintln(os.Stderr, "capture: --out is required and no positional arguments are accepted")
@@ -70,7 +71,7 @@ func capture(ctx context.Context, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	pol := kube.Policy{IncludeSystem: *includeSystem}
+	pol := kube.Policy{IncludeSystem: *includeSystem, CaptureRendered: *rendered}
 	if *baseline != "" {
 		if pol, err = withBaseline(pol, *baseline); err != nil {
 			return fail(err)
@@ -89,6 +90,11 @@ func capture(ctx context.Context, args []string) int {
 	fmt.Printf("%d types not captured by design, %d skipped objects; see %s/coverage.yaml\n", notCaptured, len(snap.Skips), *out)
 	for _, r := range topReasons(snap.Skips, 8) {
 		fmt.Println("  skipped:", r)
+	}
+	// Said on every capture that has claims, because a restored claim with an
+	// empty volume looks exactly like a restored claim with its data.
+	if n := countKind(snap, "PersistentVolumeClaim"); n > 0 {
+		fmt.Printf("NOTE: %d PersistentVolumeClaims captured as configuration only; the data in their volumes is NOT in this snapshot\n", n)
 	}
 	if len(failed) > 0 {
 		fmt.Println("INCOMPLETE: these types could not be read and are NOT in the snapshot:")
@@ -160,7 +166,7 @@ func diff(ctx context.Context, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	pol := kube.Policy{IncludeSystem: strings.HasPrefix(want.Policy, "include-system")}
+	pol := kube.Policy{IncludeSystem: strings.HasPrefix(want.Policy, "include-system"), CaptureRendered: strings.Contains(want.Policy, "+rendered")}
 	if *baseline != "" {
 		if pol, err = withBaseline(pol, *baseline); err != nil {
 			return fail(err)
@@ -256,6 +262,16 @@ func topReasons(skips []snapshot.Skip, n int) []string {
 		out = append(out, fmt.Sprintf("%d x %s", x.n, x.r))
 	}
 	return out
+}
+
+func countKind(s snapshot.Snapshot, kind string) int {
+	n := 0
+	for _, o := range s.Objects {
+		if o.Kind() == kind {
+			n++
+		}
+	}
+	return n
 }
 
 func withBaseline(p kube.Policy, dir string) (kube.Policy, error) {

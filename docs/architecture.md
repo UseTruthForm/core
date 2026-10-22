@@ -359,6 +359,56 @@ Service quota is 0, so for now only the fake covers that case.
 - Data is never captured.
 - Restore never modifies an existing resource.
 
+## GCP: Cloud Asset Inventory, driven by Discovery documents
+
+`internal/gcp` follows the same rule: there is no code for any Google type.
+
+| Source | What it gives |
+|---|---|
+| **Cloud Asset Inventory** (`assets.list`, content `RESOURCE`) | What exists. For each resource it also names the Discovery document, version and schema. |
+| **Discovery documents**, live and cached for a day | Output-only fields, from the `readOnly` flag or the "Output only" wording Google's guidelines require. The `get` and `create` methods for each collection, chosen by matching the name pattern. Whether a create takes the resource itself (`LogMetric`) or a request that wraps it (IAM's `CreateServiceAccountRequest`, which holds `serviceAccount` and `accountId`). Also every field path, for `schema-diff`. |
+| `GET` by URL, then `POST` to the create method | Each resource is read fresh, because Cloud Asset Inventory's copy can lag. Restore uses `POST` and waits for long-running operations. |
+
+**Rules taken from Google's API guidelines, not from any one type:**
+
+- `createTime`, `updateTime`, `deleteTime`, `uid` and `etag` are output-only
+  on every resource (AIP-148), flagged or not.
+- An ID made of digits or a UUID was assigned by the server; user-chosen
+  IDs follow `[a-z][a-z0-9-]*`. Such resources (Monitoring notification
+  channels) get a logical name from their `displayName`.
+- References to server-assigned names become tokens, named relative to
+  the project. Every name nested under a server-named resource (an alert
+  policy's conditions) is dropped as server-assigned.
+- IDs starting with `_` are reserved by the service (Logging's `_Default`),
+  and service accounts outside the project's own domain belong to Google.
+  Both are skipped.
+
+One fact is specific to one type, with the reason in the code: IAM names a
+service account by its email but creates it from the email's local part.
+
+**Proven against a fake only, so far.** The drill runs between two fake
+projects, using trimmed real documents (`testdata/gcp/discovery`). It covers
+a service account, custom role, log metric, notification channel, and an
+alert policy that references the channel by its server-assigned name.
+Mutation checks confirm that dropping project tokens, reference tokens,
+nested-name removal or the Google-owned skip each fails it.
+
+The real project (`my-sandbox-project`) has **billing disabled** and needs
+three free APIs enabled: Cloud Asset, Cloud Resource Manager and IAM. With
+billing off, the real drill can use only resources that need no billing:
+service accounts, custom roles, log metrics and notification channels. Alert
+policies stay in the fake, because Cloud Monitoring charges for alerting
+conditions.
+
+**Known limits:**
+
+- A project ID written into free text, such as a log filter
+  (`resource.labels.project_id="..."`), is not tokenized. Only names, emails
+  and exact values are.
+- Compute-style APIs, whose URLs take separate `{project}/{zone}`
+  parameters, are not driven yet.
+- Data is never captured.
+
 ## Roadmap
 
 | Step | What |
@@ -366,7 +416,7 @@ Service quota is 0, so for now only the fake covers that case.
 | Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so); `--json` output |
 | AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; a zone mapping for cross-region restore; account-ID tokens; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
 | Azure | A real-subscription drill (free tier); proxy resources (role assignments, diagnostic settings) through their parents' list endpoints; principal IDs as references, so role assignments can be remapped |
-| Platforms | GCP via Cloud Asset Inventory |
+| GCP | The real-project drill; Compute-style path parameters; project IDs in free text |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |
 | Agents | A small MCP server (`discover`, `diff`, `snapshot`, `explain`), read-only against live systems by default. Agents watch for drift and open PRs; CI regenerates snapshots deterministically, so a PR shows only real change |
 | Proof | Scheduled restore drills per platform: restore into a sandbox and require an empty diff |

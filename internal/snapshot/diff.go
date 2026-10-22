@@ -6,6 +6,14 @@ import (
 	"sort"
 )
 
+// Result is the outcome of restoring one object. Restore never drops an
+// object quietly: every object in the snapshot ends up as applied or not.
+type Result struct {
+	Key    string
+	OK     bool
+	Detail string
+}
+
 // Change is one difference between two snapshots.
 type Change struct {
 	Key string
@@ -28,7 +36,7 @@ func Compare(want, got Snapshot) []Change {
 			continue
 		}
 		var fields []string
-		diffValue("", wo.Body, gobj.Body, &fields)
+		diffValue("", withoutStatus(wo.Body), withoutStatus(gobj.Body), &fields)
 		if len(fields) > 0 {
 			sort.Strings(fields)
 			out = append(out, Change{Key: k, Kind: "changed", Fields: fields})
@@ -41,6 +49,24 @@ func Compare(want, got Snapshot) []Change {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out
+}
+
+// withoutStatus drops the top-level "status" block. Kubernetes objects never
+// carry one in a snapshot (normalize strips it); other platforms keep observed
+// read-only values there (ARNs, generated IDs) to map references during
+// restore. Those always differ between two accounts or clusters, so they are
+// not drift.
+func withoutStatus(b map[string]any) map[string]any {
+	if _, ok := b["status"]; !ok {
+		return b
+	}
+	c := make(map[string]any, len(b))
+	for k, v := range b {
+		if k != "status" {
+			c[k] = v
+		}
+	}
+	return c
 }
 
 func index(s Snapshot) map[string]Object {

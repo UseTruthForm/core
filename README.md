@@ -81,6 +81,21 @@ ships. StackDNA keeps no field list in its code:
 
 ## Proof: the restore drill
 
+The drill is written once, in `internal/drilltest`, against the platform
+contract (`internal/platform`), so every adapter must pass the same test. It
+runs at two levels:
+
+| Level | Where | Time | What runs |
+|---|---|---|---|
+| API server | `go test ./...` (every save, every PR) | ~20s | Two real etcd and kube-apiserver pairs (`internal/kubetest`); no nodes or Docker |
+| Full fidelity | `scripts/drill-kind.sh` (on demand; the `full-drill` PR label) | ~2 min | Two kind clusters with running controllers |
+
+Get the API-server binaries once with
+`export STACKDNA_KUBE_ASSETS="$(scripts/envtest-assets.sh)"`. Without them the
+drill is skipped with a message locally, and fails in CI.
+
+### The kind drill
+
 ```bash
 scripts/drill-kind.sh
 ```

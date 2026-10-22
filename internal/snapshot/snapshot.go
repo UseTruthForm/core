@@ -102,11 +102,11 @@ type Snapshot struct {
 	// Policy names the capture rules used ("default", "include-system").
 	// Comparing snapshots taken under different policies would report the
 	// policy difference as drift, so diff refuses to.
-	Policy  string
-	Objects       []Object
-	Coverage      []Coverage
-	Skips         []Skip
-	Schemas       []TypeSchema
+	Policy   string
+	Objects  []Object
+	Coverage []Coverage
+	Skips    []Skip
+	Schemas  []TypeSchema
 }
 
 type manifest struct {

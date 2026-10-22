@@ -1,27 +1,54 @@
 name: ci
+# Cost-minimised (private repo, GitHub Free minutes):
+# - only on pull requests, and only when code, tests or scripts change
+# - a newer push cancels the run still going for the same PR
+# - one job: vet, gofmt, unit tests and the API-server restore drill
+#   (two real API servers, no Docker, ~20s)
+# - the slower kind drill (running controllers) only when the PR carries the
+#   "full-drill" label, or when started by hand
+# The local Tilt loop runs all of this for free before anything is pushed.
 on:
   pull_request:
-  push:
-    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
+    paths: ["**.go", "go.mod", "go.sum", "testdata/**", "scripts/**", ".github/workflows/**"]
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   test:
+    # A "labeled" event for any other label must not re-run the tests.
+    if: github.event.action != 'labeled' || github.event.label.name == 'full-drill'
     runs-on: ubuntu-latest
+    env:
+      STACKDNA_REQUIRE_KUBE_ASSETS: "1" # a missing API server fails CI instead of skipping
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/stackdna/envtest
+          key: envtest-1.37.0
+      # Fetched into a variable first: inside `echo "X=$(...)"` a failing
+      # script is ignored and the step passes with an empty path (PR #5's
+      # first run did exactly that, and only the tests' guard caught it).
+      - name: Fetch etcd and kube-apiserver
+        run: |
+          assets="$(bash scripts/envtest-assets.sh)"
+          test -d "$assets" || { echo "envtest assets missing: '$assets'"; exit 1; }
+          ls "$assets"
+          echo "STACKDNA_KUBE_ASSETS=$assets" >> "$GITHUB_ENV"
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt needed"; exit 1; }
       - run: go vet ./...
-      - run: go test -race -count=1 ./...
-      - run: go build -o bin/stackdna ./cmd/stackdna
-  # A green check must mean a real restore worked, not only that the code
-  # compiles: this runs the same drill as scripts/drill-kind.sh on two kind
-  # clusters (capture, determinism, exact capture set, restore, zero diff).
-  drill:
-    runs-on: ubuntu-latest
+      - run: go test -count=1 ./...
+  drill-kind:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-drill')
     needs: test
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

@@ -23,14 +23,6 @@ import (
 // diff or a human can see which fields a restore set.
 const FieldManager = "stackdna"
 
-// Result is the outcome for one object. Restore never drops an object
-// quietly: everything in the snapshot ends up here as applied or not.
-type Result struct {
-	Key    string
-	OK     bool
-	Detail string
-}
-
 // RestoreOptions control where secret values come from.
 type RestoreOptions struct {
 	// SecretSource, if set, is a live cluster to read withheld secret values
@@ -40,8 +32,8 @@ type RestoreOptions struct {
 }
 
 // Restore applies every object in the snapshot to the target cluster.
-func Restore(ctx context.Context, c *Clients, snap snapshot.Snapshot, opt RestoreOptions) []Result {
-	var results []Result
+func Restore(ctx context.Context, c *Clients, snap snapshot.Snapshot, opt RestoreOptions) []snapshot.Result {
+	var results []snapshot.Result
 	phases := phase(snap.Objects)
 
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(c.Discovery))
@@ -83,8 +75,8 @@ func phase(objs []snapshot.Object) [][]snapshot.Object {
 	return out
 }
 
-func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapshot.Object, opt RestoreOptions) Result {
-	res := Result{Key: o.Key()}
+func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapshot.Object, opt RestoreOptions) snapshot.Result {
+	res := snapshot.Result{Key: o.Key()}
 	body := deepCopy(o.Body)
 
 	if o.Kind() == "Secret" && o.APIVersion() == "v1" {
@@ -201,4 +193,24 @@ func deepCopy(m map[string]any) map[string]any {
 	out := map[string]any{}
 	_ = json.Unmarshal(b, &out)
 	return out
+}
+
+// Adapter is the Kubernetes implementation of platform.Platform.
+type Adapter struct {
+	Clients *Clients
+	Policy  Policy
+	Options RestoreOptions
+}
+
+// Name implements platform.Platform.
+func (a *Adapter) Name() string { return "kubernetes" }
+
+// Capture implements platform.Platform.
+func (a *Adapter) Capture(ctx context.Context) (snapshot.Snapshot, error) {
+	return Capture(ctx, a.Clients, a.Policy)
+}
+
+// Restore implements platform.Platform.
+func (a *Adapter) Restore(ctx context.Context, s snapshot.Snapshot) []snapshot.Result {
+	return Restore(ctx, a.Clients, s, a.Options)
 }

@@ -21,19 +21,20 @@ const WithheldAnnotation = "stackdna.org/withheld-keys"
 // listed in coverage as not captured, with this reason, so their absence is
 // visible.
 var excludedTypes = map[string]string{
-	"/events":                          "events are a log, not configuration",
-	"events.k8s.io/events":             "events are a log, not configuration",
-	"/endpoints":                       "derived from Services by the endpoints controller",
-	"discovery.k8s.io/endpointslices":  "derived from Services by the endpoint-slice controller",
-	"coordination.k8s.io/leases":       "leader-election and heartbeat records, recreated by their owners",
-	"/nodes":                           "nodes are machines; a new cluster brings its own",
-	"/componentstatuses":               "deprecated health readout, not configuration",
-	"apps/controllerrevisions":         "rollout history kept by controllers, recreated as they run",
+	"/events":                         "events are a log, not configuration",
+	"events.k8s.io/events":            "events are a log, not configuration",
+	"/endpoints":                      "derived from Services by the endpoints controller",
+	"discovery.k8s.io/endpointslices": "derived from Services by the endpoint-slice controller",
+	"coordination.k8s.io/leases":      "leader-election and heartbeat records, recreated by their owners",
+	"/nodes":                          "nodes are machines; a new cluster brings its own",
+	"/componentstatuses":              "deprecated health readout, not configuration",
+	"apps/controllerrevisions":        "rollout history kept by controllers, recreated as they run",
 	"certificates.k8s.io/certificatesigningrequests": "one-time certificate requests; the new cluster issues its own",
-	"storage.k8s.io/csinodes":          "per-node driver registration",
-	"storage.k8s.io/volumeattachments": "attachment of a volume to a node at this moment",
-	"metrics.k8s.io/nodes":             "live metrics",
-	"metrics.k8s.io/pods":              "live metrics",
+	"storage.k8s.io/csinodes":                        "per-node driver registration",
+	"storage.k8s.io/volumeattachments":               "attachment of a volume to a node at this moment",
+	"networking.k8s.io/ipaddresses":                  "cluster IP allocation records, recreated when their Services are",
+	"metrics.k8s.io/nodes":                           "live metrics",
+	"metrics.k8s.io/pods":                            "live metrics",
 }
 
 // systemNamespaces hold the platform's own components. A fresh cluster
@@ -177,6 +178,9 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	case group == "" && resource == "secrets" && strOf(obj["type"]) == "kubernetes.io/service-account-token":
 		return "service-account token, issued by the cluster"
 	}
+	if labels, _ := md["labels"].(map[string]any); labels["kube-aggregator.kubernetes.io/automanaged"] != nil {
+		return "registered automatically by the API server for a group it serves"
+	}
 	if labels, _ := md["labels"].(map[string]any); labels["kubernetes.io/bootstrapping"] == "rbac-defaults" {
 		return "default RBAC, created by the API server"
 	}
@@ -319,7 +323,10 @@ func managers(md map[string]any) []string {
 	set := map[string]bool{}
 	for _, f := range list(md["managedFields"]) {
 		e, _ := f.(map[string]any)
-		if m := strOf(e["manager"]); m != "" {
+		// The API server names managers after the executable, so on Windows
+		// they are "kube-apiserver.exe". Without trimming, the platform rule
+		// matched nothing there and API-server-made objects were captured.
+		if m := strings.TrimSuffix(strOf(e["manager"]), ".exe"); m != "" {
 			set[m] = true
 		}
 	}

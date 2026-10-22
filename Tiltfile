@@ -27,11 +27,18 @@ local_resource(
     labels=["core"],
 )
 
-# Unit tests on every save: format, policy, schema flattening, diff.
+# The etcd and kube-apiserver binaries for the API-server restore drill,
+# fetched once into ~/.cache/stackdna/envtest.
+KUBE_ASSETS = str(local("bash scripts/envtest-assets.sh", quiet=True, echo_off=True)).strip()
+
+# Unit tests on every save, including the restore drill on two real API
+# servers (internal/kube/drill_test.go). STACKDNA_REQUIRE_KUBE_ASSETS makes a
+# missing binary fail instead of quietly skipping the drill.
 local_resource(
     "unit-tests",
     cmd=["go", "test", "-count=1", "./..."],
-    deps=GO_SRC,
+    deps=GO_SRC + ["testdata"],
+    env={"STACKDNA_KUBE_ASSETS": KUBE_ASSETS, "STACKDNA_REQUIRE_KUBE_ASSETS": "1"},
     resource_deps=["build"],
     labels=["core"],
 )

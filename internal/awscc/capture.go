@@ -130,7 +130,7 @@ func Capture(ctx context.Context, api CloudControl, reg *Registry, region string
 		}
 		if skip == "" && p.Baseline != nil {
 			if b, ok := p.Baseline[r.key()]; ok && sameSpec(obj, b) {
-				skip = "identical to the account baseline (AWS creates it in every account)"
+				skip = "identical to the baseline snapshot (already there, or created by AWS)"
 			}
 		}
 		cov := in.cov[r.t.Name]

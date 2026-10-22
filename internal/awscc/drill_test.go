@@ -273,7 +273,7 @@ func TestSnapshotOnDisk(t *testing.T) {
 	want := map[string]string{
 		"AWS::S3::Bucket/legacy-stack-bucket":     "managed by CloudFormation stack legacy",
 		"AWS::IAM::Role/AWSServiceRoleForSupport": "service-linked role",
-		"AWS::EC2::VPC/":                          "identical to the account baseline",
+		"AWS::EC2::VPC/":                          "identical to the baseline snapshot",
 		"AWS::ApiGateway::Resource/h-":            "created by AWS with AWS::ApiGateway::RestApi/shop (its RootResourceId)",
 	}
 	for _, s := range snap.Skips {

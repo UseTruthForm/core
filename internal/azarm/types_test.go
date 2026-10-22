@@ -89,6 +89,15 @@ func TestNormalize(t *testing.T) {
 	if props["futureField"] != "kept" {
 		t.Error("unknown field was dropped")
 	}
+	// Except what ARM always sets: a subnet's resourceGuid is undeclared in
+	// the 2026-03-01 definition and showed as drift after a real restore.
+	vnet := schema(t, reg, "Microsoft.Network/virtualNetworks")
+	vspec, _ := vnet.normalize(map[string]any{"location": "eastus", "properties": map[string]any{
+		"subnets": []any{map[string]any{"name": "app", "properties": map[string]any{"addressPrefix": "10.0.1.0/24", "resourceGuid": "g-1", "undeclaredSetting": true}}}}})
+	sub := vspec["properties"].(map[string]any)["subnets"].([]any)[0].(map[string]any)["properties"].(map[string]any)
+	if _, ok := sub["resourceGuid"]; ok || sub["undeclaredSetting"] != true {
+		t.Errorf("subnet properties after normalize: %v", sub)
+	}
 	if strings.Contains(canon(spec), "hunter2") {
 		t.Error("password present somewhere in spec")
 	}

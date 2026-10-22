@@ -201,7 +201,7 @@ func TestSnapshotOnDisk(t *testing.T) {
 	}
 	for _, want := range []string{
 		"MC_shop_aks_eastus/MC_shop_aks_eastus: managed by /subscriptions/" + srcSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks",
-		"NetworkWatcherRG/NetworkWatcherRG: identical to the subscription baseline (Azure creates it)",
+		"NetworkWatcherRG/NetworkWatcherRG: identical to the baseline snapshot (already there",
 	} {
 		if !reasons[want] {
 			t.Errorf("missing skip %q; have %v", want, reasons)

@@ -13,8 +13,9 @@ Cloud Control type in the CloudFormation registry) passes its restore drill
 against a schema-driven fake. It also passed the disaster drill against a
 real account (`scripts/drill-aws.sh`: 6 free-tier resources deleted and
 restored with no diff), but most types haven't met real AWS yet. Azure (every
-type with a published definition) passes its drill against a fake; it has
-not yet run against a real subscription. See
+type with a published definition) passes its drill against a fake, and the
+disaster drill against a real subscription (`scripts/drill-azure.sh`: 4
+free resources deleted and restored with no diff). See
 [AWS](docs/architecture.md#aws-cloud-control-driven-by-the-registry). Other
 platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.

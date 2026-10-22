@@ -189,7 +189,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		obj := toObject(c)
 		if p.Baseline != nil {
 			if b, ok := p.Baseline[snapshot.Object{Body: obj}.Key()]; ok && sameSpec(obj, b) {
-				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, "identical to the subscription baseline (Azure creates it)")
+				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, "identical to the baseline snapshot (already there, or created by Azure)")
 				continue
 			}
 		}

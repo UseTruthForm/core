@@ -322,8 +322,33 @@ subscriptions in different tenants, using the trimmed real definitions in
 It covers a resource group, NSG, VNet with a subnet referencing the NSG,
 managed identity, storage account, App Service plan and site, and a VM. The
 drill passes. Mutation checks confirm that dropping subscription tokens,
-key rewriting or dependency order each fails it. `sdk.go` has not called
-Azure yet.
+key rewriting or dependency order each fails it.
+
+**Proof against real Azure: `scripts/drill-azure.sh`.** It's the same
+disaster case as on AWS: seed with the `az` CLI, capture twice, delete the
+resource group, restore, require an empty diff, clean up, then require the
+subscription to match its baseline. It uses free resources only (resource
+group, NSG, VNet with a subnet referencing the NSG, managed identity). It
+passed on 2026-10-21 in a personal sandbox subscription: 4 of 4 restored,
+empty diff, subscription clean afterwards. A full read-only capture of the
+same subscription took 13s.
+
+The first runs found three things the fake had not shown:
+
+- **The SDK rejects `v0` as a client version;** it wants full semver.
+- **Managed identities answer `PUT` synchronously** (200 or 201 with no
+  operation header), and the SDK's poller refused that response as an
+  "invalid polling URL". Only asynchronous answers go to the poller now.
+  Synchronous ones are read until `provisioningState` is final.
+- **Definitions lag the API.** A subnet returns `resourceGuid`, which the
+  `2026-03-01` definition doesn't declare, so a restored VNet showed it as
+  drift. `provisioningState` and `resourceGuid` are set by the server under
+  ARM's resource-provider contract, so they're treated as read-only even
+  when undeclared. Every other undeclared field is still kept.
+
+A web app was meant to test, against real Azure, a map keyed by resource
+ID (`identity.userAssignedIdentities`). The subscription's Free (F1) App
+Service quota is 0, so for now only the fake covers that case.
 
 **Known limits:**
 

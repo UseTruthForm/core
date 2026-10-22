@@ -12,6 +12,14 @@ import (
 // which the snapshot keeps in metadata.
 var envelope = map[string]bool{"id": true, "name": true, "type": true, "systemData": true, "etag": true, "apiVersion": true}
 
+// serverSet are properties ARM's resource-provider contract has the server
+// set wherever they appear. When a definition does not declare one, it is
+// still read-only: the first real drill (2026-10-21) diffed a restored VNet
+// on subnets[0].properties.resourceGuid, which Azure returns but the subnet
+// definition (2026-03-01) does not declare. Any other undeclared field is
+// kept, see normalize.
+var serverSet = map[string]bool{"provisioningState": true, "resourceGuid": true}
+
 // split is what normalize removed from a resource body.
 type split struct {
 	readOnly map[string]any // scalar read-only values by dotted path, for people
@@ -48,6 +56,11 @@ func (s *Schema) clean(v any, t int, path string, sp *split) {
 			switch {
 			case !known && add != nil:
 				s.clean(c[k], add.index(), join(path, "*"), sp)
+			case !known && serverSet[k]:
+				if isScalar(c[k]) {
+					sp.readOnly[full] = c[k]
+				}
+				delete(c, k)
 			case !known:
 				// kept, see normalize
 			case p.Flags&flagReadOnly != 0:

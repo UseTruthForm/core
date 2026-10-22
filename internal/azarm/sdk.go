@@ -18,8 +18,8 @@ import (
 // Retry-After) and long-running-operation polling, with no per-service
 // client. Credentials come from the standard chain, so `az login` works.
 //
-// UNVERIFIED until it has run against a subscription; everything above it
-// is proven against Fake.
+// Verified against a real subscription by scripts/drill-azure.sh
+// (2026-10-21): list, GET, synchronous and asynchronous PUT.
 type SDK struct {
 	sub string
 	pl  runtime.Pipeline
@@ -41,7 +41,7 @@ func NewSDK(subscription string) (*SDK, error) {
 	if err != nil {
 		return nil, fmt.Errorf("azure credentials: %w", err)
 	}
-	c, err := arm.NewClient("stackdna", "v0", cred, nil)
+	c, err := arm.NewClient("stackdna", "v0.1.0", cred, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -165,14 +165,45 @@ func (s *SDK) Put(ctx context.Context, id, apiVersion string, body map[string]an
 	if !runtime.HasStatusCode(resp, http.StatusOK, http.StatusCreated, http.StatusAccepted) {
 		return nil, runtime.NewResponseError(resp)
 	}
-	p, err := runtime.NewPoller[map[string]any](resp, s.pl, nil)
-	if err != nil {
-		return nil, err
+	// Only an asynchronous answer goes to the poller: 202, or a header that
+	// names an operation to poll. A 200 or 201 without one is finished
+	// (managed identities answer that way), and the SDK's poller refused
+	// it as "invalid polling URL" in the first real drill.
+	if resp.StatusCode == http.StatusAccepted || resp.Header.Get("Azure-AsyncOperation") != "" {
+		p, err := runtime.NewPoller[map[string]any](resp, s.pl, nil)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.PollUntilDone(ctx, &runtime.PollUntilDoneOptions{Frequency: 5 * time.Second}); err != nil {
+			return nil, fmt.Errorf("%s: %w", id, err)
+		}
+	} else {
+		resp.Body.Close()
 	}
-	if _, err := p.PollUntilDone(ctx, &runtime.PollUntilDoneOptions{Frequency: 5 * time.Second}); err != nil {
-		return nil, fmt.Errorf("%s: %w", id, err)
+	return s.settled(ctx, id, apiVersion)
+}
+
+// settled reads the resource until its provisioningState is final, for
+// the resources that answer a PUT synchronously but keep provisioning.
+func (s *SDK) settled(ctx context.Context, id, apiVersion string) (map[string]any, error) {
+	for {
+		got, err := s.Get(ctx, id, apiVersion)
+		if err != nil {
+			return nil, err
+		}
+		props, _ := got["properties"].(map[string]any)
+		switch state, _ := props["provisioningState"].(string); state {
+		case "", "Succeeded":
+			return got, nil
+		case "Failed", "Canceled":
+			return nil, fmt.Errorf("%s: provisioning %s", id, state)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
 	}
-	return s.Get(ctx, id, apiVersion)
 }
 
 var _ ARM = (*SDK)(nil)

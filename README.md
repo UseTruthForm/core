@@ -22,7 +22,10 @@ one OpenAPI-driven engine: GitHub (a real read-only capture works) and
 Cloudflare (fake only so far). A restore only creates what is missing;
 `restore --update` also brings drifted resources back in line, and passed
 against real AWS, Azure and GCP (each drill drifts resources by hand, then
-requires an empty diff). See
+requires an empty diff). Agents get the same knowledge over MCP
+(`stackdna mcp`): every field of a type, which are required, set by the
+platform, secret or fixed at creation, with the platform's docs, plus
+read-only capture and diff; restore is deliberately not a tool. See
 [AWS](docs/architecture.md#aws-cloud-control-driven-by-the-registry). Other
 platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.

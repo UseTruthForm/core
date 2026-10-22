@@ -64,13 +64,15 @@ type Collection struct {
 
 // Doc is a Discovery document.
 type Doc struct {
-	Name        string                 `json:"name"`
-	Version     string                 `json:"version"`
-	RootURL     string                 `json:"rootUrl"`
-	ServicePath string                 `json:"servicePath"`
-	Schemas     map[string]*Schema     `json:"schemas"`
-	Resources   map[string]*Collection `json:"resources"`
-	Digest      string                 `json:"-"`
+	Name        string             `json:"name"`
+	Version     string             `json:"version"`
+	RootURL     string             `json:"rootUrl"`
+	ServicePath string             `json:"servicePath"`
+	Schemas     map[string]*Schema `json:"schemas"`
+	// DocumentationLink is the API's reference documentation.
+	DocumentationLink string                 `json:"documentationLink"`
+	Resources         map[string]*Collection `json:"resources"`
+	Digest            string                 `json:"-"`
 }
 
 // auditTypes are schemas a service uses only for records it writes itself.

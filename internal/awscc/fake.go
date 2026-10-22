@@ -65,6 +65,16 @@ type Fake struct {
 	lag     map[string]int
 	// Updates counts applied updates, so a test can prove none was sent.
 	Updates int
+	// RegionZones overrides a region's zones (default: three per region).
+	RegionZones map[string][]Zone
+}
+
+// Zones lists a region's zones.
+func (f *Fake) Zones(_ context.Context, region string) ([]Zone, error) {
+	if zs, ok := f.RegionZones[region]; ok {
+		return zs, nil
+	}
+	return fakeZones(region), nil
 }
 
 // Account returns a new empty account in the world.

@@ -18,9 +18,9 @@ import (
 
 // awsFlags are shared by the AWS forms of capture, restore and diff.
 type awsFlags struct {
-	region, profile, types, schemas, baseline string
-	managed                                   bool
-	parallel                                  int
+	region, profile, types, schemas, baseline, zoneMap string
+	managed                                            bool
+	parallel                                           int
 }
 
 func (a *awsFlags) register(fs *flag.FlagSet) {
@@ -30,6 +30,22 @@ func (a *awsFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&a.schemas, "schemas", "", "registry schema bundle (.zip) or directory (default: AWS's public bundle, cached for a day)")
 	fs.BoolVar(&a.managed, "capture-managed", false, "also capture resources a CloudFormation stack or an AWS service owns")
 	fs.IntVar(&a.parallel, "parallel", 8, "AWS API calls in flight at once; lower it if the account is throttled")
+	fs.StringVar(&a.zoneMap, "zone-map", "", "restore/diff of a snapshot from another region: zone pairs by zone ID, e.g. 'use2-az1=usw2-az3' (default: paired in zone-ID order)")
+}
+
+func (a *awsFlags) zones() (map[string]string, error) {
+	m := map[string]string{}
+	for _, kv := range strings.Split(a.zoneMap, ",") {
+		if kv = strings.TrimSpace(kv); kv == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			return nil, fmt.Errorf("--zone-map: %q is not SOURCE-ZONE-ID=TARGET-ZONE-ID", kv)
+		}
+		m[strings.TrimSpace(k)] = strings.TrimSpace(v)
+	}
+	return m, nil
 }
 
 func (a *awsFlags) registry() (*awscc.Registry, error) {
@@ -88,8 +104,28 @@ func (a *awsFlags) connect(ctx context.Context, readOnly bool) (*awscc.Adapter, 
 	if err != nil {
 		return nil, err
 	}
-	return &awscc.Adapter{API: api, Registry: reg, Region: a.region, Policy: pol,
+	zm, err := a.zones()
+	if err != nil {
+		return nil, err
+	}
+	return &awscc.Adapter{API: api, Registry: reg, Region: a.region, Policy: pol, ZoneMap: zm,
 		Tuning: awscc.Tuning{Parallel: a.parallel, Progress: progressPrinter()}}, nil
+}
+
+// retarget prepares a snapshot from another region for this one and says
+// how its zones were paired, since that choice decides where subnets land.
+func retarget(ctx context.Context, ad *awscc.Adapter, s snapshot.Snapshot) (snapshot.Snapshot, error) {
+	out, notes, err := ad.ForRegion(ctx, s)
+	if err != nil {
+		return s, err
+	}
+	if len(notes) > 0 {
+		fmt.Printf("snapshot from another region: %s\n", notes[0])
+		for _, n := range notes[1:] {
+			fmt.Printf("  zone %s\n", n)
+		}
+	}
+	return out, nil
 }
 
 // progressPrinter reports on stderr every few seconds. A full-registry
@@ -180,6 +216,9 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 		return fail(err)
 	}
 	ad.Options.Update = update
+	if snap, err = retarget(ctx, ad, snap); err != nil {
+		return fail(err)
+	}
 	if valuesFile != "" {
 		b, err := os.ReadFile(valuesFile)
 		if err != nil {
@@ -230,6 +269,9 @@ func diffAWS(ctx context.Context, a *awsFlags, want snapshot.Snapshot, from stri
 	}
 	if ad.Policy.Name() != want.Policy {
 		return fail(fmt.Errorf("snapshot was captured with policy %q but this diff would use %q; pass the same --types, --baseline and --capture-managed", want.Policy, ad.Policy.Name()))
+	}
+	if want, err = retarget(ctx, ad, want); err != nil {
+		return fail(err)
 	}
 	got, err := ad.Capture(ctx)
 	if err != nil {

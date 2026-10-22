@@ -21,6 +21,9 @@ type CloudControl interface {
 	Create(ctx context.Context, typeName string, desired map[string]any) (string, error)
 	// Update applies a JSON Patch to a resource and waits for it.
 	Update(ctx context.Context, typeName, identifier string, patch []PatchOp) error
+	// Zones lists a region's Availability Zones, for restoring a snapshot
+	// captured in another region.
+	Zones(ctx context.Context, region string) ([]Zone, error)
 	// Account returns the 12-digit ID of the account being read, so that
 	// resources another account owns (AWS's own, or shared in) are told
 	// apart from this account's.

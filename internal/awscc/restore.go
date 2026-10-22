@@ -276,6 +276,9 @@ type Adapter struct {
 	Policy   Policy
 	Options  RestoreOptions
 	Tuning   Tuning
+	// ZoneMap overrides the zone pairing for a restore from another
+	// region, by zone ID ("use2-az1": "usw2-az3").
+	ZoneMap map[string]string
 }
 
 // Name identifies the platform.
@@ -288,6 +291,14 @@ func (a *Adapter) Capture(ctx context.Context) (snapshot.Snapshot, error) {
 
 // Restore restores a snapshot into the account and region.
 func (a *Adapter) Restore(ctx context.Context, s snapshot.Snapshot) []snapshot.Result {
+	s, _, err := a.ForRegion(ctx, s)
+	if err != nil {
+		results := make([]snapshot.Result, 0, len(s.Objects))
+		for _, o := range s.Objects {
+			results = append(results, snapshot.Result{Key: o.Key(), Detail: "not restored into " + a.Region + ": " + err.Error()})
+		}
+		return results
+	}
 	return Restore(ctx, a.API, a.Registry, s, a.Options, a.Tuning)
 }
 

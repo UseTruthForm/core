@@ -27,6 +27,7 @@ type fake struct {
 	srv     *httptest.Server
 	mu      sync.Mutex
 	colls   map[string][]map[string]any // concrete collection path -> items
+	single  map[string]map[string]any   // singleton path -> settings
 	byPath  map[string]map[string]any   // item path (its Get or Update path) -> item
 	seq     int
 	// onCreate lets a test add what the provider does beyond the
@@ -38,7 +39,10 @@ type fake struct {
 }
 
 func newFake(t *testing.T, p Provider, spec *Spec, account string) *fake {
-	f := &fake{p: p, spec: spec, account: account, colls: map[string][]map[string]any{}, byPath: map[string]map[string]any{}}
+	f := &fake{p: p, spec: spec, account: account, colls: map[string][]map[string]any{}, byPath: map[string]map[string]any{}, single: map[string]map[string]any{}}
+	// The fake serves the collections a client would use, derived ones
+	// included.
+	f.p = NewClient(p, spec, account, "", false).P
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -87,11 +91,58 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case "GET":
 			if _, ok := params(col.List, path); ok {
-				f.page(w, r, f.colls[path])
+				if col.Singleton {
+					v := f.single[path]
+					if v == nil {
+						v = map[string]any{}
+					}
+					f.reply(w, 200, v, nil)
+					return
+				}
+				f.page(w, r, f.colls[path], col.Array)
 				return
 			}
-		case "POST":
-			if ps, ok := params(col.Create, path); ok {
+		case "POST", "PUT":
+			if ps, ok := params(col.Create, path); ok && r.Method == col.createMethod() {
+				if col.Singleton {
+					if !f.accepts(w, col, body) {
+						return
+					}
+					f.single[path] = body
+					w.WriteHeader(204)
+					return
+				}
+				if col.createMethod() == "PUT" {
+					// PUT .../{name}: the item lives in the list one level up,
+					// and the path names it.
+					list := path[:strings.LastIndex(path, "/")]
+					name := path[strings.LastIndex(path, "/")+1:]
+					if body == nil {
+						body = map[string]any{}
+					}
+					for _, it := range f.colls[list] {
+						if namesOf(col, it) == name {
+							for k, v := range body {
+								it[k] = v
+							}
+							f.reply(w, 200, f.masked(it), nil)
+							return
+						}
+					}
+					if !f.accepts(w, col, body) {
+						return
+					}
+					body[col.Name[0]] = name
+					f.seq++
+					it := map[string]any{"id": float64(f.seq), "created_at": "2026-10-22T00:00:00Z"}
+					for k, v := range body {
+						it[k] = v
+					}
+					f.colls[list] = append(f.colls[list], it)
+					f.byPath[path] = it
+					f.reply(w, 201, f.masked(it), nil)
+					return
+				}
 				f.create(w, col, path, ps, body)
 				return
 			}
@@ -113,13 +164,28 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 	f.fail(w, 404, "Not Found: "+r.Method+" "+path)
 }
 
-func (f *fake) create(w http.ResponseWriter, col *Collection, path string, ps map[string]string, body map[string]any) {
-	accepted := f.spec.RequestFields(col.Create, "POST")
-	for k := range body {
-		if accepted == nil || accepted.Children[k] == nil {
-			f.fail(w, 422, fmt.Sprintf("%s does not accept %q", col.Create, k))
-			return
+// accepts refuses a body with a field the write does not define or
+// without one it requires.
+func (f *fake) accepts(w http.ResponseWriter, col *Collection, body map[string]any) bool {
+	accepted := f.spec.RequestFields(col.Create, col.createMethod())
+	for _, r := range f.spec.Required(col.Create, col.createMethod()) {
+		if _, ok := body[r]; !ok {
+			f.fail(w, 422, fmt.Sprintf("%s requires %q", col.Create, r))
+			return false
 		}
+	}
+	for k := range body {
+		if accepted == nil || (accepted.Children[k] == nil && !accepted.Any) {
+			f.fail(w, 422, fmt.Sprintf("%s does not accept %q", col.Create, k))
+			return false
+		}
+	}
+	return true
+}
+
+func (f *fake) create(w http.ResponseWriter, col *Collection, path string, ps map[string]string, body map[string]any) {
+	if !f.accepts(w, col, body) {
+		return
 	}
 	raw, _ := json.Marshal(body)
 	// A reference to another account (an exact value, a path or URL
@@ -193,12 +259,21 @@ func namesOf(col *Collection, it map[string]any) string {
 	return strings.Join(n, " ")
 }
 
-// masked returns an item with secrets hidden, as GitHub returns a
-// webhook's config.secret.
+// masked returns an item as the API would: only fields its response
+// schema has (a secret's encrypted_value is accepted on write and never
+// returned), and secrets masked, as GitHub returns a webhook's
+// config.secret.
 func (f *fake) masked(it map[string]any) map[string]any {
 	b, _ := json.Marshal(it)
 	var c map[string]any
 	_ = json.Unmarshal(b, &c)
+	if rf := f.responseFields(it); rf != nil {
+		for k := range c {
+			if rf.Children[k] == nil && !rf.Any {
+				delete(c, k)
+			}
+		}
+	}
 	if cfg, ok := c["config"].(map[string]any); ok {
 		if _, has := cfg["secret"]; has {
 			cfg["secret"] = "********"
@@ -207,7 +282,42 @@ func (f *fake) masked(it map[string]any) map[string]any {
 	return c
 }
 
-func (f *fake) page(w http.ResponseWriter, r *http.Request, items []map[string]any) {
+// responseFields is the item schema of the collection an item belongs to,
+// inside the provider's envelope and the list's array.
+func (f *fake) responseFields(it map[string]any) *Fields {
+	for i := range f.p.Collections {
+		col := &f.p.Collections[i]
+		for path, items := range f.colls {
+			if _, ok := params(col.List, path); !ok {
+				continue
+			}
+			for _, x := range items {
+				if fmt.Sprint(x["id"]) != fmt.Sprint(it["id"]) || namesOf(col, x) != namesOf(col, it) {
+					continue
+				}
+				list := col.Get == ""
+				src := col.Get
+				if list {
+					src = col.List
+				}
+				fs := f.spec.fields(f.spec.ResponseSchema(src, "get"), 0)
+				if f.p.Envelope != "" && fs.Children[f.p.Envelope] != nil {
+					fs = fs.Children[f.p.Envelope]
+				}
+				if list {
+					if col.Array != "" && fs.Children[col.Array] != nil {
+						fs = fs.Children[col.Array]
+					}
+					fs = fs.Items
+				}
+				return fs
+			}
+		}
+	}
+	return nil
+}
+
+func (f *fake) page(w http.ResponseWriter, r *http.Request, items []map[string]any, array string) {
 	const size = 2
 	pg := 1
 	fmt.Sscanf(r.URL.Query().Get("page"), "%d", &pg)
@@ -235,7 +345,11 @@ func (f *fake) page(w http.ResponseWriter, r *http.Request, items []map[string]a
 		q.Set("page", fmt.Sprint(pg+1))
 		h["Link"] = fmt.Sprintf(`<%s%s?%s>; rel="next"`, f.srv.URL, r.URL.Path, q.Encode())
 	}
-	f.reply(w, 200, out, map[string]any{"page": pg, "per_page": size, "total_pages": total, "count": len(out)}, h)
+	var v any = out
+	if array != "" {
+		v = map[string]any{"total_count": len(items), array: out}
+	}
+	f.reply(w, 200, v, map[string]any{"page": pg, "per_page": size, "total_pages": total, "count": len(out)}, h)
 }
 
 func (f *fake) reply(w http.ResponseWriter, code int, v any, info map[string]any, headers ...map[string]string) {

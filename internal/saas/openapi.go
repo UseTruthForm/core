@@ -106,6 +106,25 @@ func (s *Spec) RequestFields(path, method string) *Fields {
 	return s.fields(js["schema"], 0)
 }
 
+// Required lists the top-level fields an operation's body requires.
+func (s *Spec) Required(path, method string) []string {
+	op := s.operation(path, method)
+	rb := s.resolve(op["requestBody"])
+	content, _ := rb["content"].(map[string]any)
+	js, _ := content["application/json"].(map[string]any)
+	sch := s.resolve(js["schema"])
+	var out []string
+	for _, r := range anyList(sch["required"]) {
+		if str, ok := r.(string); ok {
+			out = append(out, str)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func anyList(v any) []any { l, _ := v.([]any); return l }
+
 // ResponseSchema is the success response schema of an operation.
 func (s *Spec) ResponseSchema(path, method string) map[string]any {
 	op := s.operation(path, method)

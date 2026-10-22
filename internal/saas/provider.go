@@ -37,6 +37,9 @@ type Provider struct {
 	// Pro" (seen capturing StackDNA, 2026-10-22).
 	Unavailable []string
 	Collections []Collection
+	// Derive, if set, adds the collections the description offers under
+	// these rules to the hand-written ones.
+	Derive *DeriveRules
 }
 
 // Collection is one kind of configuration. Paths are the description's
@@ -55,15 +58,44 @@ type Collection struct {
 	Bind   map[string]string
 	// Name is the fields that name an item; joined with " ".
 	Name []string
+	// Array is the property holding the items when a list is wrapped
+	// ({"total_count": 2, "variables": [...]}); "" for a bare array.
+	Array string
+	// CreateMethod is POST (to Create) or PUT (to Create, an item path:
+	// GitHub creates environments and secrets with PUT .../{name}).
+	CreateMethod string
+	// UpdateMethod is PATCH unless set.
+	UpdateMethod string
+	// Singleton is settings with no list: GET and PUT on one path
+	// (Actions permissions). Captured as one item named "settings"; a
+	// restore applies it, since the target always has some value.
+	Singleton bool
+}
+
+func (c *Collection) createMethod() string {
+	if c.CreateMethod != "" {
+		return c.CreateMethod
+	}
+	return "POST"
+}
+
+func (c *Collection) updateMethod() string {
+	if c.UpdateMethod != "" {
+		return c.UpdateMethod
+	}
+	return "PATCH"
 }
 
 // GitHub is the descriptor for github.com organisations.
 var GitHub = Provider{
 	Name: "github", Spec: "github.json", Base: "https://api.github.com", Paging: "link", Account: "org",
-	SpecURL:     "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
-	Headers:     map[string]string{"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
-	TokenEnv:    "GITHUB_TOKEN",
-	Unavailable: []string{"Upgrade to GitHub Pro", "Upgrade to GitHub Team", "Upgrade to GitHub Enterprise"},
+	SpecURL:  "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json",
+	Headers:  map[string]string{"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+	TokenEnv: "GITHUB_TOKEN",
+	Unavailable: []string{"Upgrade to GitHub Pro", "Upgrade to GitHub Team", "Upgrade to GitHub Enterprise",
+		// A setting that does not apply to this repository.
+		"is not allowed for private repositories"},
+	Derive: GitHubDerive,
 	Collections: []Collection{
 		{Kind: "github/repository", List: "/orgs/{org}/repos", Get: "/repos/{owner}/{repo}",
 			Create: "/orgs/{org}/repos", Update: "/repos/{owner}/{repo}",

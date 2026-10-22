@@ -49,6 +49,8 @@ type Target struct {
 	Subscription string `json:"subscription,omitempty"`
 	// gcp
 	Project string `json:"project,omitempty"`
+	// github, cloudflare (the token comes from the environment)
+	Account string `json:"account,omitempty"`
 	// any cloud
 	Types    []string `json:"types,omitempty"`
 	Baseline string   `json:"baseline,omitempty"`
@@ -77,11 +79,11 @@ func loadEnvironment(path string) (*Environment, error) {
 			return nil, fmt.Errorf("%s: target %d needs a unique name without / \\ or :", path, i+1)
 		}
 		seen[t.Name] = true
-		need := map[string]string{"kubernetes": t.Context, "aws": t.Region, "azure": t.Subscription, "gcp": t.Project}
-		field := map[string]string{"kubernetes": "context", "aws": "region", "azure": "subscription", "gcp": "project"}
+		need := map[string]string{"kubernetes": t.Context, "aws": t.Region, "azure": t.Subscription, "gcp": t.Project, "github": t.Account, "cloudflare": t.Account}
+		field := map[string]string{"kubernetes": "context", "aws": "region", "azure": "subscription", "gcp": "project", "github": "account", "cloudflare": "account"}
 		v, known := need[t.Platform]
 		if !known {
-			return nil, fmt.Errorf("%s: target %s: platform must be kubernetes, aws, azure or gcp", path, t.Name)
+			return nil, fmt.Errorf("%s: target %s: platform must be kubernetes, aws, azure, gcp, github or cloudflare", path, t.Name)
 		}
 		if v == "" {
 			return nil, fmt.Errorf("%s: target %s: %s is required for platform %s", path, t.Name, field[t.Platform], t.Platform)
@@ -139,6 +141,13 @@ func captureTarget(ctx context.Context, t Target) (snapshot.Snapshot, error) {
 	case "gcp":
 		g := gcpFlags{project: t.Project, types: strings.Join(t.Types, ","), baseline: t.Baseline, parallel: 8}
 		ad, err := g.connect(ctx, true)
+		if err != nil {
+			return snapshot.Snapshot{}, err
+		}
+		return ad.Capture(ctx)
+	case "github", "cloudflare":
+		sf := saasFlags{account: t.Account}
+		ad, err := sf.connect(t.Platform, true)
 		if err != nil {
 			return snapshot.Snapshot{}, err
 		}

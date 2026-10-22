@@ -48,7 +48,7 @@ jobs:
       # The AWS, Azure and GCP inventories read with many goroutines; the race
       # detector needs cgo, which the Windows dev machines lack, so it runs
       # here, on those packages only (a few seconds).
-      - run: go test -race -count=1 ./internal/awscc/ ./internal/azarm/ ./internal/gcp/
+      - run: go test -race -count=1 ./internal/awscc/ ./internal/azarm/ ./internal/gcp/ ./internal/saas/
       # The capture-only build (handed to clients for information
       # gathering) must refuse restore; it is a separate build, so test it.
       - run: go test -tags captureonly -count=1 ./cmd/stackdna/

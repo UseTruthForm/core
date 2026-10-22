@@ -46,6 +46,11 @@ GCP (Cloud Asset Inventory and each API's Discovery document):
   stackdna restore --platform gcp --project <id> --from <dir>
   stackdna diff    --platform gcp --project <id> --from <dir> [--types <patterns>] [--baseline <dir>]
 
+SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN):
+  stackdna capture --platform github --account <org> --out <dir>
+  stackdna capture --platform cloudflare --account <account-id> --out <dir>
+  stackdna restore --platform github --account <org> --from <dir> [--values <file>]
+
 A whole environment (several targets, read-only):
   stackdna capture --config <env.yaml> --out <dir>
   stackdna diff    --config <env.yaml> --from <dir>
@@ -98,7 +103,7 @@ func capture(ctx context.Context, args []string) int {
 	includeSystem := fs.Bool("include-system", false, "also capture system namespaces and platform-created objects")
 	baseline := fs.String("baseline", "", "snapshot of a fresh cluster of the same distribution; objects identical to it are skipped")
 	rendered := fs.Bool("capture-rendered", false, "also capture objects rendered by Flux, Argo CD or Crossplane (skipped by default: restoring their source recreates them)")
-	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure or gcp")
+	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
 	config := fs.String("config", "", "environment file listing several targets; captures all of them into --out/<target>")
 	var aws awsFlags
 	aws.register(fs)
@@ -106,6 +111,8 @@ func capture(ctx context.Context, args []string) int {
 	az.register(fs)
 	var g gcpFlags
 	g.register(fs)
+	var sf saasFlags
+	sf.register(fs)
 	_ = fs.Parse(args)
 	if *out == "" || fs.NArg() > 0 {
 		fmt.Fprintln(os.Stderr, "capture: --out is required and no positional arguments are accepted")
@@ -124,6 +131,8 @@ func capture(ctx context.Context, args []string) int {
 	case "gcp":
 		g.from(&aws, *baseline)
 		return captureGCP(ctx, &g, *out)
+	case "github", "cloudflare":
+		return captureSaaS(ctx, *platform, &sf, *out)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx, true)
 	if err != nil {
@@ -173,7 +182,7 @@ func restore(ctx context.Context, args []string) int {
 	kctx := fs.String("context", "", "kubeconfig context to restore into")
 	from := fs.String("from", "", "snapshot directory")
 	secretsFrom := fs.String("secrets-from-context", "", "live cluster to read withheld secret values from")
-	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure or gcp")
+	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
 	values := fs.String("values", "", "aws, azure: YAML file of values the cloud never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the cloud, never written")
 	var aws awsFlags
 	aws.register(fs)
@@ -181,6 +190,8 @@ func restore(ctx context.Context, args []string) int {
 	az.register(fs)
 	var g gcpFlags
 	g.register(fs)
+	var sf saasFlags
+	sf.register(fs)
 	_ = fs.Parse(args)
 	if *from == "" || (*kctx == "" && *platform == "kubernetes") {
 		fmt.Fprintln(os.Stderr, "restore: --from and a target (--context, --platform aws --region, --platform azure --subscription, or --platform gcp --project) are required (restore never guesses its target)")
@@ -202,6 +213,8 @@ func restore(ctx context.Context, args []string) int {
 	case "gcp":
 		g.from(&aws, "")
 		return restoreGCP(ctx, &g, snap)
+	case "github", "cloudflare":
+		return restoreSaaS(ctx, *platform, &sf, snap, *values)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx, captureOnly)
 	if err != nil {
@@ -235,7 +248,7 @@ func diff(ctx context.Context, args []string) int {
 	kctx := fs.String("context", "", "kubeconfig context to compare against")
 	from := fs.String("from", "", "snapshot directory")
 	baseline := fs.String("baseline", "", "the baseline the snapshot was captured with, if any")
-	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure or gcp")
+	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
 	config := fs.String("config", "", "environment file; diffs every target against --from/<target>")
 	var aws awsFlags
 	aws.register(fs)
@@ -243,6 +256,8 @@ func diff(ctx context.Context, args []string) int {
 	az.register(fs)
 	var g gcpFlags
 	g.register(fs)
+	var sf saasFlags
+	sf.register(fs)
 	_ = fs.Parse(args)
 	if *config != "" && *from != "" {
 		return diffEnvironment(ctx, *config, *from)
@@ -268,6 +283,8 @@ func diff(ctx context.Context, args []string) int {
 	case "gcp":
 		g.from(&aws, *baseline)
 		return diffGCP(ctx, &g, want, *from)
+	case "github", "cloudflare":
+		return diffSaaS(ctx, *platform, &sf, want, *from)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx, true)
 	if err != nil {
@@ -425,11 +442,17 @@ func withBaseline(p kube.Policy, dir string) (kube.Policy, error) {
 	return p.WithBaseline(b, d), nil
 }
 
+// samePlatform refuses to apply a snapshot to a different kind of platform.
+// SaaS snapshots record their provider as saas/<name>.
+func samePlatformName(snapPlatform, flag string) bool {
+	return snapPlatform == flag || snapPlatform == "saas/"+flag
+}
+
 // samePlatform refuses to apply a snapshot to a different kind of platform:
 // a Kubernetes restore of an AWS snapshot would try to apply every resource
 // as an unknown kind and fail object by object.
 func samePlatform(s snapshot.Snapshot, platform string) error {
-	if s.Platform != platform {
+	if !samePlatformName(s.Platform, platform) {
 		return fmt.Errorf("snapshot is from platform %q; pass --platform %s", s.Platform, s.Platform)
 	}
 	return nil

@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/stackdna/core/internal/kube"
 	"github.com/stackdna/core/internal/kubetest"
 	"github.com/stackdna/core/internal/snapshot"
 )
@@ -52,6 +54,7 @@ func TestLoadEnvironmentIsStrict(t *testing.T) {
 // and an unchanged environment captures to the same digest twice.
 func TestCaptureEnvironment(t *testing.T) {
 	a, b := kubetest.Start(t, "env-a"), kubetest.Start(t, "env-b")
+	settle(t, a, b)
 	dir := t.TempDir()
 	cfg := writeFile(t, dir, "env.yaml", `name: shop
 targets:
@@ -98,6 +101,44 @@ targets:
 type envDoc struct {
 	Digest  string         `json:"digest"`
 	Targets []TargetResult `json:"targets"`
+}
+
+// settle waits until each fresh API server captures to the same digest
+// twice running. A server still creating its own bootstrap objects after
+// /readyz differs between captures for a reason that has nothing to do
+// with StackDNA: in CI (PR #14) the second of two fresh servers captured
+// to one digest and then another, objects identical, and the unchanged-
+// environment assertion failed. Which bootstrap object it was is not
+// pinned down (six local starts never showed it), so this waits for the
+// thing the assertion needs rather than for a guess.
+func settle(t *testing.T, servers ...*kubetest.Server) {
+	t.Helper()
+	for _, s := range servers {
+		c, err := kube.Connect(s.Kubeconfig, s.Context, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		prev := ""
+		for i := 0; ; i++ {
+			snap, err := kube.Capture(context.Background(), c, kube.Policy{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			d := t.TempDir()
+			if err := snap.Write(d); err != nil {
+				t.Fatal(err)
+			}
+			dg, _ := snapshot.Digest(d)
+			if dg == prev {
+				break
+			}
+			if i == 30 {
+				t.Fatalf("%s never settled: still changing after %d captures", s.Context, i)
+			}
+			prev = dg
+			time.Sleep(time.Second)
+		}
+	}
 }
 
 func readEnv(t *testing.T, dir string) envDoc {

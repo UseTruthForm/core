@@ -1,0 +1,8246 @@
+[
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "BooleanType"
+ },
+ {
+  "$type": "IntegerType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ApplicationGatewayIPConfiguration",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the IP configuration that is unique within an Application Gateway.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the application gateway IP configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/4"
+    }
+   },
+   "type": {
+    "description": "Type of the resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ApplicationGatewayIPConfigurationPropertiesFormat",
+  "properties": {
+   "provisioningState": {
+    "description": "The provisioning state of the application gateway IP configuration resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/12"
+    }
+   },
+   "subnet": {
+    "description": "Reference to the subnet resource. A subnet from where application gateway gets its private address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SubResource",
+  "properties": {
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/6"
+   },
+   {
+    "$ref": "#/7"
+   },
+   {
+    "$ref": "#/8"
+   },
+   {
+    "$ref": "#/9"
+   },
+   {
+    "$ref": "#/10"
+   },
+   {
+    "$ref": "#/11"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ApplicationGatewayBackendAddressPool",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the backend address pool that is unique within an Application Gateway.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the application gateway backend address pool.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "type": {
+    "description": "Type of the resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ApplicationGatewayBackendAddressPoolPropertiesFormat",
+  "properties": {
+   "backendAddresses": {
+    "description": "Backend addresses.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/551"
+    }
+   },
+   "backendIPConfigurations": {
+    "description": "Collection of references to IPs defined in network interfaces.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/549"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the backend address pool resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/558"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkInterfaceIPConfiguration",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Network interface IP configuration properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/16"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkInterfaceIPConfigurationPropertiesFormat",
+  "properties": {
+   "applicationGatewayBackendAddressPools": {
+    "description": "The reference to ApplicationGatewayBackendAddressPool resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/480"
+    }
+   },
+   "applicationSecurityGroups": {
+    "description": "Application security groups in which the IP configuration is included.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/539"
+    }
+   },
+   "gatewayLoadBalancer": {
+    "description": "The reference to gateway load balancer frontend IP.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "loadBalancerBackendAddressPools": {
+    "description": "The reference to LoadBalancerBackendAddressPool resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/516"
+    }
+   },
+   "loadBalancerInboundNatRules": {
+    "description": "A list of references of LoadBalancerInboundNatRules.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/531"
+    }
+   },
+   "primary": {
+    "description": "Whether this is a primary customer address on the network interface.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "privateIPAddress": {
+    "description": "Private IP address of the IP configuration. It can be a single IP address or a CIDR block in the format \u003caddress\u003e/\u003cprefix-length\u003e.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "privateIPAddressPrefixLength": {
+    "description": "The private IP address prefix length. If specified and the allocation method is dynamic, the service will allocate a CIDR block instead of a single IP address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/532"
+    }
+   },
+   "privateIPAddressVersion": {
+    "description": "Whether the specific IP configuration is IPv4 or IPv6. Default is IPv4.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/538"
+    }
+   },
+   "privateIPAllocationMethod": {
+    "description": "The private IP address allocation method.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/535"
+    }
+   },
+   "privateLinkConnectionProperties": {
+    "description": "PrivateLinkConnection properties for the network interface.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/547"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the network interface IP configuration.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/546"
+    }
+   },
+   "publicIPAddress": {
+    "description": "Public IP address bound to the IP configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/324"
+    }
+   },
+   "subnet": {
+    "description": "Subnet bound to the IP configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/48"
+    }
+   },
+   "virtualNetworkTaps": {
+    "description": "The reference to Virtual Network Taps.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/479"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VirtualNetworkTap",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Virtual Network Tap Properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/18"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/478"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VirtualNetworkTapPropertiesFormat",
+  "properties": {
+   "destinationLoadBalancerFrontEndIPConfiguration": {
+    "description": "The reference to the private IP address on the internal Load Balancer that will receive the tap.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/36"
+    }
+   },
+   "destinationNetworkInterfaceIPConfiguration": {
+    "description": "The reference to the private IP Address of the collector nic that will receive the tap.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/15"
+    }
+   },
+   "destinationPort": {
+    "description": "The VXLAN destination port that will receive the tapped traffic.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "networkInterfaceTapConfigurations": {
+    "description": "Specifies the list of resource IDs for the network interface IP configuration that needs to be tapped.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/28"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the virtual network tap resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/35"
+    }
+   },
+   "resourceGuid": {
+    "description": "The resource GUID property of the virtual network tap resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkInterfaceTapConfiguration",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the Virtual Network Tap configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/20"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkInterfaceTapConfigurationPropertiesFormat",
+  "properties": {
+   "provisioningState": {
+    "description": "The provisioning state of the network interface tap configuration resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/27"
+    }
+   },
+   "virtualNetworkTap": {
+    "description": "The reference to the Virtual Network Tap resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/21"
+   },
+   {
+    "$ref": "#/22"
+   },
+   {
+    "$ref": "#/23"
+   },
+   {
+    "$ref": "#/24"
+   },
+   {
+    "$ref": "#/25"
+   },
+   {
+    "$ref": "#/26"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/19"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/29"
+   },
+   {
+    "$ref": "#/30"
+   },
+   {
+    "$ref": "#/31"
+   },
+   {
+    "$ref": "#/32"
+   },
+   {
+    "$ref": "#/33"
+   },
+   {
+    "$ref": "#/34"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "FrontendIPConfiguration",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the load balancer probe.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/37"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "zones": {
+    "description": "A list of availability zones denoting the IP allocated for the resource needs to come from.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/477"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "FrontendIPConfigurationPropertiesFormat",
+  "properties": {
+   "ddosSettings": {
+    "description": "The DDoS protection settings associated with the frontend IP configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/476"
+    }
+   },
+   "gatewayLoadBalancer": {
+    "description": "The reference to gateway load balancer frontend IP.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "inboundNatPools": {
+    "description": "An array of references to inbound pools that use this frontend IP.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/39"
+    }
+   },
+   "inboundNatRules": {
+    "description": "An array of references to inbound rules that use this frontend IP.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/38"
+    }
+   },
+   "loadBalancingRules": {
+    "description": "An array of references to load balancing rules that use this frontend IP.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/41"
+    }
+   },
+   "outboundRules": {
+    "description": "An array of references to outbound rules that use this frontend IP.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/40"
+    }
+   },
+   "privateIPAddress": {
+    "description": "The private IP address of the IP configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "privateIPAddressVersion": {
+    "description": "Whether the specific ipconfiguration is IPv4 or IPv6. Default is taken as IPv4.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/47"
+    }
+   },
+   "privateIPAllocationMethod": {
+    "description": "The Private IP allocation method.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/44"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the frontend IP configuration resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/475"
+    }
+   },
+   "publicIPAddress": {
+    "description": "The reference to the Public IP resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/324"
+    }
+   },
+   "publicIPPrefix": {
+    "description": "The reference to the Public IP Prefix resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "subnet": {
+    "description": "The reference to the subnet resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/48"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Static"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Dynamic"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/42"
+   },
+   {
+    "$ref": "#/43"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv4"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv6"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/45"
+   },
+   {
+    "$ref": "#/46"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Subnet",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/49"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SubnetPropertiesFormat",
+  "properties": {
+   "addressPrefix": {
+    "description": "The address prefix for the subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "addressPrefixes": {
+    "description": "List of address prefixes for the subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/50"
+    }
+   },
+   "applicationGatewayIPConfigurations": {
+    "description": "Application gateway IP configurations of virtual network resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/461"
+    }
+   },
+   "defaultOutboundAccess": {
+    "description": "Set this property to false to disable default outbound connectivity for all VMs in the subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "delegations": {
+    "description": "An array of references to the delegations on the subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/445"
+    }
+   },
+   "ipAllocations": {
+    "description": "Array of IpAllocation which reference this subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/413"
+    }
+   },
+   "ipConfigurationProfiles": {
+    "description": "Array of IP configuration profiles which reference this subnet.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/412"
+    }
+   },
+   "ipConfigurations": {
+    "description": "An array of references to the network interface IP configurations using subnet.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/402"
+    }
+   },
+   "ipamPoolPrefixAllocations": {
+    "description": "A list of IPAM Pools for allocating IP address prefixes.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/468"
+    }
+   },
+   "natGateway": {
+    "description": "Nat gateway associated with this subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "networkSecurityGroup": {
+    "description": "The reference to the NetworkSecurityGroup resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/51"
+    }
+   },
+   "privateEndpointNetworkPolicies": {
+    "description": "Enable or Disable apply network policies on private end point in the subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/457"
+    }
+   },
+   "privateEndpoints": {
+    "description": "An array of references to private endpoints.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/318"
+    }
+   },
+   "privateLinkServiceNetworkPolicies": {
+    "description": "Enable or Disable apply network policies on private link service in the subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/460"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the subnet resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/452"
+    }
+   },
+   "purpose": {
+    "description": "A read-only string identifying the intention of use for this subnet based on delegations and other user-defined properties.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "resourceNavigationLinks": {
+    "description": "An array of references to the external resources using subnet.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/423"
+    }
+   },
+   "routeTable": {
+    "description": "The reference to the RouteTable resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/251"
+    }
+   },
+   "serviceAssociationLinks": {
+    "description": "An array of references to services injecting into this subnet.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/434"
+    }
+   },
+   "serviceEndpointPolicies": {
+    "description": "An array of service endpoint policies.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/317"
+    }
+   },
+   "serviceEndpoints": {
+    "description": "An array of service endpoints.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/293"
+    }
+   },
+   "serviceGateway": {
+    "description": "Reference to an existing service gateway.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "sharingScope": {
+    "description": "Set this property to Tenant to allow sharing subnet with other subscriptions in your AAD tenant. This property can only be set if defaultOutboundAccess is set to false, both properties can only be set if subnet is empty.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/464"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkSecurityGroup",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the network security group.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/52"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/250"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkSecurityGroupPropertiesFormat",
+  "properties": {
+   "defaultSecurityRules": {
+    "description": "The default security rules of network security group.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/92"
+    }
+   },
+   "flowLogs": {
+    "description": "A collection of references to flow log resources.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/242"
+    }
+   },
+   "flushConnection": {
+    "description": "When enabled, flows created from Network Security Group connections will be re-evaluated when rules are updates. Initial enablement will trigger re-evaluation.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "networkInterfaces": {
+    "description": "A collection of references to network interfaces.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/216"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the network security group resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/249"
+    }
+   },
+   "resourceGuid": {
+    "description": "The resource GUID property of the network security group resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "securityRules": {
+    "description": "A collection of security rules of the network security group.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/91"
+    }
+   },
+   "subnets": {
+    "description": "A collection of references to subnets.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/217"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SecurityRule",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the security rule.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/54"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SecurityRulePropertiesFormat",
+  "properties": {
+   "access": {
+    "description": "The network traffic is allowed or denied.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/80"
+    }
+   },
+   "description": {
+    "description": "A description for this rule. Restricted to 140 chars.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "destinationAddressPrefix": {
+    "description": "The destination address prefix. CIDR or destination IP range. Asterisk '*' can also be used to match all source IPs. Default tags such as 'VirtualNetwork', 'AzureLoadBalancer' and 'Internet' can also be used.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "destinationAddressPrefixes": {
+    "description": "The destination address prefixes. CIDR or destination IP ranges.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/74"
+    }
+   },
+   "destinationApplicationSecurityGroups": {
+    "description": "The application security group specified as destination.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/75"
+    }
+   },
+   "destinationPortRange": {
+    "description": "The destination port or range. Integer or range between 0 and 65535. Asterisk '*' can also be used to match all ports.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "destinationPortRanges": {
+    "description": "The destination port ranges.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/77"
+    }
+   },
+   "direction": {
+    "description": "The direction of the rule. The direction specifies if rule will be evaluated on incoming or outgoing traffic.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/83"
+    }
+   },
+   "priority": {
+    "description": "The priority of the rule. The value can be between 100 and 4096. The priority number must be unique for each rule in the collection. The lower the priority number, the higher the priority of the rule.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "protocol": {
+    "description": "Network protocol this rule applies to.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the security rule resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/90"
+    }
+   },
+   "sourceAddressPrefix": {
+    "description": "The CIDR or source IP range. Asterisk '*' can also be used to match all source IPs. Default tags such as 'VirtualNetwork', 'AzureLoadBalancer' and 'Internet' can also be used. If this is an ingress rule, specifies where network traffic originates from.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "sourceAddressPrefixes": {
+    "description": "The CIDR or source IP ranges.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/62"
+    }
+   },
+   "sourceApplicationSecurityGroups": {
+    "description": "The application security group specified as source.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/73"
+    }
+   },
+   "sourcePortRange": {
+    "description": "The source port or range. Integer or range between 0 and 65535. Asterisk '*' can also be used to match all ports.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "sourcePortRanges": {
+    "description": "The source port ranges.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/76"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Tcp"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Udp"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Icmp"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Esp"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "*"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Ah"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/55"
+   },
+   {
+    "$ref": "#/56"
+   },
+   {
+    "$ref": "#/57"
+   },
+   {
+    "$ref": "#/58"
+   },
+   {
+    "$ref": "#/59"
+   },
+   {
+    "$ref": "#/60"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ApplicationSecurityGroup",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the application security group.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/64"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/72"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ApplicationSecurityGroupPropertiesFormat",
+  "properties": {
+   "provisioningState": {
+    "description": "The provisioning state of the application security group resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/71"
+    }
+   },
+   "resourceGuid": {
+    "description": "The resource GUID property of the application security group resource. It uniquely identifies a resource, even if the user changes its name or migrate the resource across subscriptions or resource groups.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/65"
+   },
+   {
+    "$ref": "#/66"
+   },
+   {
+    "$ref": "#/67"
+   },
+   {
+    "$ref": "#/68"
+   },
+   {
+    "$ref": "#/69"
+   },
+   {
+    "$ref": "#/70"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/63"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/63"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Allow"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deny"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/78"
+   },
+   {
+    "$ref": "#/79"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Inbound"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Outbound"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/81"
+   },
+   {
+    "$ref": "#/82"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/84"
+   },
+   {
+    "$ref": "#/85"
+   },
+   {
+    "$ref": "#/86"
+   },
+   {
+    "$ref": "#/87"
+   },
+   {
+    "$ref": "#/88"
+   },
+   {
+    "$ref": "#/89"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/53"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/53"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkInterface",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "extendedLocation": {
+    "description": "The extended location of the network interface.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/132"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the network interface.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/94"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/215"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkInterfacePropertiesFormat",
+  "properties": {
+   "auxiliaryMode": {
+    "description": "Auxiliary mode of Network Interface resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/208"
+    }
+   },
+   "auxiliarySku": {
+    "description": "Auxiliary sku of Network Interface resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/214"
+    }
+   },
+   "defaultOutboundConnectivityEnabled": {
+    "description": "Whether default outbound connectivity for nic was configured or not.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "disableTcpStateTracking": {
+    "description": "Indicates whether to disable tcp state tracking.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "dnsSettings": {
+    "description": "The DNS settings in network interface.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/138"
+    }
+   },
+   "dscpConfiguration": {
+    "description": "A reference to the dscp configuration to which the network interface is linked.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "enableAcceleratedNetworking": {
+    "description": "If the network interface is configured for accelerated networking. Not applicable to VM sizes which require accelerated networking.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "enableIPForwarding": {
+    "description": "Indicates whether IP forwarding is enabled on this network interface.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "hostedWorkloads": {
+    "description": "A list of references to linked BareMetal resources.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/141"
+    }
+   },
+   "ipConfigurations": {
+    "description": "A list of IPConfigurations of the network interface.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/136"
+    }
+   },
+   "macAddress": {
+    "description": "The MAC address of the network interface.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "migrationPhase": {
+    "description": "Migration phase of Network Interface resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/203"
+    }
+   },
+   "networkSecurityGroup": {
+    "description": "The reference to the NetworkSecurityGroup resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/51"
+    }
+   },
+   "nicType": {
+    "description": "Type of Network Interface resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/151"
+    }
+   },
+   "primary": {
+    "description": "Whether this is a primary network interface on a virtual machine.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "privateEndpoint": {
+    "description": "A reference to the private endpoint to which the network interface is linked.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/95"
+    }
+   },
+   "privateLinkService": {
+    "description": "Privatelinkservice of the network interface resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/152"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the network interface resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/148"
+    }
+   },
+   "resourceGuid": {
+    "description": "The resource GUID property of the network interface resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "tapConfigurations": {
+    "description": "A list of TapConfigurations of the network interface.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/137"
+    }
+   },
+   "virtualMachine": {
+    "description": "The reference to a virtual machine.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "vnetEncryptionSupported": {
+    "description": "Whether the virtual machine this nic is attached to supports encryption.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "workloadType": {
+    "description": "WorkloadType of the NetworkInterface for BareMetal resources",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpoint",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "extendedLocation": {
+    "description": "The extended location of the load balancer.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/132"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the private endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/96"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/135"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointProperties",
+  "properties": {
+   "applicationSecurityGroups": {
+    "description": "Application security groups in which the private endpoint IP configuration is included.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/125"
+    }
+   },
+   "billingSku": {
+    "description": "The billing sku of the private endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/131"
+    }
+   },
+   "customDnsConfigs": {
+    "description": "An array of custom dns configurations.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/124"
+    }
+   },
+   "customNetworkInterfaceName": {
+    "description": "The custom name of the network interface attached to the private endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "ipConfigurations": {
+    "description": "A list of IP configurations of the private endpoint. This will be used to map to the First Party Service's endpoints.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/128"
+    }
+   },
+   "ipVersionType": {
+    "description": "Specifies the IP version type for the private IPs of the private endpoint. If not defined, this defaults to IPv4.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/108"
+    }
+   },
+   "manualPrivateLinkServiceConnections": {
+    "description": "A grouping of information about the connection to the remote resource. Used when the network admin does not have access to approve connections to the remote resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/121"
+    }
+   },
+   "networkInterfaces": {
+    "description": "An array of references to the network interfaces created for this private endpoint.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/97"
+    }
+   },
+   "privateLinkServiceConnections": {
+    "description": "A grouping of information about the connection to the remote resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/120"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the private endpoint resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/104"
+    }
+   },
+   "subnet": {
+    "description": "The ID of the subnet from which the private IP will be allocated.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/48"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/93"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/98"
+   },
+   {
+    "$ref": "#/99"
+   },
+   {
+    "$ref": "#/100"
+   },
+   {
+    "$ref": "#/101"
+   },
+   {
+    "$ref": "#/102"
+   },
+   {
+    "$ref": "#/103"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv4"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv6"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "DualStack"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/105"
+   },
+   {
+    "$ref": "#/106"
+   },
+   {
+    "$ref": "#/107"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServiceConnection",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The name of the resource that is unique within a resource group. This name can be used to access the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the private link service connection.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/110"
+    }
+   },
+   "type": {
+    "description": "The resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServiceConnectionProperties",
+  "properties": {
+   "groupIds": {
+    "description": "The ID(s) of the group(s) obtained from the remote resource that this private endpoint should connect to.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/118"
+    }
+   },
+   "privateLinkServiceConnectionState": {
+    "description": "A collection of read-only information about the state of the connection to the remote resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/119"
+    }
+   },
+   "privateLinkServiceId": {
+    "description": "The resource id of private link service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the private link service connection resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/117"
+    }
+   },
+   "requestMessage": {
+    "description": "A message passed to the owner of the remote resource with this connection request. Restricted to 140 chars.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/111"
+   },
+   {
+    "$ref": "#/112"
+   },
+   {
+    "$ref": "#/113"
+   },
+   {
+    "$ref": "#/114"
+   },
+   {
+    "$ref": "#/115"
+   },
+   {
+    "$ref": "#/116"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServiceConnectionState",
+  "properties": {
+   "actionsRequired": {
+    "description": "A message indicating if changes on the service provider require any updates on the consumer.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "description": {
+    "description": "The reason for approval/rejection of the connection.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "status": {
+    "description": "Indicates whether the connection has been Approved/Rejected/Removed by the owner of the service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/109"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/109"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "CustomDnsConfigPropertiesFormat",
+  "properties": {
+   "fqdn": {
+    "description": "Fqdn that resolves to private endpoint ip address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "ipAddresses": {
+    "description": "A list of private ip addresses of the private endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/123"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/122"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/63"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointIPConfiguration",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The name of the resource that is unique within a resource group.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of private endpoint IP configurations.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/127"
+    }
+   },
+   "type": {
+    "description": "The resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointIPConfigurationProperties",
+  "properties": {
+   "groupId": {
+    "description": "The ID of a group obtained from the remote resource that this private endpoint should connect to.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "memberName": {
+    "description": "The member name of a group obtained from the remote resource that this private endpoint should connect to.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "privateIPAddress": {
+    "description": "A private ip address obtained from the private endpoint's subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/126"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PayAsYouGo"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Fixed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/129"
+   },
+   {
+    "$ref": "#/130"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ExtendedLocation",
+  "properties": {
+   "name": {
+    "description": "The name of the extended location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "type": {
+    "description": "The type of the extended location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/134"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "EdgeZone"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/133"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/15"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/19"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkInterfaceDnsSettings",
+  "properties": {
+   "appliedDnsServers": {
+    "description": "If the VM that uses this NIC is part of an Availability Set, then this list will have the union of all DNS servers from all NICs that are part of the Availability Set. This property is what is configured on each of those VMs.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/140"
+    }
+   },
+   "dnsServers": {
+    "description": "List of DNS servers IP addresses. Use 'AzureProvidedDNS' to switch to azure provided DNS resolution. 'AzureProvidedDNS' value cannot be combined with other IPs, it must be the only value in dnsServers collection.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/139"
+    }
+   },
+   "internalDnsNameLabel": {
+    "description": "Relative DNS name for this NIC used for internal communications between VMs in the same virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "internalDomainNameSuffix": {
+    "description": "Even if internalDnsNameLabel is not specified, a DNS entry is created for the primary NIC of the VM. This DNS name can be constructed by concatenating the VM name with the value of internalDomainNameSuffix.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "internalFqdn": {
+    "description": "Fully qualified DNS name supporting internal communications between VMs in the same virtual network.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/142"
+   },
+   {
+    "$ref": "#/143"
+   },
+   {
+    "$ref": "#/144"
+   },
+   {
+    "$ref": "#/145"
+   },
+   {
+    "$ref": "#/146"
+   },
+   {
+    "$ref": "#/147"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Elastic"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/149"
+   },
+   {
+    "$ref": "#/150"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkService",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "extendedLocation": {
+    "description": "The extended location of the load balancer.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/132"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the private link service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/153"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/197"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServiceProperties",
+  "properties": {
+   "accessMode": {
+    "description": "The access mode of the private link service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/173"
+    }
+   },
+   "alias": {
+    "description": "The alias of the private link service.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "autoApproval": {
+    "description": "The auto-approval list of the private link service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/194"
+    }
+   },
+   "destinationIPAddress": {
+    "description": "The destination IP address of the private link service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "enableProxyProtocol": {
+    "description": "Whether the private link service is enabled for proxy protocol or not.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "fqdns": {
+    "description": "The list of Fqdn.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/196"
+    }
+   },
+   "ipConfigurations": {
+    "description": "An array of private link service IP configurations.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/170"
+    }
+   },
+   "loadBalancerFrontendIpConfigurations": {
+    "description": "An array of references to the load balancer IP configurations.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/154"
+    }
+   },
+   "networkInterfaces": {
+    "description": "An array of references to the network interfaces created for this private link service.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/174"
+    }
+   },
+   "privateEndpointConnections": {
+    "description": "An array of list about connections to the private endpoint.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/191"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the private link service resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/181"
+    }
+   },
+   "visibility": {
+    "description": "The visibility list of the private link service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/192"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/36"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServiceIpConfiguration",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The name of private link service ip configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the private link service ip configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/156"
+    }
+   },
+   "type": {
+    "description": "The resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServiceIpConfigurationProperties",
+  "properties": {
+   "primary": {
+    "description": "Whether the ip configuration is primary or not.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "privateIPAddress": {
+    "description": "The private IP address of the IP configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "privateIPAddressVersion": {
+    "description": "Whether the specific IP configuration is IPv4 or IPv6. Default is IPv4.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/169"
+    }
+   },
+   "privateIPAllocationMethod": {
+    "description": "The private IP address allocation method.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/159"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the private link service IP configuration resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/166"
+    }
+   },
+   "subnet": {
+    "description": "The reference to the subnet resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/48"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Static"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Dynamic"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/157"
+   },
+   {
+    "$ref": "#/158"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/160"
+   },
+   {
+    "$ref": "#/161"
+   },
+   {
+    "$ref": "#/162"
+   },
+   {
+    "$ref": "#/163"
+   },
+   {
+    "$ref": "#/164"
+   },
+   {
+    "$ref": "#/165"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv4"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv6"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/167"
+   },
+   {
+    "$ref": "#/168"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/155"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Default"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Restricted"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/171"
+   },
+   {
+    "$ref": "#/172"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/93"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/175"
+   },
+   {
+    "$ref": "#/176"
+   },
+   {
+    "$ref": "#/177"
+   },
+   {
+    "$ref": "#/178"
+   },
+   {
+    "$ref": "#/179"
+   },
+   {
+    "$ref": "#/180"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointConnection",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the private end point connection.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/183"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointConnectionProperties",
+  "properties": {
+   "linkIdentifier": {
+    "description": "The consumer link id.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "privateEndpoint": {
+    "description": "The resource of private end point.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/95"
+    }
+   },
+   "privateEndpointLocation": {
+    "description": "The location of the private endpoint.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "privateLinkServiceConnectionState": {
+    "description": "A collection of information about the state of the connection between service consumer and provider.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/119"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the private endpoint connection resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/190"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/184"
+   },
+   {
+    "$ref": "#/185"
+   },
+   {
+    "$ref": "#/186"
+   },
+   {
+    "$ref": "#/187"
+   },
+   {
+    "$ref": "#/188"
+   },
+   {
+    "$ref": "#/189"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/182"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServicePropertiesVisibility",
+  "properties": {
+   "subscriptions": {
+    "description": "The list of subscriptions.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/193"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServicePropertiesAutoApproval",
+  "properties": {
+   "subscriptions": {
+    "description": "The list of subscriptions.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/195"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Prepare"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Commit"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Abort"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Committed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/198"
+   },
+   {
+    "$ref": "#/199"
+   },
+   {
+    "$ref": "#/200"
+   },
+   {
+    "$ref": "#/201"
+   },
+   {
+    "$ref": "#/202"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "MaxConnections"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Floating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AcceleratedConnections"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/204"
+   },
+   {
+    "$ref": "#/205"
+   },
+   {
+    "$ref": "#/206"
+   },
+   {
+    "$ref": "#/207"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "A1"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "A2"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "A4"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "A8"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/209"
+   },
+   {
+    "$ref": "#/210"
+   },
+   {
+    "$ref": "#/211"
+   },
+   {
+    "$ref": "#/212"
+   },
+   {
+    "$ref": "#/213"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/93"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/48"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "FlowLog",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "identity": {
+    "description": "FlowLog resource Managed Identity",
+    "flags": 0,
+    "type": {
+     "$ref": "#/233"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the flow log.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/219"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/241"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "FlowLogPropertiesFormat",
+  "properties": {
+   "enabled": {
+    "description": "Flag to enable/disable flow logging.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "enabledFilteringCriteria": {
+    "description": "Optional field to filter network traffic logs based on SrcIP, SrcPort, DstIP, DstPort, Protocol, Encryption, Direction and Action. If not specified, all network traffic will be logged.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "flowAnalyticsConfiguration": {
+    "description": "Parameters that define the configuration of traffic analytics.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/224"
+    }
+   },
+   "format": {
+    "description": "Parameters that define the flow log format.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/221"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the flow log.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/232"
+    }
+   },
+   "recordTypes": {
+    "description": "Optional field to filter network traffic logs based on flow states. Value of this field could be any comma separated combination string of letters B,C,E or D. B represents Begin, when a flow is created. C represents Continue for an ongoing flow generated at every five-minute interval. E represents End, when a flow is terminated. D represents Deny, when a flow is denied. If not specified, all network traffic will be logged.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "retentionPolicy": {
+    "description": "Parameters that define the retention policy for flow log.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/220"
+    }
+   },
+   "storageId": {
+    "description": "ID of the storage account which is used to store the flow log.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "targetResourceGuid": {
+    "description": "Guid of network security group to which flow log will be applied.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "targetResourceId": {
+    "description": "ID of network security group to which flow log will be applied.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RetentionPolicyParameters",
+  "properties": {
+   "days": {
+    "description": "Number of days to retain flow log records.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "enabled": {
+    "description": "Flag to enable/disable retention.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "FlowLogFormatParameters",
+  "properties": {
+   "type": {
+    "description": "The file type of flow log.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/223"
+    }
+   },
+   "version": {
+    "description": "The version (revision) of the flow log.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "JSON"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/222"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "TrafficAnalyticsProperties",
+  "properties": {
+   "networkWatcherFlowAnalyticsConfiguration": {
+    "description": "Parameters that define the configuration of traffic analytics.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/225"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "TrafficAnalyticsConfigurationProperties",
+  "properties": {
+   "enabled": {
+    "description": "Flag to enable/disable traffic analytics.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "trafficAnalyticsInterval": {
+    "description": "The interval in minutes which would decide how frequently TA service should do flow analytics.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "workspaceId": {
+    "description": "The resource guid of the attached workspace.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "workspaceRegion": {
+    "description": "The location of the attached workspace.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "workspaceResourceId": {
+    "description": "Resource Id of the attached workspace.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/226"
+   },
+   {
+    "$ref": "#/227"
+   },
+   {
+    "$ref": "#/228"
+   },
+   {
+    "$ref": "#/229"
+   },
+   {
+    "$ref": "#/230"
+   },
+   {
+    "$ref": "#/231"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ManagedServiceIdentity",
+  "properties": {
+   "principalId": {
+    "description": "The principal id of the system assigned identity. This property will only be provided for a system assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "tenantId": {
+    "description": "The tenant id of the system assigned identity. This property will only be provided for a system assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "type": {
+    "description": "The type of identity used for the resource. The type 'SystemAssigned, UserAssigned' includes both an implicitly created identity and a set of user assigned identities. The type 'None' will remove any identities from the virtual machine.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/238"
+    }
+   },
+   "userAssignedIdentities": {
+    "description": "The list of user identities associated with resource. The user identity dictionary key references will be ARM resource ids in the form: '/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identityName}'.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/240"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SystemAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "UserAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SystemAssigned, UserAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/234"
+   },
+   {
+    "$ref": "#/235"
+   },
+   {
+    "$ref": "#/236"
+   },
+   {
+    "$ref": "#/237"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ManagedServiceIdentityUserAssignedIdentities",
+  "properties": {
+   "clientId": {
+    "description": "The client id of user assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "principalId": {
+    "description": "The principal id of user assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/239"
+  },
+  "name": "ManagedServiceIdentityUserAssignedIdentities",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/218"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/243"
+   },
+   {
+    "$ref": "#/244"
+   },
+   {
+    "$ref": "#/245"
+   },
+   {
+    "$ref": "#/246"
+   },
+   {
+    "$ref": "#/247"
+   },
+   {
+    "$ref": "#/248"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RouteTable",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the route table.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/252"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/283"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RouteTablePropertiesFormat",
+  "properties": {
+   "disableBgpRoutePropagation": {
+    "description": "Whether to disable the routes learned by BGP on that route table. True means disable.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "disablePeeringRoute": {
+    "description": "Whether to disable the routes learned by peering on the route table. 'None' means peering routes are enabled, 'All' means all peering routes are disabled.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/275"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the route table resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/282"
+    }
+   },
+   "resourceGuid": {
+    "description": "The resource GUID property of the route table.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "routes": {
+    "description": "Collection of routes contained within a route table.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/271"
+    }
+   },
+   "subnets": {
+    "description": "A collection of references to subnets.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/272"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Route",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the route.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/254"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RoutePropertiesFormat",
+  "properties": {
+   "addressPrefix": {
+    "description": "The destination CIDR to which the route applies.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "hasBgpOverride": {
+    "description": "A value indicating whether this route overrides overlapping BGP routes regardless of LPM.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "nextHop": {
+    "description": "The next hop definition containing ECMP next hop IP addresses. Only allowed when nextHopType is VirtualApplianceEcmp.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/262"
+    }
+   },
+   "nextHopIpAddress": {
+    "description": "The IP address packets should be forwarded to. Next hop values are only allowed in routes where the next hop type is VirtualAppliance.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "nextHopType": {
+    "description": "The type of Azure hop the packet should be sent to.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/261"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the route resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/270"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "VirtualNetworkGateway"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "VnetLocal"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Internet"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "VirtualAppliance"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "VirtualApplianceEcmp"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/255"
+   },
+   {
+    "$ref": "#/256"
+   },
+   {
+    "$ref": "#/257"
+   },
+   {
+    "$ref": "#/258"
+   },
+   {
+    "$ref": "#/259"
+   },
+   {
+    "$ref": "#/260"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RouteNextHopEcmp",
+  "properties": {
+   "nextHopIpAddresses": {
+    "description": "List of next hop IP addresses for ECMP routing. Must contain between 2 and 64 IP addresses.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/263"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  },
+  "maxLength": 64,
+  "minLength": 2
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/264"
+   },
+   {
+    "$ref": "#/265"
+   },
+   {
+    "$ref": "#/266"
+   },
+   {
+    "$ref": "#/267"
+   },
+   {
+    "$ref": "#/268"
+   },
+   {
+    "$ref": "#/269"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/253"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/48"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "All"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/273"
+   },
+   {
+    "$ref": "#/274"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/276"
+   },
+   {
+    "$ref": "#/277"
+   },
+   {
+    "$ref": "#/278"
+   },
+   {
+    "$ref": "#/279"
+   },
+   {
+    "$ref": "#/280"
+   },
+   {
+    "$ref": "#/281"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ServiceEndpointPropertiesFormat",
+  "properties": {
+   "locations": {
+    "description": "A list of locations.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/285"
+    }
+   },
+   "networkIdentifier": {
+    "description": "SubResource as network identifier.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the service endpoint resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/292"
+    }
+   },
+   "service": {
+    "description": "The type of the endpoint service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/286"
+   },
+   {
+    "$ref": "#/287"
+   },
+   {
+    "$ref": "#/288"
+   },
+   {
+    "$ref": "#/289"
+   },
+   {
+    "$ref": "#/290"
+   },
+   {
+    "$ref": "#/291"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/284"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ServiceEndpointPolicy",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "kind": {
+    "description": "Kind of service endpoint policy. This is metadata used for the Azure portal experience.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the service end point policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/295"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/316"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ServiceEndpointPolicyPropertiesFormat",
+  "properties": {
+   "contextualServiceEndpointPolicies": {
+    "description": "A collection of contextual service endpoint policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/315"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the service endpoint policy resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/314"
+    }
+   },
+   "resourceGuid": {
+    "description": "The resource GUID property of the service endpoint policy resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "serviceAlias": {
+    "description": "The alias indicating if the policy belongs to a service",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "serviceEndpointPolicyDefinitions": {
+    "description": "A collection of service endpoint policy definitions of the service endpoint policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/306"
+    }
+   },
+   "subnets": {
+    "description": "A collection of references to subnets.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/307"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ServiceEndpointPolicyDefinition",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the service endpoint policy definition.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/297"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ServiceEndpointPolicyDefinitionPropertiesFormat",
+  "properties": {
+   "description": {
+    "description": "A description for this rule. Restricted to 140 chars.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the service endpoint policy definition resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/305"
+    }
+   },
+   "service": {
+    "description": "Service endpoint name.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "serviceResources": {
+    "description": "A list of service resources.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/298"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/299"
+   },
+   {
+    "$ref": "#/300"
+   },
+   {
+    "$ref": "#/301"
+   },
+   {
+    "$ref": "#/302"
+   },
+   {
+    "$ref": "#/303"
+   },
+   {
+    "$ref": "#/304"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/296"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/48"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/308"
+   },
+   {
+    "$ref": "#/309"
+   },
+   {
+    "$ref": "#/310"
+   },
+   {
+    "$ref": "#/311"
+   },
+   {
+    "$ref": "#/312"
+   },
+   {
+    "$ref": "#/313"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/294"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/95"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IPConfiguration",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The name of the resource that is unique within a resource group. This name can be used to access the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the IP configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/320"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IPConfigurationPropertiesFormat",
+  "properties": {
+   "privateIPAddress": {
+    "description": "The private IP address of the IP configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "privateIPAllocationMethod": {
+    "description": "The private IP address allocation method.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/323"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the IP configuration resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/401"
+    }
+   },
+   "publicIPAddress": {
+    "description": "The reference to the public IP resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/324"
+    }
+   },
+   "subnet": {
+    "description": "The reference to the subnet resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/48"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Static"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Dynamic"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/321"
+   },
+   {
+    "$ref": "#/322"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PublicIPAddress",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "extendedLocation": {
+    "description": "The extended location of the public ip address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/132"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Public IP address properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/325"
+    }
+   },
+   "sku": {
+    "description": "The public IP address SKU.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/385"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/394"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "zones": {
+    "description": "A list of availability zones denoting the IP allocated for the resource needs to come from.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/393"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PublicIPAddressPropertiesFormat",
+  "properties": {
+   "ddosSettings": {
+    "description": "The DDoS protection custom policy associated with the public IP address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/338"
+    }
+   },
+   "deleteOption": {
+    "description": "Specify what happens to the public IP address when the VM using it is deleted",
+    "flags": 0,
+    "type": {
+     "$ref": "#/384"
+    }
+   },
+   "dnsSettings": {
+    "description": "The FQDN of the DNS record associated with the public IP address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/332"
+    }
+   },
+   "idleTimeoutInMinutes": {
+    "description": "The idle timeout of the public IP address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "ipAddress": {
+    "description": "The IP address associated with the public IP address resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "ipConfiguration": {
+    "description": "The IP configuration associated with the public IP address.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/319"
+    }
+   },
+   "ipTags": {
+    "description": "The list of tags associated with the public IP address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/344"
+    }
+   },
+   "linkedPublicIPAddress": {
+    "description": "The linked public IP address of the public IP address resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/324"
+    }
+   },
+   "migrationPhase": {
+    "description": "Migration phase of Public IP Address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/381"
+    }
+   },
+   "natGateway": {
+    "description": "The NatGateway for the Public IP address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/352"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the public IP address resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/351"
+    }
+   },
+   "publicIPAddressVersion": {
+    "description": "The public IP address version.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/331"
+    }
+   },
+   "publicIPAllocationMethod": {
+    "description": "The public IP address allocation method.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/328"
+    }
+   },
+   "publicIPPrefix": {
+    "description": "The Public IP Prefix this Public IP Address should be allocated from.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "resourceGuid": {
+    "description": "The resource GUID property of the public IP address resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "servicePublicIPAddress": {
+    "description": "The service public IP address of the public IP address resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/324"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Static"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Dynamic"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/326"
+   },
+   {
+    "$ref": "#/327"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv4"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv6"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/329"
+   },
+   {
+    "$ref": "#/330"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PublicIPAddressDnsSettings",
+  "properties": {
+   "domainNameLabel": {
+    "description": "The domain name label. The concatenation of the domain name label and the regionalized DNS zone make up the fully qualified domain name associated with the public IP address. If a domain name label is specified, an A DNS record is created for the public IP in the Microsoft Azure DNS system.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "domainNameLabelScope": {
+    "description": "The domain name label scope. If a domain name label and a domain name label scope are specified, an A DNS record is created for the public IP in the Microsoft Azure DNS system with a hashed value includes in FQDN.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/337"
+    }
+   },
+   "fqdn": {
+    "description": "The Fully Qualified Domain Name of the A DNS record associated with the public IP. This is the concatenation of the domainNameLabel and the regionalized DNS zone.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "reverseFqdn": {
+    "description": "The reverse FQDN. A user-visible, fully qualified domain name that resolves to this public IP address. If the reverseFqdn is specified, then a PTR DNS record is created pointing from the IP address in the in-addr.arpa domain to the reverse FQDN.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "TenantReuse"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SubscriptionReuse"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ResourceGroupReuse"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "NoReuse"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/333"
+   },
+   {
+    "$ref": "#/334"
+   },
+   {
+    "$ref": "#/335"
+   },
+   {
+    "$ref": "#/336"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DdosSettings",
+  "properties": {
+   "ddosCustomPolicy": {
+    "description": "The DDoS custom policy associated with the public IP.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "ddosProtectionPlan": {
+    "description": "The DDoS protection plan associated with the public IP. Can only be set if ProtectionMode is Enabled",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "protectionMode": {
+    "description": "The DDoS protection mode of the public IP",
+    "flags": 0,
+    "type": {
+     "$ref": "#/342"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "VirtualNetworkInherited"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/339"
+   },
+   {
+    "$ref": "#/340"
+   },
+   {
+    "$ref": "#/341"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IpTag",
+  "properties": {
+   "ipTagType": {
+    "description": "The IP tag type. Example: FirstPartyUsage.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "tag": {
+    "description": "The value of the IP tag associated with the public IP. Example: SQL.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/343"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/345"
+   },
+   {
+    "$ref": "#/346"
+   },
+   {
+    "$ref": "#/347"
+   },
+   {
+    "$ref": "#/348"
+   },
+   {
+    "$ref": "#/349"
+   },
+   {
+    "$ref": "#/350"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NatGateway",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Resource name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Nat Gateway properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/353"
+    }
+   },
+   "sku": {
+    "description": "The nat gateway SKU.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/370"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/375"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "zones": {
+    "description": "A list of availability zones denoting the zone in which Nat Gateway should be deployed.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/374"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NatGatewayPropertiesFormat",
+  "properties": {
+   "idleTimeoutInMinutes": {
+    "description": "The idle timeout of the nat gateway.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "nat64": {
+    "description": "Whether Nat64 is enabled for the NAT gateway resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/362"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the NAT gateway resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/369"
+    }
+   },
+   "publicIpAddresses": {
+    "description": "An array of public ip addresses V4 associated with the nat gateway resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/354"
+    }
+   },
+   "publicIpAddressesV6": {
+    "description": "An array of public ip addresses V6 associated with the nat gateway resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/355"
+    }
+   },
+   "publicIpPrefixes": {
+    "description": "An array of public ip prefixes V4 associated with the nat gateway resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/356"
+    }
+   },
+   "publicIpPrefixesV6": {
+    "description": "An array of public ip prefixes V6 associated with the nat gateway resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/357"
+    }
+   },
+   "resourceGuid": {
+    "description": "The resource GUID property of the NAT gateway resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "serviceGateway": {
+    "description": "Reference to an existing service gateway.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "sourceVirtualNetwork": {
+    "description": "A reference to the source virtual network using this nat gateway resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "subnets": {
+    "description": "An array of references to the subnets using this nat gateway resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/358"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/359"
+   },
+   {
+    "$ref": "#/360"
+   },
+   {
+    "$ref": "#/361"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/363"
+   },
+   {
+    "$ref": "#/364"
+   },
+   {
+    "$ref": "#/365"
+   },
+   {
+    "$ref": "#/366"
+   },
+   {
+    "$ref": "#/367"
+   },
+   {
+    "$ref": "#/368"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NatGatewaySku",
+  "properties": {
+   "name": {
+    "description": "Name of Nat Gateway SKU.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/373"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "StandardV2"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/371"
+   },
+   {
+    "$ref": "#/372"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Prepare"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Commit"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Abort"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Committed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/376"
+   },
+   {
+    "$ref": "#/377"
+   },
+   {
+    "$ref": "#/378"
+   },
+   {
+    "$ref": "#/379"
+   },
+   {
+    "$ref": "#/380"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Delete"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Detach"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/382"
+   },
+   {
+    "$ref": "#/383"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PublicIPAddressSku",
+  "properties": {
+   "name": {
+    "description": "Name of a public IP address SKU.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/389"
+    }
+   },
+   "tier": {
+    "description": "Tier of a public IP address SKU.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/392"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Basic"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "StandardV2"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/386"
+   },
+   {
+    "$ref": "#/387"
+   },
+   {
+    "$ref": "#/388"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Regional"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Global"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/390"
+   },
+   {
+    "$ref": "#/391"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/395"
+   },
+   {
+    "$ref": "#/396"
+   },
+   {
+    "$ref": "#/397"
+   },
+   {
+    "$ref": "#/398"
+   },
+   {
+    "$ref": "#/399"
+   },
+   {
+    "$ref": "#/400"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/319"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IPConfigurationProfile",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The name of the resource. This name can be used to access the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the IP configuration profile.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/404"
+    }
+   },
+   "type": {
+    "description": "Sub Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IPConfigurationProfilePropertiesFormat",
+  "properties": {
+   "provisioningState": {
+    "description": "The provisioning state of the IP configuration profile resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/411"
+    }
+   },
+   "subnet": {
+    "description": "The reference to the subnet resource to create a container network interface ip configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/48"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/405"
+   },
+   {
+    "$ref": "#/406"
+   },
+   {
+    "$ref": "#/407"
+   },
+   {
+    "$ref": "#/408"
+   },
+   {
+    "$ref": "#/409"
+   },
+   {
+    "$ref": "#/410"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/403"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResourceNavigationLink",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource that is unique within a resource group. This name can be used to access the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Resource navigation link properties format.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/415"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResourceNavigationLinkFormat",
+  "properties": {
+   "link": {
+    "description": "Link to the external resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "linkedResourceType": {
+    "description": "Resource type of the linked resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the resource navigation link resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/422"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/416"
+   },
+   {
+    "$ref": "#/417"
+   },
+   {
+    "$ref": "#/418"
+   },
+   {
+    "$ref": "#/419"
+   },
+   {
+    "$ref": "#/420"
+   },
+   {
+    "$ref": "#/421"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/414"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ServiceAssociationLink",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource that is unique within a resource group. This name can be used to access the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Resource navigation link properties format.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/425"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ServiceAssociationLinkPropertiesFormat",
+  "properties": {
+   "allowDelete": {
+    "description": "If true, the resource can be deleted.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "link": {
+    "description": "Link to the external resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "linkedResourceType": {
+    "description": "Resource type of the linked resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "locations": {
+    "description": "A list of locations.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/433"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the service association link resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/432"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/426"
+   },
+   {
+    "$ref": "#/427"
+   },
+   {
+    "$ref": "#/428"
+   },
+   {
+    "$ref": "#/429"
+   },
+   {
+    "$ref": "#/430"
+   },
+   {
+    "$ref": "#/431"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/424"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Delegation",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The name of the resource that is unique within a subnet. This name can be used to access the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/436"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ServiceDelegationPropertiesFormat",
+  "properties": {
+   "actions": {
+    "description": "The actions permitted to the service upon delegation.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/437"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the service delegation resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/444"
+    }
+   },
+   "serviceName": {
+    "description": "The name of the service to whom the subnet should be delegated (e.g. Microsoft.Sql/servers).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/438"
+   },
+   {
+    "$ref": "#/439"
+   },
+   {
+    "$ref": "#/440"
+   },
+   {
+    "$ref": "#/441"
+   },
+   {
+    "$ref": "#/442"
+   },
+   {
+    "$ref": "#/443"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/435"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/446"
+   },
+   {
+    "$ref": "#/447"
+   },
+   {
+    "$ref": "#/448"
+   },
+   {
+    "$ref": "#/449"
+   },
+   {
+    "$ref": "#/450"
+   },
+   {
+    "$ref": "#/451"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "NetworkSecurityGroupEnabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RouteTableEnabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/453"
+   },
+   {
+    "$ref": "#/454"
+   },
+   {
+    "$ref": "#/455"
+   },
+   {
+    "$ref": "#/456"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/458"
+   },
+   {
+    "$ref": "#/459"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/3"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Tenant"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "DelegatedServices"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/462"
+   },
+   {
+    "$ref": "#/463"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IpamPoolPrefixAllocation",
+  "properties": {
+   "allocatedAddressPrefixes": {
+    "description": "List of assigned IP address prefixes in the IpamPool of the associated resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/467"
+    }
+   },
+   "numberOfIpAddresses": {
+    "description": "Number of IP addresses to allocate.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "pool": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/466"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IpamPoolPrefixAllocationPool",
+  "properties": {
+   "id": {
+    "description": "Resource id of the associated Azure IpamPool resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/465"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/469"
+   },
+   {
+    "$ref": "#/470"
+   },
+   {
+    "$ref": "#/471"
+   },
+   {
+    "$ref": "#/472"
+   },
+   {
+    "$ref": "#/473"
+   },
+   {
+    "$ref": "#/474"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DdosFrontendIpConfigurationSettings",
+  "properties": {
+   "ddosCustomPolicy": {
+    "description": "The reference to the DDoS Custom Policy resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/17"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/13"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "BackendAddressPool",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of load balancer backend address pool.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/482"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "BackendAddressPoolPropertiesFormat",
+  "properties": {
+   "backendIPConfigurations": {
+    "description": "An array of references to IP addresses defined in network interfaces.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/502"
+    }
+   },
+   "drainPeriodInSeconds": {
+    "description": "Amount of seconds Load Balancer waits for before sending RESET to client and backend address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "inboundNatRules": {
+    "description": "An array of references to inbound NAT rules that use this backend address pool.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/505"
+    }
+   },
+   "loadBalancerBackendAddresses": {
+    "description": "An array of backend addresses.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/501"
+    }
+   },
+   "loadBalancingRules": {
+    "description": "An array of references to load balancing rules that use this backend address pool.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/503"
+    }
+   },
+   "location": {
+    "description": "The location of the backend address pool.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "outboundRule": {
+    "description": "A reference to an outbound rule that uses this backend address pool.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "outboundRules": {
+    "description": "An array of references to outbound rules that use this backend address pool.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/504"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the backend address pool resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/512"
+    }
+   },
+   "syncMode": {
+    "description": "Backend address synchronous mode for the backend pool",
+    "flags": 0,
+    "type": {
+     "$ref": "#/515"
+    }
+   },
+   "tunnelInterfaces": {
+    "description": "An array of gateway load balancer tunnel interfaces.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/492"
+    }
+   },
+   "virtualNetwork": {
+    "description": "A reference to a virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "GatewayLoadBalancerTunnelInterface",
+  "properties": {
+   "identifier": {
+    "description": "Identifier of gateway load balancer tunnel interface.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "port": {
+    "description": "Port of gateway load balancer tunnel interface.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "protocol": {
+    "description": "Protocol of gateway load balancer tunnel interface.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/487"
+    }
+   },
+   "type": {
+    "description": "Traffic type of gateway load balancer tunnel interface.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/491"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Native"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "VXLAN"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/484"
+   },
+   {
+    "$ref": "#/485"
+   },
+   {
+    "$ref": "#/486"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Internal"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "External"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/488"
+   },
+   {
+    "$ref": "#/489"
+   },
+   {
+    "$ref": "#/490"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/483"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "LoadBalancerBackendAddress",
+  "properties": {
+   "name": {
+    "description": "Name of the backend address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of load balancer backend address pool.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/494"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "LoadBalancerBackendAddressPropertiesFormat",
+  "properties": {
+   "adminState": {
+    "description": "A list of administrative states which once set can override health probe so that Load Balancer will always forward new connections to backend, or deny new connections and reset existing connections.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/500"
+    }
+   },
+   "inboundNatRulesPortMapping": {
+    "description": "Collection of inbound NAT rule port mappings.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/496"
+    }
+   },
+   "ipAddress": {
+    "description": "IP Address belonging to the referenced virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "loadBalancerFrontendIPConfiguration": {
+    "description": "Reference to the frontend ip address configuration defined in regional loadbalancer.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "networkInterfaceIPConfiguration": {
+    "description": "Reference to IP address defined in network interfaces.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "subnet": {
+    "description": "Reference to an existing subnet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "virtualNetwork": {
+    "description": "Reference to an existing virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NatRulePortMapping",
+  "properties": {
+   "backendPort": {
+    "description": "Backend port.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "frontendPort": {
+    "description": "Frontend port.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "inboundNatRuleName": {
+    "description": "Name of inbound NAT rule.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/495"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Up"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Down"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/497"
+   },
+   {
+    "$ref": "#/498"
+   },
+   {
+    "$ref": "#/499"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/493"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/15"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/506"
+   },
+   {
+    "$ref": "#/507"
+   },
+   {
+    "$ref": "#/508"
+   },
+   {
+    "$ref": "#/509"
+   },
+   {
+    "$ref": "#/510"
+   },
+   {
+    "$ref": "#/511"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Automatic"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Manual"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/513"
+   },
+   {
+    "$ref": "#/514"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/481"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "InboundNatRule",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of load balancer inbound NAT rule.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/518"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "InboundNatRulePropertiesFormat",
+  "properties": {
+   "backendAddressPool": {
+    "description": "A reference to backendAddressPool resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "backendIPConfiguration": {
+    "description": "A reference to a private IP address defined on a network interface of a VM. Traffic sent to the frontend port of each of the frontend IP configurations is forwarded to the backend IP.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/15"
+    }
+   },
+   "backendPort": {
+    "description": "The port used for the internal endpoint. Acceptable values range from 1 to 65535.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "enableFloatingIP": {
+    "description": "Configures a virtual machine's endpoint for the floating IP capability required to configure a SQL AlwaysOn Availability Group. This setting is required when using the SQL AlwaysOn Availability Groups in SQL server. This setting can't be changed after you create the endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "enableTcpReset": {
+    "description": "Receive bidirectional TCP Reset on TCP flow idle timeout or unexpected connection termination. This element is only used when the protocol is set to TCP.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "frontendIPConfiguration": {
+    "description": "A reference to frontend IP addresses.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "frontendPort": {
+    "description": "The port for the external endpoint. Port numbers for each rule must be unique within the Load Balancer. Acceptable values range from 1 to 65534.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "frontendPortRangeEnd": {
+    "description": "The port range end for the external endpoint. This property is used together with BackendAddressPool and FrontendPortRangeStart. Individual inbound NAT rule port mappings will be created for each backend address from BackendAddressPool. Acceptable values range from 1 to 65534.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "frontendPortRangeStart": {
+    "description": "The port range start for the external endpoint. This property is used together with BackendAddressPool and FrontendPortRangeEnd. Individual inbound NAT rule port mappings will be created for each backend address from BackendAddressPool. Acceptable values range from 1 to 65534.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "idleTimeoutInMinutes": {
+    "description": "The timeout for the TCP idle connection. The value can be set between 4 and 30 minutes. The default value is 4 minutes. This element is only used when the protocol is set to TCP.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "protocol": {
+    "description": "The reference to the transport protocol used by the load balancing rule.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/523"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the inbound NAT rule resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/530"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Udp"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Tcp"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "All"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Quic"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/519"
+   },
+   {
+    "$ref": "#/520"
+   },
+   {
+    "$ref": "#/521"
+   },
+   {
+    "$ref": "#/522"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/524"
+   },
+   {
+    "$ref": "#/525"
+   },
+   {
+    "$ref": "#/526"
+   },
+   {
+    "$ref": "#/527"
+   },
+   {
+    "$ref": "#/528"
+   },
+   {
+    "$ref": "#/529"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/517"
+  }
+ },
+ {
+  "$type": "IntegerType",
+  "maxValue": 128,
+  "minValue": 1
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Static"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Dynamic"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/533"
+   },
+   {
+    "$ref": "#/534"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv4"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv6"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/536"
+   },
+   {
+    "$ref": "#/537"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/63"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/540"
+   },
+   {
+    "$ref": "#/541"
+   },
+   {
+    "$ref": "#/542"
+   },
+   {
+    "$ref": "#/543"
+   },
+   {
+    "$ref": "#/544"
+   },
+   {
+    "$ref": "#/545"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkInterfaceIPConfigurationPrivateLinkConnectionProperties",
+  "properties": {
+   "fqdns": {
+    "description": "List of FQDNs for current private link connection.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/548"
+    }
+   },
+   "groupId": {
+    "description": "The group ID for current private link connection.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "requiredMemberName": {
+    "description": "The required member name for current private link connection.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/15"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ApplicationGatewayBackendAddress",
+  "properties": {
+   "fqdn": {
+    "description": "Fully qualified domain name (FQDN).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "ipAddress": {
+    "description": "IP address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/550"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/552"
+   },
+   {
+    "$ref": "#/553"
+   },
+   {
+    "$ref": "#/554"
+   },
+   {
+    "$ref": "#/555"
+   },
+   {
+    "$ref": "#/556"
+   },
+   {
+    "$ref": "#/557"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "AddressSpace",
+  "properties": {
+   "addressPrefixes": {
+    "description": "A list of address blocks reserved for this virtual network in CIDR notation.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/560"
+    }
+   },
+   "ipamPoolPrefixAllocations": {
+    "description": "A list of IPAM Pools allocating IP address prefixes.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/561"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/465"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VirtualNetworkPropertiesFormat",
+  "properties": {
+   "addressSpace": {
+    "description": "The AddressSpace that contains an array of IP address ranges that can be used by subnets.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/559"
+    }
+   },
+   "bgpCommunities": {
+    "description": "Bgp Communities sent over ExpressRoute with each route corresponding to a prefix in this VNET.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/568"
+    }
+   },
+   "ddosProtectionPlan": {
+    "description": "The DDoS protection plan associated with the virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "defaultPublicNatGateway": {
+    "description": "A reference to the default public nat gateway being used by this virtual network resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "dhcpOptions": {
+    "description": "The dhcpOptions that contains an array of DNS servers available to VMs deployed in the virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/563"
+    }
+   },
+   "enableDdosProtection": {
+    "description": "Indicates if DDoS protection is enabled for all the protected resources in the virtual network. It requires a DDoS protection plan associated with the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "enableVmProtection": {
+    "description": "Indicates if VM protection is enabled for all the subnets in the virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "encryption": {
+    "description": "Indicates if encryption is enabled on virtual network and if VM without encryption is allowed in encrypted VNet.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/569"
+    }
+   },
+   "flowLogs": {
+    "description": "A collection of references to flow log resources.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/600"
+    }
+   },
+   "flowTimeoutInMinutes": {
+    "description": "The FlowTimeout value (in minutes) for the Virtual Network",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "ipAllocations": {
+    "description": "Array of IpAllocation which reference this VNET.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/599"
+    }
+   },
+   "privateEndpointVNetPolicies": {
+    "description": "Private Endpoint VNet Policies.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/603"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the virtual network resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/598"
+    }
+   },
+   "resourceGuid": {
+    "description": "The resourceGuid property of the Virtual Network resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "subnets": {
+    "description": "A list of subnets in a Virtual Network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/565"
+    }
+   },
+   "summarizedGatewayPrefixes": {
+    "description": "A configurable list of summarized gateway prefixes advertised for the virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/559"
+    }
+   },
+   "virtualNetworkPeerings": {
+    "description": "A list of peerings in a Virtual Network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/591"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DhcpOptions",
+  "properties": {
+   "dnsServers": {
+    "description": "The list of DNS servers IP addresses.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/564"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/48"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VirtualNetworkPeering",
+  "properties": {
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "Resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "Name of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the virtual network peering.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/567"
+    }
+   },
+   "type": {
+    "description": "Resource type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VirtualNetworkPeeringPropertiesFormat",
+  "properties": {
+   "allowForwardedTraffic": {
+    "description": "Whether the forwarded traffic from the VMs in the local virtual network will be allowed/disallowed in remote virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "allowGatewayTransit": {
+    "description": "If gateway links can be used in remote virtual networking to link to this virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "allowVirtualNetworkAccess": {
+    "description": "Whether the VMs in the local virtual network space would be able to access the VMs in remote virtual network space.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "doNotVerifyRemoteGateways": {
+    "description": "If we need to verify the provisioning state of the remote gateway.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "enableOnlyIPv6Peering": {
+    "description": "Whether only Ipv6 address space is peered for subnet peering.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "localAddressSpace": {
+    "description": "The local address space of the local virtual network that is peered.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/559"
+    }
+   },
+   "localSubnetNames": {
+    "description": "List of local subnet names that are subnet peered with remote virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/589"
+    }
+   },
+   "localVirtualNetworkAddressSpace": {
+    "description": "The current local address space of the local virtual network that is peered.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/559"
+    }
+   },
+   "peerCompleteVnets": {
+    "description": "Whether complete virtual network address space is peered.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "peeringState": {
+    "description": "The status of the virtual network peering.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/576"
+    }
+   },
+   "peeringSyncLevel": {
+    "description": "The peering sync status of the virtual network peering.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/581"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the virtual network peering resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/588"
+    }
+   },
+   "remoteAddressSpace": {
+    "description": "The reference to the address space peered with the remote virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/559"
+    }
+   },
+   "remoteBgpCommunities": {
+    "description": "The reference to the remote virtual network's Bgp Communities.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/568"
+    }
+   },
+   "remoteSubnetNames": {
+    "description": "List of remote subnet names from remote virtual network that are subnet peered.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/590"
+    }
+   },
+   "remoteVirtualNetwork": {
+    "description": "The reference to the remote virtual network. The remote virtual network can be in the same or different region (preview). See here to register for the preview and learn more (https://docs.microsoft.com/en-us/azure/virtual-network/virtual-network-create-peering).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "remoteVirtualNetworkAddressSpace": {
+    "description": "The reference to the current address space of the remote virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/559"
+    }
+   },
+   "remoteVirtualNetworkEncryption": {
+    "description": "The reference to the remote virtual network's encryption",
+    "flags": 2,
+    "type": {
+     "$ref": "#/569"
+    }
+   },
+   "resourceGuid": {
+    "description": "The resourceGuid property of the Virtual Network peering resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "useRemoteGateways": {
+    "description": "If remote gateways can be used on this virtual network. If the flag is set to true, and allowGatewayTransit on remote peering is also true, virtual network will use gateways of remote virtual network for transit. Only one peering can have this flag set to true. This flag cannot be set if virtual network already has a gateway.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VirtualNetworkBgpCommunities",
+  "properties": {
+   "regionalCommunity": {
+    "description": "The BGP community associated with the region of the virtual network.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "virtualNetworkCommunity": {
+    "description": "The BGP community associated with the virtual network.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VirtualNetworkEncryption",
+  "properties": {
+   "enabled": {
+    "description": "Indicates if encryption is enabled on the virtual network.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "enforcement": {
+    "description": "If the encrypted VNet allows VM that does not support encryption. This field is for future support, AllowUnencrypted is the only supported value at general availability.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/572"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "DropUnencrypted"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AllowUnencrypted"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/570"
+   },
+   {
+    "$ref": "#/571"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Initiated"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Connected"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disconnected"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/573"
+   },
+   {
+    "$ref": "#/574"
+   },
+   {
+    "$ref": "#/575"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "FullyInSync"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RemoteNotInSync"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "LocalNotInSync"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "LocalAndRemoteNotInSync"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/577"
+   },
+   {
+    "$ref": "#/578"
+   },
+   {
+    "$ref": "#/579"
+   },
+   {
+    "$ref": "#/580"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/582"
+   },
+   {
+    "$ref": "#/583"
+   },
+   {
+    "$ref": "#/584"
+   },
+   {
+    "$ref": "#/585"
+   },
+   {
+    "$ref": "#/586"
+   },
+   {
+    "$ref": "#/587"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/566"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/592"
+   },
+   {
+    "$ref": "#/593"
+   },
+   {
+    "$ref": "#/594"
+   },
+   {
+    "$ref": "#/595"
+   },
+   {
+    "$ref": "#/596"
+   },
+   {
+    "$ref": "#/597"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/5"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/218"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Basic"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/601"
+   },
+   {
+    "$ref": "#/602"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/networkSecurityGroups"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-07-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/networkSecurityGroups",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/605"
+    }
+   },
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the network security group.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/52"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/607"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/604"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/606"
+  },
+  "name": "Microsoft.Network/networkSecurityGroups@2025-07-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/virtualNetworks"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-07-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/virtualNetworks",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/610"
+    }
+   },
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "extendedLocation": {
+    "description": "The extended location of the virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/132"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the virtual network.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/562"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/612"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/609"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/611"
+  },
+  "name": "Microsoft.Network/virtualNetworks@2025-07-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ }
+]

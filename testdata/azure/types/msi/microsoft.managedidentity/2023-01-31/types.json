@@ -1,0 +1,245 @@
+[
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.ManagedIdentity/userAssignedIdentities"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2023-01-31"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.ManagedIdentity/userAssignedIdentities",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "The geo-location where the resource lives",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The properties associated with the identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/4"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/7"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/6"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "UserAssignedIdentityProperties",
+  "properties": {
+   "clientId": {
+    "description": "The id of the app associated with the identity. This is a random generated UUID by MSI.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "principalId": {
+    "description": "The id of the service principal object associated with the created identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "tenantId": {
+    "description": "The id of the tenant which the identity belongs to.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringType",
+  "maxLength": 36,
+  "minLength": 36,
+  "pattern": "^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$"
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "TrackedResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SystemData",
+  "properties": {
+   "createdAt": {
+    "description": "The timestamp of resource creation (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createdBy": {
+    "description": "The identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createdByType": {
+    "description": "The type of identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/12"
+    }
+   },
+   "lastModifiedAt": {
+    "description": "The timestamp of resource last modification (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "lastModifiedBy": {
+    "description": "The identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "lastModifiedByType": {
+    "description": "The type of identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/8"
+   },
+   {
+    "$ref": "#/9"
+   },
+   {
+    "$ref": "#/10"
+   },
+   {
+    "$ref": "#/11"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/13"
+   },
+   {
+    "$ref": "#/14"
+   },
+   {
+    "$ref": "#/15"
+   },
+   {
+    "$ref": "#/16"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/3"
+  },
+  "name": "Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31",
+  "readableScopes": 8,
+  "writableScopes": 8
+ }
+]

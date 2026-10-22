@@ -1,0 +1,111 @@
+[
+ {
+  "$type": "StringType",
+  "maxLength": 90,
+  "minLength": 1,
+  "pattern": "^[-\\w\\._\\(\\)]+$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Resources/resourceGroups"
+ },
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2024-11-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Resources/resourceGroups",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "location": {
+    "description": "The location of the resource group. It cannot be changed after the resource group has been created. It must be one of the supported Azure locations.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "managedBy": {
+    "description": "The ID of the resource that manages this resource group.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The resource group properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "tags": {
+    "description": "The tags attached to the resource group.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/6"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResourceGroupProperties",
+  "properties": {
+   "provisioningState": {
+    "description": "The provisioning state.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "ResourceGroupTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/4"
+  },
+  "name": "Microsoft.Resources/resourceGroups@2024-11-01",
+  "readableScopes": 4,
+  "writableScopes": 4
+ }
+]

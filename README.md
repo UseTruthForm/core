@@ -12,7 +12,10 @@ that you can review, commit and diff.
 Cloud Control type in the CloudFormation registry) passes its restore drill
 against a schema-driven fake. It also passed the disaster drill against a
 real account (`scripts/drill-aws.sh`: 6 free-tier resources deleted and
-restored with no diff), but most types haven't met real AWS yet. See
+restored with no diff), but most types haven't met real AWS yet. Azure (every
+type with a published definition) passes its drill against a fake, and the
+disaster drill against a real subscription (`scripts/drill-azure.sh`: 4
+free resources deleted and restored with no diff). See
 [AWS](docs/architecture.md#aws-cloud-control-driven-by-the-registry). Other
 platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.
@@ -31,6 +34,9 @@ stackdna schema-diff old/ new/
 stackdna capture --platform aws --region eu-west-1 --profile sandbox --out snap/ [--types 'AWS::S3::*,AWS::IAM::Role']
 stackdna restore --platform aws --region eu-west-1 --profile dr --from snap/ [--values write-only.yaml]
 stackdna aws-coverage   # offline: what the public registry lets StackDNA capture
+
+stackdna capture --platform azure --subscription <id> --out snap/ [--types 'Microsoft.Network/*']
+stackdna restore --platform azure --subscription <id> --from snap/ [--values secrets.yaml]
 ```
 
 - **capture** discovers every resource type the cluster serves, including custom

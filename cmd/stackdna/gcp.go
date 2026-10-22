@@ -80,6 +80,9 @@ func captureGCP(ctx context.Context, g *gcpFlags, out string) int {
 	if err := snap.Write(out); err != nil {
 		return fail(err)
 	}
+	if err := writeReport(out, snap, "gcp "+g.project); err != nil {
+		return fail(err)
+	}
 	d, _ := snapshot.Digest(out)
 	read, notCaptured, _ := summarize(snap)
 	fmt.Printf("captured %d resources across %d types into %s (%s)\n", len(snap.Objects), read, out, d)

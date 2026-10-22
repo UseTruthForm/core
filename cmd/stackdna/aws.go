@@ -120,6 +120,9 @@ func captureAWS(ctx context.Context, a *awsFlags, out string) int {
 	if err := snap.Write(out); err != nil {
 		return fail(err)
 	}
+	if err := writeReport(out, snap, "aws "+a.region); err != nil {
+		return fail(err)
+	}
 	d, _ := snapshot.Digest(out)
 	read, notCaptured, failed := summarize(snap)
 	fmt.Printf("captured %d resources across %d types into %s (%s)\n", len(snap.Objects), read, out, d)

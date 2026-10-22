@@ -402,6 +402,14 @@ models:
 		switch {
 		case errors.Is(errs[i], ErrNotFound):
 			continue // deleted between list and read
+		case errs[i] != nil && strings.Contains(errs[i].Error(), "does not belong to a subnet"):
+			// The VPC's main route-table association: AWS creates it with
+			// every VPC, Cloud Control lists it as a subnet association,
+			// and its read handler refuses it. Left as unreadable, every
+			// capture with EC2 read as incomplete (environment capture of
+			// us-east-2, 2026-10-22).
+			in.skip(snapshot.Skip{Resource: n, Name: id, Reason: OwnedByAWS + "the VPC's main route-table association, created with the VPC"})
+			continue
 		case errs[i] != nil:
 			// One unreadable resource no longer drops its whole type (the
 			// full capture lost CodePipeline's types to AWS's own built-in

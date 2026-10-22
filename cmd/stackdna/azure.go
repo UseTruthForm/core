@@ -86,6 +86,9 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 	if err := snap.Write(out); err != nil {
 		return fail(err)
 	}
+	if err := writeReport(out, snap, "azure "+a.subscription); err != nil {
+		return fail(err)
+	}
 	d, _ := snapshot.Digest(out)
 	read, notCaptured, _ := summarize(snap)
 	fmt.Printf("captured %d resources across %d types into %s (%s)\n", len(snap.Objects), read, out, d)

@@ -61,6 +61,26 @@ func TestAccountIDIsNeverAReference(t *testing.T) {
 	}
 }
 
+// The VPC's main route-table association is listed but unreadable; it is
+// AWS's, created with the VPC, and must not make every capture incomplete.
+func TestMainRouteTableAssociationIsAWS(t *testing.T) {
+	e := newEnv(t)
+	e.src.Unreadable = map[string]bool{}
+	for _, id := range e.src.IDs("AWS::SQS::Queue") {
+		e.src.Unreadable["AWS::SQS::Queue|"+id] = true
+	}
+	e.src.UnreadableMsg = "The RouteTableAssociation does not belong to a subnet"
+	snap, err := e.adapter(e.src).Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range snap.Skips {
+		if s.Resource == "AWS::SQS::Queue" && !strings.HasPrefix(s.Reason, OwnedByAWS) {
+			t.Errorf("main association recorded as %q", s.Reason)
+		}
+	}
+}
+
 // A resource that is listed but cannot be read is recorded by identifier;
 // the rest of its type is still captured.
 func TestUnreadableResourceKeepsItsType(t *testing.T) {

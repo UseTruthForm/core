@@ -160,13 +160,20 @@ func fillSecret(ctx context.Context, src *Clients, body map[string]any, keys []s
 	return nil
 }
 
+// waitForCRDs waits until each CRD is Established and its types appear in
+// discovery. Established alone is not enough: the API server publishes a
+// new group in discovery a moment later, and CI once restored a Widget
+// inside that gap ("no matches for kind Widget"), which failed the drill on
+// a run that changed no Kubernetes code. The discovery check is the very
+// lookup the mapper does next. A CRD still not served at the deadline is
+// left to fail in applyOne, by name, rather than passed silently.
 func waitForCRDs(ctx context.Context, c *Clients, crds []snapshot.Object) {
 	gvr := schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}
 	deadline := time.Now().Add(60 * time.Second)
 	for _, o := range crds {
 		for time.Now().Before(deadline) {
 			u, err := c.Dynamic.Resource(gvr).Get(ctx, o.Name(), metav1.GetOptions{})
-			if err == nil && crdEstablished(u.Object) {
+			if err == nil && crdEstablished(u.Object) && crdDiscoverable(c, u.Object) {
 				break
 			}
 			if err != nil && !apierrors.IsNotFound(err) {
@@ -175,6 +182,34 @@ func waitForCRDs(ctx context.Context, c *Clients, crds []snapshot.Object) {
 			time.Sleep(time.Second)
 		}
 	}
+}
+
+// crdDiscoverable reports whether discovery lists the CRD's resource for
+// every served version.
+func crdDiscoverable(c *Clients, crd map[string]any) bool {
+	spec, _ := crd["spec"].(map[string]any)
+	group, _ := spec["group"].(string)
+	names, _ := spec["names"].(map[string]any)
+	plural, _ := names["plural"].(string)
+	for _, v := range list(spec["versions"]) {
+		ver, _ := v.(map[string]any)
+		if served, _ := ver["served"].(bool); !served {
+			continue
+		}
+		name, _ := ver["name"].(string)
+		res, err := c.Discovery.ServerResourcesForGroupVersion(group + "/" + name)
+		if err != nil {
+			return false
+		}
+		found := false
+		for _, r := range res.APIResources {
+			found = found || r.Name == plural
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func crdEstablished(obj map[string]any) bool {

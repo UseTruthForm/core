@@ -70,3 +70,15 @@ local_resource(
     resource_deps=["build"],
     labels=["real-world"],
 )
+
+# What the AWS adapter can capture, measured from AWS's public registry
+# bundle with the adapter's own rules. Offline apart from downloading that
+# bundle; no account is touched. Run it to see when AWS adds types.
+local_resource(
+    "aws-coverage",
+    cmd=[BIN, "aws-coverage"],
+    trigger_mode=TRIGGER_MODE_MANUAL,
+    auto_init=False,
+    resource_deps=["build"],
+    labels=["real-world"],
+)

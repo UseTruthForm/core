@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -216,5 +217,28 @@ func TestCompareSchemasShowsAddedAndRemovedFields(t *testing.T) {
 		if line != want[i] {
 			t.Fatalf("got %s, want %s", line, want[i])
 		}
+	}
+}
+
+// A full AWS capture failed after 32 minutes, writing nothing, because one
+// SSM document held a character JSON leaves raw and YAML refuses. Every
+// such character must be written and read back exactly.
+func TestUnusualCharactersRoundTrip(t *testing.T) {
+	values := map[string]any{}
+	for i, r := range []rune{0x7f, 0x80, 0x85, 0x9b, 0x9f, 0xa0, 0xfeff, 0xfffe, 0xffff, 0x1f600} {
+		values[fmt.Sprintf("v%d", i)] = "before" + string(r) + "after"
+	}
+	values["mixed"] = "tab\there\nnewline\x00nul\x1besc line-sep"
+	s := Snapshot{Platform: "aws", Policy: "default", Objects: []Object{obj("v1", "ConfigMap", "", "odd", map[string]any{"data": values})}}
+	dir := t.TempDir()
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch := Compare(s, got); len(ch) != 0 {
+		t.Fatalf("read-back differs: %+v", ch)
 	}
 }

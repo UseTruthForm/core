@@ -81,10 +81,9 @@ StackDNA's rule is that no adapter may contain a field list:
 - **Restore** validates strictly, so a field the target doesn't serve is an
   error, never a silent drop.
 
-Each future adapter follows the same rule, using the platform's own
-published schema: CloudFormation registry schemas for AWS Cloud Control
-(`readOnlyProperties`, `createOnlyProperties`, `writeOnlyProperties`), the
-Azure REST API specs (`readOnly`), GCP discovery documents (output-only
+Every adapter follows the same rule, using the platform's own published
+schema: CloudFormation registry schemas for AWS Cloud Control (done; see
+below), the Azure REST API specs (`readOnly`), GCP discovery documents (output-only
 fields), and vendor OpenAPI specs for SaaS. A refreshed schema arrives as a
 schema-diff, not as a code change.
 
@@ -96,12 +95,194 @@ those secrets unless it has a source for the values. Today that source is a
 live cluster (`--secrets-from-context`), for migrations and drills. A vault
 source comes next.
 
+## AWS: Cloud Control, driven by the registry
+
+`internal/awscc` has no code for any AWS type. Cloud Control is one generic
+CRUD API across the CloudFormation registry, and each type's registry schema
+says everything the adapter needs:
+
+| Schema says | StackDNA does |
+|---|---|
+| `primaryIdentifier` | How to read it, and whether the user chose the ID (`BucketName`) or AWS generated it (`VpcId`) |
+| `readOnlyProperties` | Moves those values out of `spec` into `status`. They are never sent back, and they are the targets of references |
+| `writeOnlyProperties` | Drops them (AWS never returns them anyway), annotates the object with `stackdna.org/write-only`, and requires them at restore when they are also `required` |
+| `handlers.list.handlerSchema.required` | Builds a list plan. An enum property (WAFv2 `Scope`) is listed once per value. Any other property comes from one parent type found by name, such as `RestApiId` from `AWS::ApiGateway::RestApi` |
+| `insertionOrder: false` | Sorts the array canonically (tags, CIDR lists), so captures are deterministic |
+
+Pointers are applied in full, including nested ones and `*` across arrays
+(`/properties/Code/ZipFile`, `/properties/LifecycleConfiguration/Rules/*/Transition`).
+
+**Coverage.** `stackdna aws-coverage` measures this from the public bundle,
+using the adapter's own rules. The bundle had 1,854 types on 2026-10-21:
+
+- 1,607 (87%) are capturable and creatable:
+  - 1,286 are listed directly;
+  - 12 are listed once per enum value;
+  - 309 are listed per parent.
+- 247 are not capturable, and each is named in `coverage.yaml`:
+  - 60 have a parent the schemas don't identify (for example, QuickSight
+    needs the account ID, and Organizations OUs nest under roots);
+  - 78 have no list or read handler;
+  - 109 are legacy CloudFormation-only types.
+
+**Logical names.** Generated IDs differ in every account, so an object is
+named the way a person named it:
+
+1. its user-chosen identifier;
+2. otherwise its `Name` tag;
+3. otherwise a `Name` or `<Type>Name` property;
+4. otherwise a hash of its spec after its references are tokenized (`h-…`).
+
+Because the names are the same in every account, a snapshot from one account
+diffs cleanly against another account. Naming walks the reference graph,
+because a hash taken before the references were tokenized would contain the
+source account's IDs.
+
+**References.** A read-only identifying value that appears in another
+resource's spec is replaced with a token that restore resolves to the value
+the target account generated:
+
+```yaml
+Role: "{{stackdna|AWS::IAM::Role|shop-lambda|Arn}}"
+```
+
+These values count as identifying: the resource's identifier, `*Id`, `*Arn`
+and `*Url` properties, and ARNs. IDs must match exactly. ARNs and URLs also
+match inside larger strings, such as policy documents and environment
+variables. A status word such as `available` is never a reference.
+
+**Restore** first reads the target with the same naming rules, then creates
+what is missing, in reference order:
+
+- An object that already exists and is identical is reported as applied.
+  This makes a second restore a no-op.
+- An object that exists but differs is reported as not applied, with the
+  differing fields. StackDNA doesn't update or delete anything.
+- A token can resolve to a resource that wasn't in the snapshot but exists in
+  the target. The target's default VPC is one example.
+- Write-only values come from `--values <file>` and go only to AWS.
+
+**Skipped by default, each with a reason:**
+
+- resources tagged `aws:cloudformation:stack-name`, because the stack
+  recreates them;
+- resources carrying any other `aws:` tag;
+- service-linked roles;
+- anything identical to an account baseline (`--baseline`, a capture of a
+  fresh account), such as the default VPC.
+
+**Proof today: a fake that refuses what AWS refuses.** The drill
+(`internal/awscc/drill_test.go`) runs `drilltest.Run` between two in-memory
+accounts that share one ID space. A create that carries another account's
+ID fails, as `InvalidVpcID.NotFound` would. Without that refusal, a restore
+that never remapped anything would pass. Mutation checks confirm that
+disabling tokenization, set sorting or the managed-resource skip each fails
+the suite.
+
+**Proof against real AWS: `scripts/drill-aws.sh`.** This is the disaster
+case, run in one region:
+
+1. seed an app with the plain AWS CLI;
+2. capture it twice, requiring identical digests;
+3. delete the app;
+4. restore from the snapshot;
+5. require an empty diff;
+6. delete everything again, then require that the region diffs clean against
+   its pre-drill baseline, so a leaked resource fails the run.
+
+It uses free-tier resources only (VPC, subnet, SQS, SSM Standard parameter,
+API Gateway REST API and resource) and takes about 6 minutes. It passed in
+us-east-2 on 2026-10-21 with 6 of 6 resources restored under new IDs.
+
+The first runs found four things the fake had not modelled. Each one is now
+pinned in the fake tests:
+
+- **API Gateway lists each REST API's root resource**, which AWS creates
+  along with the API. Capture now skips any resource whose generated ID
+  another resource reports as a read-only property (here the API's
+  `RootResourceId`), and routes references through that parent. The same
+  rule covers a VPC's default security group and network ACL.
+- **A subnet reads back both `AvailabilityZone` and `AvailabilityZoneId`,
+  but a create with both is refused.** The schema doesn't declare this. The
+  zone name is an account-relative alias, so it moves to `status` and the
+  spec keeps the ID. This is the only type-specific entry (`aliases` in
+  `capture.go`), and it names the failure that found it.
+- **List APIs are eventually consistent.** A capture taken seconds after a
+  create missed an SQS queue, so the two captures differed. The drill now
+  waits until Cloud Control lists what it created. A real capture can
+  likewise miss anything created in the last minute or so.
+- **SQS holds a deleted queue's name for 60 seconds.** A restore right after
+  a deletion fails with `QueueDeletedRecently`.
+
+**Full-registry capture against real AWS.** It runs read-only across all
+1,498 types in us-east-2: 4m52s at 8 calls in flight, nothing lost to
+throttling, and two consecutive runs byte-identical. Getting there took
+six runs. Each one found something that only a real account shows:
+
+| Run | Time | What went wrong, and the fix |
+|---|---|---|
+| Serial | 32 min | Writing failed on one AWS SSM document containing a character YAML refuses (DEL, C1 controls), so nothing was saved. Such characters are now escaped, and PyYAML reads them back exactly. |
+| 8 in flight | 7 min | 188 types lost to "retry quota exceeded", the SDK's client retry budget. Also, 2,391 "resources" were captured, about 2,300 of them AWS's own: managed IAM policies, public SSM documents, RAM permissions, default parameter groups. |
+| Adaptive retry | 52 min | Adaptive mode slows the whole client when any one service throttles. |
+| Standard retry | 40 min | Long SDK retries held the in-flight slots while sleeping. 34 reads that always fail with HTTP 500 (CodePipeline's built-in action types) stalled everything for 21 minutes. |
+| Retry outside the slot | 4m52s | The SDK retries briefly. The inventory retries throttling with the slot released, and work is interleaved across services. |
+
+**AWS-owned resources are skipped by rule, not by a list.** There are
+three rules:
+
+- an ARN in AWS's namespace (`arn:aws:iam::aws:…`, or an empty account
+  with a region set);
+- an ARN naming a different account (AWS's patch baselines belong to
+  `733109147000`, and a resource can also be shared in from elsewhere);
+- a name prefix AWS reserves (SSM `aws*`, KMS `alias/aws/`, and others).
+
+Only a resource's own read-only ARN counts. A customer role that points
+at an AWS-managed policy stays the customer's. In the sandbox this
+reduced 2,391 "resources" to 86, and skipped 2,958 with reasons.
+
+**Every type that isn't captured is in one of five groups:**
+
+- AWS-owned;
+- not set up in this account (53 types, such as Audit Manager and
+  Control Tower);
+- needing list input that its schema doesn't declare (63 types, such as
+  lifecycle hooks, which need an Auto Scaling group). These are real gaps,
+  and the summary says so;
+- permission denials;
+- AWS's own handler errors.
+
+Only the last two count as incomplete: 23 types, plus 41 AWS built-ins
+whose read handlers fail.
+
+**Still unverified against AWS:**
+
+- restore beyond the 6 types the drill used (the full capture proves
+  reading, not recreating);
+- IAM (the sandbox user can list roles but not read them);
+- cross-account restore;
+- the Lambda and Secrets Manager write-only paths, which are proven only in
+  the fake.
+
+Cross-region restore also needs a zone mapping. Zone IDs are region-specific,
+so a subnet captured in one region can't be created in another as it stands.
+
+**Known limits:**
+
+- Cross-region restore of subnets needs a zone mapping (see above).
+
+- S3 bucket names are global, so a cross-account restore of a user-named
+  bucket fails while the source bucket exists.
+- Account IDs in references to resources outside the snapshot stay literal.
+- StackDNA never updates an existing resource.
+- Data is never captured: S3 objects, queue messages and table rows.
+
 ## Roadmap
 
 | Step | What |
 |---|---|
 | Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so); `--json` output |
-| Platforms | AWS via Cloud Control API (one CRUD interface across 1,000+ types, with CloudFormation registry schemas); Azure via Resource Graph plus ARM `GET`/`PUT` per resource ID; GCP via Cloud Asset Inventory |
+| AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; a zone mapping for cross-region restore; account-ID tokens; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
+| Platforms | Azure via Resource Graph plus ARM `GET`/`PUT` per resource ID; GCP via Cloud Asset Inventory |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |
 | Agents | A small MCP server (`discover`, `diff`, `snapshot`, `explain`), read-only against live systems by default. Agents watch for drift and open PRs; CI regenerates snapshots deterministically, so a PR shows only real change |
 | Proof | Scheduled restore drills per platform: restore into a sandbox and require an empty diff |

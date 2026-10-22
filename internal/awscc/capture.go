@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -190,7 +191,7 @@ func (in *inv) named() []*resource {
 		out = append(out, in.got[n]...)
 	}
 	markCreatedBy(out)
-	name(out)
+	name(out, in.account)
 	return out
 }
 
@@ -212,6 +213,14 @@ func markCreatedBy(rs []*resource) {
 		for _, k := range sortedKeys(r.stat) {
 			v, ok := r.stat[k].(string)
 			if !ok || k == "identifier" || strings.Contains(k, ".") || hasString(r.t.PrimaryIdentifier, k) || isAccountID(v) {
+				continue
+			}
+			// A security group reports its own ID twice (Id and GroupId).
+			// Claimed as "reported", the second hid the VPC's
+			// DefaultSecurityGroup, so a drill VPC's default group was
+			// captured and its restore collided with the one AWS creates
+			// (real drill, us-east-2, 2026-10-22).
+			if v == r.id {
 				continue
 			}
 			if _, taken := reported[v]; !taken {
@@ -268,6 +277,12 @@ var aliases = map[string][][]string{
 	// physical zone, so it means the same in any account; the name in spec
 	// would also show as drift in every cross-account diff.
 	"AWS::EC2::Subnet": {{"AvailabilityZoneId", "AvailabilityZone"}},
+	// A rule names its group by ID and by name. Sent both, the handler
+	// spun for 257s and answered "InternalFailure Resource Handler
+	// Internal Failure" (probe outside a default VPC, 2026-10-22); the name
+	// form is only for default-VPC groups, and the ID means the same in a
+	// restore once it is a reference.
+	"AWS::EC2::SecurityGroupIngress": {{"GroupId", "GroupName"}, {"SourceSecurityGroupId", "SourceSecurityGroupName"}},
 }
 
 // normalize splits what AWS returned into what someone configured (spec) and
@@ -298,6 +313,15 @@ func normalize(t *TypeInfo, id string, props map[string]any) *resource {
 	// value that did come back is dropped, so a snapshot can never hold one.
 	for _, ptr := range t.WriteOnly {
 		removePointer(spec, ptr)
+	}
+	// An unset object property can read back as {}: SNS returns
+	// ArchivePolicy {} for a standard topic, then refuses it on create
+	// ("Unknown attribute ArchivePolicy", real drill, 2026-10-22). Empty
+	// means unset, so it is not kept.
+	for k, v := range spec {
+		if m, ok := v.(map[string]any); ok && len(m) == 0 {
+			delete(spec, k)
+		}
 	}
 	sortSets(spec, map[string]any{"properties": t.Properties}, t.Definitions)
 	return &resource{t: t, id: id, props: props, spec: spec, stat: stat, base: baseName(t, props)}
@@ -357,19 +381,24 @@ func managedBy(r *resource) string {
 // that Lambda code or a secret value is absent by design, not lost.
 func toObject(r *resource) map[string]any {
 	meta := map[string]any{"name": r.name}
-	if wo := writeOnlyTops(r.t); len(wo) > 0 {
+	if wo := writeOnlyFields(r.t); len(wo) > 0 {
 		meta["annotations"] = map[string]any{annWriteOnly: strings.Join(wo, ",")}
 	}
 	return map[string]any{"apiVersion": APIVersion, "kind": r.t.Name, "metadata": meta, "spec": r.spec, "status": r.stat}
 }
 
-func writeOnlyTops(t *TypeInfo) []string {
+// writeOnlyFields names each write-only field in the schema's field-path
+// form. Only one field of a security group's ingress rules is write-only
+// (SourceSecurityGroupName); naming just the top-level property said the
+// rules themselves were missing from the snapshot, which they are not.
+func writeOnlyFields(t *TypeInfo) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, ptr := range t.WriteOnly {
-		if top := segments(ptr)[0]; !seen[top] {
-			seen[top] = true
-			out = append(out, top)
+		f := strings.ReplaceAll(strings.Join(segments(ptr), "."), ".*", "[]")
+		if !seen[f] {
+			seen[f] = true
+			out = append(out, f)
 		}
 	}
 	sort.Strings(out)
@@ -422,7 +451,7 @@ func canon(v any) string { b, _ := json.Marshal(v); return string(b) }
 // spec, which is why naming walks the reference graph: a hash taken before
 // its references were tokenized would contain account IDs and name the same
 // resource differently in every account.
-func name(rs []*resource) {
+func name(rs []*resource, account string) {
 	owners := map[string]refTarget{}
 	// Parents claim values first: a reference to the root resource's ID
 	// must become the REST API's RootResourceId, which restore can resolve,
@@ -438,11 +467,23 @@ func name(rs []*resource) {
 			ordered = append(ordered, r)
 		}
 	}
+	// A child AWS created is named through the parent property that
+	// reports it, whatever that property is called. The VPC's
+	// DefaultSecurityGroup is not a *Id name, so the default group's own
+	// rules referred to the group itself, which is never restored, and
+	// could not be restored either (real drill, 2026-10-22).
+	for _, r := range ordered {
+		if r.createdBy != nil {
+			if _, taken := owners[r.id]; !taken {
+				owners[r.id] = refTarget{r: r.createdBy, attr: r.createdAt}
+			}
+		}
+	}
 	for _, r := range ordered {
 		for _, k := range sortedKeys(r.stat) {
 			if s, ok := r.stat[k].(string); ok && refable(k, s) {
 				if _, taken := owners[s]; !taken {
-					owners[s] = refTarget{r, k}
+					owners[s] = refTarget{r: r, attr: k, chosen: k == "identifier" && chosenID(r.t)}
 				}
 			}
 		}
@@ -454,15 +495,17 @@ func name(rs []*resource) {
 	deps := map[*resource][]*resource{}
 	for _, r := range rs {
 		seen := map[*resource]bool{}
-		walkStrings(deepCopy(r.spec), func(s string) string {
-			for _, v := range values {
-				if o := owners[v].r; o != r && !seen[o] && matches(s, v) {
-					seen[o] = true
-					deps[r] = append(deps[r], o)
+		for _, k := range sortedKeys(r.spec) {
+			walkStrings(deepCopy(map[string]any{k: r.spec[k]}), func(s string) string {
+				for _, v := range values {
+					if o := owners[v]; o.r != r && !seen[o.r] && refersTo(k, o, s, v) {
+						seen[o.r] = true
+						deps[r] = append(deps[r], o.r)
+					}
 				}
-			}
-			return s
-		})
+				return s
+			})
+		}
 	}
 
 	used := map[string]bool{}
@@ -492,6 +535,7 @@ func name(rs []*resource) {
 		}
 		for _, r := range ready {
 			tokenize(r, values, owners)
+			accountize(r, account)
 		}
 		sort.SliceStable(ready, func(i, j int) bool {
 			a, b := ready[i], ready[j]
@@ -522,6 +566,32 @@ func name(rs []*resource) {
 type refTarget struct {
 	r    *resource
 	attr string
+	// chosen marks an identifier someone chose (a repository name), which
+	// is the same in every account.
+	chosen bool
+}
+
+// chosenID reports a type whose identifier is chosen rather than generated.
+func chosenID(t *TypeInfo) bool {
+	for _, p := range t.PrimaryIdentifier {
+		if t.IsReadOnly(p) {
+			return false
+		}
+	}
+	return len(t.PrimaryIdentifier) > 0
+}
+
+// refersTo decides whether s, under top-level property prop, refers to the
+// resource that owns v. A tag value equal to a chosen name is a label: the
+// drill VPC's Name tag "stackdna-drill" became a token for the ECR
+// repository of that name, a dependency that would block restoring the VPC
+// without the repository (real drill, 2026-10-22). A generated ID in a tag
+// still differs per account, so it stays a reference.
+func refersTo(prop string, o refTarget, s, v string) bool {
+	if prop == "Tags" && o.chosen {
+		return false
+	}
+	return matches(s, v)
 }
 
 // refable limits reference sources to values that identify something: the
@@ -546,16 +616,44 @@ func matches(s, v string) bool {
 }
 
 func tokenize(r *resource, values []string, owners map[string]refTarget) {
-	r.spec = walkStrings(r.spec, func(s string) string {
-		for _, v := range values {
-			o := owners[v]
-			if o.r == r || o.r.name == "" || !matches(s, v) {
-				continue
+	for k, x := range r.spec {
+		r.spec[k] = walkStrings(x, func(s string) string {
+			for _, v := range values {
+				o := owners[v]
+				if o.r == r || o.r.name == "" || !refersTo(k, o, s, v) {
+					continue
+				}
+				s = strings.ReplaceAll(s, v, refToken(o.r.t.Name, o.r.name, o.attr))
 			}
-			s = strings.ReplaceAll(s, v, refToken(o.r.t.Name, o.r.name, o.attr))
-		}
-		return s
-	}).(map[string]any)
+			return s
+		})
+	}
+}
+
+// accountToken stands for the account a snapshot is restored into. A
+// security group rule names its source group's owner account
+// (SourceSecurityGroupOwnerId); kept literally, a restore into another
+// account would point the rule at a group in the source account.
+var accountToken = refToken("account", "self", "id")
+
+// accountize replaces the capturing account's own ID where it is
+// structural: a whole value, or the account segment of an ARN, also inside
+// a JSON string (an SQS RedrivePolicy). An ARN of a captured resource has
+// already become a reference, so this reaches only the rest (a policy's
+// arn:aws:iam::<account>:root). A digit run inside prose is left alone.
+func accountize(r *resource, account string) {
+	if account == "" {
+		return
+	}
+	arn := regexp.MustCompile(`(arn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:)` + regexp.QuoteMeta(account) + `(:)`)
+	for k, x := range r.spec {
+		r.spec[k] = walkStrings(x, func(s string) string {
+			if s == account {
+				return accountToken
+			}
+			return arn.ReplaceAllString(s, "${1}"+accountToken+"${2}")
+		})
+	}
 }
 
 func refToken(kind, name, attr string) string {

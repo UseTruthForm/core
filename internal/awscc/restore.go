@@ -2,10 +2,12 @@ package awscc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/stackdna/core/internal/snapshot"
 )
@@ -18,6 +20,10 @@ type RestoreOptions struct {
 	// They are merged into the spec at create time and not written anywhere.
 	Values map[string]map[string]any
 }
+
+// readBackStep and readBackLimit bound the wait for a created resource to
+// become readable. Variables so tests need not wait.
+var readBackStep, readBackLimit = 5 * time.Second, 2 * time.Minute
 
 var tokenRE = regexp.MustCompile(`\{\{stackdna\|([^|{}]+)\|([^|{}]+)\|([^|{}]+)\}\}`)
 
@@ -47,6 +53,7 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 	}
 	existing := map[string]*resource{}
 	resolved := map[string]map[string]any{} // Kind/name -> live properties
+	resolved["account/self"] = map[string]any{"id": in.account}
 	for _, r := range in.named() {
 		existing[r.key()] = r
 		resolved[r.t.Name+"/"+r.name] = withID(r.props, r.id)
@@ -57,20 +64,39 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 	for _, o := range cyclic {
 		results = append(results, snapshot.Result{Key: o.Key(), Detail: "its references form a cycle; no creation order exists"})
 	}
+	// A create can make others as a side effect: a security group's inline
+	// rules are also listed as AWS::EC2::SecurityGroupIngress resources,
+	// and a default security group comes with its own. Restoring those
+	// separately is refused (AWS answered "InternalFailure Resource Handler
+	// Internal Failure" for the duplicate rule, real drill 2026-10-22), so
+	// a refused create rereads the target to see whether it is now there.
+	reread := func(key string) *resource {
+		again, err := inventory(ctx, api, reg, func(n string) bool { return need[n] }, tun)
+		if err != nil {
+			return nil
+		}
+		for _, r := range again.named() {
+			if r.key() == key {
+				return r
+			}
+		}
+		return nil
+	}
 	inSnap := map[string]bool{}
 	for _, o := range s.Objects {
 		inSnap[o.Kind()+"/"+o.Name()] = true
 	}
 	for _, o := range order {
 		res := snapshot.Result{Key: o.Key()}
-		res.OK, res.Detail = restoreOne(ctx, api, reg, in, o, existing, resolved, inSnap, opt)
+		res.OK, res.Detail = restoreOne(ctx, api, reg, in, o, existing, resolved, inSnap, opt, reread)
 		results = append(results, res)
 	}
 	return results
 }
 
 func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o snapshot.Object,
-	existing map[string]*resource, resolved map[string]map[string]any, inSnap map[string]bool, opt RestoreOptions) (bool, string) {
+	existing map[string]*resource, resolved map[string]map[string]any, inSnap map[string]bool, opt RestoreOptions,
+	reread func(key string) *resource) (bool, string) {
 	kind, ref := o.Kind(), o.Kind()+"/"+o.Name()
 	t := reg.Types[kind]
 	if t == nil {
@@ -79,8 +105,11 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 	if c := in.cov[kind]; c != nil && c.NotCaptured != "" {
 		return false, "cannot check the target for an existing one: " + c.NotCaptured
 	}
+	differs := func(ex *resource) []snapshot.Change {
+		return snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{o}}, snapshot.Snapshot{Objects: []snapshot.Object{{Body: toObject(ex)}}})
+	}
 	if ex, ok := existing[o.Key()]; ok {
-		ch := snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{o}}, snapshot.Snapshot{Objects: []snapshot.Object{{Body: toObject(ex)}}})
+		ch := differs(ex)
 		if len(ch) == 0 {
 			return true, "already present and identical"
 		}
@@ -127,9 +156,25 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 
 	id, err := api.Create(ctx, kind, desired)
 	if err != nil {
+		if ex := reread(o.Key()); ex != nil && len(differs(ex)) == 0 {
+			resolved[ref] = withID(ex.props, ex.id)
+			return true, "present and identical once restored resources existed: AWS made it as a side effect (" + ex.id + ")"
+		}
 		return false, err.Error()
 	}
 	props, err := api.Get(ctx, kind, id)
+	// Cloud Control reported a bucket created, then "Bucket not found" on
+	// the read straight after (real drill, a bucket recreated minutes
+	// after its deletion). A read that follows a successful create and
+	// finds nothing is eventual consistency, so it is retried.
+	for wait := time.Duration(0); errors.Is(err, ErrNotFound) && wait < readBackLimit; wait += readBackStep {
+		select {
+		case <-ctx.Done():
+			return false, "created " + id + " but could not read it back: " + ctx.Err().Error()
+		case <-time.After(readBackStep):
+		}
+		props, err = api.Get(ctx, kind, id)
+	}
 	if err != nil {
 		return false, "created " + id + " but could not read it back: " + err.Error()
 	}
@@ -137,8 +182,8 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 
 	detail := "created " + id
 	var without []string
-	for _, w := range writeOnlyTops(t) {
-		if _, ok := vals[w]; !ok {
+	for _, w := range writeOnlyFields(t) {
+		if _, ok := vals[strings.FieldsFunc(w, func(r rune) bool { return r == '.' || r == '[' })[0]]; !ok {
 			without = append(without, w)
 		}
 	}

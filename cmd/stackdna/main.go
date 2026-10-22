@@ -41,6 +41,11 @@ Azure (ARM, every type with a published definition):
   stackdna restore --platform azure --subscription <id> --from <dir> [--values <file>]
   stackdna diff    --platform azure --subscription <id> --from <dir> [--types <patterns>] [--baseline <dir>]
 
+GCP (Cloud Asset Inventory and each API's Discovery document):
+  stackdna capture --platform gcp --project <id> --out <dir> [--types <patterns>] [--baseline <dir>]
+  stackdna restore --platform gcp --project <id> --from <dir>
+  stackdna diff    --platform gcp --project <id> --from <dir> [--types <patterns>] [--baseline <dir>]
+
 Any platform:
   stackdna compare <dir-a> <dir-b>
   stackdna schema-diff <old-dir> <new-dir>
@@ -81,11 +86,13 @@ func capture(ctx context.Context, args []string) int {
 	includeSystem := fs.Bool("include-system", false, "also capture system namespaces and platform-created objects")
 	baseline := fs.String("baseline", "", "snapshot of a fresh cluster of the same distribution; objects identical to it are skipped")
 	rendered := fs.Bool("capture-rendered", false, "also capture objects rendered by Flux, Argo CD or Crossplane (skipped by default: restoring their source recreates them)")
-	platform := fs.String("platform", "kubernetes", "kubernetes, aws or azure")
+	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure or gcp")
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
 	az.register(fs)
+	var g gcpFlags
+	g.register(fs)
 	_ = fs.Parse(args)
 	if *out == "" || fs.NArg() > 0 {
 		fmt.Fprintln(os.Stderr, "capture: --out is required and no positional arguments are accepted")
@@ -98,6 +105,9 @@ func capture(ctx context.Context, args []string) int {
 	case "azure":
 		az.from(&aws, *baseline)
 		return captureAzure(ctx, &az, *out)
+	case "gcp":
+		g.from(&aws, *baseline)
+		return captureGCP(ctx, &g, *out)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx)
 	if err != nil {
@@ -144,15 +154,17 @@ func restore(ctx context.Context, args []string) int {
 	kctx := fs.String("context", "", "kubeconfig context to restore into")
 	from := fs.String("from", "", "snapshot directory")
 	secretsFrom := fs.String("secrets-from-context", "", "live cluster to read withheld secret values from")
-	platform := fs.String("platform", "kubernetes", "kubernetes, aws or azure")
+	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure or gcp")
 	values := fs.String("values", "", "aws, azure: YAML file of values the cloud never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the cloud, never written")
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
 	az.register(fs)
+	var g gcpFlags
+	g.register(fs)
 	_ = fs.Parse(args)
 	if *from == "" || (*kctx == "" && *platform == "kubernetes") {
-		fmt.Fprintln(os.Stderr, "restore: --from and a target (--context, --platform aws --region, or --platform azure --subscription) are required (restore never guesses its target)")
+		fmt.Fprintln(os.Stderr, "restore: --from and a target (--context, --platform aws --region, --platform azure --subscription, or --platform gcp --project) are required (restore never guesses its target)")
 		return 1
 	}
 	snap, err := snapshot.Read(*from)
@@ -168,6 +180,9 @@ func restore(ctx context.Context, args []string) int {
 	case "azure":
 		az.from(&aws, "")
 		return restoreAzure(ctx, &az, snap, *values)
+	case "gcp":
+		g.from(&aws, "")
+		return restoreGCP(ctx, &g, snap)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx)
 	if err != nil {
@@ -201,14 +216,16 @@ func diff(ctx context.Context, args []string) int {
 	kctx := fs.String("context", "", "kubeconfig context to compare against")
 	from := fs.String("from", "", "snapshot directory")
 	baseline := fs.String("baseline", "", "the baseline the snapshot was captured with, if any")
-	platform := fs.String("platform", "kubernetes", "kubernetes, aws or azure")
+	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure or gcp")
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
 	az.register(fs)
+	var g gcpFlags
+	g.register(fs)
 	_ = fs.Parse(args)
 	if *from == "" || (*kctx == "" && *platform == "kubernetes") {
-		fmt.Fprintln(os.Stderr, "diff: --from and a target (--context, --platform aws --region, or --platform azure --subscription) are required")
+		fmt.Fprintln(os.Stderr, "diff: --from and a target (--context, --platform aws --region, --platform azure --subscription, or --platform gcp --project) are required")
 		return 1
 	}
 	want, err := snapshot.Read(*from)
@@ -225,6 +242,9 @@ func diff(ctx context.Context, args []string) int {
 	case "azure":
 		az.from(&aws, *baseline)
 		return diffAzure(ctx, &az, want, *from)
+	case "gcp":
+		g.from(&aws, *baseline)
+		return diffGCP(ctx, &g, want, *from)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx)
 	if err != nil {

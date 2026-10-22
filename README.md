@@ -15,7 +15,9 @@ real account (`scripts/drill-aws.sh`: 6 free-tier resources deleted and
 restored with no diff), but most types haven't met real AWS yet. Azure (every
 type with a published definition) passes its drill against a fake, and the
 disaster drill against a real subscription (`scripts/drill-azure.sh`: 4
-free resources deleted and restored with no diff). See
+free resources deleted and restored with no diff). GCP (Cloud Asset Inventory
+plus Discovery documents) passes its drill against a fake, and the disaster
+drill against a real project (`scripts/drill-gcp.sh`). See
 [AWS](docs/architecture.md#aws-cloud-control-driven-by-the-registry). Other
 platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.

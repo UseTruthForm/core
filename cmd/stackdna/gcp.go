@@ -109,16 +109,21 @@ func captureGCP(ctx context.Context, g *gcpFlags, out string) int {
 	return 3
 }
 
-func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot) int {
+func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot, update bool) int {
 	ad, err := g.connect(ctx, captureOnly)
 	if err != nil {
 		return fail(err)
 	}
+	ad.Options.Update = update
 	results := ad.Restore(ctx, snap)
 	ok := 0
 	for _, r := range results {
 		if r.OK {
 			ok++
+			// An update changed something live; each one is said.
+			if strings.HasPrefix(r.Detail, "updated") {
+				fmt.Printf("UPDATED %s: %s\n", r.Key, r.Detail)
+			}
 			continue
 		}
 		fmt.Printf("NOT APPLIED %s: %s\n", r.Key, r.Detail)

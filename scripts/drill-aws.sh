@@ -185,3 +185,16 @@ wait_all
 step "diff: the account must match the snapshot"
 sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
 echo "DRILL PASSED"
+
+# Drift: someone edits two resources by hand. A plain restore must leave
+# them alone and say so (exit 3); --update must put them right.
+step "update: drift two resources, then restore --update"
+aws sqs set-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)" --attributes VisibilityTimeout=30
+aws logs put-retention-policy --log-group-name "/$N/app" --retention-in-days 14
+code=0; sd restore --from "$OUT/snap" > "$OUT/restore-plain.txt" || code=$?
+cat "$OUT/restore-plain.txt"
+[ "$code" = 3 ] || { echo "restore without --update exited $code on a drifted account, want 3" >&2; exit 1; }
+grep -q "not modified (--update modifies it)" "$OUT/restore-plain.txt" || { echo "restore did not report the drift" >&2; exit 1; }
+sd restore --from "$OUT/snap" --update
+sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
+echo "UPDATE PASSED"

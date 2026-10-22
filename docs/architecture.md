@@ -340,7 +340,8 @@ so a subnet captured in one region can't be created in another as it stands.
 
 - S3 bucket names are global, so a cross-account restore of a user-named
   bucket fails while the source bucket exists.
-- StackDNA never updates an existing resource.
+- An existing resource is updated only with `--update` (see "Restore into
+  a target that already has things").
 - Data is never captured: S3 objects, queue messages and table rows.
 
 ## Azure: Resource Manager, driven by Azure's published definitions
@@ -456,7 +457,7 @@ new principal, checked with `az`.
   another subscription of the same tenant conflicts while the source's
   exists.
 - Data is never captured.
-- Restore never modifies an existing resource.
+- An existing resource is modified only with `--update`.
 
 ## GCP: Cloud Asset Inventory, driven by Discovery documents
 
@@ -569,7 +570,8 @@ Everything else comes from the description:
   refusal messages ("Upgrade to GitHub Pro"), and those collections are
   recorded as not available.
 - Restore creates parents first, applies an update for settings the create
-  doesn't take, recognises existing items by name, and never modifies them.
+  doesn't take, and recognises existing items by name. With `--update` it
+  brings differing items in line (see below).
 
 | | Proof |
 |---|---|
@@ -599,6 +601,44 @@ Cloudflare's envelope, and refuse references to another account. Mutation
 checks: keeping every field, skipping tokenization, keeping masked
 secrets, reading one page only, and tokenizing inside prose each fail the
 tests.
+
+## Restore into a target that already has things
+
+By default a restore only creates what is missing. Something already
+present and identical counts as applied; something present but different
+is reported, with the fields that differ, and left alone (exit 3). An
+update changes a resource that something may depend on as it is, so it
+is a choice: `restore --update` brings differing resources in line. Each
+platform uses its own update path, derived from the same schemas that
+drive capture:
+
+| Platform | How | Refused, by design |
+|---|---|---|
+| AWS | Cloud Control `UpdateResource` with a JSON Patch, one operation per top-level property: add, replace, or remove what the snapshot doesn't have | A change to a property the schema marks `createOnlyProperties`: AWS would replace the resource, deleting what depends on it. The result names the fields. |
+| Azure | A PUT of the snapshot's body; ARM updates in place and never re-creates | A resource with secret fields Azure never returns (a VM's admin password) unless they are supplied with `--values`, since a PUT without them would send the resource without its credential |
+| GCP | The collection's `patch` method from its Discovery document, else `update`; the body is what the method takes (the resource, or a request holding it), and the `updateMask` names exactly the fields that differ, removed ones included | |
+| GitHub, Cloudflare | The collection's update operation from the OpenAPI description, else the PUT that creates it (an environment, a variable) | Masked secrets (a webhook's), unless supplied |
+| Kubernetes | Server-side apply, which always updates | |
+
+A setting with no list (GitHub Actions permissions) is applied without
+`--update` only when the same restore created its parent; on an existing
+repository it needs `--update` like anything else.
+
+On Azure, a dependency that is present but different no longer blocks
+what depends on it: a web app and a role assignment had been reported "not
+restored" because the identity they name differed only in a tag.
+
+**Fields a read never returns.** Restoring into a drifted GitHub
+repository found that an environment's `wait_timer` had never been
+captured. GitHub accepts it on write and returns it only reshaped inside
+`protection_rules`, so capture, which keeps what writes accept and reads
+return, dropped it without a word, and the earlier drill passed because
+both sides lacked it. Each object now carries a
+`stackdna.org/unreadable` annotation naming such fields (state both the
+create and the update accept, absent from the read's response schema), and
+a restore says it could not carry them. In the real StackDNA organisation
+it names one: a code-security configuration's `code_security` and
+`secret_protection`.
 
 ## Roadmap
 

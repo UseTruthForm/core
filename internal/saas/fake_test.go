@@ -36,6 +36,9 @@ type fake struct {
 	// refuse answers GET of paths ending in a key with 403 and the message,
 	// as GitHub refuses features the plan lacks.
 	refuse map[string]string
+	// writes counts every request that is not a GET, so a test can prove
+	// a restore sent nothing.
+	writes int
 }
 
 func newFake(t *testing.T, p Provider, spec *Spec, account string) *fake {
@@ -70,6 +73,9 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	path := r.URL.Path
+	if r.Method != "GET" {
+		f.writes++
+	}
 	var body map[string]any
 	if r.Body != nil {
 		b, _ := io.ReadAll(r.Body)
@@ -154,6 +160,21 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 			f.reply(w, 200, f.masked(it), nil)
 			return
 		case "PATCH":
+			// Only what the update operation accepts, as the API refuses
+			// the rest.
+			for i := range f.p.Collections {
+				col := &f.p.Collections[i]
+				if _, ok := params(col.Update, path); !ok || col.Update == "" {
+					continue
+				}
+				accepted := f.spec.RequestFields(col.Update, col.updateMethod())
+				for k := range body {
+					if accepted == nil || (accepted.Children[k] == nil && !accepted.Any) {
+						f.fail(w, 422, k+" is not a field of this update")
+						return
+					}
+				}
+			}
 			for k, v := range body {
 				it[k] = v
 			}

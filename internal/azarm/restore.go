@@ -16,6 +16,11 @@ type RestoreOptions struct {
 	// Values supplies secrets Azure never returns (a VM's adminPassword),
 	// keyed "Kind/resourceGroup/name", merged into the body at PUT time.
 	Values map[string]map[string]any
+	// Update PUTs the snapshot's body over an existing resource that
+	// differs. ARM's PUT replaces the resource's configuration in place;
+	// a change Azure cannot make in place is refused by Azure, never done
+	// by deleting and re-creating.
+	Update bool
 }
 
 // Restore creates every snapshot object missing from the subscription, in
@@ -42,10 +47,16 @@ func Restore(ctx context.Context, api ARM, reg *Registry, s snapshot.Snapshot, o
 		results = append(results, snapshot.Result{Key: o.Key(), Detail: "its references form a cycle; no creation order exists"})
 	}
 	failed := map[string]string{}
+	// present marks a resource found in the target though not applied (it
+	// differs and was left alone). Its dependents can still be restored:
+	// they name it by ID, and it is there. Counting it as failed blocked a
+	// web app and a role assignment behind an identity whose only
+	// difference was a tag.
+	present := map[string]bool{}
 	for _, o := range order {
 		res := snapshot.Result{Key: o.Key()}
-		res.OK, res.Detail = restoreOne(ctx, api, reg, o, sub, tenant, opt, failed, byKey)
-		if !res.OK {
+		res.OK, res.Detail = restoreOne(ctx, api, reg, o, sub, tenant, opt, failed, byKey, present)
+		if !res.OK && !present[strings.ToLower(o.Key())] {
 			failed[strings.ToLower(o.Key())] = res.Detail
 		}
 		results = append(results, res)
@@ -67,7 +78,7 @@ func objectID(o snapshot.Object, sub string) ResourceID {
 	return ResourceID{Subscription: sub, ResourceGroup: o.Namespace(), Type: o.Kind(), Name: o.Name()}
 }
 
-func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, sub, tenant string, opt RestoreOptions, failed map[string]string, byKey map[string]snapshot.Object) (bool, string) {
+func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, sub, tenant string, opt RestoreOptions, failed map[string]string, byKey map[string]snapshot.Object, present map[string]bool) (bool, string) {
 	for _, d := range deps(o) {
 		if why, bad := failed[d]; bad {
 			return false, "depends on " + d + ", which was not restored (" + why + ")"
@@ -104,8 +115,10 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	}
 
 	existing, err := api.Get(ctx, id, ver)
+	var changed []string
 	switch {
 	case err == nil:
+		present[strings.ToLower(o.Key())] = true
 		got, _ := schema.normalize(existing)
 		got = tokenize(got, sub, tenant)
 		ch := snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{{Body: map[string]any{"apiVersion": APIVersion, "kind": o.Kind(), "metadata": o.Body["metadata"], "spec": spec}}}},
@@ -113,7 +126,10 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 		if len(ch) == 0 {
 			return true, "already present and identical"
 		}
-		return false, "already exists and differs (" + strings.Join(ch[0].Fields, ", ") + "); StackDNA does not modify existing resources"
+		if !opt.Update {
+			return false, "already exists and differs (" + strings.Join(ch[0].Fields, ", ") + "); not modified (--update modifies it)"
+		}
+		changed = ch[0].Fields
 	case !errors.Is(err, ErrNotFound):
 		return false, "cannot check whether it exists: " + err.Error()
 	}
@@ -127,20 +143,29 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	}
 	vals := opt.Values[ref]
 	merge(desired, deepCopy(vals))
+	var unsupplied []string
+	if s, _ := ann[annSecrets].(string); s != "" {
+		for _, p := range strings.Split(s, ",") {
+			if _, ok := lookup(vals, strings.Split(p, ".")); !ok {
+				unsupplied = append(unsupplied, p)
+			}
+		}
+	}
+	// A PUT replaces the whole configuration, and a secret Azure never
+	// returns is not in the snapshot: updating without it would send the
+	// resource without its credential.
+	if changed != nil && len(unsupplied) > 0 {
+		return false, "already exists and differs (" + strings.Join(changed, ", ") + "); not updated: its secret fields (" + strings.Join(unsupplied, ", ") + ") are never returned, so a PUT would send it without them; supply them with --values"
+	}
 	if _, err := api.Put(ctx, id, ver, desired); err != nil {
 		return false, err.Error()
 	}
 	detail := "created " + id
-	if s, _ := ann[annSecrets].(string); s != "" {
-		var missing []string
-		for _, p := range strings.Split(s, ",") {
-			if _, ok := lookup(vals, strings.Split(p, ".")); !ok {
-				missing = append(missing, p)
-			}
-		}
-		if len(missing) > 0 {
-			detail += "; secret, not supplied: " + strings.Join(missing, ", ")
-		}
+	if changed != nil {
+		detail = "updated " + id + " (" + strings.Join(changed, ", ") + ")"
+	}
+	if len(unsupplied) > 0 {
+		detail += "; secret, not supplied: " + strings.Join(unsupplied, ", ")
 	}
 	return true, detail
 }

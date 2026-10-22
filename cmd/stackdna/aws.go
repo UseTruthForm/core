@@ -174,11 +174,12 @@ func captureAWS(ctx context.Context, a *awsFlags, out string) int {
 
 // restoreAWS reads write-only values from a file the operator controls; they
 // go to AWS and nowhere else.
-func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, valuesFile string) int {
+func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, valuesFile string, update bool) int {
 	ad, err := a.connect(ctx, captureOnly)
 	if err != nil {
 		return fail(err)
 	}
+	ad.Options.Update = update
 	if valuesFile != "" {
 		b, err := os.ReadFile(valuesFile)
 		if err != nil {
@@ -197,6 +198,10 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 			continue
 		}
 		ok++
+		// An update changed something live; each one is said.
+		if strings.HasPrefix(r.Detail, "updated") {
+			fmt.Printf("UPDATED %s: %s\n", r.Key, r.Detail)
+		}
 		if i := strings.Index(r.Detail, "; write-only, not supplied: "); i >= 0 {
 			partial = append(partial, r.Key+": "+r.Detail[i+2:])
 		}

@@ -101,13 +101,14 @@ var GitHub = Provider{
 			Create: "/orgs/{org}/repos", Update: "/repos/{owner}/{repo}",
 			Bind: map[string]string{"org": "account", "owner": "account", "repo": "item:name"}, Name: []string{"name"}},
 		{Kind: "github/label", Parent: "github/repository", List: "/repos/{owner}/{repo}/labels", Create: "/repos/{owner}/{repo}/labels",
-			Bind: map[string]string{"owner": "account", "repo": "parent:name"}, Name: []string{"name"}},
+			Update: "/repos/{owner}/{repo}/labels/{name}",
+			Bind:   map[string]string{"owner": "account", "repo": "parent:name", "name": "item:name"}, Name: []string{"name"}},
 		{Kind: "github/webhook", Parent: "github/repository", List: "/repos/{owner}/{repo}/hooks", Get: "/repos/{owner}/{repo}/hooks/{hook_id}",
-			Create: "/repos/{owner}/{repo}/hooks",
-			Bind:   map[string]string{"owner": "account", "repo": "parent:name", "hook_id": "item:id"}, Name: []string{"config.url"}},
+			Create: "/repos/{owner}/{repo}/hooks", Update: "/repos/{owner}/{repo}/hooks/{hook_id}",
+			Bind: map[string]string{"owner": "account", "repo": "parent:name", "hook_id": "item:id"}, Name: []string{"config.url"}},
 		{Kind: "github/ruleset", Parent: "github/repository", List: "/repos/{owner}/{repo}/rulesets", Get: "/repos/{owner}/{repo}/rulesets/{ruleset_id}",
-			Create: "/repos/{owner}/{repo}/rulesets",
-			Bind:   map[string]string{"owner": "account", "repo": "parent:name", "ruleset_id": "item:id"}, Name: []string{"name"}},
+			Create: "/repos/{owner}/{repo}/rulesets", Update: "/repos/{owner}/{repo}/rulesets/{ruleset_id}", UpdateMethod: "PUT",
+			Bind: map[string]string{"owner": "account", "repo": "parent:name", "ruleset_id": "item:id"}, Name: []string{"name"}},
 	},
 }
 
@@ -117,11 +118,12 @@ var Cloudflare = Provider{
 	SpecURL: "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
 	Account: "account", TokenEnv: "CLOUDFLARE_API_TOKEN",
 	Collections: []Collection{
-		{Kind: "cloudflare/zone", List: "/zones", Create: "/zones", Bind: map[string]string{}, Name: []string{"name"}},
+		{Kind: "cloudflare/zone", List: "/zones", Create: "/zones", Update: "/zones/{zone_id}",
+			Bind: map[string]string{"zone_id": "item:id"}, Name: []string{"name"}},
 		// One name can hold several records, so type, name and content
 		// together name a record.
 		{Kind: "cloudflare/dns_record", Parent: "cloudflare/zone", List: "/zones/{zone_id}/dns_records",
-			Get: "/zones/{zone_id}/dns_records/{dns_record_id}", Create: "/zones/{zone_id}/dns_records",
+			Get: "/zones/{zone_id}/dns_records/{dns_record_id}", Create: "/zones/{zone_id}/dns_records", Update: "/zones/{zone_id}/dns_records/{dns_record_id}",
 			Bind: map[string]string{"zone_id": "parent:id", "dns_record_id": "item:id"}, Name: []string{"type", "name", "content"}},
 	},
 }

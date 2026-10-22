@@ -35,8 +35,10 @@ type TypeInfo struct {
 	PrimaryIdentifier []string
 	ReadOnly          []string // JSON pointers, e.g. /properties/Arn
 	WriteOnly         []string // values AWS accepts but never returns
-	Required          []string
-	Handlers          map[string]bool // create, read, update, delete, list
+	// CreateOnly are set at creation; changing one replaces the resource.
+	CreateOnly []string
+	Required   []string
+	Handlers   map[string]bool // create, read, update, delete, list
 	// ListRequires names the properties a list call needs (the parent's ID
 	// for parent-scoped types such as AWS::ApiGateway::Resource).
 	ListRequires []string
@@ -195,14 +197,15 @@ func parse(files map[string][]byte) (*Registry, error) {
 	for _, n := range names {
 		h.Write(files[n])
 		var s struct {
-			TypeName            string         `json:"typeName"`
-			PrimaryIdentifier   []string       `json:"primaryIdentifier"`
-			ReadOnlyProperties  []string       `json:"readOnlyProperties"`
-			WriteOnlyProperties []string       `json:"writeOnlyProperties"`
-			Required            []string       `json:"required"`
-			Properties          map[string]any `json:"properties"`
-			Definitions         map[string]any `json:"definitions"`
-			Handlers            map[string]struct {
+			TypeName             string         `json:"typeName"`
+			PrimaryIdentifier    []string       `json:"primaryIdentifier"`
+			ReadOnlyProperties   []string       `json:"readOnlyProperties"`
+			WriteOnlyProperties  []string       `json:"writeOnlyProperties"`
+			CreateOnlyProperties []string       `json:"createOnlyProperties"`
+			Required             []string       `json:"required"`
+			Properties           map[string]any `json:"properties"`
+			Definitions          map[string]any `json:"definitions"`
+			Handlers             map[string]struct {
 				HandlerSchema struct {
 					Required []string `json:"required"`
 				} `json:"handlerSchema"`
@@ -215,7 +218,7 @@ func parse(files map[string][]byte) (*Registry, error) {
 			continue
 		}
 		t := &TypeInfo{
-			Name: s.TypeName, ReadOnly: s.ReadOnlyProperties, WriteOnly: s.WriteOnlyProperties,
+			Name: s.TypeName, ReadOnly: s.ReadOnlyProperties, WriteOnly: s.WriteOnlyProperties, CreateOnly: s.CreateOnlyProperties,
 			Required: s.Required, Properties: s.Properties, Definitions: s.Definitions,
 			Handlers: map[string]bool{}, Raw: files[n],
 		}

@@ -63,6 +63,8 @@ type Fake struct {
 	// reads first, as a just-created S3 bucket did.
 	ReadLag int
 	lag     map[string]int
+	// Updates counts applied updates, so a test can prove none was sent.
+	Updates int
 }
 
 // Account returns a new empty account in the world.
@@ -94,40 +96,8 @@ func (f *Fake) Create(_ context.Context, typeName string, desired map[string]any
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	props := deepCopy(desired)
-	for k := range props {
-		if _, ok := t.Properties[k]; !ok {
-			return "", fmt.Errorf("%s: extraneous key [%s] is not permitted", typeName, k)
-		}
-		if t.IsReadOnly(k) {
-			return "", fmt.Errorf("%s: read-only property [%s] cannot be set", typeName, k)
-		}
-	}
-	for _, r := range t.Required {
-		if _, ok := props[r]; !ok {
-			return "", fmt.Errorf("%s: required key [%s] not found", typeName, r)
-		}
-	}
-	var bad error
-	walkStrings(props, func(s string) string {
-		if bad == nil {
-			if strings.Contains(s, "{{stackdna") {
-				bad = fmt.Errorf("%s: unresolved StackDNA reference %q sent to AWS", typeName, s)
-			}
-			for v, acct := range f.w.owner {
-				if acct != f.ID && strings.Contains(s, v) {
-					bad = fmt.Errorf("%s: %q refers to %s, which belongs to account %s and does not exist in %s", typeName, s, v, acct, f.ID)
-				}
-			}
-		}
-		return s
-	})
-	if bad != nil {
-		return "", bad
-	}
-	if f.Validate != nil {
-		if err := f.Validate(typeName, props); err != nil {
-			return "", err
-		}
+	if err := f.check(t, props); err != nil {
+		return "", err
 	}
 	f.generate(t, props)
 	id, ok := Identifier(t, props)
@@ -154,6 +124,101 @@ func (f *Fake) Create(_ context.Context, typeName string, desired map[string]any
 		f.w.mu.Lock()
 	}
 	return id, nil
+}
+
+// check refuses what Cloud Control refuses in a desired state: unknown or
+// read-only properties, missing required ones, unresolved tokens and
+// another account's IDs.
+func (f *Fake) check(t *TypeInfo, props map[string]any) error {
+	for k := range props {
+		if _, ok := t.Properties[k]; !ok {
+			return fmt.Errorf("%s: extraneous key [%s] is not permitted", t.Name, k)
+		}
+		if t.IsReadOnly(k) {
+			return fmt.Errorf("%s: read-only property [%s] cannot be set", t.Name, k)
+		}
+	}
+	for _, r := range t.Required {
+		if _, ok := props[r]; !ok {
+			return fmt.Errorf("%s: required key [%s] not found", t.Name, r)
+		}
+	}
+	var bad error
+	walkStrings(props, func(s string) string {
+		if bad == nil {
+			if strings.Contains(s, "{{stackdna") {
+				bad = fmt.Errorf("%s: unresolved StackDNA reference %q sent to AWS", t.Name, s)
+			}
+			for v, acct := range f.w.owner {
+				if acct != f.ID && strings.Contains(s, v) {
+					bad = fmt.Errorf("%s: %q refers to %s, which belongs to account %s and does not exist in %s", t.Name, s, v, acct, f.ID)
+				}
+			}
+		}
+		return s
+	})
+	if bad != nil {
+		return bad
+	}
+	if f.Validate != nil {
+		return f.Validate(t.Name, props)
+	}
+	return nil
+}
+
+// Update applies a top-level JSON Patch as Cloud Control does, refusing a
+// change to a create-only property ("NotUpdatable") rather than replacing.
+// Write-only values already held survive unless the patch removes them.
+func (f *Fake) Update(_ context.Context, typeName, id string, patch []PatchOp) error {
+	t, err := f.typ(typeName)
+	if err != nil {
+		return err
+	}
+	if !t.Handlers["update"] {
+		return fmt.Errorf("%s has no update handler", typeName)
+	}
+	f.w.mu.Lock()
+	defer f.w.mu.Unlock()
+	cur, ok := f.res[typeName][id]
+	if !ok {
+		return fmt.Errorf("%s %s: %w", typeName, id, ErrNotFound)
+	}
+	next := deepCopy(cur)
+	for _, op := range patch {
+		k := strings.TrimPrefix(op.Path, "/")
+		if strings.Contains(k, "/") {
+			return fmt.Errorf("%s: the fake applies top-level patches only, not %s", typeName, op.Path)
+		}
+		if t.IsReadOnly(k) {
+			return fmt.Errorf("%s: read-only property [%s] cannot be set", typeName, k)
+		}
+		switch op.Op {
+		case "add", "replace":
+			next[k] = op.Value
+		case "remove":
+			if _, ok := next[k]; !ok {
+				return fmt.Errorf("%s: remove %s: no such property", typeName, op.Path)
+			}
+			delete(next, k)
+		default:
+			return fmt.Errorf("%s: unsupported patch op %q", typeName, op.Op)
+		}
+	}
+	next = deepCopy(next)
+	if ch := createOnlyChanges(t, cur, next); len(ch) > 0 {
+		return fmt.Errorf("%s update FAILED: NotUpdatable: create-only properties cannot be updated: %s", typeName, strings.Join(ch, ", "))
+	}
+	// Read-only values are AWS's and were never sent; check the rest.
+	sent := deepCopy(next)
+	for _, ptr := range t.ReadOnly {
+		removePointer(sent, ptr)
+	}
+	if err := f.check(t, sent); err != nil {
+		return err
+	}
+	f.res[typeName][id] = next
+	f.Updates++
+	return nil
 }
 
 // Seed stores a resource without validation, for what AWS itself creates

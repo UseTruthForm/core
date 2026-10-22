@@ -122,17 +122,35 @@ func (s *SDK) Create(ctx context.Context, typeName string, desired map[string]an
 	if err != nil {
 		return "", classify(err)
 	}
-	ev := out.ProgressEvent
+	return s.await(ctx, typeName, "create", out.ProgressEvent)
+}
+
+// Update applies a JSON Patch and waits as Create does.
+func (s *SDK) Update(ctx context.Context, typeName, identifier string, patch []PatchOp) error {
+	b, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
+	out, err := s.c.UpdateResource(ctx, &cloudcontrol.UpdateResourceInput{TypeName: &typeName, Identifier: &identifier, PatchDocument: aws.String(string(b))})
+	if err != nil {
+		return classify(err)
+	}
+	_, err = s.await(ctx, typeName, "update", out.ProgressEvent)
+	return err
+}
+
+// await polls a Cloud Control request until it succeeds or fails.
+func (s *SDK) await(ctx context.Context, typeName, op string, ev *types.ProgressEvent) (string, error) {
 	deadline := time.Now().Add(createTimeout)
 	for {
 		switch ev.OperationStatus {
 		case types.OperationStatusSuccess:
 			return aws.ToString(ev.Identifier), nil
 		case types.OperationStatusFailed, types.OperationStatusCancelComplete:
-			return "", fmt.Errorf("%s create %s: %s %s", typeName, ev.OperationStatus, ev.ErrorCode, aws.ToString(ev.StatusMessage))
+			return "", fmt.Errorf("%s %s %s: %s %s", typeName, op, ev.OperationStatus, ev.ErrorCode, aws.ToString(ev.StatusMessage))
 		}
 		if time.Now().After(deadline) {
-			return "", fmt.Errorf("%s create still %s after %s (request %s); it may yet complete", typeName, ev.OperationStatus, createTimeout, aws.ToString(ev.RequestToken))
+			return "", fmt.Errorf("%s %s still %s after %s (request %s); it may yet complete", typeName, op, ev.OperationStatus, createTimeout, aws.ToString(ev.RequestToken))
 		}
 		wait := 5 * time.Second
 		if ev.RetryAfter != nil {
@@ -147,7 +165,7 @@ func (s *SDK) Create(ctx context.Context, typeName string, desired map[string]an
 		}
 		st, err := s.c.GetResourceRequestStatus(ctx, &cloudcontrol.GetResourceRequestStatusInput{RequestToken: ev.RequestToken})
 		if err != nil {
-			return "", fmt.Errorf("%s create: polling request %s: %w", typeName, aws.ToString(ev.RequestToken), err)
+			return "", fmt.Errorf("%s %s: polling request %s: %w", typeName, op, aws.ToString(ev.RequestToken), err)
 		}
 		ev = st.ProgressEvent
 	}

@@ -44,6 +44,8 @@ type Fake struct {
 	res         map[string]stored // lower(id) -> resource
 	ManagedBy   map[string]string // lower(id) -> managedBy, as ARM reports it
 	AfterCreate func(id string, body map[string]any)
+	// Puts counts accepted PUTs, so a test can prove none was sent.
+	Puts int
 	// AlsoTracked lists child types ARM's resource list returns as well
 	// (a SQL server's databases are both), so capture meets them twice.
 	AlsoTracked map[string]bool
@@ -168,6 +170,7 @@ func (f *Fake) Put(_ context.Context, id, version string, body map[string]any) (
 	}
 	b := deepCopy(body)
 	b["id"], b["name"], b["type"] = rid.String(), lastName(rid.Name), rid.Type
+	f.Puts++
 	f.w.seq++
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s/%d", f.sub, f.w.seq)))
 	b["etag"] = "W/\"" + hex.EncodeToString(h[:4]) + "\""
@@ -176,9 +179,13 @@ func (f *Fake) Put(_ context.Context, id, version string, body map[string]any) (
 	} else if top, _, _ := s.object(s.body, nil); top["properties"].Type.Ref != "" {
 		b["properties"] = map[string]any{"provisioningState": "Succeeded"}
 	}
-	f.generateIDs(s, b)
+	// A PUT over an existing resource is an update: Azure keeps what it
+	// assigned (an identity's principalId), and nothing is created as a
+	// side effect. Regenerating them would orphan every role assignment.
+	old, existed := f.res[strings.ToLower(rid.String())]
+	f.generateIDs(s, b, old.body)
 	f.res[strings.ToLower(rid.String())] = stored{id: rid.String(), typ: rid.Type, version: version, body: b}
-	if f.AfterCreate != nil {
+	if f.AfterCreate != nil && !existed {
 		f.w.mu.Unlock()
 		f.AfterCreate(rid.String(), b)
 		f.w.mu.Lock()
@@ -189,7 +196,7 @@ func (f *Fake) Put(_ context.Context, id, version string, body map[string]any) (
 // generateIDs fills read-only string properties named *Id under
 // "properties" (an identity's principalId and clientId) with GUIDs this
 // subscription owns.
-func (f *Fake) generateIDs(s *Schema, b map[string]any) {
+func (f *Fake) generateIDs(s *Schema, b, prev map[string]any) {
 	top, _, _ := s.object(s.body, nil)
 	pp, ok := top["properties"]
 	if !ok {
@@ -200,8 +207,13 @@ func (f *Fake) generateIDs(s *Schema, b map[string]any) {
 	if inner == nil {
 		return
 	}
+	was, _ := prev["properties"].(map[string]any)
 	for _, k := range sortedKeys(props) {
 		if props[k].Flags&flagReadOnly != 0 && strings.HasSuffix(k, "Id") && s.file[props[k].Type.index()].Kind == "StringType" {
+			if v, ok := was[k]; ok {
+				inner[k] = v
+				continue
+			}
 			if _, set := inner[k]; !set {
 				f.w.seq++
 				g := fmt.Sprintf("%08x-0000-4000-8000-%012x", f.w.seq, len(f.sub)*7919+f.w.seq)

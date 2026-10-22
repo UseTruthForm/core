@@ -116,3 +116,19 @@ echo "role assignment follows the restored identity's new principal $newp"
 step "diff: the subscription must match the snapshot"
 sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
 echo "DRILL PASSED"
+
+# Drift: someone tags two resources by hand. A plain restore must leave
+# them alone and say so (exit 3); --update must put them right, and the
+# identity must keep its principal (an update, not a re-creation).
+step "update: drift two resources, then restore --update"
+for id in "$(az identity show -g "$RG" -n "$N-id" --query id -o tsv)" "$(az network nsg show -g "$RG" -n "$N-nsg" --query id -o tsv)"; do
+  az tag update --resource-id "$id" --operation Merge --tags edited=by-hand -o none
+done
+code=0; sd restore --from "$OUT/snap" > "$OUT/restore-plain.txt" || code=$?
+cat "$OUT/restore-plain.txt"
+[ "$code" = 3 ] || { echo "FAIL: restore without --update exited $code on a drifted subscription, want 3"; exit 1; }
+grep -q "not modified (--update modifies it)" "$OUT/restore-plain.txt" || { echo "FAIL: restore did not report the drift"; exit 1; }
+sd restore --from "$OUT/snap" --update
+[ "$(az identity show -g "$RG" -n "$N-id" --query principalId -o tsv)" = "$newp" ] || { echo "FAIL: the update changed the identity's principal"; exit 1; }
+sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
+echo "UPDATE PASSED"

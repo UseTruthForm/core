@@ -19,7 +19,10 @@ free resources deleted and restored with no diff). GCP (Cloud Asset Inventory
 plus Discovery documents) passes its drill against a fake, and the disaster
 drill against a real project (`scripts/drill-gcp.sh`). SaaS providers run on
 one OpenAPI-driven engine: GitHub (a real read-only capture works) and
-Cloudflare (fake only so far). See
+Cloudflare (fake only so far). A restore only creates what is missing;
+`restore --update` also brings drifted resources back in line, and passed
+against real AWS, Azure and GCP (each drill drifts resources by hand, then
+requires an empty diff). See
 [AWS](docs/architecture.md#aws-cloud-control-driven-by-the-registry). Other
 platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.

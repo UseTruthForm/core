@@ -23,8 +23,14 @@ const (
 	annSecrets = "stackdna.org/secrets"
 	// annParent names an item's parent. A name cannot carry it: a webhook
 	// is named by its URL, which is full of slashes.
-	annParent  = "stackdna.org/parent"
-	tokAccount = "{{stackdna|account}}"
+	annParent = "stackdna.org/parent"
+	// annUnreadable names fields a write accepts that no read returns in
+	// that form, so they cannot be in a snapshot. GitHub takes an
+	// environment's wait_timer and reports it reshaped inside
+	// protection_rules; without this the timer was dropped silently and a
+	// restore read as complete.
+	annUnreadable = "stackdna.org/unreadable"
+	tokAccount    = "{{stackdna|account}}"
 )
 
 // Client is one account of one provider.
@@ -191,6 +197,59 @@ func (it *item) fullName() string {
 }
 
 // writes is everything a collection's writes accept.
+// unreadable lists the top-level state fields a collection's read never
+// returns: fields both its create and its update accept (for an item a PUT
+// creates and updates, that PUT's), absent from the read's response
+// schema. A field only the create takes (auto_init, license_template) is
+// a one-time input, and one only the update takes (a label's new_name) is
+// an action; neither is state a snapshot could hold, and naming them made
+// every repository and label in the real StackDNA capture look lossy.
+// With no response schema nothing is claimed: absence of evidence is not
+// reported as a gap.
+func (c *Client) unreadable(col *Collection) []string {
+	var read *Fields
+	if col.Get != "" {
+		if r := c.Spec.ResponseSchema(col.Get, "get"); r != nil {
+			read = c.Spec.fields(r, 0)
+		}
+	} else if r := c.Spec.ResponseSchema(col.List, "get"); r != nil {
+		read = c.Spec.fields(r, 0)
+		if !col.Singleton {
+			if col.Array != "" && read.Children[col.Array] != nil {
+				read = read.Children[col.Array]
+			}
+			read = read.Items
+		}
+	}
+	w := c.Spec.RequestFields(col.Create, col.createMethod())
+	var u *Fields
+	if col.Update != "" {
+		u = c.Spec.RequestFields(col.Update, col.updateMethod())
+	}
+	if read == nil || read.Any || w == nil {
+		return nil
+	}
+	var out []string
+	for _, k := range sortedKeys(w.Children) {
+		if u != nil && u.Children[k] == nil {
+			continue
+		}
+		if read.Children[k] == nil && !hasString(col.Name, k) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+func hasString(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Client) writes(col *Collection) *Fields {
 	fs := []*Fields{c.Spec.RequestFields(col.Create, col.createMethod())}
 	if col.Update != "" {
@@ -348,6 +407,9 @@ func (c *Client) Capture(ctx context.Context) (snapshot.Snapshot, error) {
 		if it.parent != nil {
 			ann[annParent] = it.parent.fullName()
 		}
+		if u := c.unreadable(it.col); len(u) > 0 {
+			ann[annUnreadable] = strings.Join(u, ",")
+		}
 		if len(ann) > 0 {
 			meta["annotations"] = ann
 		}
@@ -377,10 +439,16 @@ func specVersion(s *Spec) string {
 // keyed "kind/name".
 type RestoreOptions struct {
 	Values map[string]map[string]any
+	// Update brings an existing item that differs in line with the
+	// snapshot, through its update operation (or the PUT that creates it).
+	Update bool
 }
 
-// Restore creates what is missing, parents first, and never modifies an
-// item that exists: identical is reported applied, different is reported.
+// Restore creates what is missing, parents first. An item that exists is
+// reported applied when identical; when different it is left alone unless
+// Update is set. A setting (singleton) is applied without Update only when
+// this restore created its parent: there the setting is part of the
+// restore, while on an existing parent it would change something live.
 func (c *Client) Restore(ctx context.Context, s snapshot.Snapshot, opt RestoreOptions) []snapshot.Result {
 	kindIndex := map[string]int{}
 	for i, col := range c.P.Collections {
@@ -391,16 +459,17 @@ func (c *Client) Restore(ctx context.Context, s snapshot.Snapshot, opt RestoreOp
 
 	targets := map[string]map[string]any{}  // kind|fullName -> raw item in the target
 	listed := map[string]map[string]*item{} // kind|parentFullName -> existing items by name
+	made := map[string]bool{}               // kind|fullName created by this restore
 	var results []snapshot.Result
 	for _, o := range objs {
 		res := snapshot.Result{Key: o.Key()}
-		res.OK, res.Detail = c.restoreOne(ctx, o, targets, listed, opt)
+		res.OK, res.Detail = c.restoreOne(ctx, o, targets, listed, made, opt)
 		results = append(results, res)
 	}
 	return results
 }
 
-func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[string]map[string]any, listed map[string]map[string]*item, opt RestoreOptions) (bool, string) {
+func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[string]map[string]any, listed map[string]map[string]*item, made map[string]bool, opt RestoreOptions) (bool, string) {
 	idx := -1
 	for i, col := range c.P.Collections {
 		if col.Kind == o.Kind() {
@@ -466,8 +535,18 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		if canon(ex.spec) == canon(spec) {
 			return true, "already present and identical"
 		}
+		var changed []string
+		for _, k := range sortedKeys(spec) {
+			if canon(spec[k]) != canon(ex.spec[k]) {
+				changed = append(changed, k)
+			}
+		}
+		newParent := col.Parent != "" && made[col.Parent+"|"+parentName]
+		if !opt.Update && !(col.Singleton && newParent) {
+			return false, "already exists and differs (" + strings.Join(changed, ", ") + "); not modified (--update modifies it)"
+		}
 		if !col.Singleton {
-			return false, "already exists and differs; StackDNA does not modify existing items"
+			return c.update(ctx, col, o, ex, spec, parentRaw, changed, targets, opt)
 		}
 	}
 
@@ -503,9 +582,20 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		targets[col.Kind+"|"+full] = desired
 		return true, "applied"
 	}
-	if col.Update != "" {
-		uf := c.Spec.RequestFields(col.Update, col.updateMethod())
-		upd, _ := keep(desired, uf, "", new([]string))
+	// Settings the create does not take (a repository's has_wiki) are
+	// applied by the update straight after. Only then: every label and
+	// hook would otherwise cost a second write.
+	uf := c.Spec.RequestFields(col.Update, col.updateMethod())
+	upd, _ := keep(desired, uf, "", new([]string))
+	extra := false
+	if um, ok := upd.(map[string]any); ok {
+		for k := range um {
+			if _, sent := bm[k]; !sent {
+				extra = true
+			}
+		}
+	}
+	if col.Update != "" && extra {
 		up, ok := expand(col.Update, col.Bind, c.Account, parentRaw, raw)
 		if !ok {
 			return false, "created, but cannot fill " + col.Update
@@ -517,8 +607,20 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		}
 	}
 	targets[col.Kind+"|"+full] = raw
+	made[col.Kind+"|"+full] = true
 	detail := "created"
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+	if u, _ := ann[annUnreadable].(string); u != "" {
+		var unset []string
+		for _, f := range strings.Split(u, ",") {
+			if _, ok := vals[f]; !ok {
+				unset = append(unset, f)
+			}
+		}
+		if len(unset) > 0 {
+			detail += "; never read back, so not restored: " + strings.Join(unset, ", ")
+		}
+	}
 	if s, _ := ann[annSecrets].(string); s != "" {
 		var missing []string
 		for _, p := range strings.Split(s, ",") {
@@ -531,6 +633,65 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		}
 	}
 	return true, detail
+}
+
+// update brings an existing item in line: through its update operation
+// when the API has one, else by the PUT that creates it (an environment, a
+// variable), which sets the item whole. A masked secret is never in the
+// snapshot, so an update that would send the item without it is refused
+// unless the value is supplied.
+func (c *Client) update(ctx context.Context, col *Collection, o snapshot.Object, ex *item, spec, parentRaw map[string]any,
+	changed []string, targets map[string]map[string]any, opt RestoreOptions) (bool, string) {
+	full := o.Name()
+	desired := rewrite(deepCopy(spec), func(s string) string { return strings.ReplaceAll(s, tokAccount, c.Account) }).(map[string]any)
+	vals := opt.Values[o.Kind()+"/"+full]
+	merge(desired, vals)
+	differs := "already exists and differs (" + strings.Join(changed, ", ") + ")"
+	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+	if s, _ := ann[annSecrets].(string); s != "" {
+		var missing []string
+		for _, p := range strings.Split(s, ",") {
+			if field(vals, p) == nil {
+				missing = append(missing, p)
+			}
+		}
+		if len(missing) > 0 {
+			return false, differs + "; not updated: its secret fields (" + strings.Join(missing, ", ") + ") are never returned, so the update would send it without them; supply them with --values"
+		}
+	}
+	var tmpl, method string
+	item := ex.raw
+	switch {
+	case col.Update != "":
+		tmpl, method = col.Update, col.updateMethod()
+	case col.createMethod() == "PUT":
+		tmpl, method, item = col.Create, "PUT", desired
+	default:
+		return false, differs + "; the API offers no way to update a " + col.Kind
+	}
+	path, ok := expand(tmpl, col.Bind, c.Account, parentRaw, item)
+	if !ok {
+		return false, differs + "; cannot fill " + tmpl
+	}
+	body, _ := keep(desired, c.Spec.RequestFields(tmpl, method), "", new([]string))
+	bm, _ := body.(map[string]any)
+	var need []string
+	for _, r := range c.Spec.Required(tmpl, method) {
+		if _, ok := bm[r]; !ok {
+			need = append(need, r)
+		}
+	}
+	if len(need) > 0 {
+		return false, differs + "; the update needs " + strings.Join(need, ", ") + ", which the API never returns; supply them with --values"
+	}
+	got, _, err := c.do(ctx, method, path, body)
+	if err != nil {
+		return false, err.Error()
+	}
+	if m, ok := got.(map[string]any); ok {
+		targets[col.Kind+"|"+full] = m
+	}
+	return true, "updated (" + strings.Join(changed, ", ") + ")"
 }
 
 func merge(dst, src map[string]any) {

@@ -82,8 +82,9 @@ func (p Policy) selected(typ string) bool {
 
 // Prefixes of skip reasons the CLI groups.
 const (
-	Unreadable  = "listed but could not be read: "
-	OwnedByGoog = "created and owned by Google: "
+	Unreadable   = "listed but could not be read: "
+	OwnedByGoog  = "created and owned by Google: "
+	ProjectLevel = "project-level, never restored: "
 )
 
 // res is one resource as read.
@@ -179,6 +180,10 @@ func inventory(ctx context.Context, api API, docs *Docs, want func(string) bool,
 			cov[a.Type].NotCaptured = "not selected (--types)"
 			continue
 		}
+		if why, ok := projectLevel[a.Type]; ok {
+			skip(a.Type, tokenizeString(a.RelName(), project, number), ProjectLevel+why)
+			continue
+		}
 		if why := googleOwned(a, project); why != "" {
 			skip(a.Type, tokenizeString(a.RelName(), project, number), OwnedByGoog+why)
 			continue
@@ -208,6 +213,11 @@ func inventory(ctx context.Context, api API, docs *Docs, want func(string) bool,
 		switch {
 		case errors.Is(errs[i], ErrNotFound):
 			continue // deleted between list and read
+		case errors.As(errs[i], new(ownedError)):
+			var oe ownedError
+			errors.As(errs[i], &oe)
+			skip(a.Type, oe.name, OwnedByGoog+oe.why)
+			continue
 		case errors.Is(errs[i], ErrUnsupported):
 			cover(a.Type).NotCaptured = "API not enabled or not available in this project"
 			continue
@@ -219,6 +229,16 @@ func inventory(ctx context.Context, api API, docs *Docs, want func(string) bool,
 	}
 	name(rs)
 	return rs, cov, skips, nil
+}
+
+// projectLevel are asset types about the project itself, never restored. A
+// restore runs into an existing project and must not create one, and must
+// never link billing or enable APIs: both are decisions that spend money,
+// for a person to make before restoring.
+var projectLevel = map[string]string{
+	"cloudresourcemanager.googleapis.com/Project":    "the project itself; restore runs into an existing project",
+	"cloudbilling.googleapis.com/ProjectBillingInfo": "the billing link; a person links billing, never a restore",
+	"serviceusage.googleapis.com/Service":            "an enabled API; enable APIs before restoring (enabling can start billing)",
 }
 
 // googleOwned reports resources Google creates and owns in every project:
@@ -238,6 +258,11 @@ func googleOwned(a Asset, project string) string {
 	return ""
 }
 
+// ownedError reports a resource found to be Google's only once read.
+type ownedError struct{ why, name string }
+
+func (e ownedError) Error() string { return e.why }
+
 func read(ctx context.Context, api API, docs *Docs, a Asset, project, number string) (*res, error) {
 	doc, err := docs.Doc(a.DiscoveryURI, a.Version)
 	if err != nil {
@@ -251,8 +276,20 @@ func read(ctx context.Context, api API, docs *Docs, a Asset, project, number str
 	if err != nil {
 		return nil, err
 	}
-	spec, ro := doc.normalize(a.DiscoveryName, data)
-	rel := tokenizeString(a.RelName(), project, number)
+	// The resource's own name field is canonical. Cloud Asset Inventory
+	// can name it differently: it names service accounts by their numeric
+	// uniqueId, IAM by email. Taken from the inventory, every service
+	// account looked server-named (and was restored without an accountId),
+	// and Google's default accounts passed the domain check unrecognised.
+	canonical := a.RelName()
+	if n, ok := data["name"].(string); ok && strings.HasPrefix(n, "projects/") && strings.Count(n, "/") == strings.Count(canonical, "/") {
+		canonical = n
+	}
+	if why := googleOwned(Asset{Name: "//x/" + canonical, Type: a.Type}, project); why != "" {
+		return nil, ownedError{why: why, name: tokenizeString(canonical, project, number)}
+	}
+	spec, ro := doc.normalize(k.Schema, data)
+	rel := tokenizeString(canonical, project, number)
 	spec = tokenize(spec, project, number)
 	status := map[string]any{"name": rel}
 	for k, v := range ro {
@@ -262,7 +299,7 @@ func read(ctx context.Context, api API, docs *Docs, a Asset, project, number str
 		status[k] = v
 	}
 	r := &res{asset: a, doc: doc, kind: k, rel: rel, spec: spec, status: status, logical: rel}
-	if generatedID(a.RelName()) {
+	if generatedID(canonical) {
 		// The server chose this ID; its name differs in every project.
 		// "name" in the spec is the same server-chosen value, never input,
 		// and so is any name nested under it (an alert policy's conditions:

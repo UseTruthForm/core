@@ -68,12 +68,17 @@ func wrap(d *Doc, schema string, m *Method, spec map[string]any, id string) (map
 	if m.Request == nil {
 		return nil, nil, fmt.Errorf("%s has no request body", m.ID)
 	}
+	// When the ID travels on its own (a *Id query parameter or wrapper
+	// field), the resource's name is its identity and must not be sent:
+	// IAM answered "Must not specify service_account.name" in the first
+	// real drill. When it does not (a log metric), the name is the input.
 	if m.Request.Ref == schema {
 		body := deepCopy(spec)
 		if id != "" {
 			for _, p := range sortedKeys(m.Parameters) {
 				if m.Parameters[p].Location == "query" && strings.HasSuffix(p, "Id") {
 					q.Set(p, id)
+					delete(body, "name")
 				}
 			}
 		}
@@ -92,10 +97,12 @@ func wrap(d *Doc, schema string, m *Method, spec map[string]any, id string) (map
 	if holder == "" {
 		return nil, nil, fmt.Errorf("%s: request %s does not hold a %s", m.ID, m.Request.Ref, schema)
 	}
-	body := map[string]any{holder: deepCopy(spec)}
+	res := deepCopy(spec)
+	body := map[string]any{holder: res}
 	if id != "" {
 		for _, k := range idFields(w) {
 			body[k] = id
+			delete(res, "name")
 		}
 	}
 	return body, q, nil
@@ -116,6 +123,9 @@ func unwrap(d *Doc, schema string, m *Method, body map[string]any) (map[string]a
 			res, _ := body[k].(map[string]any)
 			if res == nil {
 				return nil, "", fmt.Errorf("INVALID_ARGUMENT: %s needs %s", m.Request.Ref, k)
+			}
+			if _, named := res["name"]; named && len(idFields(w)) > 0 {
+				return nil, "", fmt.Errorf("INVALID_ARGUMENT: Must not specify %s.name", k)
 			}
 			id := ""
 			for _, f := range idFields(w) {

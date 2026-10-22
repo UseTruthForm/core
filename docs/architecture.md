@@ -393,12 +393,46 @@ alert policy that references the channel by its server-assigned name.
 Mutation checks confirm that dropping project tokens, reference tokens,
 nested-name removal or the Google-owned skip each fails it.
 
-The real project (`my-sandbox-project`) has **billing disabled** and needs
-three free APIs enabled: Cloud Asset, Cloud Resource Manager and IAM. With
-billing off, the real drill can use only resources that need no billing:
-service accounts, custom roles, log metrics and notification channels. Alert
-policies stay in the fake, because Cloud Monitoring charges for alerting
-conditions.
+**Proof against a real project: `scripts/drill-gcp.sh`.** It's the same
+disaster case. It passed in a personal sandbox project, with billing
+disabled, on 2026-10-21. Both resources were restored: a service account,
+and an email notification channel whose ID the server assigns. The diff was
+empty and the project was clean afterwards. A read-only capture of the
+project takes about 2s.
+
+Cloud Asset Inventory lags changes by a minute or so, so the drill retries
+reads after each change and logs how long they took to settle.
+
+The real project found five things the fake had not shown. Each is now
+pinned in the fake tests:
+
+- **Cloud Asset Inventory names service accounts by numeric `uniqueId`,**
+  while IAM names them by email. Taken from the inventory, every service
+  account looked server-named, and Google's default accounts passed the
+  domain check. The resource's own `name` from `GET` is now canonical.
+- **Schema names differ between the inventory and the document.** The
+  inventory calls a Service Usage service `Service`; the document calls
+  the schema `GoogleApiServiceusageV1Service`. Matching falls back to the
+  name pattern alone.
+- **"Must not specify service_account.name":** when a create takes the ID
+  separately (AIP-133), the name is identity, not input, and is no longer
+  sent.
+- **Monitoring's audit records (`MutationRecord`) are server-written** but
+  flagged nowhere. They are treated as output-only by type.
+- **The project, its billing link and enabled APIs are listed as
+  resources.** They are captured as project-level and never restored. A
+  restore runs into an existing project and must never link billing or
+  enable APIs, because both can spend money.
+
+**Not in the real drill, and why:**
+
+- Log metrics: creating one needs billing (`BILLING_DISABLED`).
+- Custom roles: a deleted role's ID can't be reused for 37 days, so
+  delete-then-restore in one project can't succeed. Restoring them needs
+  `undelete`, which isn't implemented.
+- Alert policies: Cloud Monitoring charges for alerting conditions.
+
+All three are covered by the fake.
 
 **Known limits:**
 
@@ -416,7 +450,7 @@ conditions.
 | Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so); `--json` output |
 | AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; a zone mapping for cross-region restore; account-ID tokens; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
 | Azure | A real-subscription drill (free tier); proxy resources (role assignments, diagnostic settings) through their parents' list endpoints; principal IDs as references, so role assignments can be remapped |
-| GCP | The real-project drill; Compute-style path parameters; project IDs in free text |
+| GCP | Compute-style path parameters; project IDs in free text; `undelete` for soft-deleted resources (custom roles) |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |
 | Agents | A small MCP server (`discover`, `diff`, `snapshot`, `explain`), read-only against live systems by default. Agents watch for drift and open PRs; CI regenerates snapshots deterministically, so a PR shows only real change |
 | Proof | Scheduled restore drills per platform: restore into a sandbox and require an empty diff |

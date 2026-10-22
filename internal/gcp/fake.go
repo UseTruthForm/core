@@ -34,6 +34,10 @@ type Fake struct {
 	// document (naming an alert policy's conditions). It runs with the
 	// world locked and must not call back into the fake.
 	AfterCreate func(schema string, stored map[string]any)
+	// InventoryName names an asset the way Cloud Asset Inventory does when
+	// that differs from the resource's own name (service accounts by their
+	// numeric uniqueId).
+	InventoryName func(rel string, data map[string]any) string
 }
 
 type fakeRes struct {
@@ -57,10 +61,17 @@ func (f *Fake) Assets(context.Context) ([]Asset, error) {
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	var out []Asset
-	for _, r := range f.res {
-		if !f.Unavailable[r.asset.Type] {
-			out = append(out, r.asset)
+	for rel, r := range f.res {
+		if f.Unavailable[r.asset.Type] {
+			continue
 		}
+		a := r.asset
+		if f.InventoryName != nil {
+			if n := f.InventoryName(rel, r.data); n != "" {
+				a.Name = "//" + strings.SplitN(strings.TrimPrefix(a.Name, "//"), "/", 2)[0] + "/" + n
+			}
+		}
+		out = append(out, a)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name > out[j].Name })
 	return out, nil
@@ -73,7 +84,11 @@ func (f *Fake) Call(_ context.Context, method, url string, body any) (map[string
 	switch method {
 	case "GET":
 		for rel, r := range f.res {
-			if strings.HasSuffix(url, "/"+rel) {
+			alias := ""
+			if f.InventoryName != nil {
+				alias = f.InventoryName(rel, r.data)
+			}
+			if strings.HasSuffix(url, "/"+rel) || (alias != "" && strings.HasSuffix(url, "/"+alias)) {
 				return deepCopy(r.data), nil
 			}
 		}
@@ -181,6 +196,9 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 		if outputOnly(p) && (p.Type == "string" || p.Type == "") && k != "name" {
 			f.w.seq++
 			stored[k] = fmt.Sprintf("%s-%s-%d", strings.ToLower(k), f.id, f.w.seq)
+			if strings.HasSuffix(k, "Id") {
+				stored[k] = fmt.Sprintf("1%019d", f.w.seq*7919+len(f.id)) // Google's IDs are numbers
+			}
 		}
 	}
 	f.w.seq++

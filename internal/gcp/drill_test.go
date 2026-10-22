@@ -75,6 +75,14 @@ func TestDrillOnFakeProjects(t *testing.T) {
 	// Google names an alert policy's conditions under the policy's own
 	// server-assigned name, as the AlertPolicy schema describes.
 	for _, f := range []*Fake{src, dst} {
+		// Cloud Asset Inventory names service accounts by uniqueId, not by
+		// the email IAM uses (seen in my-sandbox-project, 2026-10-21).
+		f.InventoryName = func(rel string, data map[string]any) string {
+			if strings.Contains(rel, "/serviceAccounts/") {
+				return parentOf(rel) + "/serviceAccounts/" + fmt.Sprint(data["uniqueId"])
+			}
+			return ""
+		}
 		f.AfterCreate = func(schema string, stored map[string]any) {
 			if schema != "AlertPolicy" {
 				return
@@ -156,6 +164,17 @@ func TestOutputOnlyAndKinds(t *testing.T) {
 	}
 	if !contains(d.Fields("ServiceAccount"), "displayName") {
 		t.Error("fields missing displayName")
+	}
+	// Monitoring's audit records are flagged nowhere but written by the
+	// server; they showed as drift after a real restore.
+	md, _ := docs.Doc("https://monitoring.googleapis.com/$discovery/rest", "v3")
+	nspec, _ := md.normalize("NotificationChannel", map[string]any{"type": "email", "displayName": "x",
+		"creationRecord": map[string]any{"mutateTime": "2026-10-21T00:00:00Z"}, "mutationRecords": []any{map[string]any{"mutatedBy": "a@b"}}})
+	if _, ok := nspec["creationRecord"]; ok {
+		t.Errorf("creationRecord kept: %v", nspec)
+	}
+	if _, ok := nspec["mutationRecords"]; ok {
+		t.Errorf("mutationRecords kept: %v", nspec)
 	}
 	if !generatedID("projects/p/notificationChannels/1234567") || generatedID("projects/p/metrics/shop-errors") {
 		t.Error("generatedID")

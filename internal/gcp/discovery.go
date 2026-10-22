@@ -73,11 +73,18 @@ type Doc struct {
 	Digest      string                 `json:"-"`
 }
 
+// auditTypes are schemas a service uses only for records it writes itself.
+// Cloud Monitoring's MutationRecord (who changed a channel or policy, and
+// when) is flagged output-only nowhere; a restored notification channel
+// diffed on creationRecord.mutateTime and mutationRecords in the first real
+// GCP drill (2026-10-21).
+var auditTypes = map[string]bool{"MutationRecord": true}
+
 // outputOnly reports a field the server sets. Most documents flag it
 // (readOnly); some only say so in prose, which is the convention Google's
 // API guidelines require ("Output only." / "[Output Only]").
 func outputOnly(s *Schema) bool {
-	if s.ReadOnly {
+	if s.ReadOnly || auditTypes[s.Ref] || (s.Items != nil && auditTypes[s.Items.Ref]) {
 		return true
 	}
 	d := strings.TrimSpace(s.Description)
@@ -223,6 +230,23 @@ func (d *Doc) Kind(schema, relName string) (*Kind, error) {
 		}
 	}
 	walk("", d.Resources)
+	if len(found) == 0 {
+		// Cloud Asset Inventory's schema name can differ from the
+		// document's: it reports Service Usage's services as "Service",
+		// the document calls the schema GoogleApiServiceusageV1Service. The
+		// name pattern alone then decides, if exactly one get matches.
+		for _, c := range d.collections() {
+			if g := c.methods["get"]; g != nil && g.Response != nil && matchesName(g, relName) {
+				k := &Kind{Doc: d, Schema: g.Response.Ref, Get: g, Collection: c.path}
+				for _, mn := range []string{"create", "insert"} {
+					if m := c.methods[mn]; m != nil && m.HTTPMethod == "POST" {
+						k.Create = m
+					}
+				}
+				found = append(found, k)
+			}
+		}
+	}
 	if len(found) != 1 {
 		return nil, fmt.Errorf("%s %s: the document names %d collections that read %s at this name", d.Name, d.Version, len(found), schema)
 	}

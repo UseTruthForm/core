@@ -18,8 +18,8 @@ import (
 // application-default login) and plain HTTPS; every URL and body comes
 // from a Discovery document, so there is no per-service client.
 //
-// UNVERIFIED until it has run against a project; everything above it is
-// proven against Fake.
+// Verified against a real project by scripts/drill-gcp.sh (2026-10-21):
+// Cloud Asset Inventory listing, GET, and wrapped and direct creates.
 type SDK struct {
 	project string
 	hc      *http.Client

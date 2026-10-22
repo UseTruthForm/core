@@ -20,11 +20,18 @@ type World struct {
 	reg  *Registry
 	subs map[string]bool
 	seq  int
+	// owner maps each GUID the world generated (a principalId) to the
+	// subscription it belongs to. A PUT carrying another subscription's
+	// GUID is refused as PrincipalNotFound: a role assignment restored
+	// with the source identity's principal would grant access to no one.
+	owner map[string]string
 }
 
 // NewWorld creates an empty world whose subscriptions serve the registry's
 // types at the versions it has definitions for.
-func NewWorld(reg *Registry) *World { return &World{reg: reg, subs: map[string]bool{}} }
+func NewWorld(reg *Registry) *World {
+	return &World{reg: reg, subs: map[string]bool{}, owner: map[string]string{}}
+}
 
 // Fake is one subscription. It is schema driven and knows no Azure type:
 // it rejects properties the definition does not have and values for
@@ -37,6 +44,9 @@ type Fake struct {
 	res         map[string]stored // lower(id) -> resource
 	ManagedBy   map[string]string // lower(id) -> managedBy, as ARM reports it
 	AfterCreate func(id string, body map[string]any)
+	// AlsoTracked lists child types ARM's resource list returns as well
+	// (a SQL server's databases are both), so capture meets them twice.
+	AlsoTracked map[string]bool
 }
 
 type stored struct {
@@ -62,7 +72,8 @@ func (f *Fake) list(groups bool) []Ref {
 	defer f.w.mu.Unlock()
 	var out []Ref
 	for k, r := range f.res {
-		if (r.typ == "Microsoft.Resources/resourceGroups") != groups {
+		rid, _ := ParseID(r.id)
+		if (r.typ == "Microsoft.Resources/resourceGroups") != groups || (!groups && !tracked(rid) && !f.AlsoTracked[rid.Type]) {
 			continue
 		}
 		loc, _ := r.body["location"].(string)
@@ -147,6 +158,9 @@ func (f *Fake) Put(_ context.Context, id, version string, body map[string]any) (
 	if err != nil {
 		return nil, fmt.Errorf("NoRegisteredProviderFound: %w", err)
 	}
+	if !s.Writable {
+		return nil, fmt.Errorf("InvalidResourceType: %s is defined by Azure and cannot be written", rid.Type)
+	}
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	if err := f.validate(s, rid, body); err != nil {
@@ -162,6 +176,7 @@ func (f *Fake) Put(_ context.Context, id, version string, body map[string]any) (
 	} else if top, _, _ := s.object(s.body, nil); top["properties"].Type.Ref != "" {
 		b["properties"] = map[string]any{"provisioningState": "Succeeded"}
 	}
+	f.generateIDs(s, b)
 	f.res[strings.ToLower(rid.String())] = stored{id: rid.String(), typ: rid.Type, version: version, body: b}
 	if f.AfterCreate != nil {
 		f.w.mu.Unlock()
@@ -169,6 +184,32 @@ func (f *Fake) Put(_ context.Context, id, version string, body map[string]any) (
 		f.w.mu.Lock()
 	}
 	return deepCopy(b), nil
+}
+
+// generateIDs fills read-only string properties named *Id under
+// "properties" (an identity's principalId and clientId) with GUIDs this
+// subscription owns.
+func (f *Fake) generateIDs(s *Schema, b map[string]any) {
+	top, _, _ := s.object(s.body, nil)
+	pp, ok := top["properties"]
+	if !ok {
+		return
+	}
+	props, _, _ := s.object(pp.Type.index(), nil)
+	inner, _ := b["properties"].(map[string]any)
+	if inner == nil {
+		return
+	}
+	for _, k := range sortedKeys(props) {
+		if props[k].Flags&flagReadOnly != 0 && strings.HasSuffix(k, "Id") && s.file[props[k].Type.index()].Kind == "StringType" {
+			if _, set := inner[k]; !set {
+				f.w.seq++
+				g := fmt.Sprintf("%08x-0000-4000-8000-%012x", f.w.seq, len(f.sub)*7919+f.w.seq)
+				inner[k] = g
+				f.w.owner[g] = strings.ToLower(f.sub)
+			}
+		}
+	}
 }
 
 func (f *Fake) validate(s *Schema, rid ResourceID, body map[string]any) error {
@@ -187,15 +228,20 @@ func (f *Fake) validate(s *Schema, rid ResourceID, body map[string]any) error {
 			return fmt.Errorf("InvalidRequestContent: %s requires %s", rid.Type, r)
 		}
 	}
-	if rid.Type != "Microsoft.Resources/resourceGroups" {
+	if rid.Type != "Microsoft.Resources/resourceGroups" && rid.ResourceGroup != "" {
 		rg := ResourceID{Subscription: rid.Subscription, ResourceGroup: rid.ResourceGroup, Type: "Microsoft.Resources/resourceGroups"}
 		if _, ok := f.res[strings.ToLower(rg.String())]; !ok {
 			return fmt.Errorf("ResourceGroupNotFound: resource group %s does not exist", rid.ResourceGroup)
 		}
 	}
+	if rid.Scope != "" {
+		if _, ok := f.res[strings.ToLower(rid.Scope)]; !ok {
+			return fmt.Errorf("ResourceNotFound: scope %s does not exist", rid.Scope)
+		}
+	}
 	if i := strings.LastIndex(rid.Name, "/"); i > 0 {
 		parent := ResourceID{Subscription: rid.Subscription, ResourceGroup: rid.ResourceGroup,
-			Type: rid.Type[:strings.LastIndex(rid.Type, "/")], Name: rid.Name[:i]}
+			Type: rid.Type[:strings.LastIndex(rid.Type, "/")], Name: rid.Name[:i], Scope: rid.Scope}
 		if _, ok := f.res[strings.ToLower(parent.String())]; !ok {
 			return fmt.Errorf("ParentResourceNotFound: %s", parent.String())
 		}
@@ -207,6 +253,9 @@ func (f *Fake) validate(s *Schema, rid ResourceID, body map[string]any) error {
 			bad = fmt.Errorf("InvalidRequestContent: unresolved StackDNA reference %q sent to Azure", v)
 		}
 		lower := strings.ToLower(v)
+		if o, ok := f.w.owner[lower]; ok && bad == nil && o != strings.ToLower(f.sub) {
+			bad = fmt.Errorf("PrincipalNotFound: principal %s does not exist in this directory (it belongs to subscription %s)", v, o)
+		}
 		for other := range f.w.subs {
 			if bad == nil && other != strings.ToLower(f.sub) && strings.Contains(lower, "/subscriptions/"+other) {
 				bad = fmt.Errorf("LinkedAuthorizationFailed: %q is in subscription %s, which this one cannot reach", v, other)
@@ -232,6 +281,64 @@ func lookup(m map[string]any, p []string) (any, bool) {
 }
 
 func lastName(n string) string { return n[strings.LastIndex(n, "/")+1:] }
+
+// Tracked are the types ARM's subscription resource list returns: tracked
+// resources (they have a location) that are not children. Everything else
+// is found through List, as with Azure.
+func tracked(rid ResourceID) bool {
+	if rid.Extension() || strings.Count(rid.Type, "/") != 1 || strings.EqualFold(rid.Type, diagnosticType) {
+		return false
+	}
+	// Microsoft.Authorization types at group scope (locks, assignments) are
+	// extension resources too; ARM's resource list returns none of them.
+	return !strings.EqualFold(Namespace(rid.Type), "Microsoft.Authorization")
+}
+
+// List serves the collections capture reads: an extension type across the
+// subscription, a resource's diagnostic settings, or a child collection.
+func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any, error) {
+	lower := strings.ToLower(strings.TrimRight(path, "/"))
+	subProviders := "/subscriptions/" + strings.ToLower(f.sub) + "/providers/"
+	var ids []stored
+	f.w.mu.Lock()
+	for k, r := range f.res {
+		rid, _ := ParseID(r.id)
+		switch {
+		case strings.HasPrefix(lower, subProviders) && strings.Count(lower[len(subProviders):], "/") == 1 &&
+			!strings.EqualFold(path[len(subProviders):], diagnosticType):
+			// Subscription-wide list of an extension type. Diagnostic
+			// settings are listed per scope: at the subscription, ARM
+			// returns only the subscription's own (the next case).
+			if strings.EqualFold(rid.Type, path[len(subProviders):]) {
+				ids = append(ids, r)
+			}
+		case strings.HasPrefix(k, lower+"/") && !strings.Contains(k[len(lower)+1:], "/"):
+			ids = append(ids, r)
+		}
+	}
+	f.w.mu.Unlock()
+	sort.Slice(ids, func(i, j int) bool { return ids[i].id > ids[j].id })
+	var out []map[string]any
+	for _, r := range ids {
+		b, err := f.Get(ctx, r.id, r.version)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, nil
+}
+
+// SeedAzure stores what Azure itself creates, bypassing validation (an
+// NSG's default rules, which no caller can PUT).
+func (f *Fake) SeedAzure(id, version string, body map[string]any) {
+	rid, _ := ParseID(id)
+	b := deepCopy(body)
+	b["id"], b["name"], b["type"] = rid.String(), lastName(rid.Name), rid.Type
+	f.w.mu.Lock()
+	f.res[strings.ToLower(rid.String())] = stored{id: rid.String(), typ: rid.Type, version: version, body: b}
+	f.w.mu.Unlock()
+}
 
 // Stored returns what the fake holds for an ID, secrets included, so a test
 // can prove a secret arrived.

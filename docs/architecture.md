@@ -385,12 +385,44 @@ A web app was meant to test, against real Azure, a map keyed by resource
 ID (`identity.userAssignedIdentities`). The subscription's Free (F1) App
 Service quota is 0, so for now only the fake covers that case.
 
+**What the resource list doesn't return is discovered too:**
+
+- **Extension resources** are listed across the subscription: role
+  assignments, custom role definitions, locks and policy assignments.
+  Diagnostic settings are listed on the subscription and on every tracked
+  resource. Assignments inherited from a management group are recorded as
+  "assigned above this subscription" and not restored. Built-in roles are
+  counted, not listed.
+- **Children** are found generically. The provider registration lists each
+  type's child types (`storageAccounts/blobServices`, ...), and ARM lists
+  any child collection at `{parentId}/{child}`, to a depth of three. A child
+  the parent manages inline (a VNet's `subnets`) is skipped, and so is a
+  type no one can write (`writableScopes: 0`, such as an NSG's
+  `defaultSecurityRules`, which Azure defines).
+- **IDs:** every object keeps its tokenized ID. An extension resource's
+  scope can't be rebuilt from kind and name, and restore `PUT`s to it,
+  after its scope exists. A resource reachable two ways (tracked, and its
+  parent's child) is captured once.
+- **Principal references.** Restoring a managed identity creates a new
+  principal. A read-only GUID of a captured resource (its `principalId`)
+  that appears in another spec becomes a reference, resolved from the
+  target. A role assignment therefore follows the restored identity,
+  instead of granting access to an object ID that no longer exists. This
+  needed one more fix: a whole read-only `properties` object (an
+  identity's) used to be dropped without keeping its values.
+
+The real drill covers this: a Reader assignment for the identity, and a
+lock on the group. The restored assignment named the restored identity's
+new principal, checked with `az`.
+
 **Known limits:**
 
-- Only tracked resources are listed. Proxy resources that the subscription
-  list doesn't return (role assignments, diagnostic settings, most
-  children) are not captured unless their parent's body includes them, as
-  a VNet's includes its subnets.
+- Role assignments across tenants: a principal from another tenant does
+  not exist in the target, and the assignment fails with
+  `PrincipalNotFound`.
+- Custom role definition IDs are unique per tenant. Restoring one into
+  another subscription of the same tenant conflicts while the source's
+  exists.
 - Data is never captured.
 - Restore never modifies an existing resource.
 
@@ -484,7 +516,7 @@ All three are covered by the fake.
 |---|---|
 | Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so); `--json` output |
 | AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; a zone mapping for cross-region restore; account-ID tokens; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
-| Azure | A real-subscription drill (free tier); proxy resources (role assignments, diagnostic settings) through their parents' list endpoints; principal IDs as references, so role assignments can be remapped |
+| Azure | Mapping principals across tenants; data-plane configuration (Key Vault secrets' metadata, storage CORS) where ARM exposes it |
 | GCP | Compute-style path parameters; project IDs in free text; `undelete` for soft-deleted resources (custom roles) |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |
 | Agents | A small MCP server (`discover`, `diff`, `snapshot`, `explain`), read-only against live systems by default. Agents watch for drift and open PRs; CI regenerates snapshots deterministically, so a PR shows only real change |

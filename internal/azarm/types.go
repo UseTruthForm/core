@@ -51,6 +51,7 @@ type entry struct {
 	Kind                 string          `json:"$type"`
 	Name                 string          `json:"name"`
 	Body                 *ref            `json:"body"`
+	WritableScopes       int             `json:"writableScopes"`
 	Properties           map[string]prop `json:"properties"`
 	AdditionalProperties *ref            `json:"additionalProperties"`
 	ItemType             *ref            `json:"itemType"`
@@ -148,6 +149,10 @@ type Schema struct {
 	// Digest identifies the definition file, so a snapshot records which
 	// definitions shaped it.
 	Digest string
+	// Writable is false for types no one can PUT (an NSG's
+	// defaultSecurityRules, which Azure defines). They are never captured:
+	// every restore of them would fail.
+	Writable bool
 }
 
 // Schema loads a type's definition.
@@ -175,7 +180,7 @@ func (r *Registry) Schema(resourceType, version string) (*Schema, error) {
 	if rt.Body == nil {
 		return nil, fmt.Errorf("%s@%s: definition has no body", resourceType, version)
 	}
-	return &Schema{Type: resourceType, Version: version, file: entries, body: rt.Body.index(), Digest: r.sums[file]}, nil
+	return &Schema{Type: resourceType, Version: version, file: entries, body: rt.Body.index(), Digest: r.sums[file], Writable: rt.WritableScopes != 0}, nil
 }
 
 // object returns the properties of an object type, resolving a

@@ -1,0 +1,357 @@
+[
+ {
+  "$type": "StringLiteralType",
+  "value": "service"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "microsoft.insights/diagnosticSettings"
+ },
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2016-09-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "microsoft.insights/diagnosticSettings",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "location": {
+    "description": "Resource location",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The service diagnostics settings of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "tags": {
+    "description": "Resource tags",
+    "flags": 0,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ServiceDiagnosticSettings",
+  "properties": {
+   "eventHubAuthorizationRuleId": {
+    "description": "The resource Id for the event hub namespace authorization rule.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "logs": {
+    "description": "the list of logs settings.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/12"
+    }
+   },
+   "metrics": {
+    "description": "the list of metric settings.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/10"
+    }
+   },
+   "serviceBusRuleId": {
+    "description": "The service bus rule ID of the service bus namespace in which you would like to have Event Hubs created for streaming Diagnostic Logs. The rule ID is of the format: '{service bus resource ID}/authorizationrules/{key name}'.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "storageAccountId": {
+    "description": "The resource ID of the storage account to which you would like to send Diagnostic Logs.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "workspaceId": {
+    "description": "The workspace ID (resource ID of a Log Analytics workspace) for a Log Analytics workspace to which you would like to send Diagnostic Logs. Example: /subscriptions/4b9e8510-67ab-4e9a-95a9-e2f1e570ea9c/resourceGroups/insights-integration/providers/Microsoft.OperationalInsights/workspaces/viruela2",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "MetricSettings",
+  "properties": {
+   "enabled": {
+    "description": "a value indicating whether this timegrain is enabled.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/7"
+    }
+   },
+   "retentionPolicy": {
+    "description": "the retention policy for this timegrain.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/8"
+    }
+   },
+   "timeGrain": {
+    "description": "the timegrain of the metric in ISO8601 format.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "BooleanType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "MicrosoftCommonRetentionPolicy",
+  "properties": {
+   "days": {
+    "description": "the number of days for the retention in days. A value of 0 will retain the events indefinitely.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/9"
+    }
+   },
+   "enabled": {
+    "description": "a value indicating whether the retention policy is enabled.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/7"
+    }
+   }
+  }
+ },
+ {
+  "$type": "IntegerType",
+  "minValue": 0
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/6"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "LogSettings",
+  "properties": {
+   "category": {
+    "description": "Name of a Diagnostic Log category for a resource type this setting is applied to. To obtain the list of Diagnostic Log categories for a resource, first perform a GET diagnostic settings operation.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "enabled": {
+    "description": "a value indicating whether this log is enabled.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/7"
+    }
+   },
+   "retentionPolicy": {
+    "description": "the retention policy for this log.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/8"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/11"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "ServiceDiagnosticSettingsResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SystemData",
+  "properties": {
+   "createdAt": {
+    "description": "The timestamp of resource creation (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "createdBy": {
+    "description": "The identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "createdByType": {
+    "description": "The type of identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "lastModifiedAt": {
+    "description": "The timestamp of resource last modification (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "lastModifiedBy": {
+    "description": "The identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "lastModifiedByType": {
+    "description": "The type of identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/24"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/15"
+   },
+   {
+    "$ref": "#/16"
+   },
+   {
+    "$ref": "#/17"
+   },
+   {
+    "$ref": "#/18"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/20"
+   },
+   {
+    "$ref": "#/21"
+   },
+   {
+    "$ref": "#/22"
+   },
+   {
+    "$ref": "#/23"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/4"
+  },
+  "name": "microsoft.insights/diagnosticSettings@2016-09-01",
+  "readableScopes": 31,
+  "writableScopes": 31
+ }
+]

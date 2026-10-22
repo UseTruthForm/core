@@ -1,0 +1,265 @@
+[
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Authorization/locks"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2020-05-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Authorization/locks",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The properties of the lock.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/4"
+    }
+   },
+   "systemData": {
+    "description": "Metadata pertaining to creation and last modification of the resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/11"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ManagementLockProperties",
+  "properties": {
+   "level": {
+    "description": "The level of the lock. Possible values are: NotSpecified, CanNotDelete, ReadOnly. CanNotDelete means authorized users are able to read and modify the resources, but not delete. ReadOnly means authorized users can only read from a resource, but they can't modify or delete it.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/8"
+    }
+   },
+   "notes": {
+    "description": "Notes about the lock. Maximum of 512 characters.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "owners": {
+    "description": "The owners of the lock.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/10"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "NotSpecified"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "CanNotDelete"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ReadOnly"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/5"
+   },
+   {
+    "$ref": "#/6"
+   },
+   {
+    "$ref": "#/7"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ManagementLockOwner",
+  "properties": {
+   "applicationId": {
+    "description": "The application ID of the lock owner.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/9"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SystemData",
+  "properties": {
+   "createdAt": {
+    "description": "The timestamp of resource creation (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createdBy": {
+    "description": "The identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createdByType": {
+    "description": "The type of identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/16"
+    }
+   },
+   "lastModifiedAt": {
+    "description": "The timestamp of resource last modification (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "lastModifiedBy": {
+    "description": "The identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "lastModifiedByType": {
+    "description": "The type of identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/21"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/12"
+   },
+   {
+    "$ref": "#/13"
+   },
+   {
+    "$ref": "#/14"
+   },
+   {
+    "$ref": "#/15"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/17"
+   },
+   {
+    "$ref": "#/18"
+   },
+   {
+    "$ref": "#/19"
+   },
+   {
+    "$ref": "#/20"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/3"
+  },
+  "name": "Microsoft.Authorization/locks@2020-05-01",
+  "readableScopes": 31,
+  "writableScopes": 31
+ }
+]

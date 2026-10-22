@@ -565,13 +565,40 @@ pinned in the fake tests:
 
 All three are covered by the fake.
 
+**Compute-style APIs.** Compute names each path segment
+(`projects/{project}/regions/{region}/subnetworks/{subnetwork}`) where
+other documents take one `{+name}`. Names are matched against the whole
+template, each parameter by its own pattern, and URLs are filled segment
+by segment: a get takes the item's name, an insert its parent, and the
+template supplies the collection word. Compute answers every write with
+its own operation (`kind: compute#operation`, `status: DONE`, no `done`
+field, no name under `operations/`), which is polled through its
+`selfLink` before the resource its `targetLink` names is read; missed, a
+restore would have recorded `operation-1730...` as the new resource's
+name. A fake drill restores a network, a regional subnetwork and a
+firewall that names the network by URL.
+
+Two bugs that were not Compute's alone:
+
+- A create's `requestId` (AIP-155, an idempotency UUID that Compute and
+  many AIP APIs take) was read as the new resource's ID, as `secretId` is,
+  so the name would have gone into the token and out of the body.
+- Creation order followed only the tokens for server-assigned names. A
+  user-named resource referenced by its name (a firewall's network,
+  `.../global/networks/shop-net`) could be created first: Firewall sorts
+  before Network. Order now follows those names too, and the fake refuses
+  a reference to a resource it serves but does not hold, as Google does.
+
 **Known limits:**
 
 - A project ID written into free text, such as a log filter
   (`resource.labels.project_id="..."`), is not tokenized. Only names, emails
   and exact values are.
-- Compute-style APIs, whose URLs take separate `{project}/{zone}`
-  parameters, are not driven yet.
+- Compute is driven through the fake only: Compute needs billing, which
+  the sandbox project does not have. Real Compute may hold fields the fake
+  cannot show to be server-set: Compute's own description does not flag
+  `Subnetwork.fingerprint` (a hash of the resource) output only, so it is
+  captured, and against a real project it would likely read as drift.
 - Data is never captured.
 
 ## SaaS: GitHub and Cloudflare, driven by their OpenAPI descriptions
@@ -678,7 +705,7 @@ it names one: a code-security configuration's `code_security` and
 | Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so); `--json` output |
 | AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; parallel creates of independent resources; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
 | Azure | Mapping principals across tenants; data-plane configuration (Key Vault secrets' metadata, storage CORS) where ARM exposes it |
-| GCP | Compute-style path parameters; project IDs in free text; `undelete` for soft-deleted resources (custom roles) |
+| GCP | A real Compute drill (needs billing); project IDs in free text; `undelete` for soft-deleted resources (custom roles) |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |
 | Agents | A small MCP server (`discover`, `diff`, `snapshot`, `explain`), read-only against live systems by default. Agents watch for drift and open PRs; CI regenerates snapshots deterministically, so a PR shows only real change |
 | Proof | Scheduled restore drills per platform: restore into a sandbox and require an empty diff |

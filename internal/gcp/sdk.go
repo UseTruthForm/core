@@ -99,6 +99,12 @@ func (s *SDK) Call(ctx context.Context, method, u string, body any) (map[string]
 	if err := s.do(ctx, method, u, body, &out); err != nil {
 		return nil, err
 	}
+	if isComputeOperation(out) {
+		return settleCompute(ctx, out, func(u string) (map[string]any, error) {
+			var m map[string]any
+			return m, s.do(ctx, "GET", u, nil, &m)
+		}, 2*time.Second)
+	}
 	if !isOperation(out) {
 		return out, nil
 	}
@@ -123,6 +129,56 @@ func (s *SDK) Call(ctx context.Context, method, u string, body any) (map[string]
 		if err := s.do(ctx, "GET", base+fmt.Sprint(out["name"]), nil, &out); err != nil {
 			return nil, err
 		}
+	}
+}
+
+// isComputeOperation recognises Compute's own operation, which answers
+// every Compute write: no done field and no name under operations/, so
+// isOperation misses it, and a restore would have recorded the
+// operation's name ("operation-1730...") as the new resource's.
+func isComputeOperation(m map[string]any) bool {
+	k, _ := m["kind"].(string)
+	return k == "compute#operation"
+}
+
+// settleCompute polls a Compute operation through its selfLink until its
+// status is DONE, then reads the resource it names (targetLink). An
+// operation can finish with errors; those are the result, not the
+// resource.
+func settleCompute(ctx context.Context, op map[string]any, get func(string) (map[string]any, error), every time.Duration) (map[string]any, error) {
+	deadline := time.Now().Add(30 * time.Minute)
+	for {
+		if op["status"] == "DONE" {
+			if e, ok := op["error"].(map[string]any); ok {
+				var msgs []string
+				errs, _ := e["errors"].([]any)
+				for _, x := range errs {
+					if m, ok := x.(map[string]any); ok {
+						msgs = append(msgs, fmt.Sprint(m["code"], ": ", m["message"]))
+					}
+				}
+				return nil, fmt.Errorf("operation %v failed: %s", op["name"], strings.Join(msgs, "; "))
+			}
+			target, _ := op["targetLink"].(string)
+			if target == "" {
+				return nil, fmt.Errorf("operation %v finished without naming its resource", op["name"])
+			}
+			return get(target)
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("operation %v still %v after 30m; it may yet complete", op["name"], op["status"])
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(every):
+		}
+		self, _ := op["selfLink"].(string)
+		next, err := get(self)
+		if err != nil {
+			return nil, err
+		}
+		op = next
 	}
 }
 

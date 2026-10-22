@@ -19,6 +19,11 @@ var fixtureKinds = map[string][]string{ // api/version -> collections (dotted)
 	// Fake only: Cloud Monitoring charges for alerting conditions, so the
 	// real drill does not create them.
 	"monitoring/v3": {"projects.notificationChannels", "projects.alertPolicies"},
+	// Compute names its path parameters one by one (projects/{project}/
+	// regions/{region}/subnetworks/{subnetwork}) where the others take one
+	// {+name}, and answers a create with its own kind of operation. Fake
+	// only: Compute needs billing, which the sandbox project does not have.
+	"compute/v1": {"networks", "subnetworks", "firewalls"},
 }
 
 const fixtureDir = "../../testdata/gcp/discovery"

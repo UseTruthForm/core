@@ -126,6 +126,13 @@ func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, pro
 		return false, err.Error()
 	}
 	n, _ := got["name"].(string)
+	// Compute answers with its short name (net-1); its full name is the
+	// path of its selfLink under the API's root.
+	if sl, _ := got["selfLink"].(string); !strings.Contains(n, "/") && sl != "" {
+		if i := strings.Index(sl, "/projects/"); i >= 0 {
+			n = sl[i+1:]
+		}
+	}
 	resolved[self] = n
 	return true, "created " + n
 }
@@ -221,6 +228,27 @@ func update(ctx context.Context, api API, docs *Docs, o snapshot.Object, ex *res
 	return true, "updated " + name + " (" + strings.Join(mask, ", ") + ")"
 }
 
+// namedIn reports a reference to name in s: the name followed by
+// something that cannot continue it (a quote, a slash), so net-1 is not
+// found inside net-10.
+func namedIn(s, name string) bool {
+	if !strings.Contains(name, "/") {
+		return false
+	}
+	for i := strings.Index(s, name); i >= 0; {
+		end := i + len(name)
+		if end == len(s) || !strings.ContainsRune("abcdefghijklmnopqrstuvwxyz0123456789-_.", rune(s[end])) {
+			return true
+		}
+		j := strings.Index(s[end:], name)
+		if j < 0 {
+			return false
+		}
+		i = end + j
+	}
+	return false
+}
+
 func detok(s, project, number string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, tokProject, project), tokNumber, number)
 }
@@ -239,8 +267,18 @@ func restoreOrder(objs []snapshot.Object) (order, cyclic []snapshot.Object) {
 				continue
 			}
 			ready := true
-			for _, tok := range refRE.FindAllString(canon(by[k].Body["spec"]), -1) {
+			spec := canon(by[k].Body["spec"])
+			for _, tok := range refRE.FindAllString(spec, -1) {
 				if _, in := by[tok]; in && tok != k && !done[tok] {
+					ready = false
+				}
+			}
+			// A user-named resource is referenced by its name, not a token
+			// (a firewall's network: .../global/networks/net-1), and must
+			// exist first: by sorted key alone, Firewall came before
+			// Network and the fake, as Google, refused it.
+			for _, other := range keys {
+				if other != k && !done[other] && namedIn(spec, by[other].Name()) {
 					ready = false
 				}
 			}

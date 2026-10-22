@@ -19,6 +19,7 @@ import (
 	"github.com/stackdna/core/internal/drilltest"
 	"github.com/stackdna/core/internal/kube"
 	"github.com/stackdna/core/internal/kubetest"
+	"github.com/stackdna/core/internal/snapshot"
 )
 
 // TestDrillOnAPIServer runs the full restore drill on two real API servers
@@ -27,11 +28,18 @@ import (
 // controllers.
 func TestDrillOnAPIServer(t *testing.T) {
 	src, dst := kubetest.Start(t, "drill-src"), kubetest.Start(t, "drill-dst")
-	srcC, err := kube.Connect(src.Kubeconfig, src.Context)
+	// Seeding writes; capturing the source and reading its secrets do not,
+	// so they use a read-only client: the drill proves capture needs no
+	// write anywhere, discovery included.
+	srcW, err := kube.Connect(src.Kubeconfig, src.Context, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dstC, err := kube.Connect(dst.Kubeconfig, dst.Context)
+	srcC, err := kube.Connect(src.Kubeconfig, src.Context, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dstC, err := kube.Connect(dst.Kubeconfig, dst.Context, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,10 +51,10 @@ func TestDrillOnAPIServer(t *testing.T) {
 	}
 	pol := kube.Policy{}.WithBaseline(base, "sha256:fresh-api-server")
 
-	seed(t, srcC, "../../testdata/k8s/workload.yaml")
-	seed(t, srcC, "../../testdata/k8s/widget.yaml")
+	seed(t, srcW, "../../testdata/k8s/workload.yaml")
+	seed(t, srcW, "../../testdata/k8s/widget.yaml")
 
-	drilltest.Run(t, drilltest.Spec{
+	snap := drilltest.Run(t, drilltest.Spec{
 		Source: &kube.Adapter{Clients: srcC, Policy: pol},
 		Target: &kube.Adapter{Clients: dstC, Policy: pol, Options: kube.RestoreOptions{SecretSource: srcC}},
 		ExpectKeys: []string{
@@ -65,6 +73,29 @@ func TestDrillOnAPIServer(t *testing.T) {
 			"v1|ServiceAccount|shop|shop-api",
 		},
 	})
+
+	// The guard: a read-only client restoring into the target must have
+	// every write refused before it is sent, and change nothing.
+	dstRO, err := kube.Connect(dst.Kubeconfig, dst.Context, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := kube.Capture(context.Background(), dstC, pol)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range kube.Restore(context.Background(), dstRO, snap, kube.RestoreOptions{SecretSource: srcC}) {
+		if r.OK || !strings.Contains(r.Detail, "read-only guard") {
+			t.Errorf("read-only restore was not refused: %s: ok=%v %s", r.Key, r.OK, r.Detail)
+		}
+	}
+	after, err := kube.Capture(context.Background(), dstC, pol)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch := snapshot.Compare(before, after); len(ch) != 0 {
+		t.Errorf("a read-only restore changed the cluster: %v", ch)
+	}
 }
 
 // seed creates the fixture with plain creates, deliberately not through

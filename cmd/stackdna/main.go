@@ -62,6 +62,11 @@ func main() {
 	case "capture":
 		code = capture(ctx, os.Args[2:])
 	case "restore":
+		if captureOnly {
+			fmt.Fprintln(os.Stderr, "stackdna: this is a capture-only build; restore is disabled and every request is read-only")
+			code = 1
+			break
+		}
 		code = restore(ctx, os.Args[2:])
 	case "diff":
 		code = diff(ctx, os.Args[2:])
@@ -109,7 +114,7 @@ func capture(ctx context.Context, args []string) int {
 		g.from(&aws, *baseline)
 		return captureGCP(ctx, &g, *out)
 	}
-	c, err := kube.Connect(*kubeconfig, *kctx)
+	c, err := kube.Connect(*kubeconfig, *kctx, true)
 	if err != nil {
 		return fail(err)
 	}
@@ -184,13 +189,13 @@ func restore(ctx context.Context, args []string) int {
 		g.from(&aws, "")
 		return restoreGCP(ctx, &g, snap)
 	}
-	c, err := kube.Connect(*kubeconfig, *kctx)
+	c, err := kube.Connect(*kubeconfig, *kctx, captureOnly)
 	if err != nil {
 		return fail(err)
 	}
 	var opt kube.RestoreOptions
 	if *secretsFrom != "" {
-		if opt.SecretSource, err = kube.Connect(*kubeconfig, *secretsFrom); err != nil {
+		if opt.SecretSource, err = kube.Connect(*kubeconfig, *secretsFrom, true); err != nil {
 			return fail(err)
 		}
 	}
@@ -246,7 +251,7 @@ func diff(ctx context.Context, args []string) int {
 		g.from(&aws, *baseline)
 		return diffGCP(ctx, &g, want, *from)
 	}
-	c, err := kube.Connect(*kubeconfig, *kctx)
+	c, err := kube.Connect(*kubeconfig, *kctx, true)
 	if err != nil {
 		return fail(err)
 	}

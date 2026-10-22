@@ -81,6 +81,13 @@ ships. StackDNA keeps no field list in its code:
 
 ## Rules it keeps
 
+- **Capture and diff cannot write.** On every platform, they run behind a
+  guard on the HTTP transport that refuses anything except reads and
+  credential exchanges *before it leaves the machine*. It's an allow-list,
+  so an unrecognised request is refused, never let through. `go build
+  -tags captureonly` produces a binary with no working restore, in which
+  every client sits behind the guard. That is the build to hand a client
+  for information gathering.
 - **Deterministic.** An unchanged system captures to byte-identical files, so CI
   can regenerate snapshots and the diff shows only real change. The snapshot
   stores no capture time or machine details.

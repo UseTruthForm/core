@@ -16,6 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudcontrol"
 	"github.com/aws/aws-sdk-go-v2/service/cloudcontrol/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+
+	"github.com/stackdna/core/internal/readonly"
 )
 
 // SDK is CloudControl backed by AWS.
@@ -31,8 +33,11 @@ type SDK struct {
 
 // NewSDK connects with the standard AWS credential chain. profile may be
 // empty to use the default.
-func NewSDK(ctx context.Context, profile, region string) (*SDK, error) {
+func NewSDK(ctx context.Context, profile, region string, readOnly bool) (*SDK, error) {
 	opts := []func(*config.LoadOptions) error{config.WithRegion(region)}
+	if readOnly {
+		opts = append(opts, config.WithHTTPClient(readonly.Client()))
+	}
 	if profile != "" {
 		opts = append(opts, config.WithSharedConfigProfile(profile))
 	}

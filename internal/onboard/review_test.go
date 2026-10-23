@@ -58,7 +58,9 @@ func TestWriteDirectoryCannotBecomeSyntax(t *testing.T) {
 			t.Errorf("accepted --write %q", d)
 		}
 	}
-	r.Dir = `C:\Users\me\stackdna grants`
+	// Forward slashes: a backslash separates paths only on Windows, and CI
+	// runs on Linux, where the first version of this test failed.
+	r.Dir = `C:/Users/me/stackdna grants`
 	p, err := Build(r)
 	if err != nil {
 		t.Fatal(err)

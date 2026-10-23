@@ -1356,6 +1356,19 @@
      "url": "https://api.github.com/repos/octocat/Hello-World/labels/bug"
     }
    },
+   "label-2": {
+    "value": {
+     "archived_at": null,
+     "archived_by": null,
+     "color": "b01f26",
+     "default": true,
+     "description": "Small bug fix required",
+     "id": 208045946,
+     "name": "bug :bug:",
+     "node_id": "MDU6TGFiZWwyMDgwNDU5NDY=",
+     "url": "https://api.github.com/repos/octocat/Hello-World/labels/bug%20:bug:"
+    }
+   },
    "label-items": {
     "value": [
      {
@@ -8834,6 +8847,112 @@
      "githubCloudOnly": false,
      "subcategory": "webhooks"
     }
+   },
+   "patch": {
+    "description": "Updates a webhook configured in a repository. If you previously had a `secret` set, you must provide the same `secret` or set a new `secret` or the secret will be removed. If you are only updating individual webhook `config` properties, use \"[Update a webhook configuration for a repository](/rest/webhooks/repo-config#update-a-webhook-configuration-for-a-repository).\"",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/repos/webhooks#update-a-repository-webhook"
+    },
+    "operationId": "repos/update-webhook",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/owner"
+     },
+     {
+      "$ref": "#/components/parameters/repo"
+     },
+     {
+      "$ref": "#/components/parameters/hook-id"
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "examples": {
+        "default": {
+         "value": {
+          "active": true,
+          "add_events": [
+           "pull_request"
+          ]
+         }
+        }
+       },
+       "schema": {
+        "properties": {
+         "active": {
+          "default": true,
+          "description": "Determines if notifications are sent when the webhook is triggered. Set to `true` to send notifications.",
+          "type": "boolean"
+         },
+         "add_events": {
+          "description": "Determines a list of events to be added to the list of events that the Hook triggers for.",
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "config": {
+          "$ref": "#/components/schemas/webhook-config"
+         },
+         "events": {
+          "default": [
+           "push"
+          ],
+          "description": "Determines what [events](https://docs.github.com/webhooks/event-payloads) the hook is triggered for. This replaces the entire array of events.",
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "remove_events": {
+          "description": "Determines a list of events to be removed from the list of events that the Hook triggers for.",
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/hook"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/hook"
+        }
+       }
+      },
+      "description": "Response"
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     },
+     "422": {
+      "$ref": "#/components/responses/validation_failed"
+     }
+    },
+    "summary": "Update a repository webhook",
+    "tags": [
+     "repos"
+    ],
+    "x-github": {
+     "category": "repos",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "webhooks"
+    }
    }
   },
   "/repos/{owner}/{repo}/labels": {
@@ -8980,6 +9099,96 @@
      }
     },
     "summary": "Create a label",
+    "tags": [
+     "issues"
+    ],
+    "x-github": {
+     "category": "issues",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "labels"
+    }
+   }
+  },
+  "/repos/{owner}/{repo}/labels/{name}": {
+   "patch": {
+    "description": "Updates a label using the given label name.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/issues/labels#update-a-label"
+    },
+    "operationId": "issues/update-label",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/owner"
+     },
+     {
+      "$ref": "#/components/parameters/repo"
+     },
+     {
+      "in": "path",
+      "name": "name",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "examples": {
+        "default": {
+         "value": {
+          "color": "b01f26",
+          "description": "Small bug fix required",
+          "new_name": "bug :bug:"
+         }
+        }
+       },
+       "schema": {
+        "properties": {
+         "archived": {
+          "description": "Whether to archive or unarchive the label. Archived labels cannot be added to issues or pull requests. For more information, see \"[Archiving labels](https://docs.github.com/issues/organizing-your-work-with-labels/managing-labels).\"",
+          "type": "boolean"
+         },
+         "color": {
+          "description": "The [hexadecimal color code](http://www.color-hex.com/) for the label, without the leading `#`.",
+          "type": "string"
+         },
+         "description": {
+          "description": "A short description of the label. Must be 100 characters or fewer.",
+          "type": "string"
+         },
+         "new_name": {
+          "description": "The new name of the label. Emoji can be added to label names, using either native emoji or colon-style markup. For example, typing `:strawberry:` will render the emoji ![:strawberry:](https://github.githubassets.com/images/icons/emoji/unicode/1f353.png \":strawberry:\"). For a full list of available emoji and codes, see \"[Emoji cheat sheet](https://github.com/ikatyang/emoji-cheat-sheet).\"",
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": false
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/label-2"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/label"
+        }
+       }
+      },
+      "description": "Response"
+     }
+    },
+    "summary": "Update a label",
     "tags": [
      "issues"
     ],
@@ -9262,6 +9471,149 @@
      }
     },
     "summary": "Get a repository ruleset",
+    "tags": [
+     "repos"
+    ],
+    "x-github": {
+     "category": "repos",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "rules"
+    }
+   },
+   "put": {
+    "description": "Update a ruleset for a repository.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/repos/rules#update-a-repository-ruleset"
+    },
+    "operationId": "repos/update-repo-ruleset",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/owner"
+     },
+     {
+      "$ref": "#/components/parameters/repo"
+     },
+     {
+      "description": "The ID of the ruleset.",
+      "in": "path",
+      "name": "ruleset_id",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "examples": {
+        "default": {
+         "value": {
+          "bypass_actors": [
+           {
+            "actor_id": 234,
+            "actor_type": "Team",
+            "bypass_mode": "always"
+           }
+          ],
+          "conditions": {
+           "ref_name": {
+            "exclude": [
+             "refs/heads/dev*"
+            ],
+            "include": [
+             "refs/heads/main",
+             "refs/heads/master"
+            ]
+           }
+          },
+          "enforcement": "active",
+          "name": "super cool ruleset",
+          "rules": [
+           {
+            "parameters": {
+             "operator": "contains",
+             "pattern": "github"
+            },
+            "type": "commit_author_email_pattern"
+           }
+          ],
+          "target": "branch"
+         }
+        }
+       },
+       "schema": {
+        "properties": {
+         "bypass_actors": {
+          "description": "The actors that can bypass the rules in this ruleset",
+          "items": {
+           "$ref": "#/components/schemas/repository-ruleset-bypass-actor"
+          },
+          "type": "array"
+         },
+         "conditions": {
+          "$ref": "#/components/schemas/repository-ruleset-conditions"
+         },
+         "enforcement": {
+          "$ref": "#/components/schemas/repository-rule-enforcement"
+         },
+         "name": {
+          "description": "The name of the ruleset.",
+          "type": "string"
+         },
+         "rules": {
+          "description": "An array of rules within the ruleset.",
+          "items": {
+           "$ref": "#/components/schemas/repository-rule"
+          },
+          "type": "array"
+         },
+         "target": {
+          "description": "The target of the ruleset",
+          "enum": [
+           "branch",
+           "tag",
+           "push"
+          ],
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "description": "Request body",
+     "required": false
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/repository-ruleset"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/repository-ruleset"
+        }
+       }
+      },
+      "description": "Response"
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     },
+     "422": {
+      "$ref": "#/components/responses/validation_failed"
+     },
+     "500": {
+      "$ref": "#/components/responses/internal_error"
+     }
+    },
+    "summary": "Update a repository ruleset",
     "tags": [
      "repos"
     ],

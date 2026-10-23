@@ -19,10 +19,21 @@ type CloudControl interface {
 	Get(ctx context.Context, typeName, identifier string) (map[string]any, error)
 	// Create creates a resource and waits for it, returning its identifier.
 	Create(ctx context.Context, typeName string, desired map[string]any) (string, error)
+	// Update applies a JSON Patch to a resource and waits for it.
+	Update(ctx context.Context, typeName, identifier string, patch []PatchOp) error
 	// Account returns the 12-digit ID of the account being read, so that
 	// resources another account owns (AWS's own, or shared in) are told
 	// apart from this account's.
 	Account(ctx context.Context) (string, error)
+}
+
+// PatchOp is one RFC 6902 operation, the form Cloud Control's
+// UpdateResource takes. Value is omitted only when nil (a remove), so false
+// and 0 are still sent.
+type PatchOp struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value any    `json:"value,omitempty"`
 }
 
 // ErrUnsupported means the type cannot be used in this account or region

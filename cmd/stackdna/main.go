@@ -32,24 +32,24 @@ Kubernetes:
 
 AWS (Cloud Control, every type in the CloudFormation registry):
   stackdna capture --platform aws --region <r> [--profile <p>] --out <dir> [--types <patterns>] [--baseline <dir>]
-  stackdna restore --platform aws --region <r> [--profile <p>] --from <dir> [--values <file>]
+  stackdna restore --platform aws --region <r> [--profile <p>] --from <dir> [--values <file>] [--update]
   stackdna diff    --platform aws --region <r> [--profile <p>] --from <dir> [--types <patterns>] [--baseline <dir>]
   stackdna aws-coverage [--schemas <bundle.zip>]
 
 Azure (ARM, every type with a published definition):
   stackdna capture --platform azure --subscription <id> --out <dir> [--types <patterns>] [--baseline <dir>]
-  stackdna restore --platform azure --subscription <id> --from <dir> [--values <file>]
+  stackdna restore --platform azure --subscription <id> --from <dir> [--values <file>] [--update]
   stackdna diff    --platform azure --subscription <id> --from <dir> [--types <patterns>] [--baseline <dir>]
 
 GCP (Cloud Asset Inventory and each API's Discovery document):
   stackdna capture --platform gcp --project <id> --out <dir> [--types <patterns>] [--baseline <dir>]
-  stackdna restore --platform gcp --project <id> --from <dir>
+  stackdna restore --platform gcp --project <id> --from <dir> [--update]
   stackdna diff    --platform gcp --project <id> --from <dir> [--types <patterns>] [--baseline <dir>]
 
 SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN):
   stackdna capture --platform github --account <org> --out <dir>
   stackdna capture --platform cloudflare --account <account-id> --out <dir>
-  stackdna restore --platform github --account <org> --from <dir> [--values <file>]
+  stackdna restore --platform github --account <org> --from <dir> [--values <file>] [--update]
 
 A whole environment (several targets, read-only):
   stackdna capture --config <env.yaml> --out <dir>
@@ -183,6 +183,7 @@ func restore(ctx context.Context, args []string) int {
 	from := fs.String("from", "", "snapshot directory")
 	secretsFrom := fs.String("secrets-from-context", "", "live cluster to read withheld secret values from")
 	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
+	update := fs.Bool("update", false, "aws, azure, gcp, github, cloudflare: also bring existing resources that differ in line with the snapshot (never replaces one); without it, restore only creates what is missing. Kubernetes restore always applies (server-side apply)")
 	values := fs.String("values", "", "aws, azure: YAML file of values the cloud never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the cloud, never written")
 	var aws awsFlags
 	aws.register(fs)
@@ -206,15 +207,15 @@ func restore(ctx context.Context, args []string) int {
 	}
 	switch *platform {
 	case "aws":
-		return restoreAWS(ctx, &aws, snap, *values)
+		return restoreAWS(ctx, &aws, snap, *values, *update)
 	case "azure":
 		az.from(&aws, "")
-		return restoreAzure(ctx, &az, snap, *values)
+		return restoreAzure(ctx, &az, snap, *values, *update)
 	case "gcp":
 		g.from(&aws, "")
-		return restoreGCP(ctx, &g, snap)
+		return restoreGCP(ctx, &g, snap, *update)
 	case "github", "cloudflare":
-		return restoreSaaS(ctx, *platform, &sf, snap, *values)
+		return restoreSaaS(ctx, *platform, &sf, snap, *values, *update)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx, captureOnly)
 	if err != nil {

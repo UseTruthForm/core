@@ -3,6 +3,7 @@ package gcp
 import (
 	"context"
 	"fmt"
+	neturl "net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -38,6 +39,8 @@ type Fake struct {
 	// that differs from the resource's own name (service accounts by their
 	// numeric uniqueId).
 	InventoryName func(rel string, data map[string]any) string
+	// Updates counts applied patches and updates.
+	Updates int
 }
 
 type fakeRes struct {
@@ -95,6 +98,8 @@ func (f *Fake) Call(_ context.Context, method, url string, body any) (map[string
 		return nil, fmt.Errorf("%s: %w", url, ErrNotFound)
 	case "POST":
 		return f.create(url, body.(map[string]any))
+	case "PATCH", "PUT":
+		return f.update(method, url, body.(map[string]any))
 	}
 	return nil, fmt.Errorf("fake: unsupported method %s", method)
 }
@@ -209,6 +214,107 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	f.res[rel] = fakeRes{asset: Asset{Name: "//" + d.Name + ".googleapis.com/" + rel, Type: typ,
 		DiscoveryURI: docURL(d.Name, d.Version), Version: d.Version, DiscoveryName: schema}, data: stored}
 	return deepCopy(stored), nil
+}
+
+// update applies a patch (with its mask) or a full update, through the
+// method the resource's document declares for it. Masked fields absent
+// from the body are cleared, as Google clears them; output-only fields
+// are refused, and so are references Google could not resolve.
+func (f *Fake) update(method, u string, body map[string]any) (map[string]any, error) {
+	path, rawQuery, _ := strings.Cut(u, "?")
+	var rel string
+	for r := range f.res {
+		if strings.HasSuffix(path, "/"+r) {
+			rel = r
+		}
+	}
+	if rel == "" {
+		return nil, fmt.Errorf("%s: %w", path, ErrNotFound)
+	}
+	cur := f.res[rel]
+	d, err := f.w.docs.Doc(cur.asset.DiscoveryURI, cur.asset.Version)
+	if err != nil {
+		return nil, err
+	}
+	schema := cur.asset.DiscoveryName
+	var m *Method
+	for _, c := range d.collections() {
+		for _, k := range []string{"patch", "update"} {
+			if x := c.methods[k]; x != nil && m == nil && c.schema == schema && x.HTTPMethod == method {
+				m = x
+			}
+		}
+	}
+	if m == nil {
+		return nil, fmt.Errorf("fake: no %s method for %s", method, schema)
+	}
+	res, maskStr := body, ""
+	if m.Request.Ref != schema {
+		w := d.Schemas[m.Request.Ref]
+		for _, k := range sortedKeys(w.Properties) {
+			if w.Properties[k].Ref == schema {
+				res, _ = body[k].(map[string]any)
+			}
+		}
+		if res == nil {
+			return nil, fmt.Errorf("INVALID_ARGUMENT: %s holds no %s", m.Request.Ref, schema)
+		}
+		maskStr, _ = body["updateMask"].(string)
+	}
+	if q, err := neturl.ParseQuery(rawQuery); err == nil && q.Get("updateMask") != "" {
+		maskStr = q.Get("updateMask")
+	}
+	// A method that takes a mask gets one: without it a patch would be
+	// read as "every field", which is not what StackDNA means to send.
+	_, inQuery := m.Parameters["updateMask"]
+	_, inBody := d.Schemas[m.Request.Ref].Properties["updateMask"]
+	if (inQuery || inBody) && maskStr == "" {
+		return nil, fmt.Errorf("INVALID_ARGUMENT: %s needs an updateMask", m.ID)
+	}
+	props := d.Schemas[schema].Properties
+	for k := range res {
+		if p, ok := props[k]; !ok {
+			return nil, fmt.Errorf("INVALID_ARGUMENT: %s has no field %s", schema, k)
+		} else if outputOnly(p) && k != "name" {
+			return nil, fmt.Errorf("INVALID_ARGUMENT: %s.%s is output only", schema, k)
+		}
+	}
+	var bad error
+	walkStrings(deepCopy(res), func(s string) string {
+		if bad == nil && strings.Contains(s, "{{stackdna") {
+			bad = fmt.Errorf("INVALID_ARGUMENT: unresolved StackDNA reference %q sent to Google", s)
+		}
+		return s
+	})
+	if bad != nil {
+		return nil, bad
+	}
+	next := deepCopy(cur.data)
+	if maskStr != "" {
+		for _, k := range strings.Split(maskStr, ",") {
+			if v, ok := res[k]; ok {
+				next[k] = v
+			} else {
+				delete(next, k)
+			}
+		}
+	} else {
+		for k, p := range props {
+			if outputOnly(p) || k == "name" {
+				continue
+			}
+			if v, ok := res[k]; ok {
+				next[k] = v
+			} else {
+				delete(next, k)
+			}
+		}
+	}
+	f.w.seq++
+	next["etag"] = fmt.Sprintf("e%d", f.w.seq)
+	f.res[rel] = fakeRes{asset: cur.asset, data: next}
+	f.Updates++
+	return deepCopy(next), nil
 }
 
 // Count is the number of resources held.

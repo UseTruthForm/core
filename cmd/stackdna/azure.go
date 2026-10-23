@@ -132,11 +132,12 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 
 // restoreAzure reads secrets from a file the operator controls; they go to
 // Azure and nowhere else.
-func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, valuesFile string) int {
+func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, valuesFile string, update bool) int {
 	ad, err := a.connect(captureOnly)
 	if err != nil {
 		return fail(err)
 	}
+	ad.Options.Update = update
 	if valuesFile != "" {
 		b, err := os.ReadFile(valuesFile)
 		if err != nil {
@@ -155,6 +156,10 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 			continue
 		}
 		ok++
+		// An update changed something live; each one is said.
+		if strings.HasPrefix(r.Detail, "updated") {
+			fmt.Printf("UPDATED %s: %s\n", r.Key, r.Detail)
+		}
 		if i := strings.Index(r.Detail, "; secret, not supplied: "); i >= 0 {
 			partial = append(partial, r.Key+": "+r.Detail[i+2:])
 		}

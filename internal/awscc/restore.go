@@ -19,6 +19,11 @@ type RestoreOptions struct {
 	// never in a snapshot: Lambda code, secret values, initial passwords.
 	// They are merged into the spec at create time and not written anywhere.
 	Values map[string]map[string]any
+	// Update brings an existing resource that differs in line with the
+	// snapshot. Off, a restore only creates what is missing and reports
+	// what differs; that stays the default because an update changes a
+	// resource someone may depend on as it is.
+	Update bool
 }
 
 // readBackStep and readBackLimit bound the wait for a created resource to
@@ -108,14 +113,19 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 	differs := func(ex *resource) []snapshot.Change {
 		return snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{o}}, snapshot.Snapshot{Objects: []snapshot.Object{{Body: toObject(ex)}}})
 	}
-	if ex, ok := existing[o.Key()]; ok {
+	ex, exists := existing[o.Key()]
+	if exists {
 		ch := differs(ex)
 		if len(ch) == 0 {
 			return true, "already present and identical"
 		}
-		return false, "already exists in the target and differs (" + strings.Join(ch[0].Fields, ", ") + "); StackDNA does not modify existing resources"
-	}
-	if !t.Handlers["create"] {
+		if !opt.Update {
+			return false, "already exists in the target and differs (" + strings.Join(ch[0].Fields, ", ") + "); not modified (--update modifies it)"
+		}
+		if !t.Handlers["update"] {
+			return false, "already exists in the target and differs (" + strings.Join(ch[0].Fields, ", ") + "); Cloud Control cannot update this type"
+		}
+	} else if !t.Handlers["create"] {
 		return false, "Cloud Control cannot create this type"
 	}
 
@@ -145,6 +155,9 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 
 	vals := opt.Values[ref]
 	merge(desired, deepCopy(vals))
+	if exists {
+		return update(ctx, api, t, ref, ex, desired, resolved)
+	}
 	for _, r := range t.Required {
 		if _, ok := desired[r]; !ok {
 			if hasTop(t.WriteOnly, r) {
@@ -162,19 +175,7 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 		}
 		return false, err.Error()
 	}
-	props, err := api.Get(ctx, kind, id)
-	// Cloud Control reported a bucket created, then "Bucket not found" on
-	// the read straight after (real drill, a bucket recreated minutes
-	// after its deletion). A read that follows a successful create and
-	// finds nothing is eventual consistency, so it is retried.
-	for wait := time.Duration(0); errors.Is(err, ErrNotFound) && wait < readBackLimit; wait += readBackStep {
-		select {
-		case <-ctx.Done():
-			return false, "created " + id + " but could not read it back: " + ctx.Err().Error()
-		case <-time.After(readBackStep):
-		}
-		props, err = api.Get(ctx, kind, id)
-	}
+	props, err := readBack(ctx, api, kind, id)
 	if err != nil {
 		return false, "created " + id + " but could not read it back: " + err.Error()
 	}
@@ -292,3 +293,101 @@ func (a *Adapter) Restore(ctx context.Context, s snapshot.Snapshot) []snapshot.R
 
 // String is used in errors and logs.
 func (a *Adapter) String() string { return fmt.Sprintf("aws %s", a.Region) }
+
+// readBack reads a resource just created or updated. Cloud Control
+// reported a bucket created, then "Bucket not found" on the read straight
+// after (real drill, a bucket recreated minutes after its deletion). A read
+// that follows a successful write and finds nothing is eventual
+// consistency, so it is retried.
+func readBack(ctx context.Context, api CloudControl, kind, id string) (map[string]any, error) {
+	props, err := api.Get(ctx, kind, id)
+	for wait := time.Duration(0); errors.Is(err, ErrNotFound) && wait < readBackLimit; wait += readBackStep {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(readBackStep):
+		}
+		props, err = api.Get(ctx, kind, id)
+	}
+	return props, err
+}
+
+// update patches an existing resource to the snapshot's spec. The live
+// side is the raw read normalized afresh: the inventory's own spec has its
+// references tokenized and desired has them resolved, so only raw values
+// compare. A change to a create-only property is refused, not made: AWS
+// would replace the resource, deleting what depends on it.
+func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *resource, desired map[string]any, resolved map[string]map[string]any) (bool, string) {
+	live := normalize(t, ex.id, ex.props).spec
+	ops, replace := planUpdate(t, live, desired)
+	if len(replace) > 0 {
+		return false, "differs in " + strings.Join(replace, ", ") + ", which AWS can only change by replacing the resource; StackDNA does not replace resources"
+	}
+	if len(ops) == 0 {
+		return true, "already present; it differs only in how references are named"
+	}
+	if err := api.Update(ctx, t.Name, ex.id, ops); err != nil {
+		return false, err.Error()
+	}
+	props, err := readBack(ctx, api, t.Name, ex.id)
+	if err != nil {
+		return false, "updated " + ex.id + " but could not read it back: " + err.Error()
+	}
+	resolved[ref] = withID(props, ex.id)
+	paths := make([]string, len(ops))
+	for i, op := range ops {
+		paths[i] = strings.TrimPrefix(op.Path, "/")
+	}
+	return true, "updated " + ex.id + " (" + strings.Join(paths, ", ") + ")"
+}
+
+// planUpdate returns the JSON Patch that turns live into desired, one
+// operation per top-level property, and the create-only fields that
+// differ. A property live has and desired lacks is removed: the snapshot
+// was read the same way, so its absence there means it was unset.
+func planUpdate(t *TypeInfo, live, desired map[string]any) (ops []PatchOp, replace []string) {
+	for _, k := range sortedKeys(desired) {
+		lv, ok := live[k]
+		switch {
+		case !ok:
+			ops = append(ops, PatchOp{Op: "add", Path: "/" + k, Value: desired[k]})
+		case canon(lv) != canon(desired[k]):
+			ops = append(ops, PatchOp{Op: "replace", Path: "/" + k, Value: desired[k]})
+		}
+	}
+	for _, k := range sortedKeys(live) {
+		if _, ok := desired[k]; !ok {
+			ops = append(ops, PatchOp{Op: "remove", Path: "/" + k})
+		}
+	}
+	return ops, createOnlyChanges(t, live, desired)
+}
+
+// createOnlyChanges names the create-only fields whose values differ. A
+// pointer through an array ("*") is compared at its top-level property,
+// which may over-report but never misses a replacement.
+func createOnlyChanges(t *TypeInfo, a, b map[string]any) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, ptr := range t.CreateOnly {
+		var field string
+		if strings.Contains(ptr, "*") {
+			top := segments(ptr)[0]
+			if canon(a[top]) != canon(b[top]) {
+				field = top
+			}
+		} else {
+			x, xok := lookupPointer(a, ptr)
+			y, yok := lookupPointer(b, ptr)
+			if xok != yok || canon(x) != canon(y) {
+				field = strings.Join(segments(ptr), ".")
+			}
+		}
+		if field != "" && !seen[field] {
+			seen[field] = true
+			out = append(out, field)
+		}
+	}
+	sort.Strings(out)
+	return out
+}

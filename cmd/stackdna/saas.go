@@ -83,11 +83,12 @@ func captureSaaS(ctx context.Context, platform string, s *saasFlags, out string)
 	return 0
 }
 
-func restoreSaaS(ctx context.Context, platform string, s *saasFlags, snap snapshot.Snapshot, valuesFile string) int {
+func restoreSaaS(ctx context.Context, platform string, s *saasFlags, snap snapshot.Snapshot, valuesFile string, update bool) int {
 	ad, err := s.connect(platform, captureOnly)
 	if err != nil {
 		return fail(err)
 	}
+	ad.Options.Update = update
 	if valuesFile != "" {
 		b, err := os.ReadFile(valuesFile)
 		if err != nil {

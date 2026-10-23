@@ -1289,6 +1289,17 @@
     ],
     "type": "string"
    },
+   "dns-records_dns-record-patch": {
+    "anyOf": [
+     {
+      "$ref": "#/components/schemas/dns-records_dns-record-without-data"
+     },
+     {
+      "$ref": "#/components/schemas/dns-records_dns-record-with-data"
+     }
+    ],
+    "type": "object"
+   },
    "dns-records_dns-record-post": {
     "anyOf": [
      {
@@ -1888,6 +1899,20 @@
     ],
     "example": "full",
     "type": "string"
+   },
+   "zones_vanity_name_servers": {
+    "default": [],
+    "description": "An array of domains used for custom name servers. This is only\navailable for Business and Enterprise plans.",
+    "example": [
+     "ns1.example.com",
+     "ns2.example.com"
+    ],
+    "items": {
+     "format": "hostname",
+     "maxLength": 253,
+     "type": "string"
+    },
+    "type": "array"
    },
    "zones_zone": {
     "properties": {
@@ -2522,6 +2547,122 @@
     "x-fern-sdk-method-name": "create"
    }
   },
+  "/zones/{zone_id}": {
+   "patch": {
+    "description": "Edits a zone. Only one zone property can be changed at a time.",
+    "operationId": "zones-0-patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "zone_id",
+      "required": true,
+      "schema": {
+       "$ref": "#/components/schemas/zones_identifier"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "example": {
+         "paused": true
+        },
+        "properties": {
+         "paused": {
+          "$ref": "#/components/schemas/zones_paused"
+         },
+         "plan": {
+          "description": "(Deprecated) Please use the `/zones/{zone_id}/subscription` API\nto update a zone's plan. Changing this value will create/cancel\nassociated subscriptions. To view available plans for this zone,\nsee Zone Plans.\n",
+          "properties": {
+           "id": {
+            "$ref": "#/components/schemas/zones_identifier"
+           }
+          },
+          "type": "object"
+         },
+         "type": {
+          "description": "A full zone implies that DNS is hosted with Cloudflare. A partial\nzone is typically a partner-hosted zone or a CNAME setup. This\nparameter is only available to Enterprise customers or if it has\nbeen explicitly enabled on a zone.\n",
+          "enum": [
+           "full",
+           "partial",
+           "secondary",
+           "internal"
+          ],
+          "example": "full",
+          "type": "string"
+         },
+         "vanity_name_servers": {
+          "$ref": "#/components/schemas/zones_vanity_name_servers"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "allOf": [
+          {
+           "$ref": "#/components/schemas/zones_api-response-common"
+          },
+          {
+           "properties": {
+            "result": {
+             "$ref": "#/components/schemas/zones_zone"
+            }
+           },
+           "type": "object"
+          }
+         ]
+        }
+       }
+      },
+      "description": "Edit Zone response."
+     },
+     "4XX": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/zones_api-response-common-failure"
+        }
+       }
+      },
+      "description": "Edit Zone response failure."
+     }
+    },
+    "security": [
+     {
+      "api_token": []
+     },
+     {
+      "api_email": [],
+      "api_key": []
+     }
+    ],
+    "summary": "Edit Zone",
+    "tags": [
+     "Zone"
+    ],
+    "x-api-token-group": [
+     "Zone Write"
+    ],
+    "x-cfPlanAvailability": {
+     "business": true,
+     "enterprise": true,
+     "free": true,
+     "pro": true
+    },
+    "x-fern-availability": "generally-available",
+    "x-fern-sdk-group-name": "zones",
+    "x-fern-sdk-method-name": "edit"
+   }
+  },
   "/zones/{zone_id}/dns_records": {
    "get": {
     "description": "List, search, sort, and filter a zones' DNS records.",
@@ -3051,6 +3192,93 @@
     "x-fern-availability": "generally-available",
     "x-fern-sdk-group-name": "dns.records",
     "x-fern-sdk-method-name": "get"
+   },
+   "patch": {
+    "description": "Update an existing DNS record.\n\nNotes:\n- A/AAAA records cannot exist on the same name as CNAME records.\n- NS records cannot exist on the same name as any other record type.\n- Domain names are always represented in Punycode, even if Unicode\n  characters were used when creating the record.\n",
+    "operationId": "dns-records-for-a-zone-patch-dns-record",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "dns_record_id",
+      "required": true,
+      "schema": {
+       "$ref": "#/components/schemas/dns-records_identifier"
+      }
+     },
+     {
+      "in": "path",
+      "name": "zone_id",
+      "required": true,
+      "schema": {
+       "$ref": "#/components/schemas/dns-records_identifier"
+      }
+     },
+     {
+      "$ref": "#/components/parameters/dns-records_include_shadow_metadata"
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/dns-records_dns-record-patch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/dns-records_dns_response_single"
+        }
+       }
+      },
+      "description": "Patch DNS Record response"
+     },
+     "4XX": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/dns-records_api-response-common-failure"
+        }
+       }
+      },
+      "description": "Patch DNS Record response failure"
+     }
+    },
+    "security": [
+     {
+      "api_token": []
+     },
+     {
+      "api_email": [],
+      "api_key": []
+     }
+    ],
+    "summary": "Update DNS Record",
+    "tags": [
+     "DNS Records for a Zone"
+    ],
+    "x-api-token-group": [
+     "DNS Write"
+    ],
+    "x-cfPermissionsRequired": {
+     "enum": [
+      "#dns_records:edit"
+     ]
+    },
+    "x-cfPlanAvailability": {
+     "business": true,
+     "enterprise": true,
+     "free": true,
+     "pro": true
+    },
+    "x-fern-availability": "generally-available",
+    "x-fern-sdk-group-name": "dns.records",
+    "x-fern-sdk-method-name": "edit"
    }
   }
  },

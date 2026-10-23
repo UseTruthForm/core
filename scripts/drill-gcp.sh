@@ -108,3 +108,21 @@ sd restore --from "$OUT/snap"
 step "diff: the project must match the snapshot"
 until_settled sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
 echo "DRILL PASSED"
+
+# Drift: someone edits both resources by hand (the channel's description,
+# since its display name is its identity here). A plain restore must leave
+# them alone and say so (exit 3); --update must put them right.
+step "update: drift both resources, then restore --update"
+gcloud iam service-accounts update "$SA@$PROJECT.iam.gserviceaccount.com" --display-name "edited by hand" --project "$PROJECT" --quiet >/dev/null
+for c in $(channels); do
+  mon -X PATCH "https://monitoring.googleapis.com/v3/$c?updateMask=description" -d '{"description":"edited by hand"}' >/dev/null
+done
+drifted() { ! sd diff --baseline "$OUT/baseline" --from "$OUT/snap" >/dev/null; }
+until_settled drifted
+code=0; sd restore --from "$OUT/snap" > "$OUT/restore-plain.txt" || code=$?
+cat "$OUT/restore-plain.txt"
+[ "$code" = 3 ] || { echo "FAIL: restore without --update exited $code on a drifted project, want 3"; exit 1; }
+grep -q "not modified (--update modifies it)" "$OUT/restore-plain.txt" || { echo "FAIL: restore did not report the drift"; exit 1; }
+sd restore --from "$OUT/snap" --update
+until_settled sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
+echo "UPDATE PASSED"

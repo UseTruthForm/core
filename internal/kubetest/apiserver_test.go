@@ -9,7 +9,7 @@ import (
 
 func TestStartServesTheAPI(t *testing.T) {
 	s := kubetest.Start(t, "smoke")
-	c, err := kube.Connect(s.Kubeconfig, s.Context)
+	c, err := kube.Connect(s.Kubeconfig, s.Context, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,8 +30,8 @@ func (g *gcpFlags) from(aws *awsFlags, baseline string) {
 	g.types, g.parallel, g.baseline = aws.types, aws.parallel, baseline
 }
 
-func (g *gcpFlags) connect(ctx context.Context) (*gcp.Adapter, error) {
-	api, err := gcp.NewSDK(ctx, g.project)
+func (g *gcpFlags) connect(ctx context.Context, readOnly bool) (*gcp.Adapter, error) {
+	api, err := gcp.NewSDK(ctx, g.project, readOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (g *gcpFlags) connect(ctx context.Context) (*gcp.Adapter, error) {
 }
 
 func captureGCP(ctx context.Context, g *gcpFlags, out string) int {
-	ad, err := g.connect(ctx)
+	ad, err := g.connect(ctx, true)
 	if err != nil {
 		return fail(err)
 	}
@@ -107,7 +107,7 @@ func captureGCP(ctx context.Context, g *gcpFlags, out string) int {
 }
 
 func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot) int {
-	ad, err := g.connect(ctx)
+	ad, err := g.connect(ctx, captureOnly)
 	if err != nil {
 		return fail(err)
 	}
@@ -128,7 +128,7 @@ func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot) int {
 }
 
 func diffGCP(ctx context.Context, g *gcpFlags, want snapshot.Snapshot, from string) int {
-	ad, err := g.connect(ctx)
+	ad, err := g.connect(ctx, true)
 	if err != nil {
 		return fail(err)
 	}

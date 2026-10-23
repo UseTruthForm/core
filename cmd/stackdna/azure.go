@@ -34,8 +34,8 @@ func (a *azureFlags) from(aws *awsFlags, baseline string) {
 	a.types, a.managed, a.parallel, a.baseline = aws.types, aws.managed, aws.parallel, baseline
 }
 
-func (a *azureFlags) connect() (*azarm.Adapter, error) {
-	api, err := azarm.NewSDK(a.subscription)
+func (a *azureFlags) connect(readOnly bool) (*azarm.Adapter, error) {
+	api, err := azarm.NewSDK(a.subscription, readOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (a *azureFlags) connect() (*azarm.Adapter, error) {
 }
 
 func captureAzure(ctx context.Context, a *azureFlags, out string) int {
-	ad, err := a.connect()
+	ad, err := a.connect(true)
 	if err != nil {
 		return fail(err)
 	}
@@ -130,7 +130,7 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 // restoreAzure reads secrets from a file the operator controls; they go to
 // Azure and nowhere else.
 func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, valuesFile string) int {
-	ad, err := a.connect()
+	ad, err := a.connect(captureOnly)
 	if err != nil {
 		return fail(err)
 	}
@@ -173,7 +173,7 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 }
 
 func diffAzure(ctx context.Context, a *azureFlags, want snapshot.Snapshot, from string) int {
-	ad, err := a.connect()
+	ad, err := a.connect(true)
 	if err != nil {
 		return fail(err)
 	}

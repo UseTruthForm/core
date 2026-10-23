@@ -9,8 +9,11 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+
+	"github.com/stackdna/core/internal/readonly"
 )
 
 // SDK is ARM reached with Azure's own Go SDK core: its pipeline brings
@@ -33,7 +36,7 @@ const (
 )
 
 // NewSDK connects to a subscription with the default credential chain.
-func NewSDK(subscription string) (*SDK, error) {
+func NewSDK(subscription string, readOnly bool) (*SDK, error) {
 	if subscription == "" {
 		return nil, fmt.Errorf("a subscription ID is required (restore and capture never guess their target)")
 	}
@@ -41,7 +44,11 @@ func NewSDK(subscription string) (*SDK, error) {
 	if err != nil {
 		return nil, fmt.Errorf("azure credentials: %w", err)
 	}
-	c, err := arm.NewClient("stackdna", "v0.1.0", cred, nil)
+	var opts *arm.ClientOptions
+	if readOnly {
+		opts = &arm.ClientOptions{ClientOptions: policy.ClientOptions{Transport: readonly.Client()}}
+	}
+	c, err := arm.NewClient("stackdna", "v0.1.0", cred, opts)
 	if err != nil {
 		return nil, err
 	}

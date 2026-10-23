@@ -87,6 +87,41 @@ below), the Azure REST API specs (`readOnly`), GCP discovery documents (output-o
 fields), and vendor OpenAPI specs for SaaS. A refreshed schema arrives as a
 schema-diff, not as a code change.
 
+## The read-only guarantee
+
+`internal/readonly` is an `http.RoundTripper` that every platform's client
+goes through:
+
+- AWS, through the SDK's HTTP client option;
+- Azure, through the ARM client's transport;
+- GCP, beneath the OAuth transport;
+- Kubernetes, through client-go's transport wrapper.
+
+It allows only these requests:
+
+- `GET` and `HEAD`;
+- credential exchanges: AWS STS and SSO, Azure and Google token endpoints,
+  and the EC2 metadata token;
+- AWS JSON-RPC calls whose `X-Amz-Target` names a read
+  (`CloudApiService.ListResources`, `GetResource`, ...). Cloud Control
+  sends every call as `POST /`.
+
+Anything else is refused before it is sent. Capture, diff and reading
+secrets from a source cluster always run behind it; restore does not,
+except in the capture-only build.
+
+Proof:
+
+- Each real client was driven against a local server: reads arrived,
+  writes never did.
+- The Kubernetes drill captures its source through a guarded client, then
+  attempts a guarded restore. Every object is refused, and the target is
+  unchanged.
+- Read-only captures of the AWS, Azure, GCP and Kubernetes sandboxes ran
+  through the guard with no refusals.
+- Mutation checks: an allow-all guard, or an unguarded Kubernetes client,
+  fails the tests.
+
 ## Secrets
 
 Values never enter a snapshot. A Secret is captured with its key names and

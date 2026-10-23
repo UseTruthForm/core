@@ -49,6 +49,9 @@ jobs:
       # detector needs cgo, which the Windows dev machines lack, so it runs
       # here, on those packages only (a few seconds).
       - run: go test -race -count=1 ./internal/awscc/ ./internal/azarm/ ./internal/gcp/
+      # The capture-only build (handed to clients for information
+      # gathering) must refuse restore; it is a separate build, so test it.
+      - run: go test -tags captureonly -count=1 ./cmd/stackdna/
   drill-kind:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-drill')
     needs: test

@@ -72,7 +72,7 @@ func (a *awsFlags) policy() (awscc.Policy, error) {
 	return p, nil
 }
 
-func (a *awsFlags) connect(ctx context.Context) (*awscc.Adapter, error) {
+func (a *awsFlags) connect(ctx context.Context, readOnly bool) (*awscc.Adapter, error) {
 	if a.region == "" {
 		return nil, fmt.Errorf("--region is required for --platform aws (a capture is one account and region)")
 	}
@@ -80,7 +80,7 @@ func (a *awsFlags) connect(ctx context.Context) (*awscc.Adapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	api, err := awscc.NewSDK(ctx, a.profile, a.region)
+	api, err := awscc.NewSDK(ctx, a.profile, a.region, readOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func progressPrinter() func(awscc.Progress) {
 }
 
 func captureAWS(ctx context.Context, a *awsFlags, out string) int {
-	ad, err := a.connect(ctx)
+	ad, err := a.connect(ctx, true)
 	if err != nil {
 		return fail(err)
 	}
@@ -172,7 +172,7 @@ func captureAWS(ctx context.Context, a *awsFlags, out string) int {
 // restoreAWS reads write-only values from a file the operator controls; they
 // go to AWS and nowhere else.
 func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, valuesFile string) int {
-	ad, err := a.connect(ctx)
+	ad, err := a.connect(ctx, captureOnly)
 	if err != nil {
 		return fail(err)
 	}
@@ -216,7 +216,7 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 }
 
 func diffAWS(ctx context.Context, a *awsFlags, want snapshot.Snapshot, from string) int {
-	ad, err := a.connect(ctx)
+	ad, err := a.connect(ctx, true)
 	if err != nil {
 		return fail(err)
 	}

@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"github.com/stackdna/core/internal/readonly"
 	"github.com/stackdna/core/internal/snapshot"
 )
 
@@ -30,7 +31,10 @@ type Clients struct {
 
 // Connect builds clients from a kubeconfig. An empty context uses the
 // kubeconfig's current context.
-func Connect(kubeconfig, kubeContext string) (*Clients, error) {
+// Connect builds clients for a context. readOnly puts every request behind
+// the read-only guard (capture, diff, reading secrets from a source
+// cluster); only restore connects without it.
+func Connect(kubeconfig, kubeContext string, readOnly bool) (*Clients, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if kubeconfig != "" {
 		rules.ExplicitPath = kubeconfig
@@ -43,6 +47,9 @@ func Connect(kubeconfig, kubeContext string) (*Clients, error) {
 	// Discovery and listing every type is many requests; the client-go default
 	// of 5 QPS makes a capture crawl and trips its own throttling warnings.
 	cfg.QPS, cfg.Burst = 50, 100
+	if readOnly {
+		cfg.Wrap(readonly.Transport)
+	}
 	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
 		return nil, err

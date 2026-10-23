@@ -11,7 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+
+	"github.com/stackdna/core/internal/readonly"
 )
 
 // SDK is the API reached with Application Default Credentials (gcloud auth
@@ -26,14 +29,19 @@ type SDK struct {
 }
 
 // NewSDK connects to a project.
-func NewSDK(ctx context.Context, project string) (*SDK, error) {
+func NewSDK(ctx context.Context, project string, readOnly bool) (*SDK, error) {
 	if project == "" {
 		return nil, fmt.Errorf("a project ID is required (capture and restore never guess their target)")
 	}
-	hc, err := google.DefaultClient(ctx, "https://www.googleapis.com/auth/cloud-platform")
+	creds, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
 		return nil, fmt.Errorf("google credentials (run: gcloud auth application-default login): %w", err)
 	}
+	var base http.RoundTripper
+	if readOnly {
+		base = readonly.Transport(nil)
+	}
+	hc := &http.Client{Transport: &oauth2.Transport{Source: creds.TokenSource, Base: base}}
 	return &SDK{project: project, hc: hc}, nil
 }
 

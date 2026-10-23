@@ -66,6 +66,7 @@ func captureSaaS(ctx context.Context, platform string, s *saasFlags, out string)
 	if err := snap.Write(out); err != nil {
 		return fail(err)
 	}
+	emitCapture(out, snap, platform+" "+s.account)
 	if err := writeReport(out, snap, platform+" "+s.account); err != nil {
 		return fail(err)
 	}
@@ -100,6 +101,9 @@ func restoreSaaS(ctx context.Context, platform string, s *saasFlags, snap snapsh
 	}
 	ok := 0
 	results := ad.Restore(ctx, snap)
+	if jsonOut {
+		defer emitRestore(results, platform+" "+s.account)
+	}
 	for _, r := range results {
 		if r.OK {
 			ok++

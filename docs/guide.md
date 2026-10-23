@@ -126,6 +126,20 @@ the others. Restore stays per target, on purpose.
 | 2 | Differences found (diff, compare) |
 | 3 | Incomplete: the snapshot was written but some types could not be read, or a restore applied only some resources |
 
+## Machine-readable output
+
+Add `--json` to `capture`, `diff`, `restore` or `compare` (an environment
+`--config` too). Stdout is then one JSON document, named by its `schema`
+field (`stackdna.org/output/v1`), and everything meant for a person goes
+to stderr. The exit code is the same as without it. A capture's document
+says whether it is `complete` and lists its `gaps`; a diff's lists each
+change with its `kind` (missing, extra, changed) and `fields`; a
+restore's lists each resource with `ok` and `detail`.
+
+```sh
+stackdna diff --platform aws --region us-east-2 --from snap/aws --json | jq '.differences'
+```
+
 ## For AI agents (MCP)
 
 `stackdna mcp` serves StackDNA's knowledge over the Model Context

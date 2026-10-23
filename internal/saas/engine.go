@@ -1,0 +1,499 @@
+package saas
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/stackdna/core/internal/readonly"
+	"github.com/stackdna/core/internal/snapshot"
+)
+
+// APIVersion is the apiVersion of every SaaS object in a snapshot.
+const APIVersion = "saas.stackdna.org/v1"
+
+const (
+	annSecrets = "stackdna.org/secrets"
+	// annParent names an item's parent. A name cannot carry it: a webhook
+	// is named by its URL, which is full of slashes.
+	annParent  = "stackdna.org/parent"
+	tokAccount = "{{stackdna|account}}"
+)
+
+// Client is one account of one provider.
+type Client struct {
+	P       Provider
+	Spec    *Spec
+	Account string
+	Token   string
+	HTTP    *http.Client
+}
+
+// NewClient connects to an account. readOnly puts every request behind
+// the read-only guard.
+func NewClient(p Provider, spec *Spec, account, token string, readOnly bool) *Client {
+	hc := &http.Client{}
+	if readOnly {
+		hc = readonly.Client()
+	}
+	return &Client{P: p, Spec: spec, Account: account, Token: token, HTTP: hc}
+}
+
+// ErrNotFound means the item does not exist.
+var ErrNotFound = errors.New("not found")
+
+// do sends one request and unwraps the provider's envelope. It returns the
+// payload, the whole decoded body (Cloudflare's paging sits beside the
+// payload, in result_info) and the response (GitHub's paging is a header).
+func (c *Client) do(ctx context.Context, method, path string, body any) (any, *http.Response, error) {
+	v, _, resp, err := c.call(ctx, method, path, body)
+	return v, resp, err
+}
+
+func (c *Client) call(ctx context.Context, method, path string, body any) (any, map[string]any, *http.Response, error) {
+	u := path
+	if !strings.HasPrefix(u, "http") {
+		u = c.P.Base + path
+	}
+	var rd io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		rd = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u, rd)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for k, v := range c.P.Headers {
+		req.Header.Set(k, v)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil, resp, fmt.Errorf("%s %s: %w", method, path, ErrNotFound)
+	}
+	if resp.StatusCode >= 300 {
+		return nil, nil, resp, fmt.Errorf("%s %s: HTTP %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	var v any
+	if len(b) > 0 {
+		if err := json.Unmarshal(b, &v); err != nil {
+			return nil, nil, resp, fmt.Errorf("%s %s: %w", method, path, err)
+		}
+	}
+	whole, _ := v.(map[string]any)
+	if c.P.Envelope != "" {
+		if ok, _ := whole["success"].(bool); whole != nil && whole["success"] != nil && !ok {
+			return nil, nil, resp, fmt.Errorf("%s %s: %v", method, path, whole["errors"])
+		}
+		return whole[c.P.Envelope], whole, resp, nil
+	}
+	return v, whole, resp, nil
+}
+
+var nextRE = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
+
+// list reads every page of a collection.
+func (c *Client) list(ctx context.Context, path string) ([]map[string]any, error) {
+	var out []map[string]any
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	next := path + sep + "per_page=100"
+	for page := 1; next != ""; page++ {
+		v, whole, resp, err := c.call(ctx, "GET", next, nil)
+		if err != nil {
+			return nil, err
+		}
+		items, _ := v.([]any)
+		for _, it := range items {
+			if m, ok := it.(map[string]any); ok {
+				out = append(out, m)
+			}
+		}
+		next = ""
+		switch c.P.Paging {
+		case "link":
+			if m := nextRE.FindStringSubmatch(resp.Header.Get("Link")); m != nil {
+				next = m[1]
+			}
+		case "page":
+			info, _ := whole["result_info"].(map[string]any)
+			if total, _ := info["total_pages"].(float64); float64(page) < total {
+				next = path + sep + fmt.Sprintf("per_page=100&page=%d", page+1)
+			}
+		}
+	}
+	return out, nil
+}
+
+func (c *Client) unavailable(err error) bool {
+	for _, m := range c.P.Unavailable {
+		if strings.Contains(err.Error(), m) {
+			return true
+		}
+	}
+	return false
+}
+
+// item is one captured item with what is needed to name and restore it.
+type item struct {
+	col    *Collection
+	raw    map[string]any
+	parent *item
+	name   string
+	spec   map[string]any
+	masked []string
+}
+
+func (it *item) fullName() string {
+	if it.parent != nil {
+		return it.parent.fullName() + "/" + it.name
+	}
+	return it.name
+}
+
+// writes is everything a collection's writes accept.
+func (c *Client) writes(col *Collection) *Fields {
+	fs := []*Fields{c.Spec.RequestFields(col.Create, "POST")}
+	if col.Update != "" {
+		fs = append(fs, c.Spec.RequestFields(col.Update, "PATCH"))
+	}
+	return union(fs...)
+}
+
+// inventory reads every collection, parents first.
+func (c *Client) inventory(ctx context.Context) ([]*item, []snapshot.Coverage, error) {
+	byKind := map[string][]*item{}
+	var all []*item
+	var cov []snapshot.Coverage
+	for i := range c.P.Collections {
+		col := &c.P.Collections[i]
+		parents := []*item{nil}
+		if col.Parent != "" {
+			parents = byKind[col.Parent]
+		}
+		w := c.writes(col)
+		cv := snapshot.Coverage{Resource: col.Kind, Kind: col.Kind}
+		for _, p := range parents {
+			var praw map[string]any
+			if p != nil {
+				praw = p.raw
+			}
+			path, ok := expand(col.List, col.Bind, c.Account, praw, nil)
+			if !ok {
+				return nil, nil, fmt.Errorf("%s: cannot fill %s", col.Kind, col.List)
+			}
+			items, err := c.list(ctx, path)
+			if err != nil {
+				if c.unavailable(err) {
+					cv.NotCaptured = "not available on this account's plan: " + err.Error()
+					continue
+				}
+				cv.NotCaptured = "list failed: " + err.Error()
+				break
+			}
+			for _, raw := range items {
+				if col.Get != "" {
+					gp, ok := expand(col.Get, col.Bind, c.Account, praw, raw)
+					if !ok {
+						return nil, nil, fmt.Errorf("%s: cannot fill %s", col.Kind, col.Get)
+					}
+					full, _, err := c.do(ctx, "GET", gp, nil)
+					if err != nil {
+						cv.NotCaptured = "list failed: read " + gp + ": " + err.Error()
+						break
+					}
+					raw, _ = full.(map[string]any)
+				}
+				it := &item{col: col, raw: raw, parent: p}
+				var names []string
+				for _, f := range col.Name {
+					names = append(names, stringOf(field(raw, f)))
+				}
+				it.name = strings.Join(names, " ")
+				kept, _ := keep(raw, w, "", &it.masked)
+				it.spec, _ = kept.(map[string]any)
+				it.spec = tokenize(it.spec, c.Account)
+				byKind[col.Kind] = append(byKind[col.Kind], it)
+				all = append(all, it)
+				cv.Captured++
+			}
+		}
+		cov = append(cov, cv)
+	}
+	return all, cov, nil
+}
+
+// tokenize replaces the account where it is structural, so a snapshot of
+// one organisation or account restores into another: a value that is the
+// account, or a path or URL segment (/StackDNA/). Never inside prose: the
+// StackDNA organisation's repository describes itself as "StackDNA core:
+// ...", and replacing that would rewrite the description in every target.
+func tokenize(spec map[string]any, account string) map[string]any {
+	if account == "" {
+		return spec
+	}
+	seg := regexp.MustCompile(`(^|/)` + regexp.QuoteMeta(account) + `(/|$)`)
+	return rewrite(spec, func(s string) string {
+		if s == account {
+			return tokAccount
+		}
+		return seg.ReplaceAllString(s, "${1}"+tokAccount+"${2}")
+	}).(map[string]any)
+}
+
+func rewrite(v any, fn func(string) string) any {
+	switch c := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(c))
+		for k, x := range c {
+			out[fn(k)] = rewrite(x, fn)
+		}
+		return out
+	case []any:
+		out := make([]any, len(c))
+		for i, x := range c {
+			out[i] = rewrite(x, fn)
+		}
+		return out
+	case string:
+		return fn(c)
+	}
+	return v
+}
+
+// Capture reads the account's configuration.
+func (c *Client) Capture(ctx context.Context) (snapshot.Snapshot, error) {
+	items, cov, err := c.inventory(ctx)
+	if err != nil {
+		return snapshot.Snapshot{}, err
+	}
+	snap := snapshot.Snapshot{Platform: "saas/" + c.P.Name, ServerVersion: specVersion(c.Spec), Policy: "default", Coverage: cov}
+	seen := map[string]bool{}
+	for _, it := range items {
+		meta := map[string]any{"name": it.fullName()}
+		ann := map[string]any{}
+		if len(it.masked) > 0 {
+			sort.Strings(it.masked)
+			ann[annSecrets] = strings.Join(it.masked, ",")
+		}
+		if it.parent != nil {
+			ann[annParent] = it.parent.fullName()
+		}
+		if len(ann) > 0 {
+			meta["annotations"] = ann
+		}
+		obj := snapshot.Object{Body: map[string]any{"apiVersion": APIVersion, "kind": it.col.Kind, "metadata": meta, "spec": it.spec}}
+		if seen[obj.Key()] {
+			return snapshot.Snapshot{}, fmt.Errorf("%s: two items are named %q; the descriptor's name fields do not identify them", it.col.Kind, it.fullName())
+		}
+		seen[obj.Key()] = true
+		snap.Objects = append(snap.Objects, obj)
+	}
+	for i := range c.P.Collections {
+		col := &c.P.Collections[i]
+		p := c.writes(col).Paths()
+		snap.Schemas = append(snap.Schemas, snapshot.TypeSchema{APIVersion: APIVersion, Kind: col.Kind, Fields: p})
+	}
+	sort.Slice(snap.Objects, func(i, j int) bool { return snap.Objects[i].Key() < snap.Objects[j].Key() })
+	return snap, nil
+}
+
+func specVersion(s *Spec) string {
+	info, _ := s.doc["info"].(map[string]any)
+	v, _ := info["version"].(string)
+	return v
+}
+
+// RestoreOptions supplies values the API never returns (webhook secrets),
+// keyed "kind/name".
+type RestoreOptions struct {
+	Values map[string]map[string]any
+}
+
+// Restore creates what is missing, parents first, and never modifies an
+// item that exists: identical is reported applied, different is reported.
+func (c *Client) Restore(ctx context.Context, s snapshot.Snapshot, opt RestoreOptions) []snapshot.Result {
+	kindIndex := map[string]int{}
+	for i, col := range c.P.Collections {
+		kindIndex[col.Kind] = i
+	}
+	objs := append([]snapshot.Object(nil), s.Objects...)
+	sort.SliceStable(objs, func(i, j int) bool { return kindIndex[objs[i].Kind()] < kindIndex[objs[j].Kind()] })
+
+	targets := map[string]map[string]any{}  // kind|fullName -> raw item in the target
+	listed := map[string]map[string]*item{} // kind|parentFullName -> existing items by name
+	var results []snapshot.Result
+	for _, o := range objs {
+		res := snapshot.Result{Key: o.Key()}
+		res.OK, res.Detail = c.restoreOne(ctx, o, targets, listed, opt)
+		results = append(results, res)
+	}
+	return results
+}
+
+func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[string]map[string]any, listed map[string]map[string]*item, opt RestoreOptions) (bool, string) {
+	idx := -1
+	for i, col := range c.P.Collections {
+		if col.Kind == o.Kind() {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		return false, "the " + c.P.Name + " descriptor has no collection " + o.Kind()
+	}
+	col := &c.P.Collections[idx]
+	full := o.Name()
+	parentName, own := "", full
+	var parentRaw map[string]any
+	if col.Parent != "" {
+		ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+		parentName, _ = ann[annParent].(string)
+		own = strings.TrimPrefix(full, parentName+"/")
+		parentRaw = targets[col.Parent+"|"+parentName]
+		if parentRaw == nil {
+			return false, "its parent " + col.Parent + " " + parentName + " was not restored"
+		}
+	}
+	spec, _ := o.Body["spec"].(map[string]any)
+
+	// What exists under this parent in the target, read once.
+	lk := col.Kind + "|" + parentName
+	if listed[lk] == nil {
+		path, ok := expand(col.List, col.Bind, c.Account, parentRaw, nil)
+		if !ok {
+			return false, "cannot fill " + col.List
+		}
+		items, err := c.list(ctx, path)
+		if err != nil {
+			return false, "cannot read the target: " + err.Error()
+		}
+		listed[lk] = map[string]*item{}
+		w := c.writes(col)
+		for _, raw := range items {
+			if col.Get != "" {
+				if gp, ok := expand(col.Get, col.Bind, c.Account, parentRaw, raw); ok {
+					if full, _, err := c.do(ctx, "GET", gp, nil); err == nil {
+						raw, _ = full.(map[string]any)
+					}
+				}
+			}
+			var names []string
+			for _, f := range col.Name {
+				names = append(names, stringOf(field(raw, f)))
+			}
+			it := &item{col: col, raw: raw}
+			kept, _ := keep(raw, w, "", &it.masked)
+			it.spec, _ = kept.(map[string]any)
+			it.spec = tokenize(it.spec, c.Account)
+			listed[lk][strings.Join(names, " ")] = it
+		}
+	}
+	if ex, ok := listed[lk][own]; ok {
+		targets[col.Kind+"|"+full] = ex.raw
+		if canon(ex.spec) == canon(spec) {
+			return true, "already present and identical"
+		}
+		return false, "already exists and differs; StackDNA does not modify existing items"
+	}
+
+	desired := rewrite(deepCopy(spec), func(s string) string { return strings.ReplaceAll(s, tokAccount, c.Account) }).(map[string]any)
+	vals := opt.Values[o.Kind()+"/"+full]
+	merge(desired, vals)
+	cf := c.Spec.RequestFields(col.Create, "POST")
+	body, _ := keep(desired, cf, "", new([]string))
+	path, ok := expand(col.Create, col.Bind, c.Account, parentRaw, nil)
+	if !ok {
+		return false, "cannot fill " + col.Create
+	}
+	created, _, err := c.do(ctx, "POST", path, body)
+	if err != nil {
+		return false, err.Error()
+	}
+	raw, _ := created.(map[string]any)
+	if col.Update != "" {
+		uf := c.Spec.RequestFields(col.Update, "PATCH")
+		upd, _ := keep(desired, uf, "", new([]string))
+		up, ok := expand(col.Update, col.Bind, c.Account, parentRaw, raw)
+		if !ok {
+			return false, "created, but cannot fill " + col.Update
+		}
+		if updated, _, err := c.do(ctx, "PATCH", up, upd); err != nil {
+			return false, "created, but its settings were not applied: " + err.Error()
+		} else if m, ok := updated.(map[string]any); ok {
+			raw = m
+		}
+	}
+	targets[col.Kind+"|"+full] = raw
+	detail := "created"
+	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+	if s, _ := ann[annSecrets].(string); s != "" {
+		var missing []string
+		for _, p := range strings.Split(s, ",") {
+			if field(vals, p) == nil {
+				missing = append(missing, p)
+			}
+		}
+		if len(missing) > 0 {
+			detail += "; secret, not supplied: " + strings.Join(missing, ", ")
+		}
+	}
+	return true, detail
+}
+
+func merge(dst, src map[string]any) {
+	for k, v := range src {
+		dm, dok := dst[k].(map[string]any)
+		sm, sok := v.(map[string]any)
+		if dok && sok {
+			merge(dm, sm)
+			continue
+		}
+		dst[k] = v
+	}
+}
+
+func deepCopy(m map[string]any) map[string]any {
+	b, _ := json.Marshal(m)
+	var out map[string]any
+	_ = json.Unmarshal(b, &out)
+	return out
+}
+
+func canon(v any) string { b, _ := json.Marshal(v); return string(b) }
+
+// Adapter is a SaaS account as a platform.Platform.
+type Adapter struct {
+	Client  *Client
+	Options RestoreOptions
+}
+
+func (a *Adapter) Name() string { return "saas/" + a.Client.P.Name }
+
+func (a *Adapter) Capture(ctx context.Context) (snapshot.Snapshot, error) {
+	return a.Client.Capture(ctx)
+}
+
+func (a *Adapter) Restore(ctx context.Context, s snapshot.Snapshot) []snapshot.Result {
+	return a.Client.Restore(ctx, s, a.Options)
+}

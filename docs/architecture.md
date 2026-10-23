@@ -510,6 +510,48 @@ All three are covered by the fake.
   parameters, are not driven yet.
 - Data is never captured.
 
+## SaaS: GitHub and Cloudflare, driven by their OpenAPI descriptions
+
+`internal/saas` is one engine for any provider with an OpenAPI
+description. Each provider has a descriptor, which is data. It names the
+API root, the envelope and paging conventions, and its configuration
+collections (path templates, how their parameters bind, which fields name
+an item). An OpenAPI description says how to call an endpoint but not which
+ones hold configuration rather than activity, so that part is declared.
+Everything else comes from the description:
+
+- **What is kept is what the writes accept.** That is the union of the
+  create and update request schemas, with `allOf`, `oneOf` and `anyOf`
+  merged. A Cloudflare DNS record is one of a dozen record types. GitHub
+  flags 0 of the 105 fields of a repository read-only, so flags can't be
+  relied on. A field only the response has (`stargazers_count`,
+  `created_at`) is server-computed by definition.
+- **Masked values** (GitHub answers a webhook secret as `********`) are
+  never kept. They are annotated, supplied at restore with `--values`, and
+  named in the result when missing.
+- **The account is tokenized only where it is structural**: an exact value,
+  or a path or URL segment. The StackDNA organisation's repository
+  describes itself as "StackDNA core: ...", and replacing the name in prose
+  would rewrite the description in every target.
+- **A feature the plan lacks is not a failure.** Each provider lists its own
+  refusal messages ("Upgrade to GitHub Pro"), and those collections are
+  recorded as not available.
+- Restore creates parents first, applies an update for settings the create
+  doesn't take, recognises existing items by name, and never modifies them.
+
+| | Proof |
+|---|---|
+| GitHub: repositories, labels, webhooks, rulesets | A fake drill. Plus a real read-only capture of the StackDNA organisation: 2 repositories, 19 labels, rulesets correctly "not available on this plan", complete |
+| Cloudflare: zones, DNS records | A fake drill only; no API token on the dev machine |
+
+The fakes serve both providers over HTTP, from the descriptor and the
+description: they route by the spec's templates, refuse unknown body
+fields, add server-computed fields, mask secrets, page in twos, wrap
+Cloudflare's envelope, and refuse references to another account. Mutation
+checks: keeping every field, skipping tokenization, keeping masked
+secrets, reading one page only, and tokenizing inside prose each fail the
+tests.
+
 ## Roadmap
 
 | Step | What |

@@ -59,6 +59,10 @@ type Fake struct {
 	// UnreadableMsg replaces the handler message an unreadable resource
 	// answers with, to replay a specific AWS failure.
 	UnreadableMsg string
+	// ReadLag makes each created resource answer not-found to this many
+	// reads first, as a just-created S3 bucket did.
+	ReadLag int
+	lag     map[string]int
 }
 
 // Account returns a new empty account in the world.
@@ -138,6 +142,12 @@ func (f *Fake) Create(_ context.Context, typeName string, desired map[string]any
 	}
 	f.res[typeName][id] = props
 	f.order[typeName] = append(f.order[typeName], id)
+	if f.ReadLag > 0 {
+		if f.lag == nil {
+			f.lag = map[string]int{}
+		}
+		f.lag[typeName+"|"+id] = f.ReadLag
+	}
 	if f.AfterCreate != nil {
 		f.w.mu.Unlock()
 		f.AfterCreate(typeName, props)
@@ -240,6 +250,10 @@ func (f *Fake) Get(_ context.Context, typeName, id string) (map[string]any, erro
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	p, ok := f.res[typeName][id]
+	if n := f.lag[typeName+"|"+id]; ok && n > 0 {
+		f.lag[typeName+"|"+id] = n - 1
+		ok = false
+	}
 	if !ok {
 		return nil, fmt.Errorf("%s %s: %w", typeName, id, ErrNotFound)
 	}

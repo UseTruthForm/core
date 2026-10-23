@@ -225,9 +225,22 @@ case, run in one region:
 6. delete everything again, then require that the region diffs clean against
    its pre-drill baseline, so a leaked resource fails the run.
 
-It uses free-tier resources only (VPC, subnet, SQS, SSM Standard parameter,
-API Gateway REST API and resource) and takes about 6 minutes. It passed in
-us-east-2 on 2026-10-21 with 6 of 6 resources restored under new IDs.
+It uses resources that cost nothing while empty, chosen for the
+references between them:
+
+- a VPC, subnet and security group with an ingress rule (the group's rules
+  are also listed as `SecurityGroupIngress`/`Egress` resources of their own);
+- two SQS queues, one the other's dead-letter queue, whose ARN sits inside
+  the `RedrivePolicy` JSON string;
+- an SNS topic, and a DISABLED EventBridge rule that targets it by ARN;
+- an SSM Standard parameter, an API Gateway REST API and resource, a log
+  group, an ECR repository and an S3 bucket.
+
+It passed in us-east-2 on 2026-10-22: 17 of 17 resources across 14 types
+restored under new IDs, an empty diff, and the region back to its
+baseline. The whole drill takes about 13 minutes; the restore is 4m33s, of
+which about three minutes is Cloud Control's own handlers (about 60s for
+each SQS queue and for the EventBridge rule). Creates run one at a time.
 
 The first runs found four things the fake had not modelled. Each one is now
 pinned in the fake tests:
@@ -248,6 +261,26 @@ pinned in the fake tests:
   likewise miss anything created in the last minute or so.
 - **SQS holds a deleted queue's name for 60 seconds.** A restore right after
   a deletion fails with `QueueDeletedRecently`.
+
+Broadening the drill (2026-10-22) found eight more:
+
+| Symptom | Cause, and the fix |
+|---|---|
+| SNS create failed: "Unknown attribute ArchivePolicy" | A standard topic reads back `ArchivePolicy: {}`. An empty object means unset, so it is not kept. |
+| The VPC's `Name` tag became a reference to the ECR repository of the same name | A chosen name (one the user picked, the same in every account) inside a tag is a label. It no longer becomes a reference; a generated ID in a tag still does. |
+| The drill VPC's default security group was captured, and its restore collided with the one AWS makes | The group reports its own ID as `GroupId`, which hid the VPC's `DefaultSecurityGroup` claim. A resource's own ID no longer counts. |
+| The default group's rules "depend on" the group, which is never restored | `DefaultSecurityGroup` isn't an `*Id` name, so it wasn't a reference source. An AWS-created child's ID now refers through the parent property that reports it. |
+| One rule create spun for 257s, then "InternalFailure Resource Handler Internal Failure" | A rule reads back `GroupId` and `GroupName`, and `SourceSecurityGroupId` and `SourceSecurityGroupName`; sent both, the handler fails. A second `aliases` entry, confirmed by a probe that sent each form alone. |
+| `SourceSecurityGroupOwnerId: "999988887777"` in the spec | The capturing account's ID is now a token wherever it is structural (a whole value, or an ARN's account segment) and resolves to the target's account. Prose is left alone. |
+| Cloud Control reported a bucket created, then "Bucket not found" on the next read | Eventual consistency after a delete and re-create. A read that follows a successful create is retried for up to two minutes. |
+| The restore note said a group's ingress rules were write-only | Only `SecurityGroupIngress[].SourceSecurityGroupName` is. Notes and annotations now name exact field paths. |
+
+A create can also make other resources as a side effect: a group's inline
+rules are listed again as rule resources, and a VPC brings a default group
+with rules. When a create is refused, restore rereads the target, and an
+object now present and identical counts as applied. In probes Cloud Control
+adopted such duplicates without complaint; the fake refuses them, which is
+the stricter case.
 
 **Full-registry capture against real AWS.** It runs read-only across all
 1,498 types in us-east-2: 4m52s at 8 calls in flight, nothing lost to
@@ -291,7 +324,7 @@ whose read handlers fail.
 
 **Still unverified against AWS:**
 
-- restore beyond the 6 types the drill used (the full capture proves
+- restore beyond the 14 types the drill uses (the full capture proves
   reading, not recreating);
 - IAM (the sandbox user can list roles but not read them);
 - cross-account restore;
@@ -307,7 +340,6 @@ so a subnet captured in one region can't be created in another as it stands.
 
 - S3 bucket names are global, so a cross-account restore of a user-named
   bucket fails while the source bucket exists.
-- Account IDs in references to resources outside the snapshot stay literal.
 - StackDNA never updates an existing resource.
 - Data is never captured: S3 objects, queue messages and table rows.
 
@@ -573,7 +605,7 @@ tests.
 | Step | What |
 |---|---|
 | Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so); `--json` output |
-| AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; a zone mapping for cross-region restore; account-ID tokens; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
+| AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; a zone mapping for cross-region restore; parallel creates of independent resources; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
 | Azure | Mapping principals across tenants; data-plane configuration (Key Vault secrets' metadata, storage CORS) where ARM exposes it |
 | GCP | Compute-style path parameters; project IDs in free text; `undelete` for soft-deleted resources (custom roles) |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |

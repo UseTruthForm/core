@@ -104,7 +104,9 @@ echo "deterministic: $d1"
 step "disaster: delete the drill's resources"
 cleanup
 step "restore from the snapshot"
+t0=$(date +%s)
 sd restore --from "$OUT/snap"
+echo "restore took $(( $(date +%s) - t0 ))s"
 step "diff: the project must match the snapshot"
 until_settled sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
 echo "DRILL PASSED"

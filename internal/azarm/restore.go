@@ -7,7 +7,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
+	"github.com/stackdna/core/internal/schedule"
 	"github.com/stackdna/core/internal/snapshot"
 )
 
@@ -29,6 +31,10 @@ type RestoreOptions struct {
 // deletes: a resource already present and identical is reported applied,
 // one present but different is reported not applied.
 func Restore(ctx context.Context, api ARM, reg *Registry, s snapshot.Snapshot, opt RestoreOptions) []snapshot.Result {
+	return restoreWith(ctx, api, reg, s, opt, 8)
+}
+
+func restoreWith(ctx context.Context, api ARM, reg *Registry, s snapshot.Snapshot, opt RestoreOptions, workers int) []snapshot.Result {
 	sub := api.Subscription()
 	tenant, err := api.Tenant(ctx)
 	results := make([]snapshot.Result, 0, len(s.Objects))
@@ -42,26 +48,58 @@ func Restore(ctx context.Context, api ARM, reg *Registry, s snapshot.Snapshot, o
 	for _, o := range s.Objects {
 		byKey[strings.ToLower(o.Key())] = o
 	}
-	order, cyclic := restoreOrder(s.Objects)
+	order, cyclic, deps := restoreGraph(s.Objects)
 	for _, o := range cyclic {
 		results = append(results, snapshot.Result{Key: o.Key(), Detail: "its references form a cycle; no creation order exists"})
 	}
-	failed := map[string]string{}
 	// present marks a resource found in the target though not applied (it
 	// differs and was left alone). Its dependents can still be restored:
 	// they name it by ID, and it is there. Counting it as failed blocked a
 	// web app and a role assignment behind an identity whose only
 	// difference was a tag.
-	present := map[string]bool{}
-	for _, o := range order {
+	out := &outcomes{failed: map[string]string{}, present: map[string]bool{}}
+	// Each PUT starts once what it depends on is done, several at a time;
+	// results keep the dependency order whatever order they finish in.
+	done := make([]snapshot.Result, len(order))
+	schedule.Run(len(order), deps, workers, func(i int) {
+		o := order[i]
 		res := snapshot.Result{Key: o.Key()}
-		res.OK, res.Detail = restoreOne(ctx, api, reg, o, sub, tenant, opt, failed, byKey, present)
-		if !res.OK && !present[strings.ToLower(o.Key())] {
-			failed[strings.ToLower(o.Key())] = res.Detail
+		res.OK, res.Detail = restoreOne(ctx, api, reg, o, sub, tenant, opt, out, byKey)
+		if !res.OK {
+			out.fail(strings.ToLower(o.Key()), res.Detail)
 		}
-		results = append(results, res)
+		done[i] = res
+	})
+	return append(results, done...)
+}
+
+// outcomes is what the PUTs running at once have learned: what failed
+// (its dependents say so), and what is present though not applied.
+type outcomes struct {
+	mu      sync.Mutex
+	failed  map[string]string
+	present map[string]bool
+}
+
+func (o *outcomes) fail(k, why string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if !o.present[k] {
+		o.failed[k] = why
 	}
-	return results
+}
+
+func (o *outcomes) failure(k string) (string, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	why, bad := o.failed[k]
+	return why, bad
+}
+
+func (o *outcomes) markPresent(k string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.present[k] = true
 }
 
 func objectID(o snapshot.Object, sub string) ResourceID {
@@ -78,9 +116,9 @@ func objectID(o snapshot.Object, sub string) ResourceID {
 	return ResourceID{Subscription: sub, ResourceGroup: o.Namespace(), Type: o.Kind(), Name: o.Name()}
 }
 
-func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, sub, tenant string, opt RestoreOptions, failed map[string]string, byKey map[string]snapshot.Object, present map[string]bool) (bool, string) {
+func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, sub, tenant string, opt RestoreOptions, out *outcomes, byKey map[string]snapshot.Object) (bool, string) {
 	for _, d := range deps(o) {
-		if why, bad := failed[d]; bad {
+		if why, bad := out.failure(d); bad {
 			return false, "depends on " + d + ", which was not restored (" + why + ")"
 		}
 	}
@@ -118,7 +156,7 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	var changed []string
 	switch {
 	case err == nil:
-		present[strings.ToLower(o.Key())] = true
+		out.markPresent(strings.ToLower(o.Key()))
 		got, _ := schema.normalize(existing)
 		got = tokenize(got, sub, tenant)
 		ch := snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{{Body: map[string]any{"apiVersion": APIVersion, "kind": o.Kind(), "metadata": o.Body["metadata"], "spec": spec}}}},
@@ -263,6 +301,14 @@ func keyOf(rid ResourceID) string {
 // restoreOrder sorts objects so each comes after what it depends on that is
 // in the snapshot; what is not in the snapshot must already exist.
 func restoreOrder(objs []snapshot.Object) (order, cyclic []snapshot.Object) {
+	order, cyclic, _ = restoreGraph(objs)
+	return order, cyclic
+}
+
+// restoreGraph orders objects so each comes after what it depends on, and
+// gives each one's dependencies as indices into that order, for running
+// independent PUTs at once.
+func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depIdx [][]int) {
 	by := map[string]snapshot.Object{}
 	ids := map[string]string{} // lower(tokenized ID) -> key
 	for _, o := range objs {
@@ -325,7 +371,20 @@ func restoreOrder(objs []snapshot.Object) (order, cyclic []snapshot.Object) {
 	sort.SliceStable(order, func(i, j int) bool {
 		return strings.EqualFold(order[i].Kind(), groupType) && !strings.EqualFold(order[j].Kind(), groupType)
 	})
-	return order, cyclic
+	at := map[string]int{}
+	for i, o := range order {
+		at[strings.ToLower(o.Key())] = i
+	}
+	depIdx = make([][]int, len(order))
+	for i, o := range order {
+		k := strings.ToLower(o.Key())
+		for _, d := range append(deps(o), extra[k]...) {
+			if j, ok := at[d]; ok && j != i {
+				depIdx[i] = append(depIdx[i], j)
+			}
+		}
+	}
+	return order, cyclic, depIdx
 }
 
 func merge(dst, src map[string]any) {
@@ -359,5 +418,14 @@ func (a *Adapter) Capture(ctx context.Context) (snapshot.Snapshot, error) {
 
 // Restore restores a snapshot into the subscription.
 func (a *Adapter) Restore(ctx context.Context, s snapshot.Snapshot) []snapshot.Result {
-	return Restore(ctx, a.API, a.Registry, s, a.Options)
+	return restoreWith(ctx, a.API, a.Registry, s, a.Options, workers(a.Policy.Parallel))
+}
+
+// workers is --parallel for a restore: it was taken by capture only, so
+// "--parallel 1" still ran eight PUTs at once (review of #19).
+func workers(n int) int {
+	if n <= 0 {
+		return 8
+	}
+	return n
 }

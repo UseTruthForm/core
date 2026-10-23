@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // World is a set of fake AWS accounts that share one ID space, like the real
@@ -67,6 +68,10 @@ type Fake struct {
 	Updates int
 	// RegionZones overrides a region's zones (default: three per region).
 	RegionZones map[string][]Zone
+	// CreateDelay makes each create take this long, as Cloud Control's
+	// handlers do (about 60s for an SQS queue), outside the lock, so
+	// creates running at once overlap.
+	CreateDelay time.Duration
 }
 
 // Zones lists a region's zones.
@@ -103,6 +108,7 @@ func (f *Fake) Create(_ context.Context, typeName string, desired map[string]any
 	if !t.Handlers["create"] {
 		return "", fmt.Errorf("%s has no create handler", typeName)
 	}
+	time.Sleep(f.CreateDelay)
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	props := deepCopy(desired)

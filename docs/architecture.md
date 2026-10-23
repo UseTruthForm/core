@@ -238,9 +238,31 @@ references between them:
 
 It passed in us-east-2 on 2026-10-22: 17 of 17 resources across 14 types
 restored under new IDs, an empty diff, and the region back to its
-baseline. The whole drill takes about 13 minutes; the restore is 4m33s, of
-which about three minutes is Cloud Control's own handlers (about 60s for
-each SQS queue and for the EventBridge rule). Creates run one at a time.
+baseline. The whole drill takes about 14 minutes; the restore takes 135s.
+
+**Restores run in parallel along the dependency graph.** Each resource
+starts as soon as everything its references name is done, up to
+`--parallel` at once (8 by default); results keep the dependency order, so
+reports and diffs do not change. One at a time, the restore took 4m33s,
+mostly waiting on Cloud Control's own handlers (about 60s for each SQS
+queue and for the EventBridge rule) for resources that did not depend on
+each other. In parallel it is bounded by the longest chain (the
+dead-letter queue, then the queue that uses it: about 130s). Measured on
+the real drills, each run back to back on the same day:
+
+| Drill | One at a time | In parallel |
+|---|---|---|
+| AWS, 17 resources | 4m33s | 135s |
+| Azure, 7 resources (one long chain: group, NSG, VNet; identity, role assignments; the lock last) | 23s | 19s |
+| GCP, 2 independent resources | 10s | 4s |
+
+The gain grows with breadth: a real account is wide and shallow, so
+hundreds of resources take about as long as their longest chain rather
+than their sum. A create refused for throttling before AWS accepted it is
+retried with backoff (the account's rate is shared now); one accepted and
+then failed inside its handler is reported, not repeated, since it may
+have done part of its work. GitHub and Cloudflare restores still run one
+at a time.
 
 The first runs found four things the fake had not modelled. Each one is now
 pinned in the fake tests:

@@ -208,7 +208,9 @@ cleanup
 echo "waiting 65s for SQS to release the queue name"; sleep 65
 
 step "restore from the snapshot into $TARGET"
+t0=$(date +%s)
 on_region "$TARGET" sd restore --from "$OUT/snap"
+echo "restore took $(( $(date +%s) - t0 ))s"
 on_region "$TARGET" wait_all
 step "diff: $TARGET must match the snapshot"
 on_region "$TARGET" sd diff --baseline "$BASES" --from "$OUT/snap"

@@ -108,7 +108,9 @@ unlock
 az group delete --name "$RG" --yes
 
 step "restore from the snapshot"
+t0=$(date +%s)
 sd restore --from "$OUT/snap"
+echo "restore took $(( $(date +%s) - t0 ))s"
 # The restored assignment must name the restored identity's new principal.
 newp=$(az identity show -g "$RG" -n "$N-id" --query principalId -o tsv)
 az role assignment list --scope "$(az group show --name "$RG" --query id -o tsv)" --query "[?principalId=='$newp'].roleDefinitionName" -o tsv | grep -qx Reader   || { echo "FAIL: the restored role assignment does not name the restored identity ($newp)"; exit 1; }

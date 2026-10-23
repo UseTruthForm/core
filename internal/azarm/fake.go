@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // World is a set of fake subscriptions, each in its own tenant. A PUT that
@@ -49,6 +50,9 @@ type Fake struct {
 	// RefuseVersion refuses a list at an API version, as ARM refuses the
 	// subscription's diagnostic settings at their newest stable version.
 	RefuseVersion func(path, version string) bool
+	// PutDelay makes each PUT take this long, outside the lock, so PUTs
+	// running at once overlap as ARM's long-running ones do.
+	PutDelay time.Duration
 	// AlsoTracked lists child types ARM's resource list returns as well
 	// (a SQL server's databases are both), so capture meets them twice.
 	AlsoTracked map[string]bool
@@ -166,6 +170,7 @@ func (f *Fake) Put(_ context.Context, id, version string, body map[string]any) (
 	if !s.Writable {
 		return nil, fmt.Errorf("InvalidResourceType: %s is defined by Azure and cannot be written", rid.Type)
 	}
+	time.Sleep(f.PutDelay)
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	if err := f.validate(s, rid, body); err != nil {

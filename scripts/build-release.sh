@@ -39,13 +39,19 @@ for target in $TARGETS; do
     fi
     exe=stackdna; [ "$os" = windows ] && exe=stackdna.exe
     mkdir -p "$OUT/$name"
-    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath "${tags[@]}" \
+    # ${tags[@]+...}: an empty array under set -u aborts macOS's bash 3.2.
+    CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath ${tags[@]+"${tags[@]}"} \
       -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.built=$BUILT" \
       -o "$OUT/$name/$exe" ./cmd/stackdna
     cp README.md "$OUT/$name/"
     [ -n "${NO_ARCHIVE:-}" ] && continue
     if [ "$os" = windows ]; then
-      (cd "$OUT" && zip -qr "$name.zip" "$name")
+      # zip is not on every machine (Git Bash on Windows lacks it).
+      if command -v zip >/dev/null; then
+        (cd "$OUT" && zip -qr "$name.zip" "$name")
+      else
+        (cd "$OUT" && { python3 -m zipfile -c "$name.zip" "$name" 2>/dev/null || python -m zipfile -c "$name.zip" "$name"; })
+      fi
     else
       tar -C "$OUT" -czf "$OUT/$name.tar.gz" "$name"
     fi

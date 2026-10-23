@@ -30,7 +30,7 @@ Control's handlers make, and those types are reported as failed in
 
 | Use | Grant | Status |
 |---|---|---|
-| Capture, diff | The built-in **Reader** role at the subscription. It reads every resource, and the extension resources StackDNA captures: role assignments and custom role definitions, locks, policy assignments, diagnostic settings. | Expected. Captures have run as the subscription's owner. |
+| Capture, diff | The built-in **Reader** role at the subscription. It reads every resource, and the extension resources StackDNA captures: role assignments and custom role definitions, locks, policy assignments, diagnostic settings. | **Verified** (2026-10-23): a service principal holding only Reader captured the sandbox subscription to the same digest as its owner. The principal was deleted afterwards. |
 | Restore | **Contributor**, plus **User Access Administrator** for role assignments and locks (`Microsoft.Authorization/*/write`, which Contributor does not have). **Owner** covers both. | Verified as Owner. |
 
 ## Google Cloud

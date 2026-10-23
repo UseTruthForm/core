@@ -23,10 +23,10 @@ type Tool struct {
 	Name        string
 	Description string
 	Schema      map[string]any // JSON Schema of the arguments
-	// ReadOnly tools never change anything they reach. Every StackDNA
-	// tool is; the hint lets a client run them without asking.
-	ReadOnly bool
-	Call     func(ctx context.Context, args map[string]any) (string, error)
+	// ReadOnly tools change nothing at all; the hint lets a client run them
+	// without asking. Destructive tools may delete or overwrite something.
+	ReadOnly, Destructive bool
+	Call                  func(ctx context.Context, args map[string]any) (string, error)
 }
 
 // Server is a named set of tools.
@@ -118,7 +118,7 @@ func (s *Server) handle(ctx context.Context, req request) (any, *rpcError) {
 		for _, t := range s.Tools {
 			tools = append(tools, map[string]any{
 				"name": t.Name, "description": t.Description, "inputSchema": t.Schema,
-				"annotations": map[string]any{"readOnlyHint": t.ReadOnly, "destructiveHint": !t.ReadOnly, "openWorldHint": true},
+				"annotations": map[string]any{"readOnlyHint": t.ReadOnly, "destructiveHint": t.Destructive, "openWorldHint": true},
 			})
 		}
 		return map[string]any{"tools": tools}, nil

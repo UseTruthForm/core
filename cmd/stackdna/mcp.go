@@ -22,8 +22,10 @@ import (
 )
 
 // mcpCmd serves StackDNA's tools to an agent over MCP on stdin and stdout.
-// Every tool is read-only: describing types reads public schemas, and
+// No tool writes to a cloud: describing types reads public schemas, and
 // capture and diff run through the read-only guard, as they always do.
+// capture writes a snapshot to local disk, into a new or empty directory
+// only, so it is not marked read-only; nothing else writes at all.
 // There is deliberately no restore tool. A restore creates and changes
 // live resources; that stays a command a person runs, with the snapshot
 // and the plan in front of them.
@@ -100,10 +102,16 @@ func mcpTools() []mcp.Tool {
 				"version": str("azure: API version (default newest); gcp: API version (default v1)"), "api": str("gcp: the API (iam, compute...)"),
 				"region": str("aws: whose schema bundle (default us-east-1)"), "max_depth": map[string]any{"type": "integer", "description": "field path depth (default 3)"}}),
 			Call: describeType},
-		{Name: "capture", ReadOnly: true,
-			Description: "Capture a live account, subscription, project, cluster or organisation into a snapshot directory, read-only. Returns the summary; REPORT.md is written beside the snapshot.",
-			Schema:      obj([]string{"platform", "out"}, with(map[string]any{"out": str("directory to write the snapshot to (must be empty or a previous snapshot)")})),
+		{Name: "capture",
+			Description: "Capture a live account, subscription, project, cluster or organisation into a new snapshot directory. Reads the target only; writes the snapshot and its REPORT.md to local disk. Returns the summary.",
+			Schema:      obj([]string{"platform", "out"}, with(map[string]any{"out": str("directory to write the snapshot to; must not exist yet, or be empty")})),
 			Call: func(ctx context.Context, a map[string]any) (string, error) {
+				// The CLI replaces an existing snapshot in place; an agent
+				// must not be able to wipe one (a baseline, a golden copy)
+				// that way.
+				if ents, err := os.ReadDir(arg(a, "out", "")); err == nil && len(ents) > 0 {
+					return "", fmt.Errorf("%s exists and is not empty; capture writes only into a new or empty directory", arg(a, "out", ""))
+				}
 				return runStackDNA(ctx, "capture", a, "out")
 			}},
 		{Name: "diff", ReadOnly: true,
@@ -293,17 +301,26 @@ func saasClient(name string) (*saas.Client, error) {
 	return saas.NewClient(p, spec, "", "", true), nil
 }
 
-// mcpFlags are the only arguments a tool passes on. Each is sent as
+// mcpFlags are the only arguments each command is passed. Each is sent as
 // --name=value, so a value can never become another flag, and the command
 // itself is fixed by the tool: nothing an agent sends can turn a capture
-// into a restore.
-var mcpFlags = []string{"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "out", "from"}
+// into a restore. Per command, because a flag the command does not define
+// makes it exit 2 with its usage, which read as "differences found".
+var mcpFlags = map[string][]string{
+	"capture": {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "out"},
+	"diff":    {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "from"},
+}
 
 // runStackDNA runs this binary's capture or diff. Running it as a separate
 // process keeps its progress lines off stdout, which is the protocol.
 func runStackDNA(ctx context.Context, cmd string, a map[string]any, need string) (string, error) {
 	if arg(a, need, "") == "" {
 		return "", fmt.Errorf("%s needs %s", cmd, need)
+	}
+	if r := arg(a, "region", ""); r != "" {
+		if err := awscc.CheckRegion(r); err != nil {
+			return "", err
+		}
 	}
 	self, err := os.Executable()
 	if err != nil {
@@ -321,12 +338,15 @@ func runStackDNA(ctx context.Context, cmd string, a map[string]any, need string)
 	} else if runErr != nil {
 		return "", runErr
 	}
-	switch code {
-	case 0:
+	// A Go panic also exits 2; only a diff that ran to its end means
+	// "differences" by it.
+	panicked := strings.Contains(text, "panic:") || strings.Contains(text, "goroutine ")
+	switch {
+	case code == 0:
 		return text, nil
-	case 2:
+	case code == 2 && cmd == "diff" && !panicked:
 		return text + "\n(exit 2: differences found)", nil
-	case 3:
+	case code == 3 && !panicked:
 		return text + "\n(exit 3: incomplete; see above for what was not read)", nil
 	}
 	return "", fmt.Errorf("stackdna %s failed (exit %d):\n%s", cmd, code, text)
@@ -336,7 +356,7 @@ func runStackDNA(ctx context.Context, cmd string, a map[string]any, need string)
 // the known flags, each as one --name=value argument.
 func mcpArgv(cmd string, a map[string]any) []string {
 	argv := []string{cmd}
-	for _, k := range mcpFlags {
+	for _, k := range mcpFlags[cmd] {
 		if v := arg(a, k, ""); v != "" {
 			argv = append(argv, "--"+k+"="+v)
 		}

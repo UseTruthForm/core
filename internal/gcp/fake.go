@@ -199,6 +199,12 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	}
 	stored := deepCopy(res)
 	stored["name"] = rel
+	// Compute's resources, created through a template that names each
+	// segment, carry their short name and a selfLink, as Google returns
+	// them; storing the full name here hid an update that sent one.
+	if !strings.Contains(m.Path, "{+") {
+		stored["name"] = id
+	}
 	for k, p := range d.Schemas[schema].Properties {
 		if outputOnly(p) && (p.Type == "string" || p.Type == "") && k != "name" {
 			f.w.seq++
@@ -207,6 +213,9 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 				stored[k] = fmt.Sprintf("1%019d", f.w.seq*7919+len(f.id)) // Google's IDs are numbers
 			}
 		}
+	}
+	if _, ok := d.Schemas[schema].Properties["selfLink"]; ok {
+		stored["selfLink"] = d.RootURL + d.ServicePath + rel
 	}
 	f.w.seq++
 	stored["etag"] = fmt.Sprintf("e%d", f.w.seq)
@@ -274,6 +283,9 @@ func (f *Fake) update(method, u string, body map[string]any) (map[string]any, er
 		return nil, fmt.Errorf("INVALID_ARGUMENT: %s needs an updateMask", m.ID)
 	}
 	props := d.Schemas[schema].Properties
+	if n, ok := res["name"].(string); ok && n != cur.data["name"] {
+		return nil, fmt.Errorf("INVALID_ARGUMENT: name %q does not match the resource's %q", n, cur.data["name"])
+	}
 	for k := range res {
 		if p, ok := props[k]; !ok {
 			return nil, fmt.Errorf("INVALID_ARGUMENT: %s has no field %s", schema, k)
@@ -298,6 +310,19 @@ func (f *Fake) update(method, u string, body map[string]any) (map[string]any, er
 				next[k] = v
 			} else {
 				delete(next, k)
+			}
+		}
+	} else if method == "PATCH" {
+		// No mask: a JSON merge patch. What the body leaves out is kept;
+		// null clears.
+		for k, v := range res {
+			if k == "name" {
+				continue
+			}
+			if v == nil {
+				delete(next, k)
+			} else {
+				next[k] = v
 			}
 		}
 	} else {

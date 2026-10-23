@@ -31,6 +31,9 @@ type Zone struct{ Name, ID string }
 // as a GET, so it passes the read-only guard and needs no EC2 SDK module.
 // Only the aws partition's endpoint is known.
 func (s *SDK) Zones(ctx context.Context, region string) ([]Zone, error) {
+	if err := CheckRegion(region); err != nil {
+		return nil, err
+	}
 	creds, err := s.cfg.Credentials.Retrieve(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("zones in %s: %w", region, err)

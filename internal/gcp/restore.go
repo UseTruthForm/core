@@ -197,9 +197,16 @@ func update(ctx context.Context, api API, docs *Docs, o snapshot.Object, ex *res
 		return false, why
 	}
 	name := detok(ex.rel, project, number)
-	desired["name"] = name
+	// The spec's own name is what the API takes in the body: the full name
+	// for AIP resources, the short one for Compute (net-1; its pattern
+	// allows no slashes). Only a server-named resource, whose spec has no
+	// name, is given the full one.
+	if _, ok := desired["name"]; !ok {
+		desired["name"] = name
+	}
 	body := desired
 	q := url.Values{}
+	masked := false
 	if m.Request.Ref != str(annSchema) {
 		w := doc.Schemas[m.Request.Ref]
 		holder := ""
@@ -214,9 +221,23 @@ func update(ctx context.Context, api API, docs *Docs, o snapshot.Object, ex *res
 		body = map[string]any{holder: desired}
 		if _, ok := w.Properties["updateMask"]; ok {
 			body["updateMask"] = strings.Join(mask, ",")
+			masked = true
 		}
 	} else if _, ok := m.Parameters["updateMask"]; ok {
 		q.Set("updateMask", strings.Join(mask, ","))
+		masked = true
+	}
+	// A PATCH with no mask is a JSON merge patch (Compute, Cloud Storage):
+	// a field left out of the body is kept, not cleared, so one the
+	// snapshot lacks is sent as null. Reported "updated" but not cleared,
+	// it would have read as done (review, 2026-10-22). A PUT replaces the
+	// whole resource, so leaving it out clears it.
+	if !masked && m.HTTPMethod == "PATCH" {
+		for _, k := range mask {
+			if _, ok := desired[k]; !ok {
+				desired[k] = nil
+			}
+		}
 	}
 	u := doc.URL(m, name)
 	if len(q) > 0 {

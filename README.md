@@ -56,6 +56,33 @@ Exit codes: `0` ok · `1` error · `2` differences found · `3` incomplete (the
 snapshot was written, but some types couldn't be read, or a restore applied only
 some objects).
 
+## A whole environment in one command
+
+```bash
+stackdna capture --config environment.yaml --out snap/   # every target, read-only
+stackdna diff    --config environment.yaml --from snap/  # drift, per target
+```
+
+The config lists each system (see `examples/environment.yaml`). Kubernetes
+contexts, AWS regions, Azure subscriptions and GCP projects can be mixed.
+Targets are captured in parallel into `snap/<target>/`. A target that fails
+is recorded and does not stop the others. The exit code is the worst
+result: `1` for a failed target, `3` for an incomplete one.
+
+The config is strict. A misspelled key or a missing field fails before
+anything runs, because a typo that silently dropped a cluster would produce
+a snapshot that looks complete. Restore stays per target and deliberate.
+
+Every snapshot gets a **`REPORT.md`** for people. It leads with anything
+incomplete, then says what was captured, what was skipped and why, which
+types weren't captured and why, and what is never in a snapshot by design
+(data, secret values). The environment gets a summary report too.
+`stackdna report <dir>` regenerates one. Reports carry no timestamps, so an
+unchanged system gives an unchanged report.
+
+A capture of four sandboxes (kind-tiltdev, AWS, Azure, GCP), from one
+config, took 29s and was complete.
+
 ## API fields keep up by themselves
 
 Terraform and Pulumi build each API's fields into a provider release, so a

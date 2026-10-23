@@ -1,0 +1,23 @@
+# One environment, several systems. Capture all of them read-only with:
+#   stackdna capture --config examples/environment.yaml --out snap/
+# and check them for drift with:
+#   stackdna diff --config examples/environment.yaml --from snap/
+# Each target lands in snap/<name>/ with its own REPORT.md; snap/REPORT.md
+# and snap/environment.yaml summarise the lot. Restore stays per target.
+name: example
+targets:
+  - name: prod-cluster
+    platform: kubernetes
+    context: prod
+    baseline: baselines/aks        # a capture of a fresh cluster of the same kind
+  - name: azure
+    platform: azure
+    subscription: 00000000-0000-0000-0000-000000000000
+  - name: aws-east
+    platform: aws
+    region: us-east-2
+    profile: sandbox
+    types: ['AWS::EC2::*', 'AWS::IAM::Role']
+  - name: gcp
+    platform: gcp
+    project: my-project

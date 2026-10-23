@@ -56,6 +56,9 @@ type Fake struct {
 	// Unreadable resources are listed but fail on read, as AWS's own
 	// built-ins do (CodePipeline's "Source|S3|1"). Keyed "Type|identifier".
 	Unreadable map[string]bool
+	// UnreadableMsg replaces the handler message an unreadable resource
+	// answers with, to replay a specific AWS failure.
+	UnreadableMsg string
 }
 
 // Account returns a new empty account in the world.
@@ -241,7 +244,11 @@ func (f *Fake) Get(_ context.Context, typeName, id string) (map[string]any, erro
 		return nil, fmt.Errorf("%s %s: %w", typeName, id, ErrNotFound)
 	}
 	if f.Unreadable[typeName+"|"+id] {
-		return nil, fmt.Errorf("%s Handler returned status FAILED: Service returned error code InternalFailure (Service: Fake, Request ID: 1234)", typeName)
+		msg := "Service returned error code InternalFailure"
+		if f.UnreadableMsg != "" {
+			msg = f.UnreadableMsg
+		}
+		return nil, fmt.Errorf("%s Handler returned status FAILED: %s (Service: Fake, Request ID: 1234)", typeName, msg)
 	}
 	out := deepCopy(p)
 	for _, ptr := range t.WriteOnly {

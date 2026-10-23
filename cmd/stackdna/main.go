@@ -46,9 +46,14 @@ GCP (Cloud Asset Inventory and each API's Discovery document):
   stackdna restore --platform gcp --project <id> --from <dir>
   stackdna diff    --platform gcp --project <id> --from <dir> [--types <patterns>] [--baseline <dir>]
 
+A whole environment (several targets, read-only):
+  stackdna capture --config <env.yaml> --out <dir>
+  stackdna diff    --config <env.yaml> --from <dir>
+
 Any platform:
   stackdna compare <dir-a> <dir-b>
   stackdna schema-diff <old-dir> <new-dir>
+  stackdna report <dir>        (re)write REPORT.md for a snapshot
 `
 
 func main() {
@@ -76,6 +81,8 @@ func main() {
 		code = schemaDiff(os.Args[2:])
 	case "aws-coverage":
 		code = awsCoverage(os.Args[2:])
+	case "report":
+		code = reportCmd(os.Args[2:])
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		code = 1
@@ -92,6 +99,7 @@ func capture(ctx context.Context, args []string) int {
 	baseline := fs.String("baseline", "", "snapshot of a fresh cluster of the same distribution; objects identical to it are skipped")
 	rendered := fs.Bool("capture-rendered", false, "also capture objects rendered by Flux, Argo CD or Crossplane (skipped by default: restoring their source recreates them)")
 	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure or gcp")
+	config := fs.String("config", "", "environment file listing several targets; captures all of them into --out/<target>")
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
@@ -102,6 +110,9 @@ func capture(ctx context.Context, args []string) int {
 	if *out == "" || fs.NArg() > 0 {
 		fmt.Fprintln(os.Stderr, "capture: --out is required and no positional arguments are accepted")
 		return 1
+	}
+	if *config != "" {
+		return captureEnvironment(ctx, *config, *out)
 	}
 	switch *platform {
 	case "aws":
@@ -129,6 +140,9 @@ func capture(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	if err := snap.Write(*out); err != nil {
+		return fail(err)
+	}
+	if err := writeReport(*out, snap, *kctx); err != nil {
 		return fail(err)
 	}
 	d, _ := snapshot.Digest(*out)
@@ -222,6 +236,7 @@ func diff(ctx context.Context, args []string) int {
 	from := fs.String("from", "", "snapshot directory")
 	baseline := fs.String("baseline", "", "the baseline the snapshot was captured with, if any")
 	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure or gcp")
+	config := fs.String("config", "", "environment file; diffs every target against --from/<target>")
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
@@ -229,6 +244,9 @@ func diff(ctx context.Context, args []string) int {
 	var g gcpFlags
 	g.register(fs)
 	_ = fs.Parse(args)
+	if *config != "" && *from != "" {
+		return diffEnvironment(ctx, *config, *from)
+	}
 	if *from == "" || (*kctx == "" && *platform == "kubernetes") {
 		fmt.Fprintln(os.Stderr, "diff: --from and a target (--context, --platform aws --region, --platform azure --subscription, or --platform gcp --project) are required")
 		return 1

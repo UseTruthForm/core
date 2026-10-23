@@ -56,8 +56,10 @@ What a snapshot does not hold, by design:
 
 - **data**: S3 objects, blobs, database rows, queue messages, volume
   contents;
-- **secret values**: passwords, keys, a webhook's secret. They are named
-  in the snapshot and given at restore with `--values`;
+- **secret values**: passwords, keys, a webhook's secret, and a webhook
+  URL that is itself a credential (Slack, Discord, Teams, a `?token=` or
+  `user:pass@` URL; such a hook is named by its host and a hash). They are
+  named in the snapshot and given at restore with `--values`;
 - **what the platform made itself**: default VPCs and their subnets,
   built-in roles, AWS-managed policies. Use `--baseline` with a capture of
   a fresh account to skip anything identical to it.

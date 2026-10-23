@@ -188,7 +188,11 @@ func itemName(col *Collection, raw map[string]any) string {
 	}
 	var names []string
 	for _, f := range col.Name {
-		names = append(names, stringOf(field(raw, f)))
+		v := stringOf(field(raw, f))
+		if secretURL(v) {
+			v = urlName(v)
+		}
+		names = append(names, v)
 	}
 	return strings.Join(names, " ")
 }
@@ -570,7 +574,7 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 	vals := opt.Values[o.Kind()+"/"+full]
 	merge(desired, vals)
 	cf := c.Spec.RequestFields(col.Create, col.createMethod())
-	body, _ := keep(desired, cf, "", new([]string))
+	body, _ := forWrite(desired, cf)
 	// Required inputs no read returns (a secret's encrypted_value and
 	// key_id) must be supplied; sending the request without them would
 	// only be refused.
@@ -581,8 +585,18 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 			need = append(need, r)
 		}
 	}
+	// An item named by a secret (a webhook named by a credential-bearing
+	// URL) cannot be created without it: the snapshot holds neither.
+	if ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any); ann != nil {
+		secrets, _ := ann[annSecrets].(string)
+		for _, f := range col.Name {
+			if strings.Contains(","+secrets+",", ","+f+",") && field(vals, f) == nil {
+				need = append(need, f)
+			}
+		}
+	}
 	if len(need) > 0 {
-		return false, "needs " + strings.Join(need, ", ") + ", which the API never returns; supply them with --values"
+		return false, "needs " + strings.Join(need, ", ") + ", which the API never returns or the snapshot does not keep; supply them with --values"
 	}
 	// A PUT-created item's path names it (environments/{environment_name}).
 	path, ok := expand(col.Create, col.Bind, c.Account, parentRaw, desired)
@@ -602,7 +616,7 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 	// applied by the update straight after. Only then: every label and
 	// hook would otherwise cost a second write.
 	uf := c.Spec.RequestFields(col.Update, col.updateMethod())
-	upd, _ := keep(desired, uf, "", new([]string))
+	upd, _ := forWrite(desired, uf)
 	extra := false
 	if um, ok := upd.(map[string]any); ok {
 		for k := range um {
@@ -697,7 +711,7 @@ func (c *Client) update(ctx context.Context, col *Collection, o snapshot.Object,
 	if !ok {
 		return false, differs + "; cannot fill " + tmpl
 	}
-	body, _ := keep(desired, c.Spec.RequestFields(tmpl, method), "", new([]string))
+	body, _ := forWrite(desired, c.Spec.RequestFields(tmpl, method))
 	bm, _ := body.(map[string]any)
 	var need []string
 	for _, r := range c.Spec.Required(tmpl, method) {

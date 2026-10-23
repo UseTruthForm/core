@@ -276,14 +276,26 @@ func (f *Fields) Paths() []string {
 // answers a webhook secret as "********") are never kept: their paths are
 // returned so a restore can say what it was not given.
 func keep(v any, f *Fields, path string, masked *[]string) (any, bool) {
+	return keepIn(v, f, path, masked, true)
+}
+
+// forWrite reduces a body to what a write accepts, sending everything it
+// accepts: write-only fields and secrets (given with --values) are what a
+// write is for. Reduced the capture's way, a supplied webhook URL or a
+// write-only value was stripped before it was sent.
+func forWrite(v any, f *Fields) (any, bool) {
+	return keepIn(v, f, "", new([]string), false)
+}
+
+func keepIn(v any, f *Fields, path string, masked *[]string, capture bool) (any, bool) {
 	if f == nil {
 		return nil, false
 	}
-	if s, ok := v.(string); ok && len(s) >= 3 && strings.Trim(s, "*") == "" {
+	if s, ok := v.(string); ok && capture && (len(s) >= 3 && strings.Trim(s, "*") == "" || secretURL(s)) {
 		*masked = append(*masked, path)
 		return nil, false
 	}
-	if f.WriteOnly {
+	if f.WriteOnly && capture {
 		*masked = append(*masked, path)
 		return nil, false
 	}
@@ -302,7 +314,7 @@ func keep(v any, f *Fields, path string, masked *[]string) (any, bool) {
 			if path != "" {
 				p = path + "." + k
 			}
-			if x, ok := keep(c[k], child, p, masked); ok {
+			if x, ok := keepIn(c[k], child, p, masked, capture); ok {
 				out[k] = x
 			}
 		}
@@ -313,7 +325,7 @@ func keep(v any, f *Fields, path string, masked *[]string) (any, bool) {
 		}
 		out := make([]any, 0, len(c))
 		for _, x := range c {
-			if y, ok := keep(x, f.Items, path+"[]", masked); ok {
+			if y, ok := keepIn(x, f.Items, path+"[]", masked, capture); ok {
 				out = append(out, y)
 			}
 		}

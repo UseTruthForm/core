@@ -331,15 +331,46 @@ whose read handlers fail.
 - the Lambda and Secrets Manager write-only paths, which are proven only in
   the fake.
 
-Cross-region restore also needs a zone mapping. Zone IDs are region-specific,
-so a subnet captured in one region can't be created in another as it stands.
+**Restoring into another region.** A snapshot records its region
+(`serverVersion: cloudcontrol/us-east-2`). Restored or diffed in another
+region, it is retargeted first:
+
+- Zones are paired one to one in zone-ID order (use2-az1 to use1-az1, and
+  so on), which keeps resources that were in different zones in different
+  zones. `--zone-map use2-az1=use1-az4` overrides a pairing. The pairing is
+  printed, because it decides where subnets land. Zone names alone would
+  not do: in the sandbox account us-east-1c is use1-az4.
+- The region is replaced where it is structural: a whole value, or an
+  ARN's region segment, also inside a JSON string. Prose is left alone.
+- A zone with no counterpart (a six-zone region into a three-zone one)
+  refuses the whole restore before anything is sent, naming what uses it.
+- Both regions' baselines go in the capture policy
+  (`--baseline base-us-east-2,base-us-east-1`), so each region's default VPC
+  and subnets are skipped.
+
+Each region's zones come from one EC2 `DescribeAvailabilityZones` call,
+signed with the SDK's own signer and sent as a GET, so it passes the
+read-only guard and needs no EC2 SDK module. Only the `aws` partition's
+endpoint is known.
+
+`TARGET_REGION=us-east-1 scripts/drill-aws.sh` seeds and captures in
+us-east-2, deletes the app there, restores into us-east-1, diffs, runs the
+update phase there and cleans both regions. It passed on 2026-10-22: 16 of
+16 resources across 13 types, an empty diff, and both regions back to
+their baselines. Its first run found a nil HTTP client in the zone lookup
+(a panic: without the read-only guard the SDK config carries no client).
+The fake cannot catch that; a probe through and without the guard now
+lists both regions' zones.
 
 **Known limits:**
 
-- Cross-region restore of subnets needs a zone mapping (see above).
-
-- S3 bucket names are global, so a cross-account restore of a user-named
-  bucket fails while the source bucket exists.
+- S3 bucket names are global. A cross-account restore of a user-named
+  bucket fails while the source bucket exists, and a cross-region one fails
+  while S3 still holds a name just deleted ("A conflicting conditional
+  operation is currently in progress"; Cloud Control took 3m15s to say so).
+  In a real region loss the name stays taken, so a bucket restored
+  elsewhere needs another name. The cross-region drill leaves the bucket
+  out for this reason.
 - An existing resource is updated only with `--update` (see "Restore into
   a target that already has things").
 - Data is never captured: S3 objects, queue messages and table rows.
@@ -645,7 +676,7 @@ it names one: a code-security configuration's `code_security` and
 | Step | What |
 |---|---|
 | Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so); `--json` output |
-| AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; a zone mapping for cross-region restore; parallel creates of independent resources; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
+| AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; parallel creates of independent resources; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
 | Azure | Mapping principals across tenants; data-plane configuration (Key Vault secrets' metadata, storage CORS) where ARM exposes it |
 | GCP | Compute-style path parameters; project IDs in free text; `undelete` for soft-deleted resources (custom roles) |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |

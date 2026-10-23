@@ -29,6 +29,7 @@ import (
 type SDK struct {
 	c   *cloudcontrol.Client
 	sts *sts.Client
+	cfg aws.Config
 }
 
 // NewSDK connects with the standard AWS credential chain. profile may be
@@ -58,7 +59,7 @@ func NewSDK(ctx context.Context, profile, region string, readOnly bool) (*SDK, e
 			so.RateLimiter = ratelimit.None
 		})
 	}
-	return &SDK{c: cloudcontrol.NewFromConfig(cfg), sts: sts.NewFromConfig(cfg)}, nil
+	return &SDK{c: cloudcontrol.NewFromConfig(cfg), sts: sts.NewFromConfig(cfg), cfg: cfg}, nil
 }
 
 // Account asks STS who the caller is. It needs no permissions.

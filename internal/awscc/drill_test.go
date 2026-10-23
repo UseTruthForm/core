@@ -42,6 +42,10 @@ func tags(kv ...string) []any {
 
 // newAccount returns a fake account that behaves as AWS was observed to.
 func newAccount(w *World, account string) *Fake {
+	return newAccountIn(w, account, region)
+}
+
+func newAccountIn(w *World, account, region string) *Fake {
 	f := w.Account(account, region)
 	// Creating a REST API also creates its root resource "/", which Cloud
 	// Control lists. Seen in the first real-account drill (2026-10-21):
@@ -57,18 +61,32 @@ func newAccount(w *World, account string) *Fake {
 			id := f.Seed("AWS::ApiGateway::Resource", map[string]any{"RestApiId": props["RestApiId"]})
 			props["RootResourceId"] = strings.Split(id, "|")[1]
 		case "AWS::EC2::Subnet":
-			if az, ok := props["AvailabilityZone"].(string); ok {
-				props["AvailabilityZoneId"] = "use1-az" + az[len(az)-1:]
-			} else if id, ok := props["AvailabilityZoneId"].(string); ok {
-				props["AvailabilityZone"] = region + id[len(id)-1:]
+			zs, _ := f.Zones(context.Background(), region)
+			for _, z := range zs {
+				if props["AvailabilityZone"] == z.Name || props["AvailabilityZoneId"] == z.ID {
+					props["AvailabilityZone"], props["AvailabilityZoneId"] = z.Name, z.ID
+				}
 			}
 		}
 	}
+	// A subnet names a zone of this region, by name or by ID, not both.
 	f.Validate = func(typ string, d map[string]any) error {
-		_, name := d["AvailabilityZone"]
-		_, id := d["AvailabilityZoneId"]
-		if typ == "AWS::EC2::Subnet" && name && id {
+		if typ != "AWS::EC2::Subnet" {
+			return nil
+		}
+		name, hasName := d["AvailabilityZone"]
+		id, hasID := d["AvailabilityZoneId"]
+		if hasName && hasID {
 			return fmt.Errorf("Invalid request provided: Both AvailabilityZone and AvailabilityZoneId cannot be specified")
+		}
+		zs, _ := f.Zones(context.Background(), region)
+		for _, z := range zs {
+			if name == z.Name || id == z.ID {
+				return nil
+			}
+		}
+		if hasName || hasID {
+			return fmt.Errorf("Invalid availability zone: [%v%v] is not in %s", name, id, region)
 		}
 		return nil
 	}

@@ -27,14 +27,28 @@
 # runs on exit even when a step fails.
 #
 #   PROFILE=tf-pilot-automation REGION=us-east-2 scripts/drill-aws.sh
+#
+# With TARGET_REGION set, the app is seeded and captured in REGION, deleted
+# there (the region is lost), and restored into TARGET_REGION: zones are
+# paired by zone ID and the region in values and ARNs follows. Both
+# regions' baselines are in the capture policy, and both regions are
+# cleaned and verified.
 set -euo pipefail
 
 PROFILE="${PROFILE:-tf-pilot-automation}"
 REGION="${REGION:-us-east-2}"
+TARGET="${TARGET_REGION:-$REGION}"
+XREGION=false; [ "$TARGET" = "$REGION" ] || XREGION=true
 BIN="${BIN:-bin/stackdna}"
 OUT="${OUT:-.stackdna/aws-drill}"
 TYPES='AWS::EC2::VPC,AWS::EC2::Subnet,AWS::EC2::SecurityGroup,AWS::EC2::SecurityGroupIngress,AWS::EC2::SecurityGroupEgress,AWS::SQS::Queue,AWS::SSM::Parameter,AWS::ApiGateway::RestApi,AWS::ApiGateway::Resource,AWS::SNS::Topic,AWS::Events::Rule,AWS::Logs::LogGroup,AWS::ECR::Repository,AWS::S3::Bucket'
 N=stackdna-drill
+# Across regions the bucket is left out: bucket names are global, and a name
+# just deleted in one region cannot be created in another while S3 still
+# holds it ("A conflicting conditional operation is currently in progress",
+# us-east-2 to us-east-1, 2026-10-22). In a real region loss the name stays
+# taken, so a bucket restored elsewhere needs another name.
+if $XREGION; then TYPES="${TYPES/,AWS::S3::Bucket/}"; fi
 
 # Git Bash on Windows rewrites arguments that look like paths, which turns
 # the parameter name /stackdna-drill/env into C:/Program Files/Git/...
@@ -42,6 +56,8 @@ export MSYS_NO_PATHCONV=1
 aws() { command aws --profile "$PROFILE" --region "$REGION" "$@"; }
 sd() { "$BIN" "$@" --platform aws --profile "$PROFILE" --region "$REGION" --types "$TYPES"; }
 step() { printf '\n== %s\n' "$*"; }
+# on_region REGION CMD...: run CMD with aws and sd pointed at another region.
+on_region() { local REGION=$1; shift; "$@"; }
 
 cleanup() {
   step "cleanup: delete every $N resource in $REGION"
@@ -103,7 +119,8 @@ wait_all() {
   wait_listed AWS::Events::Rule "$N-nightly"
   wait_listed AWS::Logs::LogGroup "/$N/app"
   wait_listed AWS::ECR::Repository "$N"
-  wait_listed AWS::S3::Bucket "$BUCKET"
+  # The seed always makes the bucket; a cross-region restore does not.
+  $XREGION || wait_listed AWS::S3::Bucket "$BUCKET"
   echo "all listed by Cloud Control"
 }
 
@@ -157,18 +174,29 @@ verify_clean() {
   [ -f "$OUT/baseline/snapshot.yaml" ] || return 0
   step "verify: $REGION is back to its baseline"
   sd diff --from "$OUT/baseline" || { echo "LEAK: resources above were left behind"; return 1; }
+  if [ "$TARGET" != "$REGION" ] && [ -f "$OUT/baseline-target/snapshot.yaml" ]; then
+    step "verify: $TARGET is back to its baseline"
+    on_region "$TARGET" sd diff --from "$OUT/baseline-target" || { echo "LEAK: resources above were left behind in $TARGET"; return 1; }
+  fi
 }
+cleanup_all() { cleanup; [ "$TARGET" = "$REGION" ] || on_region "$TARGET" cleanup; }
 
 # Leftovers from an interrupted run would be captured as part of the app.
-cleanup
-trap 'cleanup; verify_clean' EXIT
+cleanup_all
+trap 'cleanup_all; verify_clean' EXIT
 
 step "baseline: what $REGION holds before the drill"
 sd capture --out "$OUT/baseline"
+BASES="$OUT/baseline"
+if [ "$TARGET" != "$REGION" ]; then
+  step "baseline: what $TARGET holds before the drill"
+  on_region "$TARGET" sd capture --out "$OUT/baseline-target"
+  BASES="$OUT/baseline,$OUT/baseline-target"
+fi
 seed
 step "capture twice"
-sd capture --baseline "$OUT/baseline" --out "$OUT/snap"
-sd capture --baseline "$OUT/baseline" --out "$OUT/snap2" >/dev/null
+sd capture --baseline "$BASES" --out "$OUT/snap"
+sd capture --baseline "$BASES" --out "$OUT/snap2" >/dev/null
 d1=$(grep '^digest:' "$OUT/snap/snapshot.yaml"); d2=$(grep '^digest:' "$OUT/snap2/snapshot.yaml")
 [ "$d1" = "$d2" ] || { echo "FAIL: two captures differ: $d1 vs $d2"; "$BIN" compare "$OUT/snap" "$OUT/snap2" || true; exit 1; }
 echo "deterministic: $d1"
@@ -179,22 +207,25 @@ cleanup
 # and restore does not retry, so the drill waits rather than fail on it.
 echo "waiting 65s for SQS to release the queue name"; sleep 65
 
-step "restore from the snapshot"
-sd restore --from "$OUT/snap"
-wait_all
-step "diff: the account must match the snapshot"
-sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
+step "restore from the snapshot into $TARGET"
+on_region "$TARGET" sd restore --from "$OUT/snap"
+on_region "$TARGET" wait_all
+step "diff: $TARGET must match the snapshot"
+on_region "$TARGET" sd diff --baseline "$BASES" --from "$OUT/snap"
 echo "DRILL PASSED"
 
 # Drift: someone edits two resources by hand. A plain restore must leave
 # them alone and say so (exit 3); --update must put them right.
-step "update: drift two resources, then restore --update"
-aws sqs set-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)" --attributes VisibilityTimeout=30
-aws logs put-retention-policy --log-group-name "/$N/app" --retention-in-days 14
-code=0; sd restore --from "$OUT/snap" > "$OUT/restore-plain.txt" || code=$?
-cat "$OUT/restore-plain.txt"
-[ "$code" = 3 ] || { echo "restore without --update exited $code on a drifted account, want 3" >&2; exit 1; }
-grep -q "not modified (--update modifies it)" "$OUT/restore-plain.txt" || { echo "restore did not report the drift" >&2; exit 1; }
-sd restore --from "$OUT/snap" --update
-sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
-echo "UPDATE PASSED"
+update_phase() {
+  step "update: drift two resources in $REGION, then restore --update"
+  aws sqs set-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)" --attributes VisibilityTimeout=30
+  aws logs put-retention-policy --log-group-name "/$N/app" --retention-in-days 14
+  code=0; sd restore --from "$OUT/snap" > "$OUT/restore-plain.txt" || code=$?
+  cat "$OUT/restore-plain.txt"
+  [ "$code" = 3 ] || { echo "restore without --update exited $code on a drifted account, want 3" >&2; exit 1; }
+  grep -q "not modified (--update modifies it)" "$OUT/restore-plain.txt" || { echo "restore did not report the drift" >&2; exit 1; }
+  sd restore --from "$OUT/snap" --update
+  sd diff --baseline "$BASES" --from "$OUT/snap"
+  echo "UPDATE PASSED"
+}
+on_region "$TARGET" update_phase

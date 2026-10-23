@@ -698,6 +698,74 @@ a restore says it could not carry them. In the real StackDNA organisation
 it names one: a code-security configuration's `code_security` and
 `secret_protection`.
 
+## Agents: the MCP server
+
+`stackdna mcp` serves StackDNA to an agent over the Model Context Protocol
+(JSON-RPC on stdin and stdout; no MCP dependency in the binary). An agent
+building on a platform needs to know what a resource takes before it
+writes one. StackDNA already reads that from each platform's published
+schemas to capture and restore, so it says it:
+
+| Tool | What it does |
+|---|---|
+| `platforms` | What StackDNA covers on each platform, and each platform's own MCP server |
+| `list_types` | Resource types from the published schemas (AWS registry, Azure definitions, a GCP API's Discovery document, a SaaS description) |
+| `describe_type` | Every field of a type: required, read-only (set by the platform), write-only, secret, create-only (changing it replaces the resource), with the platform's documentation links |
+| `capture`, `diff` | Read a live target into a snapshot, or compare one with it |
+| `report` | A snapshot's REPORT.md |
+
+**Every tool is read-only, and there is no restore tool.** Describing
+reads public schemas; capture and diff run through the read-only guard as
+always. Restoring creates and changes live resources, and stays a command
+a person runs with the snapshot in front of them. Capture and diff run
+this binary as a separate process, so their progress output never reaches
+stdout, which is the protocol. An agent's arguments cannot change what
+runs: the command is the tool's, unknown keys are dropped, and each value
+is one `--name=value` argument (a region of `us-east-2 --update` failed
+as a host name in the real probe, as it should).
+
+Verified against real systems through the protocol: `describe_type` for
+`AWS::SQS::Queue` (FifoQueue and QueueName create-only, Arn and QueueUrl
+read-only), `Microsoft.Compute/virtualMachines` (159 fields to depth 3,
+`properties.osProfile.adminPassword` secret), IAM service accounts, and
+GitHub environments; a capture of the StackDNA organisation (36 items,
+honestly incomplete for want of `admin:org`), a diff of it (no
+differences), its report, and an AWS capture. The first real describe
+showed an environment's `name` as read-only; it names the item in the
+PUT path, and is now shown as such.
+
+Documentation links come from the schemas where they carry them (GitHub's
+`externalDocs` per operation, a Discovery document's `documentationLink`)
+and otherwise follow each platform's reference layout, checked to
+resolve: AWS's CloudFormation template reference
+(`aws-resource-sqs-queue.html`; only 19 of 1,498 schemas name a page
+themselves) and Azure's template reference
+(`/azure/templates/microsoft.compute/<version>/virtualmachines`).
+
+**Companion servers.** StackDNA says what exists and what each field
+means; each platform's own MCP server acts on it. As listed by the
+providers on 2026-10-22:
+
+- AWS: the remote AWS MCP Server (in preview), the AWS IaC MCP Server and
+  the AWS Documentation MCP Server, in
+  [awslabs/mcp](https://github.com/awslabs/mcp). The Cloud Control API MCP
+  Server there is deprecated in favour of the IaC server.
+- Azure: the Azure MCP Server, in [microsoft/mcp](https://github.com/microsoft/mcp).
+- Google Cloud: Google-managed remote servers (Compute Engine, GKE, Cloud
+  Run, Cloud Storage, Resource Manager) and the gcloud MCP server, listed
+  in [google/mcp](https://github.com/google/mcp), whose README notes it is
+  not an officially supported Google product.
+- GitHub: [github/github-mcp-server](https://github.com/github/github-mcp-server),
+  with a `--read-only` mode; remote at `https://api.githubcopilot.com/mcp/`.
+- Cloudflare: the Cloudflare API MCP Server at `https://mcp.cloudflare.com/mcp`
+  ([cloudflare/mcp-server-cloudflare](https://github.com/cloudflare/mcp-server-cloudflare)).
+
+A client runs it like any stdio server:
+
+```json
+{"mcpServers": {"stackdna": {"command": "stackdna", "args": ["mcp"]}}}
+```
+
 ## Roadmap
 
 | Step | What |
@@ -707,7 +775,7 @@ it names one: a code-security configuration's `code_security` and
 | Azure | Mapping principals across tenants; data-plane configuration (Key Vault secrets' metadata, storage CORS) where ARM exposes it |
 | GCP | A real Compute drill (needs billing); project IDs in free text; `undelete` for soft-deleted resources (custom roles) |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |
-| Agents | A small MCP server (`discover`, `diff`, `snapshot`, `explain`), read-only against live systems by default. Agents watch for drift and open PRs; CI regenerates snapshots deterministically, so a PR shows only real change |
+| Agents | Drift watching that opens PRs: CI regenerates snapshots deterministically, so a PR shows only real change. MCP resources for snapshots, so an agent can read one without a tool call |
 | Proof | Scheduled restore drills per platform: restore into a sandbox and require an empty diff |
 
 ## Prior art to compare against

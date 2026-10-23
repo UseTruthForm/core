@@ -264,10 +264,39 @@ func keyOf(rid ResourceID) string {
 // in the snapshot; what is not in the snapshot must already exist.
 func restoreOrder(objs []snapshot.Object) (order, cyclic []snapshot.Object) {
 	by := map[string]snapshot.Object{}
+	ids := map[string]string{} // lower(tokenized ID) -> key
 	for _, o := range objs {
-		by[strings.ToLower(o.Key())] = o
+		k := strings.ToLower(o.Key())
+		by[k] = o
+		if ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any); ann != nil {
+			if id, _ := ann[annID].(string); id != "" {
+				ids[strings.ToLower(id)] = k
+			}
+		}
 	}
 	keys := sortedKeys(by)
+	extra := map[string][]string{}
+	for _, k := range keys {
+		spec := strings.ToLower(canon(by[k].Body["spec"]))
+		for id, other := range ids {
+			// Any object whose own ID the spec names comes first: idRE
+			// sees only IDs under resource groups, so a subscription-level
+			// role assignment came before the custom role it uses
+			// (review, 2026-10-22).
+			if other != k && strings.Contains(spec, id+`"`) {
+				extra[k] = append(extra[k], other)
+			}
+		}
+		// A lock goes last: a ReadOnly lock refuses every later PUT in its
+		// scope (ScopeLocked), and locks sort ahead of most types.
+		if strings.EqualFold(by[k].Kind(), "Microsoft.Authorization/locks") {
+			for _, other := range keys {
+				if !strings.EqualFold(by[other].Kind(), "Microsoft.Authorization/locks") {
+					extra[k] = append(extra[k], other)
+				}
+			}
+		}
+	}
 	done := map[string]bool{}
 	for progress := true; progress; {
 		progress = false
@@ -276,7 +305,7 @@ func restoreOrder(objs []snapshot.Object) (order, cyclic []snapshot.Object) {
 				continue
 			}
 			ready := true
-			for _, d := range deps(by[k]) {
+			for _, d := range append(deps(by[k]), extra[k]...) {
 				if _, in := by[d]; in && d != k && !done[d] {
 					ready = false
 				}

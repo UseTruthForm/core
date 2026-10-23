@@ -100,6 +100,21 @@ type Registry struct {
 	Digest string
 }
 
+// regionRE is the shape of an AWS region name (us-east-1, us-gov-west-1,
+// ap-southeast-2). A region goes into a host name and a cache file name;
+// unchecked, "x@attacker.example/../../tmp/owned" made the download come
+// from another host and the cache file land outside the cache directory
+// (review of the MCP server, 2026-10-22).
+var regionRE = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
+
+// CheckRegion refuses anything that is not a region name.
+func CheckRegion(region string) error {
+	if !regionRE.MatchString(region) {
+		return fmt.Errorf("%q is not an AWS region name", region)
+	}
+	return nil
+}
+
 // BundleURL is AWS's public, unauthenticated registry schema bundle for a
 // region. It is refreshed by AWS as types change.
 func BundleURL(region string) string {
@@ -110,6 +125,9 @@ func BundleURL(region string) string {
 // The cache is refreshed after maxAge, so captures follow AWS's schema
 // updates without anyone shipping a StackDNA release.
 func LoadBundle(region, cacheDir string, maxAge time.Duration) (*Registry, error) {
+	if err := CheckRegion(region); err != nil {
+		return nil, err
+	}
 	path := filepath.Join(cacheDir, "aws-schemas-"+region+".zip")
 	if st, err := os.Stat(path); err != nil || time.Since(st.ModTime()) > maxAge {
 		resp, err := http.Get(BundleURL(region)) //nolint:gosec // fixed AWS URL
@@ -124,14 +142,37 @@ func LoadBundle(region, cacheDir string, maxAge time.Duration) (*Registry, error
 		if err != nil {
 			return nil, err
 		}
-		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-			return nil, err
+		if _, err := zip.NewReader(bytes.NewReader(b), int64(len(b))); err != nil {
+			return nil, fmt.Errorf("download schema bundle: not a zip: %w", err)
 		}
-		if err := os.WriteFile(path, b, 0o644); err != nil {
+		if err := writeAtomic(cacheDir, path, b); err != nil {
 			return nil, err
 		}
 	}
 	return ReadBundle(path)
+}
+
+// writeAtomic writes through a temporary file and a rename, so parallel
+// targets of one environment refreshing the same cache never read a
+// half-written file.
+func writeAtomic(dir, path string, b []byte) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(f.Name())
+		return err
+	}
+	return os.Rename(f.Name(), path)
 }
 
 // ReadBundle loads a schema bundle zip.

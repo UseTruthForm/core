@@ -42,8 +42,9 @@ func (r ref) index() int {
 }
 
 type prop struct {
-	Type  ref `json:"type"`
-	Flags int `json:"flags"`
+	Type        ref    `json:"type"`
+	Flags       int    `json:"flags"`
+	Description string `json:"description"`
 }
 
 // entry is one element of a bicep-types types.json array.
@@ -66,6 +67,7 @@ type entry struct {
 // full set is several hundred files).
 type Registry struct {
 	index map[string]string // lower("type@version") -> "file#/n"
+	names map[string]string // lower(type) -> the type as Azure spells it
 	load  func(file string) ([]byte, error)
 
 	mu    sync.Mutex
@@ -120,9 +122,12 @@ func newRegistry(load func(string) ([]byte, error)) (*Registry, error) {
 	if err := json.Unmarshal(b, &idx); err != nil {
 		return nil, fmt.Errorf("parse type index: %w", err)
 	}
-	r := &Registry{index: map[string]string{}, load: load, files: map[string][]entry{}, sums: map[string]string{}}
+	r := &Registry{index: map[string]string{}, names: map[string]string{}, load: load, files: map[string][]entry{}, sums: map[string]string{}}
 	for k, v := range idx.Resources {
 		r.index[strings.ToLower(k)] = v.Ref
+		if t, _, ok := strings.Cut(k, "@"); ok {
+			r.names[strings.ToLower(t)] = t
+		}
 	}
 	return r, nil
 }

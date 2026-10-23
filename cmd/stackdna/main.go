@@ -51,6 +51,9 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN):
   stackdna capture --platform cloudflare --account <account-id> --out <dir>
   stackdna restore --platform github --account <org> --from <dir> [--values <file>] [--update]
 
+For agents (MCP on stdin/stdout; every tool read-only, no restore tool):
+  stackdna mcp
+
 A whole environment (several targets, read-only):
   stackdna capture --config <env.yaml> --out <dir>
   stackdna diff    --config <env.yaml> --from <dir>
@@ -88,6 +91,8 @@ func main() {
 		code = awsCoverage(os.Args[2:])
 	case "report":
 		code = reportCmd(os.Args[2:])
+	case "mcp":
+		code = mcpCmd(ctx, os.Args[2:])
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		code = 1

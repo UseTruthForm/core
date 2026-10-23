@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -186,5 +187,56 @@ func TestReport(t *testing.T) {
 	}
 	if !strings.Contains(txt, "AWS::FMS::Policy: list failed: denied") || !strings.Contains(txt, `a\|b`) || !strings.Contains(txt, "not set up in this account") {
 		t.Errorf("report content:\n%s", txt)
+	}
+}
+
+// Failures from the review of #11, 2026-10-22.
+func TestLoadEnvironmentRefusesWhatWouldMisfire(t *testing.T) {
+	dir := t.TempDir()
+	for body, want := range map[string]string{
+		// Prod and prod are one directory on Windows and macOS.
+		"name: e\ntargets:\n  - {name: Prod, platform: github, account: a}\n  - {name: prod, platform: github, account: b}\n": "unique name",
+		// "." writes into the environment itself.
+		"name: e\ntargets:\n  - {name: ., platform: github, account: a}\n": "not . or ..",
+		// Ignored by the platform: it would quietly do nothing.
+		"name: e\ntargets:\n  - {name: a, platform: github, account: a, types: [x]}\n":        "types does not apply",
+		"name: e\ntargets:\n  - {name: a, platform: gcp, project: p, captureManaged: true}\n": "captureManaged does not apply",
+		"name: e\ntargets:\n  - {name: a, platform: azure, subscription: s, profile: p}\n":    "profile does not apply",
+	} {
+		_, err := loadEnvironment(writeFile(t, dir, "env.yaml", body))
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("config %q: want error containing %q, got %v", body, want, err)
+		}
+	}
+	e, err := loadEnvironment(writeFile(t, dir, "env.yaml", "name: e\ntargets:\n  - {name: a, platform: aws, region: us-east-1, baseline: 'base/use1,base/usw2'}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "base", "use1") + "," + filepath.Join(dir, "base", "usw2")
+	if e.Targets[0].Baseline != want {
+		t.Errorf("baselines %q, want each next to the config: %q", e.Targets[0].Baseline, want)
+	}
+}
+
+// A target whose last capture failed is not diffed against the older
+// snapshot it left behind.
+func TestDiffSkipsATargetWhoseCaptureFailed(t *testing.T) {
+	dir := t.TempDir()
+	cfg := writeFile(t, dir, "env.yaml", "name: e\ntargets:\n  - {name: gone, platform: kubernetes, context: no-such-context}\n")
+	from := filepath.Join(dir, "snap")
+	// A readable snapshot from an earlier run, as a failed capture leaves.
+	if err := (snapshot.Snapshot{Platform: "kubernetes", Policy: "default"}).Write(filepath.Join(from, "gone")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, from, envManifest, "name: e\ntargets:\n  - {name: gone, platform: kubernetes, status: failed, error: unreachable}\n")
+	r, w, _ := os.Pipe()
+	stdout := os.Stdout
+	os.Stdout = w
+	code := diffEnvironment(context.Background(), cfg, from)
+	os.Stdout = stdout
+	w.Close()
+	out, _ := io.ReadAll(r)
+	if code != 1 || !strings.Contains(string(out), "its last capture failed") {
+		t.Errorf("exit %d, output %q: a failed target must be named and not diffed", code, out)
 	}
 }

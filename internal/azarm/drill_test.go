@@ -32,7 +32,7 @@ func put(t *testing.T, f *Fake, rg, typ, name string, body map[string]any) strin
 	if typ == groupType {
 		i = id(f.sub, name, groupType, name)
 	}
-	v := f.w.reg.Versions(typ)[0]
+	v := stable(f.w.reg, typ)
 	if _, err := f.Put(context.Background(), i, v, body); err != nil {
 		t.Fatalf("seed %s: %v", i, err)
 	}
@@ -45,10 +45,21 @@ const (
 	builtInID    = "acdd72a7-3385-48ef-bd42-f606fba81ae7" // Reader
 )
 
+// stable is the version a person (and capture) would use: the newest
+// non-preview one.
+func stable(r *Registry, typ string) string {
+	for _, v := range r.Versions(typ) {
+		if !strings.Contains(v, "preview") {
+			return v
+		}
+	}
+	return r.Versions(typ)[0]
+}
+
 // rawPut seeds any ID, extension resources included.
 func rawPut(t *testing.T, f *Fake, i, typ string, body map[string]any) {
 	t.Helper()
-	if _, err := f.Put(context.Background(), i, f.w.reg.Versions(typ)[0], body); err != nil {
+	if _, err := f.Put(context.Background(), i, stable(f.w.reg, typ), body); err != nil {
 		t.Fatalf("seed %s: %v", i, err)
 	}
 }

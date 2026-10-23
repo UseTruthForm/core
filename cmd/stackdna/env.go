@@ -75,10 +75,13 @@ func loadEnvironment(path string) (*Environment, error) {
 	base := filepath.Dir(path)
 	for i := range e.Targets {
 		t := &e.Targets[i]
-		if t.Name == "" || strings.ContainsAny(t.Name, `/\:`) || seen[t.Name] {
-			return nil, fmt.Errorf("%s: target %d needs a unique name without / \\ or :", path, i+1)
+		// A name is a directory: unique without regard to case (Windows and
+		// macOS fold it, so Prod and prod wrote into one directory at once),
+		// and not "." or "..", which wrote into the environment itself.
+		if t.Name == "" || strings.ContainsAny(t.Name, `/\:`) || t.Name == "." || t.Name == ".." || seen[strings.ToLower(t.Name)] {
+			return nil, fmt.Errorf("%s: target %d needs a unique name (case aside) without / \\ or :, and not . or ..", path, i+1)
 		}
-		seen[t.Name] = true
+		seen[strings.ToLower(t.Name)] = true
 		need := map[string]string{"kubernetes": t.Context, "aws": t.Region, "azure": t.Subscription, "gcp": t.Project, "github": t.Account, "cloudflare": t.Account}
 		field := map[string]string{"kubernetes": "context", "aws": "region", "azure": "subscription", "gcp": "project", "github": "account", "cloudflare": "account"}
 		v, known := need[t.Platform]
@@ -88,13 +91,57 @@ func loadEnvironment(path string) (*Environment, error) {
 		if v == "" {
 			return nil, fmt.Errorf("%s: target %s: %s is required for platform %s", path, t.Name, field[t.Platform], t.Platform)
 		}
+		if k := inapplicable(*t); k != "" {
+			return nil, fmt.Errorf("%s: target %s: %s does not apply to platform %s", path, t.Name, k, t.Platform)
+		}
 		// Relative baselines are relative to the config file, not to
-		// wherever the command happens to run.
-		if t.Baseline != "" && !filepath.IsAbs(t.Baseline) {
-			t.Baseline = filepath.Join(base, t.Baseline)
+		// wherever the command happens to run; each of a comma-separated
+		// list (one per region), not only the first.
+		if t.Baseline != "" {
+			parts := strings.Split(t.Baseline, ",")
+			for j, b := range parts {
+				if b = strings.TrimSpace(b); b != "" && !filepath.IsAbs(b) {
+					parts[j] = filepath.Join(base, b)
+				}
+			}
+			t.Baseline = strings.Join(parts, ",")
 		}
 	}
 	return &e, nil
+}
+
+// inapplicable names a key set on a target whose platform ignores it.
+// UnmarshalStrict refuses unknown keys but not these, and an ignored key
+// is the "misspelled key quietly does nothing" this loader exists to
+// prevent: types on a GitHub target captured everything.
+func inapplicable(t Target) string {
+	set := map[string]bool{"context": t.Context != "", "kubeconfig": t.Kubeconfig != "", "includeSystem": t.IncludeSystem,
+		"captureRendered": t.CaptureRender, "captureManaged": t.CaptureManaged, "region": t.Region != "", "profile": t.Profile != "",
+		"subscription": t.Subscription != "", "project": t.Project != "", "account": t.Account != "", "types": len(t.Types) > 0,
+		"baseline": t.Baseline != ""}
+	applies := map[string][]string{
+		"kubernetes": {"context", "kubeconfig", "includeSystem", "captureRendered", "baseline"},
+		"aws":        {"region", "profile", "types", "baseline", "captureManaged"},
+		"azure":      {"subscription", "types", "baseline", "captureManaged"},
+		"gcp":        {"project", "types", "baseline"},
+		"github":     {"account"},
+		"cloudflare": {"account"},
+	}
+	ok := map[string]bool{}
+	for _, k := range applies[t.Platform] {
+		ok[k] = true
+	}
+	keys := make([]string, 0, len(set))
+	for k := range set {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if set[k] && !ok[k] {
+			return k
+		}
+	}
+	return ""
 }
 
 // TargetResult is what one target produced, recorded in environment.yaml.
@@ -207,7 +254,11 @@ func captureEnvironment(ctx context.Context, configPath, out string) int {
 				return
 			}
 			r.Objects = len(snap.Objects)
-			r.Digest, _ = snapshot.Digest(filepath.Join(out, t.Name))
+			if r.Digest, err = snapshot.Digest(filepath.Join(out, t.Name)); err != nil {
+				r.Status, r.Error = "failed", "written but unreadable: "+err.Error()
+				results[i] = r
+				return
+			}
 			r.Gaps = gaps(snap)
 			r.Status = "complete"
 			if len(r.Gaps) > 0 {
@@ -293,8 +344,34 @@ func diffEnvironment(ctx context.Context, configPath, from string) int {
 	if err != nil {
 		return fail(err)
 	}
+	// A target whose last capture failed left its previous snapshot in
+	// place; diffing against it would compare with stale data and say
+	// nothing about it.
+	last := map[string]TargetResult{}
+	b, err := os.ReadFile(filepath.Join(from, envManifest))
+	if err != nil {
+		return fail(fmt.Errorf("%s is not an environment capture: %w", from, err))
+	}
+	var doc struct {
+		Targets []TargetResult `json:"targets"`
+	}
+	if err := yaml.Unmarshal(b, &doc); err != nil {
+		return fail(fmt.Errorf("%s: %w", envManifest, err))
+	}
+	for _, r := range doc.Targets {
+		last[r.Name] = r
+	}
 	code := 0
 	for _, t := range env.Targets {
+		if r, ok := last[t.Name]; !ok || r.Status == "failed" {
+			why := "it is not in the last environment capture"
+			if ok {
+				why = "its last capture failed (" + r.Error + ")"
+			}
+			fmt.Printf("%s: not diffed: %s, so any snapshot there is older than the rest\n", t.Name, why)
+			code = 1
+			continue
+		}
 		want, err := snapshot.Read(filepath.Join(from, t.Name))
 		if err != nil {
 			fmt.Printf("%s: cannot read its snapshot: %v\n", t.Name, err)

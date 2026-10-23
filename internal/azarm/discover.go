@@ -152,6 +152,24 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 		return nil // defined by Azure (defaultSecurityRules); no one can PUT it
 	}
 	items, err := api.List(ctx, path, ver)
+	// Refused for its version at this scope: the others are tried, and the
+	// one that answers is the version these items are read and restored
+	// at. Before, the refusal read as "none here" and the subscription's
+	// diagnostic settings were never checked.
+	if errors.Is(err, ErrAPIVersion) {
+		for _, alt := range v.all(typ) {
+			if alt == ver {
+				continue
+			}
+			if items, err = api.List(ctx, path, alt); !errors.Is(err, ErrAPIVersion) {
+				ver = alt
+				if s, err = v.reg.Schema(typ, ver); err != nil {
+					return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
+				}
+				break
+			}
+		}
+	}
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrNotApplicable):
 		return nil
@@ -218,16 +236,28 @@ var guidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[
 // an identity creates a new principal with a new object ID; a role
 // assignment restored with the old ID would grant access to no one.
 func principalRefs(cs []*captured) {
+	// A GUID can appear in several objects' status: an identity's own
+	// properties.principalId, and every VM or web app that uses it, under
+	// identity.userAssignedIdentities.*.principalId. The first seen used to
+	// win, in ARM's list order, which made the snapshot depend on that
+	// order and could pick a "*" path no restore can resolve (review,
+	// 2026-10-22). A path through a map key never owns a value; of the
+	// rest, the shortest path wins (the identity's own), then the token.
 	owners := map[string]string{} // GUID -> token
+	best := map[string]string{}   // GUID -> its owner's path
 	for _, c := range cs {
 		for _, k := range sortedKeys(c.status) {
 			s, ok := c.status[k].(string)
-			if !ok || !guidRE.MatchString(s) || k == "id" {
+			if !ok || !guidRE.MatchString(s) || k == "id" || strings.Contains(k, "*") {
 				continue
 			}
-			if _, taken := owners[strings.ToLower(s)]; !taken {
-				owners[strings.ToLower(s)] = refToken(c, k)
+			g, tok := strings.ToLower(s), refToken(c, k)
+			if cur, taken := owners[g]; taken {
+				if p := best[g]; len(k) > len(p) || (len(k) == len(p) && tok > cur) {
+					continue
+				}
 			}
+			owners[g], best[g] = tok, k
 		}
 	}
 	if len(owners) == 0 {

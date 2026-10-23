@@ -46,11 +46,29 @@ func FetchSpec(p Provider, cacheDir string, maxAge time.Duration) (*Spec, error)
 		if err != nil {
 			return nil, err
 		}
+		if !json.Valid(b) {
+			return nil, fmt.Errorf("download %s: not JSON", p.SpecURL)
+		}
+		// Through a temporary file and a rename: two targets of one
+		// environment refreshing the cache at once must not read a
+		// half-written description.
 		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(path, b, 0o644); err != nil {
+		f, err := os.CreateTemp(cacheDir, ".tmp-*")
+		if err != nil {
 			return nil, err
+		}
+		_, werr := f.Write(b)
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr == nil {
+			werr = os.Rename(f.Name(), path)
+		}
+		if werr != nil {
+			os.Remove(f.Name())
+			return nil, werr
 		}
 	}
 	return LoadSpec(path)

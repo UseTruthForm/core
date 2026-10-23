@@ -30,6 +30,9 @@ var fixtureTypes = []string{
 	"Microsoft.Authorization/locks@2020-05-01",
 	"Microsoft.Authorization/policyAssignments@2025-11-01",
 	"Microsoft.Insights/diagnosticSettings@2016-09-01",
+	// The subscription's own diagnostic settings refuse the stable version
+	// and answer only previews; the fallback through versions needs one.
+	"Microsoft.Insights/diagnosticSettings@2021-05-01-preview",
 	"Microsoft.Storage/storageAccounts/blobServices@2025-08-01",
 	"Microsoft.Storage/storageAccounts/blobServices/containers@2025-08-01",
 	"Microsoft.Network/virtualNetworks/subnets@2025-07-01",

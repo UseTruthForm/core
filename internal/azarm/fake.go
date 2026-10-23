@@ -46,6 +46,9 @@ type Fake struct {
 	AfterCreate func(id string, body map[string]any)
 	// Puts counts accepted PUTs, so a test can prove none was sent.
 	Puts int
+	// RefuseVersion refuses a list at an API version, as ARM refuses the
+	// subscription's diagnostic settings at their newest stable version.
+	RefuseVersion func(path, version string) bool
 	// AlsoTracked lists child types ARM's resource list returns as well
 	// (a SQL server's databases are both), so capture meets them twice.
 	AlsoTracked map[string]bool
@@ -309,6 +312,9 @@ func tracked(rid ResourceID) bool {
 // List serves the collections capture reads: an extension type across the
 // subscription, a resource's diagnostic settings, or a child collection.
 func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any, error) {
+	if f.RefuseVersion != nil && f.RefuseVersion(path, version) {
+		return nil, fmt.Errorf("%s: %w: Invalid api-version query string value", path, ErrAPIVersion)
+	}
 	lower := strings.ToLower(strings.TrimRight(path, "/"))
 	subProviders := "/subscriptions/" + strings.ToLower(f.sub) + "/providers/"
 	var ids []stored

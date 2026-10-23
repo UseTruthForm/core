@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stackdna/core/internal/drilltest"
+	"github.com/stackdna/core/internal/snapshot"
 )
 
 // seedNetwork builds a Compute network with a regional subnetwork and a
@@ -71,6 +72,16 @@ func TestComputeTemplates(t *testing.T) {
 	if got := d.URL(ins, "projects/p-1/regions/us-central1"); got != "https://compute.googleapis.com/compute/v1/projects/p-1/regions/us-central1/subnetworks" {
 		t.Errorf("insert URL %s", got)
 	}
+	// One segment: projects/{project} once built .../projects/projects/p-1.
+	one := &Method{Path: "projects/{project}", Parameters: map[string]Parameter{"project": {Location: "path"}}}
+	if got := d.URL(one, "projects/p-1"); got != "https://compute.googleapis.com/compute/v1/projects/p-1" {
+		t.Errorf("one-segment URL %s", got)
+	}
+	// Reserved expansion still takes the whole name.
+	aip := &Method{Path: "v1/{+name}", Parameters: map[string]Parameter{"name": {Location: "path"}}}
+	if got := d.URL(aip, "projects/p-1/serviceAccounts/a"); got != "https://compute.googleapis.com/compute/v1/v1/projects/p-1/serviceAccounts/a" {
+		t.Errorf("reserved URL %s", got)
+	}
 }
 
 // requestId is an idempotency token, not the new resource's ID: taken as
@@ -122,5 +133,46 @@ func TestComputeOperation(t *testing.T) {
 		"error": map[string]any{"errors": []any{map[string]any{"code": "RESOURCE_NOT_FOUND", "message": "network not found"}}}}
 	if _, err := settleCompute(context.Background(), failed, get, time.Millisecond); err == nil || !strings.Contains(err.Error(), "network not found") {
 		t.Errorf("failed operation: %v", err)
+	}
+}
+
+// A drifted Compute network is put right by --update: its patch takes no
+// mask (a JSON merge patch), so a field the snapshot lacks is sent as null
+// to clear it, and the body carries Compute's short name, not the full one.
+func TestComputeUpdate(t *testing.T) {
+	docs := fixtures(t)
+	w := NewWorld(docs)
+	src, dst := w.Project(srcProject, "111111111111"), w.Project(dstProject, "222222222222")
+	seedNetwork(t, src)
+	a := func(f *Fake) *Adapter { return &Adapter{API: f, Docs: docs} }
+	snap, err := a(src).Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range a(dst).Restore(context.Background(), snap) {
+		if !r.OK {
+			t.Fatalf("%s: %s", r.Key, r.Detail)
+		}
+	}
+	rel := "projects/" + dstProject + "/global/networks/shop-net"
+	dst.w.mu.Lock()
+	if dst.res[rel].data["name"] != "shop-net" {
+		t.Errorf("Compute resources carry their short name, got %v", dst.res[rel].data["name"])
+	}
+	dst.res[rel].data["description"] = "edited by hand"
+	dst.w.mu.Unlock()
+	ad := a(dst)
+	ad.Options.Update = true
+	for _, r := range ad.Restore(context.Background(), snap) {
+		if !r.OK {
+			t.Errorf("%s: %s", r.Key, r.Detail)
+		}
+	}
+	got, err := ad.Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range snapshot.Compare(snap, got) {
+		t.Errorf("after --update the target still differs: %+v", c)
 	}
 }

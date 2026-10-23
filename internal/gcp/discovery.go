@@ -64,13 +64,15 @@ type Collection struct {
 
 // Doc is a Discovery document.
 type Doc struct {
-	Name        string                 `json:"name"`
-	Version     string                 `json:"version"`
-	RootURL     string                 `json:"rootUrl"`
-	ServicePath string                 `json:"servicePath"`
-	Schemas     map[string]*Schema     `json:"schemas"`
-	Resources   map[string]*Collection `json:"resources"`
-	Digest      string                 `json:"-"`
+	Name        string             `json:"name"`
+	Version     string             `json:"version"`
+	RootURL     string             `json:"rootUrl"`
+	ServicePath string             `json:"servicePath"`
+	Schemas     map[string]*Schema `json:"schemas"`
+	// DocumentationLink is the API's reference documentation.
+	DocumentationLink string                 `json:"documentationLink"`
+	Resources         map[string]*Collection `json:"resources"`
+	Digest            string                 `json:"-"`
 }
 
 // auditTypes are schemas a service uses only for records it writes itself.
@@ -255,10 +257,21 @@ func (d *Doc) Kind(schema, relName string) (*Kind, error) {
 
 var pathParamRE = regexp.MustCompile(`\{\+?([A-Za-z]+)\}`)
 
-// segmentwiseRE finds a template that names segments: a parameter followed
-// by more of the path (projects/{project}/global/networks has one
-// parameter and is still filled segment by segment).
-var segmentwiseRE = regexp.MustCompile(`\}/[A-Za-z]`)
+// segmentwise reports a template that names segments, filled one by one:
+// not reserved expansion ({+name} takes the whole name), and starting with
+// the same word as the name (projects/{project}/global/networks for
+// projects/p/global). A one-segment projects/{project} counts too: the
+// first rule, a parameter followed by more path, missed it and built
+// .../projects/projects/my-proj, which a capture then took for a resource
+// deleted between list and read (review, 2026-10-22).
+func segmentwise(tmpl, value string) bool {
+	if strings.Contains(tmpl, "{+") || !pathParamRE.MatchString(tmpl) {
+		return false
+	}
+	first, _, _ := strings.Cut(tmpl, "/")
+	vfirst, _, _ := strings.Cut(value, "/")
+	return !pathParamRE.MatchString(first) && first == vfirst
+}
 
 // matchesName checks a relative name against a get method. Most documents
 // take the whole name as one {+name} parameter with a pattern for it;
@@ -297,7 +310,7 @@ func matchesName(m *Method, relName string) bool {
 // name (projects/p/global/networks/n); an insert takes its parent
 // (projects/p/global) and the template adds "networks".
 func (d *Doc) URL(m *Method, value string) string {
-	if strings.Contains(m.Path, "{+") || !segmentwiseRE.MatchString(m.Path) {
+	if !segmentwise(m.Path, value) {
 		return d.RootURL + d.ServicePath + pathParamRE.ReplaceAllString(m.Path, value)
 	}
 	vals := strings.Split(value, "/")

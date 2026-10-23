@@ -308,6 +308,37 @@ func (v *versions) pick(typ string) (string, error) {
 		errNoVersion, len(offered[strings.ToLower(typ)]), len(have))
 }
 
+// all lists every version both offered and defined, the stable ones first
+// (newest first), then previews: the order a list falls back through
+// when its preferred version is refused at its scope.
+func (v *versions) all(typ string) []string {
+	if _, err := v.pick(typ); err != nil {
+		return nil
+	}
+	ns := strings.ToLower(Namespace(typ))
+	v.mu.Lock()
+	offered := v.cache[ns]
+	v.mu.Unlock()
+	have := map[string]bool{}
+	for _, x := range v.reg.Versions(typ) {
+		have[x] = true
+	}
+	var stable, preview []string
+	for _, x := range offered[strings.ToLower(typ)] {
+		if !have[strings.ToLower(x)] {
+			continue
+		}
+		if strings.Contains(x, "preview") {
+			preview = append(preview, x)
+		} else {
+			stable = append(stable, x)
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(stable)))
+	sort.Sort(sort.Reverse(sort.StringSlice(preview)))
+	return append(stable, preview...)
+}
+
 func read(ctx context.Context, api ARM, v *versions, r Ref, tenant string) (*captured, error) {
 	rid, _ := ParseID(r.ID)
 	ver, err := v.pick(rid.Type)
@@ -346,7 +377,18 @@ func process(api ARM, tenant string, rid ResourceID, ver string, s *Schema, body
 func relevantSecrets(spec map[string]any, paths []string) []string {
 	var out []string
 	for _, p := range paths {
-		if strings.Contains(p, "[]") {
+		// A secret inside an array (an application gateway's
+		// sslCertificates[].properties.password) counts when the array is
+		// there. Left out, the update refusal never saw it, and a PUT went
+		// out without the secret (review, 2026-10-22). --values cannot
+		// supply one element's field, so such a resource is refused for
+		// update rather than sent without it.
+		if i := strings.Index(p, "[]"); i >= 0 {
+			if v, ok := lookup(spec, strings.Split(p[:i], ".")); ok {
+				if a, _ := v.([]any); len(a) > 0 {
+					out = append(out, p)
+				}
+			}
 			continue
 		}
 		parts := strings.Split(p, ".")

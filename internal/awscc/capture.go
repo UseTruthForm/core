@@ -498,7 +498,7 @@ func name(rs []*resource, account string) {
 		for _, k := range sortedKeys(r.spec) {
 			walkStrings(deepCopy(map[string]any{k: r.spec[k]}), func(s string) string {
 				for _, v := range values {
-					if o := owners[v]; o.r != r && !seen[o.r] && refersTo(k, o, s, v) {
+					if o := owners[v]; o.r != r && !seen[o.r] && refersTo(r, k, o, s, v) {
 						seen[o.r] = true
 						deps[r] = append(deps[r], o.r)
 					}
@@ -587,8 +587,14 @@ func chosenID(t *TypeInfo) bool {
 // repository of that name, a dependency that would block restoring the VPC
 // without the repository (real drill, 2026-10-22). A generated ID in a tag
 // still differs per account, so it stays a reference.
-func refersTo(prop string, o refTarget, s, v string) bool {
-	if prop == "Tags" && o.chosen {
+//
+// More generally, a value equal to the resource's own name is its name, not
+// a reference to a namesake: the drill's REST API is named
+// "stackdna-drill", as is its ECR repository, and its Name became a token
+// for the repository, a false dependency that would block restoring the API
+// without the repository (review, 2026-10-22).
+func refersTo(r *resource, prop string, o refTarget, s, v string) bool {
+	if o.chosen && (prop == "Tags" || (r.base != "" && s == r.base)) {
 		return false
 	}
 	return matches(s, v)
@@ -620,7 +626,7 @@ func tokenize(r *resource, values []string, owners map[string]refTarget) {
 		r.spec[k] = walkStrings(x, func(s string) string {
 			for _, v := range values {
 				o := owners[v]
-				if o.r == r || o.r.name == "" || !refersTo(k, o, s, v) {
+				if o.r == r || o.r.name == "" || !refersTo(r, k, o, s, v) {
 					continue
 				}
 				s = strings.ReplaceAll(s, v, refToken(o.r.t.Name, o.r.name, o.attr))

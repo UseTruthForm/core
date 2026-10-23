@@ -41,6 +41,12 @@ var ErrNotFound = errors.New("resource not found")
 // type (HTTP 400 or 405 on a list): there is nothing of that kind here.
 var ErrNotApplicable = errors.New("not applicable to this resource")
 
+// ErrAPIVersion means the request was refused for its API version at this
+// scope: the subscription's diagnostic settings answer "Invalid
+// api-version query string value" to the newest stable version, and only
+// preview versions work there (sandbox, 2026-10-22).
+var ErrAPIVersion = errors.New("API version not accepted here")
+
 // ResourceID is a parsed ARM resource ID.
 type ResourceID struct {
 	// ResourceGroup is "" for a resource at subscription scope (a role

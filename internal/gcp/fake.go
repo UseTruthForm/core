@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	neturl "net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -110,7 +111,7 @@ func (f *Fake) Seed(api, ver, typ, schema, collection, parent string, body map[s
 	if err != nil {
 		return "", err
 	}
-	m := doc.collectionMethods(collection)["create"]
+	m := createMethod(doc.collectionMethods(collection))
 	if m == nil {
 		return "", fmt.Errorf("no create method on %s", collection)
 	}
@@ -129,13 +130,13 @@ func (f *Fake) create(url string, body map[string]any) (map[string]any, error) {
 	url, rawQuery, _ := strings.Cut(url, "?")
 	queryID := ""
 	for _, kv := range strings.Split(rawQuery, "&") {
-		if k, v, ok := strings.Cut(kv, "="); ok && strings.HasSuffix(k, "Id") {
+		if k, v, ok := strings.Cut(kv, "="); ok && idParam(k) {
 			queryID = v
 		}
 	}
 	for _, d := range f.w.docs.loaded() {
 		for _, c := range d.collections() {
-			m := c.methods["create"]
+			m := createMethod(c.methods)
 			if m == nil {
 				continue
 			}
@@ -144,12 +145,10 @@ func (f *Fake) create(url string, body map[string]any) (map[string]any, error) {
 			if path == url {
 				continue
 			}
-			tmpl := m.Path
-			open, close := strings.Index(tmpl, "{"), strings.Index(tmpl, "}")
-			if open < 0 || close < 0 || !strings.HasPrefix(path, tmpl[:open]) || !strings.HasSuffix(path, tmpl[close+1:]) {
+			parent, ok := createParent(m.Path, path)
+			if !ok {
 				continue
 			}
-			parent := strings.TrimSuffix(strings.TrimPrefix(path, tmpl[:open]), tmpl[close+1:])
 			schema := c.schema
 			typ := d.Name + ".googleapis.com/" + schema
 			return f.createWith(d, typ, schema, c.path, m, parent, body, queryID)
@@ -185,6 +184,9 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	})
 	if bad != nil {
 		return nil, bad
+	}
+	if ref := f.missingRef(res); ref != "" {
+		return nil, fmt.Errorf("NOT_FOUND: The resource '%s' was not found", ref)
 	}
 	if id == "" {
 		f.w.seq++
@@ -315,6 +317,75 @@ func (f *Fake) update(method, u string, body map[string]any) (map[string]any, er
 	f.res[rel] = fakeRes{asset: cur.asset, data: next}
 	f.Updates++
 	return deepCopy(next), nil
+}
+
+// createMethod is a collection's create, or Compute's insert.
+func createMethod(ms map[string]*Method) *Method {
+	if m := ms["create"]; m != nil {
+		return m
+	}
+	if m := ms["insert"]; m != nil && m.HTTPMethod == "POST" {
+		return m
+	}
+	return nil
+}
+
+// createParent matches a create URL's path against its method's template
+// and returns the parent the new resource goes under: what fills a single
+// {+parent}, or, for a template naming each segment (Compute's
+// projects/{project}/global/networks), everything before the collection.
+func createParent(tmpl, path string) (string, bool) {
+	var b strings.Builder
+	last := 0
+	for _, loc := range pathParamRE.FindAllStringSubmatchIndex(tmpl, -1) {
+		b.WriteString(regexp.QuoteMeta(tmpl[last:loc[0]]))
+		if strings.HasPrefix(tmpl[loc[0]:], "{+") {
+			b.WriteString("(.+)")
+		} else {
+			b.WriteString("([^/]+)")
+		}
+		last = loc[1]
+	}
+	b.WriteString(regexp.QuoteMeta(tmpl[last:]))
+	re := regexp.MustCompile("^" + b.String() + "$")
+	m := re.FindStringSubmatch(path)
+	if m == nil {
+		return "", false
+	}
+	if strings.Contains(tmpl, "{+") {
+		return m[1], true
+	}
+	return path[:strings.LastIndex(path, "/")], true
+}
+
+// missingRef finds a reference to a resource of this project that the
+// fake serves a collection for and does not hold: Google refuses a firewall
+// whose network does not exist yet, so restore order matters here too.
+func (f *Fake) missingRef(body map[string]any) string {
+	served := map[string]bool{}
+	for _, d := range f.w.docs.loaded() {
+		for _, c := range d.collections() {
+			served[collLast(c.path)] = true
+		}
+	}
+	missing := ""
+	refs := deepCopy(body)
+	delete(refs, "name") // its own name, not a reference
+	walkStrings(refs, func(s string) string {
+		i := strings.Index(s, "projects/"+f.id+"/")
+		if i < 0 || missing != "" {
+			return s
+		}
+		rel := s[i:]
+		parts := strings.Split(rel, "/")
+		if len(parts) >= 4 && served[parts[len(parts)-2]] {
+			if _, ok := f.res[rel]; !ok {
+				missing = rel
+			}
+		}
+		return s
+	})
+	return missing
 }
 
 // Count is the number of resources held.

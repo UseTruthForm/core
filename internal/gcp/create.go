@@ -76,7 +76,7 @@ func wrap(d *Doc, schema string, m *Method, spec map[string]any, id string) (map
 		body := deepCopy(spec)
 		if id != "" {
 			for _, p := range sortedKeys(m.Parameters) {
-				if m.Parameters[p].Location == "query" && strings.HasSuffix(p, "Id") {
+				if m.Parameters[p].Location == "query" && idParam(p) {
 					q.Set(p, id)
 					delete(body, "name")
 				}
@@ -107,6 +107,13 @@ func wrap(d *Doc, schema string, m *Method, spec map[string]any, id string) (map
 	}
 	return body, q, nil
 }
+
+// idParam reports a create's resource-ID query parameter (AIP-133:
+// secretId, metricId). requestId is not one: it is AIP-155's idempotency
+// token, a UUID, which Compute and many AIP APIs take on every write.
+// Read as the ID it would have sent the resource's name as the token and
+// dropped the name from the body.
+func idParam(p string) bool { return strings.HasSuffix(p, "Id") && p != "requestId" }
 
 // unwrap is wrap's inverse, for the fake: the resource body and its ID.
 func unwrap(d *Doc, schema string, m *Method, body map[string]any) (map[string]any, string, error) {

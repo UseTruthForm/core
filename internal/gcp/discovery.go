@@ -253,22 +253,69 @@ func (d *Doc) Kind(schema, relName string) (*Kind, error) {
 	return found[0], nil
 }
 
-// matchesName checks the get method's {+name}-style parameter pattern.
+var pathParamRE = regexp.MustCompile(`\{\+?([A-Za-z]+)\}`)
+
+// segmentwiseRE finds a template that names segments: a parameter followed
+// by more of the path (projects/{project}/global/networks has one
+// parameter and is still filled segment by segment).
+var segmentwiseRE = regexp.MustCompile(`\}/[A-Za-z]`)
+
+// matchesName checks a relative name against a get method. Most documents
+// take the whole name as one {+name} parameter with a pattern for it;
+// Compute names each segment ({project}, {region}, {subnetwork}), so its
+// template is matched whole, each parameter by its own pattern.
 func matchesName(m *Method, relName string) bool {
-	for _, p := range m.Parameters {
-		if p.Location == "path" && p.Pattern != "" {
-			re, err := regexp.Compile(p.Pattern)
-			return err == nil && re.MatchString(relName)
+	if strings.Contains(m.Path, "{+") {
+		for _, p := range m.Parameters {
+			if p.Location == "path" && p.Pattern != "" {
+				re, err := regexp.Compile(p.Pattern)
+				return err == nil && re.MatchString(relName)
+			}
 		}
+		return false
 	}
-	return false
+	var b strings.Builder
+	last := 0
+	for _, loc := range pathParamRE.FindAllStringSubmatchIndex(m.Path, -1) {
+		b.WriteString(regexp.QuoteMeta(m.Path[last:loc[0]]))
+		pat := `[^/]+`
+		if p, ok := m.Parameters[m.Path[loc[2]:loc[3]]]; ok && p.Pattern != "" {
+			pat = p.Pattern
+		}
+		b.WriteString("(?:" + pat + ")")
+		last = loc[1]
+	}
+	b.WriteString(regexp.QuoteMeta(m.Path[last:]))
+	re, err := regexp.Compile("^" + b.String() + "$")
+	return err == nil && re.MatchString(relName)
 }
 
-// URL expands a method path with one path parameter value, the way
-// Discovery's {+param} (reserved expansion: slashes kept) works.
+// URL expands a method path with a name: the whole value into a single
+// {+param} (reserved expansion: slashes kept), or, for a template that
+// names each segment (Compute), segment by segment, the template's own
+// words filling in what the value stops short of. A get takes the item's
+// name (projects/p/global/networks/n); an insert takes its parent
+// (projects/p/global) and the template adds "networks".
 func (d *Doc) URL(m *Method, value string) string {
-	re := regexp.MustCompile(`\{\+?[A-Za-z]+\}`)
-	return d.RootURL + d.ServicePath + re.ReplaceAllString(m.Path, value)
+	if strings.Contains(m.Path, "{+") || !segmentwiseRE.MatchString(m.Path) {
+		return d.RootURL + d.ServicePath + pathParamRE.ReplaceAllString(m.Path, value)
+	}
+	vals := strings.Split(value, "/")
+	var out []string
+	i := 0
+	for _, seg := range strings.Split(m.Path, "/") {
+		switch {
+		case pathParamRE.MatchString(seg) && i < len(vals):
+			out = append(out, vals[i])
+			i++
+		case i < len(vals) && vals[i] == seg:
+			out = append(out, seg)
+			i++
+		default:
+			out = append(out, seg)
+		}
+	}
+	return d.RootURL + d.ServicePath + strings.Join(out, "/")
 }
 
 // Fields flattens a schema into dotted field paths for schema-diff.

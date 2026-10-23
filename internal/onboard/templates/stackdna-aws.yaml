@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: "2010-09-09"
+# The role StackDNA runs as in one AWS account. Written by
+# "stackdna permissions --platform aws"; deploying it is one stack, and
+# deleting the stack removes everything it granted.
+#
+# Deliberately not here:
+# - No inline policy of StackDNA's own. AWS's managed ReadOnlyAccess follows
+#   every new service as AWS adds it; a hand-written list of reads falls
+#   behind, and the types it misses fail in the capture.
+# - No IAM write for restore. PowerUserAccess restores every service except
+#   IAM; restoring IAM roles and policies needs a grant scoped by the
+#   customer to the names being restored (docs/permissions.md).
+# - No permission for StackDNA to change this role or its trust: the role
+#   cannot widen itself.
+Description: StackDNA access role (stackdna permissions). Delete this stack to remove it.
+
+Parameters:
+  TrustedPrincipalArn:
+    Type: String
+    Description: The IAM user or role that runs StackDNA and may assume this role.
+    # A whole account (":root") is accepted only because AWS accepts it;
+    # stackdna permissions warns when given one, since it lets every
+    # principal in that account that is allowed sts:AssumeRole in.
+    AllowedPattern: '^arn:aws[a-z-]*:iam::[0-9]{12}:(root|user/.+|role/.+)$'
+  ExternalId:
+    Type: String
+    Default: ""
+    Description: Required by the trust when set. Use one when the trusted principal is in another account.
+  Access:
+    Type: String
+    AllowedValues: [capture, restore]
+    Default: capture
+    Description: capture is read-only; restore adds PowerUserAccess.
+  RoleName:
+    Type: String
+    Default: stackdna-reader
+    AllowedPattern: '^[A-Za-z0-9+=,.@_-]{1,64}$'
+
+Conditions:
+  HasExternalId: !Not [!Equals [!Ref ExternalId, ""]]
+  Restore: !Equals [!Ref Access, restore]
+
+Resources:
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: !Sub "StackDNA ${Access} access (stackdna permissions)"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref TrustedPrincipalArn
+            Action: sts:AssumeRole
+            Condition: !If
+              - HasExternalId
+              - StringEquals:
+                  sts:ExternalId: !Ref ExternalId
+              - !Ref AWS::NoValue
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/ReadOnlyAccess
+        - !If [Restore, !Sub "arn:${AWS::Partition}:iam::aws:policy/PowerUserAccess", !Ref AWS::NoValue]
+      Tags:
+        - Key: managed-by
+          Value: stackdna-permissions
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt Role.Arn

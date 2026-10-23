@@ -1,0 +1,41 @@
+# StackDNA's access to one cluster, written by
+# "stackdna permissions --platform kubernetes". kubectl apply grants it;
+# kubectl delete with this same file removes it.
+#
+# get and list on every resource, cluster-wide: a capture enumerates every
+# type the cluster serves, custom resources included. The built-in "view"
+# ClusterRole is not used because it leaves out Secrets: their values are
+# never written to a snapshot, but without list their existence is not
+# captured either. This role can read Secret values; StackDNA does not
+# write them.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{.Name}}
+  labels:
+    app.kubernetes.io/managed-by: stackdna-permissions
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: [{{.Verbs}}]
+  - nonResourceURLs: ["/api", "/api/*", "/apis", "/apis/*", "/version"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{.Name}}
+  labels:
+    app.kubernetes.io/managed-by: stackdna-permissions
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{.Name}}
+subjects:
+  - kind: {{.SubjectKind}}
+    name: {{.SubjectName}}
+{{- if .SubjectNamespace}}
+    namespace: {{.SubjectNamespace}}
+{{- else}}
+    apiGroup: rbac.authorization.k8s.io
+{{- end}}

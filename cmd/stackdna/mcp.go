@@ -18,6 +18,7 @@ import (
 	"github.com/stackdna/core/internal/describe"
 	"github.com/stackdna/core/internal/gcp"
 	"github.com/stackdna/core/internal/mcp"
+	"github.com/stackdna/core/internal/onboard"
 	"github.com/stackdna/core/internal/saas"
 )
 
@@ -47,6 +48,8 @@ const mcpInstructions = `StackDNA captures the live configuration of AWS, Azure,
 Use describe_type before writing configuration: it says which fields a resource type takes, which are required, which the platform sets (read-only), which are never returned (write-only, secret), and which are fixed at creation, with the platform's own documentation links. These come from the same schemas StackDNA captures and restores with.
 
 capture and diff only read (the read-only guard refuses any write). They use the credentials of the environment this server runs in. There is no restore tool: restoring changes live resources and is run by a person with the CLI.
+
+Setting up access: permissions gives the template and every command to grant StackDNA access, with the person's values filled in; check_access then shows who StackDNA runs as and what it can read. Neither grants anything. Follow docs/agents.md: look at what is there before granting, let the person run the grant, never hand over a command with a placeholder in it, and verify with check_access, not with the grant's exit code.
 
 For building and changing resources, use the platform's own MCP server alongside this one; platforms lists them.`
 
@@ -119,6 +122,25 @@ func mcpTools() []mcp.Tool {
 			Schema:      obj([]string{"platform", "from"}, with(map[string]any{"from": str("the snapshot directory to compare with")})),
 			Call: func(ctx context.Context, a map[string]any) (string, error) {
 				return runStackDNA(ctx, "diff", a, "from")
+			}},
+		{Name: "permissions", ReadOnly: true,
+			Description: "What to grant StackDNA on a platform, for capture (read-only) or restore: the template to deploy, every command to check what is there, grant it, verify it and remove it, with the given values filled in, and what has been verified. Grants nothing. A value it needs and was not given is an error saying how to find it: ask the person for it, never substitute a placeholder.",
+			Schema: obj([]string{"platform"}, map[string]any{
+				"platform": str("aws, azure, gcp, kubernetes, github or cloudflare"), "access": str("capture (default) or restore"),
+				"account":   str("aws: the account ID the role goes in; github: the organisation; cloudflare: the account ID"),
+				"principal": str("aws: ARN of the IAM user or role that will run StackDNA"), "external_id": str("aws: external ID for a principal in another account"),
+				"region": str("aws: region of the CloudFormation stack"), "source_profile": str("aws: the principal's shared-config profile"),
+				"admin_profile": str("aws: the administrator's profile"), "subscription": str("azure: subscription ID"),
+				"principal_id": str("azure: object ID"), "principal_type": str("azure: User, Group or ServicePrincipal"),
+				"location": str("azure: deployment stack region"), "project": str("gcp: project ID"),
+				"member": str("gcp: user:EMAIL, serviceAccount:EMAIL or group:EMAIL"), "context": str("kubernetes: the administrator's kubeconfig context"),
+				"subject": str("kubernetes: User:NAME, Group:NAME or ServiceAccount:NAMESPACE/NAME")}),
+			Call: permissionsTool},
+		{Name: "check_access", ReadOnly: true,
+			Description: "Who StackDNA runs as here, what that identity holds beyond what it needs (root, long-lived keys, write access for a capture), what could not be checked, and what it can read, type by type, from a trial capture written nowhere. DENIED types are refused for want of permission and are not empty. Exit 3 means some types cannot be read.",
+			Schema:      obj([]string{"platform"}, with(map[string]any{"access": str("capture (default) or restore: what the identity is for")})),
+			Call: func(ctx context.Context, a map[string]any) (string, error) {
+				return runStackDNA(ctx, "check", a, "platform")
 			}},
 		{Name: "report", ReadOnly: true,
 			Description: "Read a snapshot's REPORT.md: what was captured, what was not and why, what a restore needs.",
@@ -309,6 +331,33 @@ func saasClient(name string) (*saas.Client, error) {
 var mcpFlags = map[string][]string{
 	"capture": {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "out"},
 	"diff":    {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "from"},
+	"check":   {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "access"},
+}
+
+// permissionsTool builds the plan in-process: it reads nothing and writes
+// nothing, so the files come back inline for the person to save (or for
+// them to write with the --write command the plan names).
+func permissionsTool(_ context.Context, a map[string]any) (string, error) {
+	r := onboard.Request{Platform: arg(a, "platform", ""), Access: arg(a, "access", "capture"), Account: arg(a, "account", ""),
+		Principal: arg(a, "principal", ""), ExternalID: arg(a, "external_id", ""), Region: arg(a, "region", ""),
+		SourceProfile: arg(a, "source_profile", ""), AdminProfile: arg(a, "admin_profile", ""), Subscription: arg(a, "subscription", ""),
+		PrincipalID: arg(a, "principal_id", ""), PrincipalType: arg(a, "principal_type", ""), Location: arg(a, "location", ""),
+		Project: arg(a, "project", ""), Member: arg(a, "member", ""), Context: arg(a, "context", ""), Subject: arg(a, "subject", "")}
+	p, err := onboard.Build(r)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	b.WriteString(p.Text())
+	names := make([]string, 0, len(p.Files))
+	for n := range p.Files {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		fmt.Fprintf(&b, "\n----- %s -----\n%s", n, p.Files[n])
+	}
+	return b.String(), nil
 }
 
 // runStackDNA runs this binary's capture or diff. Running it as a separate

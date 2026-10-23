@@ -54,6 +54,12 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN):
 Machine-readable: add --json to capture, diff, restore or compare; stdout is then
 one JSON document (everything else goes to stderr) and the exit code is unchanged.
 
+Access (what to grant, and what a grant can read):
+  stackdna permissions --platform <p> [--access capture|restore] <the platform's values> [--write <dir>]
+      the template to deploy and every command to grant, verify and remove it; grants nothing itself
+  stackdna check --platform <p> <the target, as for capture> [--types <patterns>] [--access capture|restore]
+      who StackDNA runs as, what it holds beyond what it needs, and what it can read, type by type
+
 For agents (MCP on stdin/stdout; every tool read-only, no restore tool):
   stackdna mcp
 
@@ -83,7 +89,7 @@ func main() {
 		// run quietly: "mcp --json" served the protocol on stderr and
 		// "version --json" printed nothing (review of #21).
 		if !jsonCommands[command] {
-			code := fail(fmt.Errorf("--json is supported by capture, diff, restore and compare, not %s", command))
+			code := fail(fmt.Errorf("--json is supported by capture, diff, restore, compare, check and permissions, not %s", command))
 			emitError(code)
 			os.Exit(code)
 		}
@@ -113,6 +119,10 @@ func main() {
 		code = reportCmd(args)
 	case "mcp":
 		code = mcpCmd(ctx, args)
+	case "check":
+		code = checkCmd(ctx, args)
+	case "permissions":
+		code = permissionsCmd(args)
 	case "version", "--version", "-version":
 		fmt.Println(versionString())
 	default:

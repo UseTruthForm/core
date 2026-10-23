@@ -5,6 +5,25 @@ grant a read-only role and use the capture-only binary, which cannot send
 a write whatever it is given. A restore creates and changes resources, so
 it needs write access; grant that separately, for the restore only.
 
+You do not have to build these by hand. `stackdna permissions` writes
+the grant as a template for the platform's own tool (a CloudFormation
+stack, an Azure deployment stack, Terraform, a Kubernetes manifest; for
+GitHub and Cloudflare, the exact token settings) and prints every command
+to check what is there first, deploy it, verify it and remove it again,
+with your values filled in. It grants nothing itself:
+
+```sh
+stackdna permissions --platform aws --account 111122223333 --principal arn:aws:iam::111122223333:role/ops --source-profile ops
+```
+
+Then check what the grant can actually read, type by type, with a
+capture that is written nowhere. A type refused for want of permission is
+reported as **denied**, never as empty:
+
+```sh
+stackdna check --platform aws --region us-east-1 --profile stackdna-reader
+```
+
 Each line says whether it was **verified** (StackDNA ran with exactly that
 access) or is **expected** (from the platform's documentation and the
 calls StackDNA makes, not yet run with exactly that access).
@@ -47,7 +66,7 @@ in the project, as must each API whose resources are captured.
 
 | Use | Grant | Status |
 |---|---|---|
-| Capture, diff | `get`, `list` on every resource type to capture, cluster-wide. The built-in `view` ClusterRole leaves out Secrets: their values are never captured anyway, but without `list` on them their existence is not either. | Expected. |
+| Capture, diff | `get`, `list` on every resource type to capture, cluster-wide. The built-in `view` ClusterRole leaves out Secrets: their values are never captured anyway, but without `list` on them their existence is not either. | **Verified** on every test run: on a real API server with RBAC, a service account bound by exactly the ClusterRole `stackdna permissions` writes captured every type, was refused a write, and was refused reads again once the grant was deleted. Not yet run on a managed cluster. |
 | Restore | Create and patch (server-side apply) on every type restored. | Verified with cluster-admin on kind clusters. |
 
 ## GitHub

@@ -13,8 +13,10 @@
 package readonly
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -52,6 +54,16 @@ var readTargets = map[string]bool{
 	"CloudApiService.ListResourceRequests":     true,
 }
 
+// iamReads are IAM Query API actions that only read. IAM sends every call
+// as a POST with the action in the form body, so it cannot be told apart by
+// method; these two are named because stackdna check needs them, and every
+// other IAM action stays refused. SimulatePrincipalPolicy evaluates the
+// caller's policies against a list of actions and changes nothing.
+var iamReads = map[string]bool{
+	"GetRole":                 true,
+	"SimulatePrincipalPolicy": true,
+}
+
 // tokenHosts exchange credentials for tokens; they change no resource.
 var tokenHosts = []string{
 	"login.microsoftonline.com",
@@ -79,6 +91,13 @@ func Allowed(req *http.Request) (bool, string) {
 		strings.HasPrefix(host, "portal.sso.") || strings.HasPrefix(host, "oidc.") && strings.HasSuffix(host, ".amazonaws.com") {
 		return true, ""
 	}
+	// "aws login" sessions refresh at the sign-in service's token
+	// endpoint. Without this a profile from aws login worked until its
+	// cached credentials expired, then every capture failed with
+	// "refused by StackDNA's read-only guard" (2026-10-23).
+	if (host == "signin.aws.amazon.com" || strings.HasSuffix(host, ".signin.aws.amazon.com")) && req.Method == http.MethodPost && req.URL.Path == "/v1/token" {
+		return true, ""
+	}
 	// The EC2 instance metadata service: a PUT for its session token.
 	if host == "169.254.169.254" && req.Method == http.MethodPut && req.URL.Path == "/latest/api/token" {
 		return true, ""
@@ -90,6 +109,16 @@ func Allowed(req *http.Request) (bool, string) {
 			}
 			return false, "AWS operation " + t + " is not a known read"
 		}
+		if isIAMHost(host) {
+			action, err := formAction(req)
+			if err != nil {
+				return false, "IAM request body unreadable: " + err.Error()
+			}
+			if iamReads[action] {
+				return true, ""
+			}
+			return false, "IAM action " + action + " is not a known read"
+		}
 		// Google's reads that are POSTs by design: Resource Manager's
 		// getIamPolicy reads a policy.
 		if strings.HasSuffix(req.URL.Path, ":getIamPolicy") {
@@ -97,6 +126,32 @@ func Allowed(req *http.Request) (bool, string) {
 		}
 	}
 	return false, "only reads may pass"
+}
+
+func isIAMHost(h string) bool {
+	return h == "iam.amazonaws.com" || strings.HasPrefix(h, "iam.") && (strings.HasSuffix(h, ".amazonaws.com") || strings.HasSuffix(h, ".amazonaws.com.cn"))
+}
+
+// formAction is the Action of a Query API request. It is read from the
+// body only: an Action in the query string as well could be the one the
+// service acts on, so a request carrying one is refused (no Action read).
+// The body is put back for sending.
+func formAction(req *http.Request) (string, error) {
+	if req.URL.Query().Has("Action") || req.Body == nil {
+		return "", nil
+	}
+	b, err := io.ReadAll(io.LimitReader(req.Body, 1<<20))
+	req.Body.Close()
+	if err != nil {
+		return "", err
+	}
+	req.Body = io.NopCloser(bytes.NewReader(b))
+	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(b)), nil }
+	v, err := url.ParseQuery(string(b))
+	if err != nil {
+		return "", err
+	}
+	return v.Get("Action"), nil
 }
 
 // redact drops the query string, which can carry tokens.

@@ -35,6 +35,14 @@ Give a capture a read-only role, and a restore a write role, separately.
 [permissions.md](permissions.md) lists the exact roles per platform, and
 which have been verified.
 
+`stackdna permissions --platform <p>` writes the grant as a template for
+the platform's own tool and prints every command to deploy, verify and
+remove it, with your values filled in; it grants nothing itself.
+`stackdna check` then says who StackDNA runs as, what that identity holds
+beyond what it needs, and what it can read, type by type: a type refused
+for want of permission shows as **denied**, never as empty. It exits 3
+when anything is denied or failed.
+
 ## Capture
 
 ```sh
@@ -148,7 +156,10 @@ stackdna diff --platform aws --region us-east-2 --from snap/aws --json | jq '.di
 Protocol. For every field of a resource type it says whether the field is
 required, set by the platform, write-only, secret or fixed at creation,
 with the platform's documentation link. It can also capture, diff and
-read reports. No tool can restore. Add it to a client as:
+read reports, say what access to grant (`permissions`) and check what a
+grant can read (`check_access`). No tool can restore and none grants
+anything. An agent setting up someone's access should follow
+[agents.md](agents.md). Add it to a client as:
 
 ```json
 {"mcpServers": {"stackdna": {"command": "stackdna", "args": ["mcp"]}}}

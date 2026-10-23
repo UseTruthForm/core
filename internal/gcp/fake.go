@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // World is a set of fake projects. A create that carries another project's
@@ -42,6 +43,9 @@ type Fake struct {
 	InventoryName func(rel string, data map[string]any) string
 	// Updates counts applied patches and updates.
 	Updates int
+	// WriteDelay makes each write take this long, outside the lock, so
+	// writes running at once overlap as Google's long-running ones do.
+	WriteDelay time.Duration
 }
 
 type fakeRes struct {
@@ -83,6 +87,9 @@ func (f *Fake) Assets(context.Context) ([]Asset, error) {
 
 // Call serves GET by URL and POST through the type's create method.
 func (f *Fake) Call(_ context.Context, method, url string, body any) (map[string]any, error) {
+	if method != "GET" {
+		time.Sleep(f.WriteDelay)
+	}
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
 	switch method {

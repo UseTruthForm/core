@@ -5,7 +5,9 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 
+	"github.com/stackdna/core/internal/schedule"
 	"github.com/stackdna/core/internal/snapshot"
 )
 
@@ -24,6 +26,10 @@ type RestoreOptions struct {
 // IDs the server assigns) and never created twice; with Update, one that
 // differs is patched.
 func Restore(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, opt RestoreOptions) []snapshot.Result {
+	return restoreWith(ctx, api, docs, s, opt, 8)
+}
+
+func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, opt RestoreOptions, workers int) []snapshot.Result {
 	results := make([]snapshot.Result, 0, len(s.Objects))
 	fail := func(detail string) []snapshot.Result {
 		for _, o := range s.Objects {
@@ -45,25 +51,48 @@ func Restore(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, opt 
 		return fail("cannot read the target: " + err.Error())
 	}
 	existing := map[string]*res{}
-	resolved := map[string]string{} // ref token -> name in the target
+	resolved := &names{m: map[string]string{}} // ref token -> name in the target
 	for _, r := range have {
 		existing[r.asset.Type+"|"+r.logical] = r
-		resolved[refToken(r.asset.Type, r.logical)] = detok(r.rel, project, number)
+		resolved.set(refToken(r.asset.Type, r.logical), detok(r.rel, project, number))
 	}
 
-	order, cyclic := restoreOrder(s.Objects)
+	order, cyclic, deps := restoreGraph(s.Objects)
 	for _, o := range cyclic {
 		results = append(results, snapshot.Result{Key: o.Key(), Detail: "its references form a cycle; no creation order exists"})
 	}
-	for _, o := range order {
-		ok, detail := restoreOne(ctx, api, docs, o, project, number, existing, resolved, opt)
-		results = append(results, snapshot.Result{Key: o.Key(), OK: ok, Detail: detail})
-	}
-	return results
+	// Each create starts once what it references is done, several at a
+	// time; results keep the reference order whatever order they finish in.
+	done := make([]snapshot.Result, len(order))
+	schedule.Run(len(order), deps, workers, func(i int) {
+		ok, detail := restoreOne(ctx, api, docs, order[i], project, number, existing, resolved, opt)
+		done[i] = snapshot.Result{Key: order[i].Key(), OK: ok, Detail: detail}
+	})
+	return append(results, done...)
+}
+
+// names maps reference tokens to the names the target gave, shared by the
+// creates running at once.
+type names struct {
+	mu sync.Mutex
+	m  map[string]string
+}
+
+func (n *names) get(k string) (string, bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	v, ok := n.m[k]
+	return v, ok
+}
+
+func (n *names) set(k, v string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.m[k] = v
 }
 
 func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, project, number string,
-	existing map[string]*res, resolved map[string]string, opt RestoreOptions) (bool, string) {
+	existing map[string]*res, resolved *names, opt RestoreOptions) (bool, string) {
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	str := func(k string) string { s, _ := ann[k].(string); return s }
 	apiName, ver, _ := strings.Cut(str(annDiscovery), "/")
@@ -133,17 +162,17 @@ func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, pro
 			n = sl[i+1:]
 		}
 	}
-	resolved[self] = n
+	resolved.set(self, n)
 	return true, "created " + n
 }
 
 // resolveSpec replaces reference tokens with the target's names and the
 // project tokens with the target project.
-func resolveSpec(spec map[string]any, resolved map[string]string, project, number string) (map[string]any, string) {
+func resolveSpec(spec map[string]any, resolved *names, project, number string) (map[string]any, string) {
 	var missing string
 	desired := rewriteAll(deepCopy(spec), func(s string) string {
 		s = refRE.ReplaceAllStringFunc(s, func(tok string) string {
-			if n, ok := resolved[tok]; ok {
+			if n, ok := resolved.get(tok); ok {
 				return n
 			}
 			missing = tok
@@ -164,7 +193,7 @@ func resolveSpec(spec map[string]any, resolved map[string]string, project, numbe
 // holding it), and the mask, where it takes one, names exactly the
 // top-level fields that differ, removed ones included, so a field nobody
 // captured is never touched and one the snapshot lacks is cleared.
-func update(ctx context.Context, api API, docs *Docs, o snapshot.Object, ex *res, project, number string, resolved map[string]string) (bool, string) {
+func update(ctx context.Context, api API, docs *Docs, o snapshot.Object, ex *res, project, number string, resolved *names) (bool, string) {
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	str := func(k string) string { s, _ := ann[k].(string); return s }
 	apiName, ver, _ := strings.Cut(str(annDiscovery), "/")
@@ -275,6 +304,13 @@ func detok(s, project, number string) string {
 }
 
 func restoreOrder(objs []snapshot.Object) (order, cyclic []snapshot.Object) {
+	order, cyclic, _ = restoreGraph(objs)
+	return order, cyclic
+}
+
+// restoreGraph orders objects so each comes after what it references, and
+// gives each one's references as indices into that order.
+func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depIdx [][]int) {
 	by := map[string]snapshot.Object{}
 	for _, o := range objs {
 		by[refToken(o.Kind(), o.Name())] = o
@@ -315,7 +351,25 @@ func restoreOrder(objs []snapshot.Object) (order, cyclic []snapshot.Object) {
 			cyclic = append(cyclic, by[k])
 		}
 	}
-	return order, cyclic
+	at := map[string]int{}
+	for i, o := range order {
+		at[refToken(o.Kind(), o.Name())] = i
+	}
+	depIdx = make([][]int, len(order))
+	for i, o := range order {
+		spec := canon(o.Body["spec"])
+		for _, tok := range refRE.FindAllString(spec, -1) {
+			if j, ok := at[tok]; ok && j != i {
+				depIdx[i] = append(depIdx[i], j)
+			}
+		}
+		for j, other := range order {
+			if j != i && namedIn(spec, other.Name()) {
+				depIdx[i] = append(depIdx[i], j)
+			}
+		}
+	}
+	return order, cyclic, depIdx
 }
 
 // Adapter is the GCP implementation of platform.Platform: one project.

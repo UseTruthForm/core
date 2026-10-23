@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/stackdna/core/internal/schedule"
 	"github.com/stackdna/core/internal/snapshot"
 )
 
@@ -57,11 +60,11 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 		return results
 	}
 	existing := map[string]*resource{}
-	resolved := map[string]map[string]any{} // Kind/name -> live properties
-	resolved["account/self"] = map[string]any{"id": in.account}
+	resolved := &values{m: map[string]map[string]any{}} // Kind/name -> live properties
+	resolved.set("account/self", map[string]any{"id": in.account})
 	for _, r := range in.named() {
 		existing[r.key()] = r
-		resolved[r.t.Name+"/"+r.name] = withID(r.props, r.id)
+		resolved.set(r.t.Name+"/"+r.name, withID(r.props, r.id))
 	}
 
 	order, cyclic := restoreOrder(s.Objects)
@@ -91,16 +94,73 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 	for _, o := range s.Objects {
 		inSnap[o.Kind()+"/"+o.Name()] = true
 	}
-	for _, o := range order {
-		res := snapshot.Result{Key: o.Key()}
-		res.OK, res.Detail = restoreOne(ctx, api, reg, in, o, existing, resolved, inSnap, opt, reread)
-		results = append(results, res)
+	// Each object starts once what its tokens name is done, several at a
+	// time; results keep the reference order whatever order they finish.
+	at := map[string]int{}
+	for i, o := range order {
+		at[o.Kind()+"/"+o.Name()] = i
 	}
-	return results
+	deps := make([][]int, len(order))
+	for i, o := range order {
+		for _, m := range tokenRE.FindAllStringSubmatch(canon(o.Body["spec"]), -1) {
+			if d, ok := at[m[1]+"/"+m[2]]; ok && d != i {
+				deps[i] = append(deps[i], d)
+			}
+		}
+	}
+	done := make([]snapshot.Result, len(order))
+	workers := tun.Parallel
+	if workers <= 0 {
+		workers = 8
+	}
+	schedule.Run(len(order), deps, workers, func(i int) {
+		res := snapshot.Result{Key: order[i].Key()}
+		res.OK, res.Detail = restoreOne(ctx, api, reg, in, order[i], existing, resolved, inSnap, opt, reread)
+		done[i] = res
+	})
+	return append(results, done...)
+}
+
+// values is what a restore has learned about the target (each restored or
+// found object's properties), shared by the creates running at once.
+type values struct {
+	mu sync.Mutex
+	m  map[string]map[string]any
+}
+
+func (v *values) get(k string) map[string]any {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.m[k]
+}
+
+func (v *values) set(k string, p map[string]any) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.m[k] = p
+}
+
+// submitted retries a write refused for throttling before AWS accepted it:
+// with many creates at once, the account's rate is shared. Only the
+// submission is retried: a request AWS accepted and then FAILED inside its
+// handler may have done part of its work, and is reported, not repeated.
+func submitted(ctx context.Context, f func() error) error {
+	for attempt := 0; ; attempt++ {
+		err := f()
+		if err == nil || !isThrottle(err) || strings.Contains(err.Error(), " FAILED") || attempt == throttleRetries {
+			return err
+		}
+		wait := time.Duration(1<<min(attempt, 6)) * time.Second
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait + time.Duration(rand.Int64N(int64(wait)))):
+		}
+	}
 }
 
 func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o snapshot.Object,
-	existing map[string]*resource, resolved map[string]map[string]any, inSnap map[string]bool, opt RestoreOptions,
+	existing map[string]*resource, resolved *values, inSnap map[string]bool, opt RestoreOptions,
 	reread func(key string) *resource) (bool, string) {
 	kind, ref := o.Kind(), o.Kind()+"/"+o.Name()
 	t := reg.Types[kind]
@@ -136,7 +196,7 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 		return tokenRE.ReplaceAllStringFunc(s, func(tok string) string {
 			m := tokenRE.FindStringSubmatch(tok)
 			target := m[1] + "/" + m[2]
-			v, ok := resolved[target][m[3]].(string)
+			v, ok := resolved.get(target)[m[3]].(string)
 			if !ok {
 				missing = append(missing, target)
 				return tok
@@ -167,10 +227,11 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 		}
 	}
 
-	id, err := api.Create(ctx, kind, desired)
+	var id string
+	err := submitted(ctx, func() (err error) { id, err = api.Create(ctx, kind, desired); return err })
 	if err != nil {
 		if ex := reread(o.Key()); ex != nil && len(differs(ex)) == 0 {
-			resolved[ref] = withID(ex.props, ex.id)
+			resolved.set(ref, withID(ex.props, ex.id))
 			return true, "present and identical once restored resources existed: AWS made it as a side effect (" + ex.id + ")"
 		}
 		return false, err.Error()
@@ -179,7 +240,7 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 	if err != nil {
 		return false, "created " + id + " but could not read it back: " + err.Error()
 	}
-	resolved[ref] = withID(props, id)
+	resolved.set(ref, withID(props, id))
 
 	detail := "created " + id
 	var without []string
@@ -338,7 +399,7 @@ func readBack(ctx context.Context, api CloudControl, kind, id string) (map[strin
 // references tokenized and desired has them resolved, so only raw values
 // compare. A change to a create-only property is refused, not made: AWS
 // would replace the resource, deleting what depends on it.
-func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *resource, desired map[string]any, resolved map[string]map[string]any) (bool, string) {
+func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *resource, desired map[string]any, resolved *values) (bool, string) {
 	live := normalize(t, ex.id, ex.props).spec
 	// The snapshot sorted its sets by the tokens in them; resolved, they
 	// can be out of order, and the reordered subnet list of a node group
@@ -352,14 +413,14 @@ func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *
 	if len(ops) == 0 {
 		return true, "already present; it differs only in how references are named"
 	}
-	if err := api.Update(ctx, t.Name, ex.id, ops); err != nil {
+	if err := submitted(ctx, func() error { return api.Update(ctx, t.Name, ex.id, ops) }); err != nil {
 		return false, err.Error()
 	}
 	props, err := readBack(ctx, api, t.Name, ex.id)
 	if err != nil {
 		return false, "updated " + ex.id + " but could not read it back: " + err.Error()
 	}
-	resolved[ref] = withID(props, ex.id)
+	resolved.set(ref, withID(props, ex.id))
 	paths := make([]string, len(ops))
 	for i, op := range ops {
 		paths[i] = strings.TrimPrefix(op.Path, "/")

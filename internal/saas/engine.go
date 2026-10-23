@@ -43,6 +43,9 @@ func NewClient(p Provider, spec *Spec, account, token string, readOnly bool) *Cl
 	if readOnly {
 		hc = readonly.Client()
 	}
+	if p.Derive != nil {
+		p.Collections = append(append([]Collection(nil), p.Collections...), Derive(spec, p.Derive, p.Collections)...)
+	}
 	return &Client{P: p, Spec: spec, Account: account, Token: token, HTTP: hc}
 }
 
@@ -112,7 +115,7 @@ func (c *Client) call(ctx context.Context, method, path string, body any) (any, 
 var nextRE = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
 
 // list reads every page of a collection.
-func (c *Client) list(ctx context.Context, path string) ([]map[string]any, error) {
+func (c *Client) list(ctx context.Context, path, array string) ([]map[string]any, error) {
 	var out []map[string]any
 	sep := "?"
 	if strings.Contains(path, "?") {
@@ -125,6 +128,9 @@ func (c *Client) list(ctx context.Context, path string) ([]map[string]any, error
 			return nil, err
 		}
 		items, _ := v.([]any)
+		if m, ok := v.(map[string]any); ok && array != "" {
+			items, _ = m[array].([]any)
+		}
 		for _, it := range items {
 			if m, ok := it.(map[string]any); ok {
 				out = append(out, m)
@@ -165,6 +171,18 @@ type item struct {
 	masked []string
 }
 
+// itemName is what names an item in a snapshot.
+func itemName(col *Collection, raw map[string]any) string {
+	if col.Singleton {
+		return "settings"
+	}
+	var names []string
+	for _, f := range col.Name {
+		names = append(names, stringOf(field(raw, f)))
+	}
+	return strings.Join(names, " ")
+}
+
 func (it *item) fullName() string {
 	if it.parent != nil {
 		return it.parent.fullName() + "/" + it.name
@@ -174,9 +192,9 @@ func (it *item) fullName() string {
 
 // writes is everything a collection's writes accept.
 func (c *Client) writes(col *Collection) *Fields {
-	fs := []*Fields{c.Spec.RequestFields(col.Create, "POST")}
+	fs := []*Fields{c.Spec.RequestFields(col.Create, col.createMethod())}
 	if col.Update != "" {
-		fs = append(fs, c.Spec.RequestFields(col.Update, "PATCH"))
+		fs = append(fs, c.Spec.RequestFields(col.Update, col.updateMethod()))
 	}
 	return union(fs...)
 }
@@ -203,10 +221,27 @@ func (c *Client) inventory(ctx context.Context) ([]*item, []snapshot.Coverage, e
 			if !ok {
 				return nil, nil, fmt.Errorf("%s: cannot fill %s", col.Kind, col.List)
 			}
-			items, err := c.list(ctx, path)
+			var items []map[string]any
+			var err error
+			if col.Singleton {
+				var v any
+				if v, _, err = c.do(ctx, "GET", path, nil); err == nil {
+					m, _ := v.(map[string]any)
+					items = []map[string]any{m}
+				}
+			} else {
+				items, err = c.list(ctx, path, col.Array)
+			}
 			if err != nil {
 				if c.unavailable(err) {
 					cv.NotCaptured = "not available on this account's plan: " + err.Error()
+					continue
+				}
+				// GitHub answers 404 both for "not enabled" (Pages) and for
+				// "not visible to this token", to hide what exists. Not a
+				// failure, and not proof of absence: said as such.
+				if errors.Is(err, ErrNotFound) {
+					cv.NotCaptured = "not found: not enabled here, or not visible to this token"
 					continue
 				}
 				cv.NotCaptured = "list failed: " + err.Error()
@@ -226,14 +261,8 @@ func (c *Client) inventory(ctx context.Context) ([]*item, []snapshot.Coverage, e
 					raw, _ = full.(map[string]any)
 				}
 				it := &item{col: col, raw: raw, parent: p}
-				var names []string
-				for _, f := range col.Name {
-					names = append(names, stringOf(field(raw, f)))
-				}
-				it.name = strings.Join(names, " ")
-				kept, _ := keep(raw, w, "", &it.masked)
-				it.spec, _ = kept.(map[string]any)
-				it.spec = tokenize(it.spec, c.Account)
+				it.name = itemName(col, raw)
+				it.spec = c.specOf(col, w, raw, &it.masked)
 				byKind[col.Kind] = append(byKind[col.Kind], it)
 				all = append(all, it)
 				cv.Captured++
@@ -242,6 +271,25 @@ func (c *Client) inventory(ctx context.Context) ([]*item, []snapshot.Coverage, e
 		cov = append(cov, cv)
 	}
 	return all, cov, nil
+}
+
+// specOf is what a capture keeps of an item: what the writes accept, plus
+// the fields that name it. Those are identity even when no write body
+// carries them: GitHub creates an environment with PUT .../environments/
+// {environment_name}, so its name is in the path, not the body, and a
+// spec without it could not be restored.
+func (c *Client) specOf(col *Collection, w *Fields, raw map[string]any, masked *[]string) map[string]any {
+	kept, _ := keep(raw, w, "", masked)
+	spec, _ := kept.(map[string]any)
+	if spec == nil {
+		spec = map[string]any{}
+	}
+	for _, f := range col.Name {
+		if v := field(raw, f); v != nil && !strings.Contains(f, ".") {
+			spec[f] = v
+		}
+	}
+	return tokenize(spec, c.Account)
 }
 
 // tokenize replaces the account where it is structural, so a snapshot of
@@ -384,7 +432,17 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		if !ok {
 			return false, "cannot fill " + col.List
 		}
-		items, err := c.list(ctx, path)
+		var items []map[string]any
+		var err error
+		if col.Singleton {
+			var v any
+			if v, _, err = c.do(ctx, "GET", path, nil); err == nil {
+				m, _ := v.(map[string]any)
+				items = []map[string]any{m}
+			}
+		} else {
+			items, err = c.list(ctx, path, col.Array)
+		}
 		if err != nil {
 			return false, "cannot read the target: " + err.Error()
 		}
@@ -398,15 +456,9 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 					}
 				}
 			}
-			var names []string
-			for _, f := range col.Name {
-				names = append(names, stringOf(field(raw, f)))
-			}
 			it := &item{col: col, raw: raw}
-			kept, _ := keep(raw, w, "", &it.masked)
-			it.spec, _ = kept.(map[string]any)
-			it.spec = tokenize(it.spec, c.Account)
-			listed[lk][strings.Join(names, " ")] = it
+			it.spec = c.specOf(col, w, raw, &it.masked)
+			listed[lk][itemName(col, raw)] = it
 		}
 	}
 	if ex, ok := listed[lk][own]; ok {
@@ -414,31 +466,51 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		if canon(ex.spec) == canon(spec) {
 			return true, "already present and identical"
 		}
-		return false, "already exists and differs; StackDNA does not modify existing items"
+		if !col.Singleton {
+			return false, "already exists and differs; StackDNA does not modify existing items"
+		}
 	}
 
 	desired := rewrite(deepCopy(spec), func(s string) string { return strings.ReplaceAll(s, tokAccount, c.Account) }).(map[string]any)
 	vals := opt.Values[o.Kind()+"/"+full]
 	merge(desired, vals)
-	cf := c.Spec.RequestFields(col.Create, "POST")
+	cf := c.Spec.RequestFields(col.Create, col.createMethod())
 	body, _ := keep(desired, cf, "", new([]string))
-	path, ok := expand(col.Create, col.Bind, c.Account, parentRaw, nil)
+	// Required inputs no read returns (a secret's encrypted_value and
+	// key_id) must be supplied; sending the request without them would
+	// only be refused.
+	var need []string
+	bm, _ := body.(map[string]any)
+	for _, r := range c.Spec.Required(col.Create, col.createMethod()) {
+		if _, ok := bm[r]; !ok {
+			need = append(need, r)
+		}
+	}
+	if len(need) > 0 {
+		return false, "needs " + strings.Join(need, ", ") + ", which the API never returns; supply them with --values"
+	}
+	// A PUT-created item's path names it (environments/{environment_name}).
+	path, ok := expand(col.Create, col.Bind, c.Account, parentRaw, desired)
 	if !ok {
 		return false, "cannot fill " + col.Create
 	}
-	created, _, err := c.do(ctx, "POST", path, body)
+	created, _, err := c.do(ctx, col.createMethod(), path, body)
 	if err != nil {
 		return false, err.Error()
 	}
 	raw, _ := created.(map[string]any)
+	if col.Singleton {
+		targets[col.Kind+"|"+full] = desired
+		return true, "applied"
+	}
 	if col.Update != "" {
-		uf := c.Spec.RequestFields(col.Update, "PATCH")
+		uf := c.Spec.RequestFields(col.Update, col.updateMethod())
 		upd, _ := keep(desired, uf, "", new([]string))
 		up, ok := expand(col.Update, col.Bind, c.Account, parentRaw, raw)
 		if !ok {
 			return false, "created, but cannot fill " + col.Update
 		}
-		if updated, _, err := c.do(ctx, "PATCH", up, upd); err != nil {
+		if updated, _, err := c.do(ctx, col.updateMethod(), up, upd); err != nil {
 			return false, "created, but its settings were not applied: " + err.Error()
 		} else if m, ok := updated.(map[string]any); ok {
 			raw = m

@@ -66,6 +66,8 @@ func TestGitHubDrill(t *testing.T) {
 			APIVersion + "|github/label||shop/priority",
 			APIVersion + "|github/webhook||shop/https://ci.example.com/hook",
 			APIVersion + "|github/ruleset||shop/protect-main",
+			// Derived from the description, not listed in code.
+			APIVersion + "|github/repo/actions/permissions||shop/settings",
 		},
 	})
 	repo := dst.colls["/orgs/acme-dst/repos"][0]
@@ -113,6 +115,60 @@ func TestPlanUnavailableIsNotAFailure(t *testing.T) {
 		}
 		if strings.HasPrefix(c.NotCaptured, "list failed") {
 			t.Errorf("%s reported as a failure: %s", c.Kind, c.NotCaptured)
+		}
+	}
+}
+
+// Collections derived from GitHub's description: a wrapped list created by
+// POST (variables), one created by PUT to its item path (environments), a
+// singleton (Actions permissions) and secrets, whose values no read returns.
+func TestGitHubDerivedDrill(t *testing.T) {
+	s := spec(t, "github.json")
+	src, dst := newFake(t, GitHub, s, "acme-src"), newFake(t, GitHub, s, "acme-dst")
+	dst.others = []string{"acme-src"}
+	gitHub(src)
+	gitHub(dst)
+	src.seed(t, "/orgs/acme-src/repos", map[string]any{"name": "shop"})
+	src.seed(t, "/repos/acme-src/shop/actions/variables", map[string]any{"name": "REGION", "value": "eu-west-1"})
+	c := src.client(false)
+	for _, put := range []struct {
+		path string
+		body map[string]any
+	}{
+		{"/repos/acme-src/shop/environments/production", map[string]any{"wait_timer": 30}},
+		{"/repos/acme-src/shop/actions/permissions", map[string]any{"enabled": true, "allowed_actions": "selected"}},
+		{"/repos/acme-src/shop/actions/secrets/DEPLOY_KEY", map[string]any{"encrypted_value": "c2VhbGVk", "key_id": "k1"}},
+	} {
+		if _, _, err := c.do(t.Context(), "PUT", put.path, put.body); err != nil {
+			t.Fatalf("seed %s: %v", put.path, err)
+		}
+	}
+	vals := map[string]map[string]any{"github/repo/actions/secrets/shop/DEPLOY_KEY": {"encrypted_value": "c2VhbGVk-for-dst", "key_id": "k2"}}
+	snap := drilltest.Run(t, drilltest.Spec{
+		Source: &Adapter{Client: src.client(true)},
+		Target: &Adapter{Client: dst.client(false), Options: RestoreOptions{Values: vals}},
+		ExpectKeys: []string{
+			APIVersion + "|github/repository||shop",
+			APIVersion + "|github/label||shop/bug",
+			APIVersion + "|github/label||shop/enhancement",
+			APIVersion + "|github/repo/actions/variables||shop/REGION",
+			APIVersion + "|github/repo/environments||shop/production",
+			APIVersion + "|github/repo/actions/permissions||shop/settings",
+			APIVersion + "|github/repo/actions/secrets||shop/DEPLOY_KEY",
+		},
+	})
+	for _, o := range snap.Objects {
+		if strings.Contains(canon(o.Body), "c2VhbGVk") {
+			t.Errorf("%s holds the secret's encrypted value", o.Key())
+		}
+	}
+	// Without the value, the secret is not sent half-made: the result says
+	// what the API never returns.
+	empty := newFake(t, GitHub, s, "acme-empty")
+	gitHub(empty)
+	for _, r := range (&Adapter{Client: empty.client(false)}).Restore(context.Background(), snap) {
+		if strings.Contains(r.Key, "actions/secrets") && (r.OK || !strings.Contains(r.Detail, "needs encrypted_value, key_id")) {
+			t.Errorf("secret restored without its value: ok=%v %s", r.OK, r.Detail)
 		}
 	}
 }

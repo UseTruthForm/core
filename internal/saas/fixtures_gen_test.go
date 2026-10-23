@@ -24,14 +24,27 @@ func TestRegenerateFixtures(t *testing.T) {
 		}
 		d := full.doc
 		paths := map[string][]string{}
-		for _, c := range p.Collections {
+		cols := p.Collections
+		if p.Derive != nil {
+			// A chosen few derived collections, one of each shape: a
+			// wrapped list created by POST (variables), one created by PUT
+			// (environments, secrets) and a singleton (permissions).
+			want := map[string]bool{"github/repo/actions/variables": true, "github/repo/environments": true,
+				"github/repo/actions/secrets": true, "github/repo/actions/permissions": true}
+			for _, c := range Derive(full, p.Derive, p.Collections) {
+				if want[c.Kind] {
+					cols = append(cols, c)
+				}
+			}
+		}
+		for _, c := range cols {
 			paths[c.List] = append(paths[c.List], "get")
-			paths[c.Create] = append(paths[c.Create], "post")
+			paths[c.Create] = append(paths[c.Create], strings.ToLower(c.createMethod()))
 			if c.Get != "" {
 				paths[c.Get] = append(paths[c.Get], "get")
 			}
 			if c.Update != "" {
-				paths[c.Update] = append(paths[c.Update], "patch")
+				paths[c.Update] = append(paths[c.Update], strings.ToLower(c.updateMethod()))
 			}
 		}
 		out := map[string]any{"openapi": d["openapi"], "info": d["info"], "servers": d["servers"], "paths": map[string]any{}}
@@ -68,8 +81,10 @@ func TestRegenerateFixtures(t *testing.T) {
 			ms := paths[path]
 			sort.Strings(ms)
 			for _, m := range ms {
-				kept[m] = pi[m]
-				walk(pi[m])
+				if pi[m] != nil {
+					kept[m] = pi[m]
+					walk(pi[m])
+				}
 			}
 			if ps, ok := pi["parameters"]; ok {
 				kept["parameters"] = ps

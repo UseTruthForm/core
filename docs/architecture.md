@@ -543,6 +543,22 @@ Everything else comes from the description:
 |---|---|
 | GitHub: repositories, labels, webhooks, rulesets | A fake drill. Plus a real read-only capture of the StackDNA organisation: 2 repositories, 19 labels, rulesets correctly "not available on this plan", complete |
 | Cloudflare: zones, DNS records | A fake drill only; no API token on the dev machine |
+| GitHub, derived (Actions settings, variables, secrets, environments, org issue fields, code-security configurations, ...) | A derived drill. Plus a real capture of StackDNA: 36 items across 18 collections; 10 organisation collections need an org-admin token |
+
+**GitHub's collections are derived, not listed.** The description tags
+every operation with a category. The descriptor names the configuration
+categories and the activity subcategories to leave out. A list `GET`
+(bare, or wrapped as `{total_count, variables: [...]}`) paired with its
+create (`POST` to it, or `PUT` to its item path) is a collection, and
+`GET` plus `PUT` on one path is a singleton setting. Over the full
+description that gives 37 collections; new API areas arrive with the
+description. Items named only by a server ID, or keyed by another
+resource's ID, are not portable and are left out.
+
+Secrets are captured as names only. A restore names the required inputs
+no read returns (`encrypted_value`, `key_id`) unless they are supplied.
+GitHub answers 404 both for "not enabled" and for "not visible to this
+token", and the report says exactly that.
 
 The fakes serve both providers over HTTP, from the descriptor and the
 description: they route by the spec's templates, refuse unknown body

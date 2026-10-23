@@ -44,6 +44,12 @@ type PatchOp struct {
 // by design, not as a failure: a region without a service has nothing in it.
 var ErrUnsupported = errors.New("type not available in this account or region")
 
+// ErrNotAccepted marks a write AWS refused for throttling before accepting
+// it: nothing was started, so sending it again is safe. Any other error,
+// a throttled status poll included, may follow a request AWS did accept,
+// and sending that again could create a second resource.
+var ErrNotAccepted = errors.New("refused before AWS accepted it")
+
 // ErrNotFound means the identifier does not exist.
 var ErrNotFound = errors.New("resource not found")
 

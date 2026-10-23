@@ -121,7 +121,7 @@ func (s *SDK) Create(ctx context.Context, typeName string, desired map[string]an
 	}
 	out, err := s.c.CreateResource(ctx, &cloudcontrol.CreateResourceInput{TypeName: &typeName, DesiredState: aws.String(string(b))})
 	if err != nil {
-		return "", classify(err)
+		return "", notAccepted(classify(err))
 	}
 	return s.await(ctx, typeName, "create", out.ProgressEvent)
 }
@@ -134,7 +134,7 @@ func (s *SDK) Update(ctx context.Context, typeName, identifier string, patch []P
 	}
 	out, err := s.c.UpdateResource(ctx, &cloudcontrol.UpdateResourceInput{TypeName: &typeName, Identifier: &identifier, PatchDocument: aws.String(string(b))})
 	if err != nil {
-		return classify(err)
+		return notAccepted(classify(err))
 	}
 	_, err = s.await(ctx, typeName, "update", out.ProgressEvent)
 	return err
@@ -166,10 +166,26 @@ func (s *SDK) await(ctx context.Context, typeName, op string, ev *types.Progress
 		}
 		st, err := s.c.GetResourceRequestStatus(ctx, &cloudcontrol.GetResourceRequestStatusInput{RequestToken: ev.RequestToken})
 		if err != nil {
+			// The request was accepted; a throttled poll is only a read,
+			// so it is polled again (the deadline still bounds it). Given
+			// up on, a throttled poll read like a throttled submission and
+			// the create was sent a second time (review of #19).
+			if isThrottle(err) {
+				continue
+			}
 			return "", fmt.Errorf("%s %s: polling request %s: %w", typeName, op, aws.ToString(ev.RequestToken), err)
 		}
 		ev = st.ProgressEvent
 	}
+}
+
+// notAccepted marks a submission refused for throttling as safe to send
+// again.
+func notAccepted(err error) error {
+	if isThrottle(err) {
+		return fmt.Errorf("%w: %v", ErrNotAccepted, err)
+	}
+	return err
 }
 
 func classify(err error) error {

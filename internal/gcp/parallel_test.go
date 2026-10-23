@@ -47,3 +47,22 @@ func TestParallelRestoreMatchesSequential(t *testing.T) {
 	}
 	t.Logf("one at a time %v, eight at once %v", slow, fast)
 }
+
+// --parallel reaches the restore: one worker is one create at a time.
+func TestParallelFlagReachesRestore(t *testing.T) {
+	docs := fixtures(t)
+	w := NewWorld(docs)
+	src, dst := w.Project(srcProject, "111111111111"), w.Project(dstProject, "222222222222")
+	seedShop(t, src)
+	snap, err := (&Adapter{API: src, Docs: docs}).Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst.WriteDelay = 30 * time.Millisecond
+	a := &Adapter{API: dst, Docs: docs, Policy: Policy{Parallel: 1}}
+	start := time.Now()
+	res := a.Restore(context.Background(), snap)
+	if took, min := time.Since(start), time.Duration(len(res))*dst.WriteDelay; took < min {
+		t.Errorf("--parallel 1 restored %d objects in %v, less than one at a time (%v)", len(res), took, min)
+	}
+}

@@ -390,5 +390,14 @@ func (a *Adapter) Capture(ctx context.Context) (snapshot.Snapshot, error) {
 
 // Restore restores a snapshot into the project.
 func (a *Adapter) Restore(ctx context.Context, s snapshot.Snapshot) []snapshot.Result {
-	return Restore(ctx, a.API, a.Docs, s, a.Options)
+	return restoreWith(ctx, a.API, a.Docs, s, a.Options, workers(a.Policy.Parallel))
+}
+
+// workers is --parallel for a restore: it was taken by capture only, so
+// "--parallel 1" still ran eight creates at once (review of #19).
+func workers(n int) int {
+	if n <= 0 {
+		return 8
+	}
+	return n
 }

@@ -141,16 +141,21 @@ func (v *values) set(k string, p map[string]any) {
 }
 
 // submitted retries a write refused for throttling before AWS accepted it:
-// with many creates at once, the account's rate is shared. Only the
-// submission is retried: a request AWS accepted and then FAILED inside its
-// handler may have done part of its work, and is reported, not repeated.
+// with many creates at once, the account's rate is shared. Only that is
+// retried (ErrNotAccepted): a request AWS accepted may be in progress or
+// have done part of its work, and is reported, never sent again. Judging by
+// the message alone resent a create whose status poll had been throttled.
+// submitBackoff is the first wait between refused submissions (doubling
+// to 64 times it). A variable so a test need not wait.
+var submitBackoff = time.Second
+
 func submitted(ctx context.Context, f func() error) error {
 	for attempt := 0; ; attempt++ {
 		err := f()
-		if err == nil || !isThrottle(err) || strings.Contains(err.Error(), " FAILED") || attempt == throttleRetries {
+		if err == nil || !errors.Is(err, ErrNotAccepted) || attempt == throttleRetries {
 			return err
 		}
-		wait := time.Duration(1<<min(attempt, 6)) * time.Second
+		wait := time.Duration(1<<min(attempt, 6)) * submitBackoff
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

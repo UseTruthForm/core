@@ -34,12 +34,12 @@ func buildKubernetes(r Request) (Plan, error) {
 	if !ok {
 		return Plan{}, fmt.Errorf("--subject: %q is not User:NAME, Group:NAME or ServiceAccount:NAMESPACE/NAME", r.Subject)
 	}
-	role, verbs := "stackdna-reader", `"get", "list"`
+	role := "stackdna-reader"
 	if r.Access == "restore" {
-		role, verbs = "stackdna-restorer", `"get", "list", "create", "patch", "update"`
+		role = "stackdna-restorer"
 	}
-	b, err := render("stackdna-kubernetes.yaml.tmpl", map[string]string{
-		"Name": role, "Verbs": verbs, "SubjectKind": kind, "SubjectName": name, "SubjectNamespace": ns})
+	b, err := render("stackdna-kubernetes.yaml.tmpl", map[string]any{
+		"Name": role, "Restore": r.Access == "restore", "SubjectKind": kind, "SubjectName": name, "SubjectNamespace": ns})
 	if err != nil {
 		return Plan{}, err
 	}
@@ -47,13 +47,13 @@ func buildKubernetes(r Request) (Plan, error) {
 	kc := func(a ...string) string { return cmd(append([]string{"kubectl", "--context", r.Context}, a...)...) }
 	p := Plan{Files: map[string][]byte{"stackdna-kubernetes.yaml": b}}
 	if r.Access == "restore" {
-		p.Grants = []string{"ClusterRole " + role + ": get, list, create, patch and update on every resource, bound to " + r.Subject}
-		p.Warnings = []string{"Restore access writes to every resource in the cluster, RBAC included. Grant it for the restore and remove it afterwards."}
-		p.Status = "Expected. Restores have run as cluster-admin."
+		p.Grants = []string{"The built-in ClusterRole cluster-admin, bound to " + r.Subject + " as " + role}
+		p.Warnings = []string{"This is cluster-admin: everything in the cluster. A restore recreates Roles and bindings, and Kubernetes lets an identity grant only what it holds, so nothing narrower can restore RBAC. Grant it for the restore and remove it afterwards."}
+		p.Status = "Expected. Restores have run as cluster-admin, on kind clusters and test API servers."
 	} else {
-		p.Grants = []string{"ClusterRole " + role + ": get and list on every resource, bound to " + r.Subject,
-			"That includes reading Secret values. A snapshot never holds them, but the subject can read them."}
-		p.Status = "Verified on every test run (TestKubernetesGrantLetsACaptureReadAndNothingElse): on a real API server with RBAC, a service account bound by exactly this file captured every type, Secrets included, was refused a write, and was refused again once the file was deleted. Not yet run on a managed cluster (EKS, AKS, GKE)."
+		p.Grants = []string{"ClusterRole " + role + ": list on every resource, cluster-wide, and nothing else (no get, so no subresources such as pods/exec or nodes/proxy), bound to " + r.Subject,
+			"list returns Secret values. A snapshot never holds them, but the subject can read them."}
+		p.Status = "Verified on every test run (TestKubernetesGrantLetsACaptureReadAndNothingElse): on a real API server with RBAC, a service account bound by exactly this file captured every type, Secrets included, was refused a write, get on pods/exec and nodes/proxy, and a service account token, and was refused reads again once the file was deleted. Not yet run on a managed cluster (EKS, AKS, GKE)."
 	}
 	p.Before = []Step{
 		{Title: "Check nothing of this name is there already (expect NotFound for both)", Command: kc("get", "clusterrole,clusterrolebinding", role)},
@@ -68,6 +68,9 @@ func buildKubernetes(r Request) (Plan, error) {
 	}
 	if as != "" {
 		p.Verify = append(p.Verify, Step{Title: "Ask the cluster whether the subject may now list every resource (expect yes)", Command: kc("auth", "can-i", "list", "*", "--all-namespaces", "--as", as)})
+		if r.Access != "restore" {
+			p.Verify = append(p.Verify, Step{Title: "And that it cannot open a shell in a pod (expect no)", Command: kc("auth", "can-i", "get", "pods/exec", "--all-namespaces", "--as", as)})
+		}
 	}
 	p.Verify = append(p.Verify, Step{Title: "With a context that authenticates as " + r.Subject + ", check what it can read: stackdna check --context with that context's name"})
 	p.Undo = []Step{

@@ -81,11 +81,12 @@ func buildAWS(r Request) (Plan, error) {
 	}
 	p.Grants = []string{fmt.Sprintf("IAM role %s in account %s, %s, holding AWS's managed ReadOnlyAccess", roleARN, r.Account, trust)}
 	if r.Access == "restore" {
-		p.Grants = append(p.Grants, "and AWS's managed PowerUserAccess: create and change every service's resources except IAM and Organizations")
+		p.Grants = append(p.Grants, "and AWS's managed PowerUserAccess: create, change and delete every service's resources except IAM and Organizations, and create service-linked roles")
 		p.Warnings = append(p.Warnings, "Restore access writes. Grant it for the restore and remove it afterwards; capture and diff need only the capture role.",
 			"IAM roles and policies in a snapshot are not restorable with this role: add an IAM grant scoped to the names being restored (docs/permissions.md).")
 	} else {
 		p.Grants = append(p.Grants, "Nothing that writes. Run StackDNA's capture-only binary with it too: one that cannot send a write at all.")
+		p.Warnings = append(p.Warnings, "ReadOnlyAccess reads data as well as configuration: S3 objects, DynamoDB items, queue messages. StackDNA reads configuration only and never writes data to a snapshot, but whoever holds this role could read the data.")
 	}
 	if r.Access == "restore" {
 		p.Status = "Expected. PowerUserAccess restored the drill's 14 types, held by a user, not through this role."

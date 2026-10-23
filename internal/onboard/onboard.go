@@ -19,6 +19,7 @@ package onboard
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -127,6 +128,12 @@ var (
 	dnsLabelRE   = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	orgRE        = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$`)
 	cfAccountRE  = regexp.MustCompile(`^[0-9a-f]{32}$`)
+	// A directory is named in the commands, quoted only when it holds a
+	// space. Anything wider was injectable: az is a batch file on Windows,
+	// and cmd.exe ran "whoami" from a directory named x&whoami; PowerShell
+	// ends a single-quoted string at a typographic quote too (review of
+	// #23).
+	dirRE = regexp.MustCompile(`^[A-Za-z0-9 _./\\:-]+$`)
 )
 
 // Build makes the plan for a request.
@@ -145,8 +152,8 @@ func Build(r Request) (Plan, error) {
 	if r.Platform == "gcp" && r.Dir == "." {
 		r.Dir = "stackdna-gcp"
 	}
-	if strings.ContainsAny(r.Dir, "'\n\r") {
-		return Plan{}, fmt.Errorf("--write: a directory whose name holds a quote or a line break cannot be named safely in a command")
+	if !dirRE.MatchString(r.Dir) {
+		return Plan{}, fmt.Errorf(`--write: %q holds a character that cannot be named safely in a command; use letters, digits, spaces and _ . / \ : -`, r.Dir)
 	}
 	var p Plan
 	var err error
@@ -250,7 +257,11 @@ func render(name string, data any) ([]byte, error) {
 	if !strings.HasSuffix(name, ".tmpl") {
 		return b, nil
 	}
-	t, err := template.New(name).Option("missingkey=error").Parse(string(b))
+	q := func(s string) (string, error) {
+		b, err := json.Marshal(s)
+		return string(b), err
+	}
+	t, err := template.New(name).Option("missingkey=error").Funcs(template.FuncMap{"q": q}).Parse(string(b))
 	if err != nil {
 		return nil, err
 	}

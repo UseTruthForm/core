@@ -88,7 +88,7 @@ func Allowed(req *http.Request) (bool, string) {
 	// AWS STS (GetCallerIdentity, AssumeRole for profiles) and SSO
 	// credential exchange.
 	if strings.HasPrefix(host, "sts.") && strings.HasSuffix(host, ".amazonaws.com") ||
-		strings.HasPrefix(host, "portal.sso.") || strings.HasPrefix(host, "oidc.") && strings.HasSuffix(host, ".amazonaws.com") {
+		(strings.HasPrefix(host, "portal.sso.") || strings.HasPrefix(host, "oidc.")) && strings.HasSuffix(host, ".amazonaws.com") {
 		return true, ""
 	}
 	// "aws login" sessions refresh at the sign-in service's token
@@ -120,8 +120,9 @@ func Allowed(req *http.Request) (bool, string) {
 			return false, "IAM action " + action + " is not a known read"
 		}
 		// Google's reads that are POSTs by design: Resource Manager's
-		// getIamPolicy reads a policy.
-		if strings.HasSuffix(req.URL.Path, ":getIamPolicy") {
+		// getIamPolicy reads a policy. Google's hosts only: the suffix
+		// alone let a POST to any host through (review of #23).
+		if strings.HasSuffix(host, ".googleapis.com") && strings.HasSuffix(req.URL.Path, ":getIamPolicy") {
 			return true, ""
 		}
 	}
@@ -132,18 +133,32 @@ func isIAMHost(h string) bool {
 	return h == "iam.amazonaws.com" || strings.HasPrefix(h, "iam.") && (strings.HasSuffix(h, ".amazonaws.com") || strings.HasSuffix(h, ".amazonaws.com.cn"))
 }
 
-// formAction is the Action of a Query API request. It is read from the
-// body only: an Action in the query string as well could be the one the
-// service acts on, so a request carrying one is refused (no Action read).
-// The body is put back for sending.
+// maxBody bounds the body read to find an IAM action. IAM's reads are a
+// few hundred bytes; a larger body is refused, never cut short.
+const maxBody = 1 << 20
+
+// formAction is the one Action of a Query API request, read from the body.
+// Any second Action, in the body or the query string, in any letter case
+// or percent-encoding, makes it "": which one IAM would act on is not the
+// guard's to guess, and taking the first let "Action=GetRole&action=
+// CreateUser" through (review of #23). The body is put back for sending.
 func formAction(req *http.Request) (string, error) {
-	if req.URL.Query().Has("Action") || req.Body == nil {
+	n := 0
+	for k, vs := range req.URL.Query() {
+		if strings.EqualFold(k, "action") {
+			n += len(vs)
+		}
+	}
+	if n > 0 || req.Body == nil {
 		return "", nil
 	}
-	b, err := io.ReadAll(io.LimitReader(req.Body, 1<<20))
+	b, err := io.ReadAll(io.LimitReader(req.Body, maxBody+1))
 	req.Body.Close()
 	if err != nil {
 		return "", err
+	}
+	if len(b) > maxBody {
+		return "", fmt.Errorf("body over %d bytes", maxBody)
 	}
 	req.Body = io.NopCloser(bytes.NewReader(b))
 	req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(b)), nil }
@@ -151,7 +166,17 @@ func formAction(req *http.Request) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return v.Get("Action"), nil
+	action := ""
+	for k, vs := range v {
+		if strings.EqualFold(k, "action") {
+			n += len(vs)
+			action = vs[0]
+		}
+	}
+	if n != 1 {
+		return "", nil
+	}
+	return action, nil
 }
 
 // redact drops the query string, which can carry tokens.

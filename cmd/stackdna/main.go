@@ -51,7 +51,7 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN):
   stackdna capture --platform cloudflare --account <account-id> --out <dir>
   stackdna restore --platform github --account <org> --from <dir> [--values <file>] [--update]
 
-Machine-readable: add --json to capture, diff, restore or compare; stdout is then
+Machine-readable: add --json to capture, diff, restore, compare, check or permissions; stdout is then
 one JSON document (everything else goes to stderr) and the exit code is unchanged.
 
 Access (what to grant, and what a grant can read):

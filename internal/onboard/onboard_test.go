@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -25,6 +26,8 @@ func full() map[string]Request {
 	}
 }
 
+var shellSafe = regexp.MustCompile(`^[A-Za-z0-9_/:=+-]+$`)
+
 // args splits a command line the way both shells would: single quotes
 // group, nothing else does.
 func args(t *testing.T, line string) []string {
@@ -44,7 +47,10 @@ func args(t *testing.T, line string) []string {
 			continue
 		}
 		tok, rest, _ := strings.Cut(line, " ")
-		if !safeArg.MatchString(tok) {
+		// Its own copy of what is safe unquoted, not safeArg: checking
+		// safeArg against itself let a widened safeArg pass (review of
+		// #23).
+		if !shellSafe.MatchString(tok) {
 			t.Errorf("unquoted %q is not safe in both shells (in %q)", tok, line)
 		}
 		out = append(out, tok)
@@ -60,6 +66,10 @@ func TestCommandsHaveNoPlaceholdersAndSurviveBothShells(t *testing.T) {
 	for name, r := range full() {
 		for _, access := range []string{"capture", "restore"} {
 			r.Access = access
+			// And with a directory that needs quoting.
+			if access == "restore" {
+				r.Dir = "my grants"
+			}
 			p, err := Build(r)
 			if err != nil {
 				t.Fatalf("%s %s: %v", name, access, err)
@@ -177,9 +187,11 @@ func TestKubernetesManifest(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(docs[1]), &binding); err != nil {
 		t.Fatal(err)
 	}
+	// list only: get on "*" covered pods/exec and nodes/proxy (review
+	// of #23).
 	verbs := role["rules"].([]any)[0].(map[string]any)["verbs"].([]any)
-	if len(verbs) != 2 || verbs[0] != "get" || verbs[1] != "list" {
-		t.Errorf("capture is get and list only, got %v", verbs)
+	if len(verbs) != 1 || verbs[0] != "list" || len(role["rules"].([]any)) != 1 {
+		t.Errorf("capture is list only, got %v", role["rules"])
 	}
 	sub := binding["subjects"].([]any)[0].(map[string]any)
 	if sub["kind"] != "ServiceAccount" || sub["name"] != "reader" || sub["namespace"] != "stackdna" || sub["apiGroup"] != nil {

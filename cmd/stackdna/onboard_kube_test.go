@@ -9,6 +9,7 @@ import (
 	"time"
 
 	authv1 "k8s.io/api/authentication/v1"
+	authzv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -89,9 +90,11 @@ func TestKubernetesGrantLetsACaptureReadAndNothingElse(t *testing.T) {
 
 	check := func() readCheck {
 		snap, err := captureTarget(ctx, Target{Platform: "kubernetes", Kubeconfig: asReader, Context: s.Context})
+		// Any other error is not a refusal: the test accepted one before
+		// (review of #23).
 		if err != nil {
 			t.Logf("capture as the reader: %v", err)
-			return readCheck{Denied: []string{err.Error()}}
+			return readCheck{Failed: []string{err.Error()}}
 		}
 		return classify(snap)
 	}
@@ -109,7 +112,10 @@ func TestKubernetesGrantLetsACaptureReadAndNothingElse(t *testing.T) {
 		return rc
 	}
 
-	until("refused before the grant", func(rc readCheck) bool { return len(rc.Denied) > 0 })
+	refused := func(rc readCheck) bool {
+		return len(rc.Denied) > 0 && strings.Contains(strings.Join(rc.Denied, "\n"), "forbidden")
+	}
+	until("refused before the grant", refused)
 
 	for _, u := range objs {
 		if _, err := admin.Dynamic.Resource(gvr[u.GetKind()]).Create(ctx, u, metav1.CreateOptions{}); err != nil {
@@ -132,6 +138,37 @@ func TestKubernetesGrantLetsACaptureReadAndNothingElse(t *testing.T) {
 		t.Error("the seeded ConfigMap is not in the reader's capture")
 	}
 
+	// The cluster's own answer for what the grant must not give. get on
+	// "*" covered pods/exec and nodes/proxy, and the restore role could
+	// mint tokens (review of #23).
+	for _, c := range []struct {
+		verb, resource, sub string
+		want                bool
+	}{
+		{"list", "secrets", "", true},
+		{"list", "pods", "", true},
+		{"get", "secrets", "", false},
+		{"get", "pods", "exec", false},
+		{"create", "pods", "exec", false},
+		{"get", "nodes", "proxy", false},
+		{"get", "services", "proxy", false},
+		{"create", "serviceaccounts", "token", false},
+		{"watch", "pods", "", false},
+		{"delete", "configmaps", "", false},
+	} {
+		sar, err := cs.AuthorizationV1().SubjectAccessReviews().Create(ctx, &authzv1.SubjectAccessReview{Spec: authzv1.SubjectAccessReviewSpec{
+			User:               "system:serviceaccount:stackdna:reader",
+			Groups:             []string{"system:serviceaccounts", "system:serviceaccounts:stackdna", "system:authenticated"},
+			ResourceAttributes: &authzv1.ResourceAttributes{Verb: c.verb, Resource: c.resource, Subresource: c.sub},
+		}}, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sar.Status.Allowed != c.want {
+			t.Errorf("%s %s/%s: allowed=%v, want %v", c.verb, c.resource, c.sub, sar.Status.Allowed, c.want)
+		}
+	}
+
 	// Writes are refused by the cluster itself, not only by StackDNA's
 	// guard: this client has no guard.
 	reader, err := kube.Connect(asReader, s.Context, false)
@@ -150,6 +187,6 @@ func TestKubernetesGrantLetsACaptureReadAndNothingElse(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	until("refused again after the undo", func(rc readCheck) bool { return len(rc.Denied) > 0 })
+	until("refused again after the undo", refused)
 	_ = os.Remove(asReader)
 }

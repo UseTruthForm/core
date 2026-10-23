@@ -79,7 +79,8 @@ func GCP(ctx context.Context, project, access string) (Report, error) {
 	var info struct {
 		Email string `json:"email"`
 	}
-	if err := do("GET", "https://oauth2.googleapis.com/tokeninfo?access_token="+url.QueryEscape(tok.AccessToken), &info); err == nil && info.Email != "" {
+	infoErr := do("GET", "https://oauth2.googleapis.com/tokeninfo?access_token="+url.QueryEscape(tok.AccessToken), &info)
+	if infoErr == nil && info.Email != "" {
 		r.Who = info.Email
 		if member == "" {
 			member = "user:" + info.Email
@@ -92,7 +93,11 @@ func GCP(ctx context.Context, project, access string) (Report, error) {
 		r.fact("Token expires " + tok.Expiry.UTC().Format("2006-01-02 15:04 MST"))
 	}
 	if member == "" {
-		r.unchecked("Roles held: the token does not say whose it is")
+		why := "the token does not say whose it is"
+		if infoErr != nil {
+			why = "asking whose the token is failed: " + infoErr.Error()
+		}
+		r.unchecked("Roles held: " + why)
 		return r, nil
 	}
 	var pol struct {

@@ -66,8 +66,8 @@ in the project, as must each API whose resources are captured.
 
 | Use | Grant | Status |
 |---|---|---|
-| Capture, diff | `get`, `list` on every resource type to capture, cluster-wide. The built-in `view` ClusterRole leaves out Secrets: their values are never captured anyway, but without `list` on them their existence is not either. | **Verified** on every test run: on a real API server with RBAC, a service account bound by exactly the ClusterRole `stackdna permissions` writes captured every type, was refused a write, and was refused reads again once the grant was deleted. Not yet run on a managed cluster. |
-| Restore | Create and patch (server-side apply) on every type restored. | Verified with cluster-admin on kind clusters. |
+| Capture, diff | `list` on every resource type, cluster-wide, and nothing else. Not `get`: on `*` it covers subresources too, and `get` on `nodes/proxy` reaches the kubelet API and on `pods/exec` can open a shell. The built-in `view` ClusterRole leaves out Secrets: their values are never captured anyway, but without `list` on them their existence is not either. `list` does return their values to whoever holds the role. | **Verified** on every test run: on a real API server with RBAC, a service account bound by exactly the ClusterRole `stackdna permissions` writes captured every type; the cluster refused it `get` on Secrets, `pods/exec`, `nodes/proxy` and `services/proxy`, a service account token and any write; and it was refused (forbidden) again once the grant was deleted. Not yet run on a managed cluster. |
+| Restore | `cluster-admin`. A restore recreates Roles and bindings, and Kubernetes lets an identity grant only what it holds, so a narrower role fails on the first Role with a verb it lacks. | Verified with cluster-admin on kind clusters. |
 
 ## GitHub
 

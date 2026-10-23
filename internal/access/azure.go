@@ -68,22 +68,29 @@ func Azure(ctx context.Context, subscription, access string) (Report, error) {
 	}
 	// assignedTo includes assignments through groups, at the subscription,
 	// above it and below it.
-	var list struct {
-		Value []struct {
-			Properties struct {
-				RoleDefinitionID string `json:"roleDefinitionId"`
-				Scope            string `json:"scope"`
-			} `json:"properties"`
-		} `json:"value"`
+	type assignment struct {
+		Properties struct {
+			RoleDefinitionID string `json:"roleDefinitionId"`
+			Scope            string `json:"scope"`
+		} `json:"properties"`
 	}
-	base := "https://management.azure.com/subscriptions/" + subscription
-	if err := get(base+"/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01&$filter="+url.QueryEscape("assignedTo('"+oid+"')"), &list); err != nil {
-		r.unchecked("Roles held in subscription " + subscription + ": " + err.Error())
-		return r, nil
+	var all []assignment
+	next := "https://management.azure.com/subscriptions/" + subscription + "/providers/Microsoft.Authorization/roleAssignments?api-version=2022-04-01&$filter=" + url.QueryEscape("assignedTo('"+oid+"')")
+	for next != "" {
+		var page struct {
+			Value    []assignment `json:"value"`
+			NextLink string       `json:"nextLink"`
+		}
+		if err := get(next, &page); err != nil {
+			r.unchecked("Roles held in subscription " + subscription + ": " + err.Error())
+			return r, nil
+		}
+		all = append(all, page.Value...)
+		next = page.NextLink
 	}
 	names := map[string]string{}
-	var held, extra []string
-	for _, a := range list.Value {
+	var roles []roleAt
+	for _, a := range all {
 		id := a.Properties.RoleDefinitionID
 		if _, ok := names[id]; !ok {
 			var d struct {
@@ -97,9 +104,27 @@ func Azure(ctx context.Context, subscription, access string) (Report, error) {
 				names[id] = d.Properties.RoleName
 			}
 		}
-		h := names[id] + " at " + scopeName(a.Properties.Scope, subscription)
+		roles = append(roles, roleAt{names[id], scopeName(a.Properties.Scope, subscription)})
+	}
+	judgeAzure(&r, roles, subscription, access)
+	return r, nil
+}
+
+type roleAt struct{ role, where string }
+
+// judgeAzure says what the roles held mean for a capture or a restore.
+func judgeAzure(r *Report, roles []roleAt, subscription, access string) {
+	var held, extra []string
+	// wide holds the roles held on the whole subscription (or above): only
+	// those reach every resource a capture lists.
+	wide := map[string]bool{}
+	for _, x := range roles {
+		h := x.role + " at " + x.where
 		held = append(held, h)
-		if !azureReadRoles[names[id]] {
+		if x.where == "the subscription" || x.where == "the tenant root" || strings.HasPrefix(x.where, "management group ") {
+			wide[x.role] = true
+		}
+		if !azureReadRoles[x.role] {
 			extra = append(extra, h)
 		}
 	}
@@ -107,19 +132,23 @@ func Azure(ctx context.Context, subscription, access string) (Report, error) {
 	sort.Strings(extra)
 	if len(held) == 0 {
 		r.warn("Holds no role in subscription " + subscription + ": a capture will read nothing")
-		return r, nil
+		return
 	}
 	r.fact("Roles (including through groups): " + strings.Join(held, "; "))
+	if len(wide) == 0 {
+		r.warn("Every role it holds is on a resource group or a resource, not the subscription: a capture lists the whole subscription and will see only what those reach, so everything else reads as empty. Grant Reader on the subscription.")
+	}
 	switch {
 	case access == "restore":
-		has := strings.Join(held, ";")
-		if !strings.Contains(has, "Owner at") && !(strings.Contains(has, "Contributor at") && strings.Contains(has, "User Access Administrator at")) {
-			r.warn("A restore needs Contributor and User Access Administrator (or Owner) on the subscription")
+		// Exact names, on the subscription or above: "Storage Blob Data
+		// Owner" and Owner of one resource group matched before (review of
+		// #23).
+		if !wide["Owner"] && !(wide["Contributor"] && wide["User Access Administrator"]) {
+			r.warn("A restore needs Contributor and User Access Administrator (or Owner) on the subscription itself")
 		}
 	case len(extra) > 0:
 		r.warn("Holds roles beyond reading (" + strings.Join(extra, "; ") + "): more than a capture needs. Capture as an identity holding Reader only, or at least with the capture-only binary.")
 	}
-	return r, nil
 }
 
 func scopeName(scope, sub string) string {

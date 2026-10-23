@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -74,12 +75,15 @@ func checkCmd(ctx context.Context, args []string) int {
 	printIdentity(id)
 	if capErr != nil {
 		fmt.Println("\nREADS")
-		if deniedRE.MatchString(capErr.Error()) {
+		if isDenied(capErr.Error()) {
 			fmt.Println("  DENIED: the capture could not start:", capErr)
 			fmt.Println("\nRESULT: this identity cannot capture", *platform, "(see stackdna permissions)")
 			return 3
 		}
 		return fail(capErr)
+	}
+	if err := typesMatched(snap, t.Types); err != nil {
+		return fail(err)
 	}
 	printReads(rc)
 	switch {
@@ -113,7 +117,22 @@ func identify(ctx context.Context, t Target, accessFor string) (access.Report, e
 // deniedRE matches the platforms' ways of saying "not allowed": AWS's
 // handlers, ARM's AuthorizationFailed, Google's PERMISSION_DENIED,
 // GitHub's org-admin and integration refusals, Kubernetes' forbidden.
-var deniedRE = regexp.MustCompile(`(?i)not authorized to perform|accessdenied|access denied|authorizationfailed|permission_denied|permission denied|\bforbidden\b|HTTP 40[13]\b|must be an org admin|must have admin|resource not accessible|insufficient permission|does not have authorization`)
+// Not 401: that is a credential that expired or is wrong, and calling it
+// a missing permission sent the reader to widen a grant (review of #23).
+var deniedRE = regexp.MustCompile(`(?i)not authorized to perform|accessdenied|access denied|authorizationfailed|permission_denied|permission denied|\bforbidden\b|HTTP 403\b|must be an org admin|must have admin|resource not accessible|insufficient permission|does not have authorization`)
+
+// rateRE is a 403 that is not about permission: GitHub answers its rate
+// limits with 403.
+var rateRE = regexp.MustCompile(`(?i)rate limit`)
+
+func isDenied(s string) bool { return deniedRE.MatchString(s) && !rateRE.MatchString(s) }
+
+// maybeDeniedRE finds reasons an adapter recorded as "by design" that a
+// missing permission can also produce: GitHub answers 404 both for an
+// unused feature and for one the token may not see, and some AWS handlers
+// word a refusal like a service that is not set up. These are listed as
+// unsure, never counted as fine (review of #23).
+var maybeDeniedRE = regexp.MustCompile(`(?i)not visible to this token|does not have access|could not assume|not authori[sz]ed`)
 
 type readCheck struct {
 	WithObjects int            `json:"typesWithResources"`
@@ -122,20 +141,47 @@ type readCheck struct {
 	Empty       int            `json:"typesReadEmpty"`
 	Denied      []string       `json:"denied"`
 	Failed      []string       `json:"failed"`
+	Unsure      []string       `json:"unsure"`
 	ByDesign    map[string]int `json:"notReadByDesign"`
 }
 
+const unreadable = "listed but could not be read"
+
 func classify(s snapshot.Snapshot) readCheck {
-	rc := readCheck{ByDesign: map[string]int{}, Objects: len(s.Objects), Skipped: countedSkips(s)}
+	rc := readCheck{ByDesign: map[string]int{}, Objects: len(s.Objects)}
+	// Skips on purpose, once per type. The adapters record a skip both in
+	// the type's coverage (some under the reason's first words) and in the
+	// skip list; adding the two counted Google-owned skips twice and denied
+	// reads as skipped on purpose (review of #23). The larger of the two
+	// counts is the type's, whichever an adapter keeps.
+	listed, refused := map[string]int{}, map[string]int{}
 	for _, sk := range s.Skips {
-		if !strings.HasPrefix(sk.Reason, "listed but could not be read") {
-			rc.Skipped++
+		if strings.HasPrefix(sk.Reason, unreadable) {
+			refused[sk.Resource]++
+			x := sk.Resource + " " + sk.Name + ": " + sk.Reason
+			if isDenied(sk.Reason) {
+				rc.Denied = append(rc.Denied, x)
+			} else {
+				rc.Failed = append(rc.Failed, x)
+			}
+			continue
 		}
+		listed[sk.Resource]++
 	}
 	for _, c := range s.Coverage {
+		onPurpose := 0
+		for r, n := range c.Skipped {
+			if !strings.HasPrefix(r, unreadable) {
+				onPurpose += n
+			}
+		}
+		onPurpose = max(onPurpose, listed[c.Resource])
+		rc.Skipped += onPurpose
 		switch {
-		case c.NotCaptured == "" && (c.Captured > 0 || len(c.Skipped) > 0):
+		case c.NotCaptured == "" && (c.Captured > 0 || onPurpose > 0):
 			rc.WithObjects++
+		case c.NotCaptured == "" && refused[c.Resource] > 0:
+			// Every item refused: listed under denied or failed, not empty.
 		case c.NotCaptured == "":
 			rc.Empty++
 		// Only a failure can be a denial. A 403 the capture already
@@ -143,30 +189,48 @@ func classify(s snapshot.Snapshot) readCheck {
 		// rulesets on a private repository on Free) was counted as one, and
 		// a grant would have been widened for a feature no grant can give.
 		case strings.HasPrefix(c.NotCaptured, "list failed") || strings.HasPrefix(c.NotCaptured, "API group discovery failed"):
-			if deniedRE.MatchString(c.NotCaptured) {
+			if isDenied(c.NotCaptured) {
 				rc.Denied = append(rc.Denied, c.Resource+": "+c.NotCaptured)
 			} else {
 				rc.Failed = append(rc.Failed, c.Resource+": "+c.NotCaptured)
 			}
+		case maybeDeniedRE.MatchString(c.NotCaptured):
+			rc.Unsure = append(rc.Unsure, c.Resource+": "+c.NotCaptured)
 		default:
 			rc.ByDesign[category(c.NotCaptured)]++
 		}
 	}
-	// A type can be listed and some of its items refused one by one.
-	for _, sk := range s.Skips {
-		if !strings.HasPrefix(sk.Reason, "listed but could not be read") {
-			continue
-		}
-		x := sk.Resource + " " + sk.Name + ": " + sk.Reason
-		if deniedRE.MatchString(sk.Reason) {
-			rc.Denied = append(rc.Denied, x)
-		} else {
-			rc.Failed = append(rc.Failed, x)
-		}
-	}
 	sort.Strings(rc.Denied)
 	sort.Strings(rc.Failed)
+	sort.Strings(rc.Unsure)
 	return rc
+}
+
+// typesMatched refuses a --types pattern that selected nothing. Patterns
+// are matched as the adapters match them, case and all, so "aws::s3::*"
+// selected nothing and check said it could read every type it was asked
+// to (review of #23).
+func typesMatched(s snapshot.Snapshot, patterns []string) error {
+	var none []string
+	for _, p := range patterns {
+		hit := false
+		for _, c := range s.Coverage {
+			if c.NotCaptured == "not selected (--types)" {
+				continue
+			}
+			if ok, _ := path.Match(strings.ToLower(p), strings.ToLower(c.Resource)); ok {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			none = append(none, p)
+		}
+	}
+	if len(none) > 0 {
+		return fmt.Errorf("check: --types %s matched no type; patterns are case-sensitive (AWS::S3::*, Microsoft.Network/*)", strings.Join(none, ", "))
+	}
+	return nil
 }
 
 func printIdentity(id access.Report) {
@@ -202,6 +266,10 @@ func printReads(rc readCheck) {
 	}
 	list("DENIED", rc.Denied)
 	list("FAILED", rc.Failed)
+	if len(rc.Unsure) > 0 {
+		fmt.Println("  UNSURE: recorded as not there or not set up, which a missing permission can look like too:")
+		list("unsure", rc.Unsure)
+	}
 	fmt.Printf("  read     %d types holding %d resources", rc.WithObjects, rc.Objects)
 	if rc.Skipped > 0 {
 		fmt.Printf(", and %d more read and skipped on purpose (made by the platform or a service; a capture's REPORT.md lists them)", rc.Skipped)

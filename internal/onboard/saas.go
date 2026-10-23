@@ -9,7 +9,10 @@ import (
 // in the shell's history or on screen. It is the one step that differs by
 // shell, so it is a note naming each, not a command.
 func tokenNote(env string) string {
-	return fmt.Sprintf("Set %s without echoing it. PowerShell: $env:%s = Read-Host -MaskInput 'token'   bash/zsh: read -rs %s && export %s", env, env, env, env)
+	// Not Read-Host -MaskInput: Windows PowerShell 5.1 has no such
+	// parameter, takes it as prompt text and echoes the token (review of
+	// #23). -AsSecureString masks on 5.1 and 7 alike.
+	return fmt.Sprintf("Set %s without echoing it. PowerShell: $env:%s = [Net.NetworkCredential]::new('', (Read-Host -AsSecureString 'token')).Password   bash/zsh: read -rs %s && export %s", env, env, env, env)
 }
 
 func buildGitHub(r Request) (Plan, error) {

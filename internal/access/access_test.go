@@ -70,3 +70,43 @@ users:
 		t.Error("an unknown context was accepted")
 	}
 }
+
+// Role names are compared whole and by scope. "Storage Blob Data Owner"
+// passed as Owner, and Owner of one resource group as Owner of the
+// subscription (review of #23).
+func TestJudgeAzure(t *testing.T) {
+	sub := "00000000-0000-4000-8000-000000000001"
+	judge := func(access string, roles ...roleAt) Report {
+		var r Report
+		judgeAzure(&r, roles, sub, access)
+		return r
+	}
+	warned := func(r Report, s string) bool { return strings.Contains(strings.Join(r.Warnings, " "), s) }
+	if r := judge("restore", roleAt{"Storage Blob Data Owner", "the subscription"}, roleAt{"Virtual Machine Contributor", "the subscription"}); !warned(r, "A restore needs") {
+		t.Errorf("look-alike role names passed for a restore: %v", r.Warnings)
+	}
+	if r := judge("restore", roleAt{"Owner", "resource group rg-1"}); !warned(r, "A restore needs") {
+		t.Errorf("Owner of one resource group passed for a restore: %v", r.Warnings)
+	}
+	if r := judge("restore", roleAt{"Owner", "management group corp"}); warned(r, "A restore needs") {
+		t.Errorf("Owner above the subscription refused: %v", r.Warnings)
+	}
+	if r := judge("capture", roleAt{"Reader", "resource group rg-1"}); !warned(r, "reads as empty") {
+		t.Errorf("Reader on one resource group must be warned about: %v", r.Warnings)
+	}
+	if r := judge("capture", roleAt{"Reader", "the subscription"}); len(r.Warnings) != 0 {
+		t.Errorf("Reader on the subscription is what a capture needs: %v", r.Warnings)
+	}
+}
+
+// Every scope not known to read is reported as writing: a list of writing
+// scopes missed public_repo, gist and more (review of #23).
+func TestGitHubScopesNotKnownToReadAreWrites(t *testing.T) {
+	got := githubWrites("read:org, public_repo, gist, user, read:user, project, repo")
+	if strings.Join(got, ",") != "public_repo,gist,user,project,repo" {
+		t.Errorf("writes: %v", got)
+	}
+	if len(githubWrites("read:org, read:user")) != 0 {
+		t.Error("read scopes reported as writes")
+	}
+}

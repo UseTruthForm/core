@@ -43,6 +43,9 @@ func TestAllowed(t *testing.T) {
 		{req("POST", "https://us-east-1.signin.aws.amazon.com/v1/token"), true},
 		{req("POST", "https://us-east-1.signin.aws.amazon.com/v1/authorize"), false},
 		{req("POST", "https://signin.aws.amazon.com.evil.example/v1/token"), false},
+		{req("POST", "https://portal.sso.evil.example/x"), false},
+		{req("POST", "https://evil.example/v1/projects/p:getIamPolicy"), false},
+		{req("POST", "https://cloudresourcemanager.googleapis.com/v1/projects/p:getIamPolicy"), true},
 		{req("PUT", "http://169.254.169.254/latest/meta-data/x"), false},
 	} {
 		if got, why := Allowed(c.r); got != c.want {
@@ -71,6 +74,13 @@ func TestIAMQueryReads(t *testing.T) {
 		// Two Actions: which one IAM honours is not ours to guess.
 		{post("https://iam.amazonaws.com/?Action=CreateUser", "Action=GetRole"), false},
 		{post("https://iam.cn-north-1.amazonaws.com.cn/", "Action=GetRole"), true},
+		// A second Action in any spelling: IAM might act on either
+		// (review of #23; each of these passed before).
+		{post("https://iam.amazonaws.com/", "Action=GetRole&Action=CreateUser"), false},
+		{post("https://iam.amazonaws.com/", "Action=GetRole&Act%69on=DeleteRole"), false},
+		{post("https://iam.amazonaws.com/", "Action=GetRole&action=CreateUser"), false},
+		{post("https://iam.amazonaws.com/?action=CreateUser", "Action=GetRole"), false},
+		{post("https://iam.amazonaws.com/", "Action=GetRole&RoleName="+strings.Repeat("a", 1<<20)), false},
 		// Not IAM: the body's Action means nothing to the guard.
 		{post("https://ec2.us-east-1.amazonaws.com/", "Action=DescribeInstances"), false},
 	} {

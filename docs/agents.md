@@ -56,10 +56,12 @@ that was made while setting up StackDNA's own test accounts.
    CloudFormation stack that deployed or an `az stack` that succeeded says
    the platform accepted the template. It does not say a capture can now
    read everything. `check_access` runs a capture that is written nowhere
-   and reports every type as read, empty, **denied** or **failed**.
-   Denied types are not empty; a missing permission must never be reported
-   to the person as "nothing there". Exit 3 means some types cannot be
-   read.
+   and reports every type as read, empty, **denied** or **failed**, and
+   lists as **unsure** the ones recorded as "not found" or "not set up"
+   that a missing permission can also produce (GitHub answers 404 for
+   both). Denied types are not empty; a missing permission must never be
+   reported to the person as "nothing there", and an unsure one is not
+   known to be fine. Exit 3 means some types cannot be read.
 
 8. **Say what was changed and how to undo it.** Every plan ends with its
    undo steps. When you finish, tell the person what now exists (the stack,

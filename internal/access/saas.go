@@ -32,10 +32,24 @@ func getJSON(ctx context.Context, u, token string, out any) (http.Header, error)
 	return resp.Header, json.Unmarshal(b, out)
 }
 
-// githubWriteScopes are classic-token scopes that write. A classic token
-// needs repo and admin:org to capture an organisation at all, which is why
-// a fine-grained read-only token is the recommendation.
-var githubWriteScopes = []string{"repo", "admin:org", "write:org", "admin:repo_hook", "write:repo_hook", "admin:org_hook", "workflow", "delete_repo", "write:packages", "admin:enterprise"}
+// githubReadScopes are the classic-token scopes that only read. Any other
+// scope is reported as one that writes: a list of writing scopes missed
+// public_repo, gist, user, project and more (review of #23). A classic
+// token needs repo and admin:org to capture an organisation at all, which
+// is why a fine-grained read-only token is the recommendation.
+var githubReadScopes = map[string]bool{"read:org": true, "read:user": true, "user:email": true, "read:repo_hook": true,
+	"read:public_key": true, "read:gpg_key": true, "read:ssh_signing_key": true, "read:packages": true, "read:discussion": true,
+	"read:project": true, "read:audit_log": true, "read:enterprise": true}
+
+func githubWrites(list string) []string {
+	var writes []string
+	for _, s := range strings.Split(list, ",") {
+		if s = strings.TrimSpace(s); s != "" && !githubReadScopes[s] {
+			writes = append(writes, s)
+		}
+	}
+	return writes
+}
 
 // GitHub reports the token's owner, kind and scopes. The token itself is
 // never printed; its kind is told by its prefix.
@@ -77,15 +91,7 @@ func GitHub(ctx context.Context, token, access string) (Report, error) {
 	if scopes, ok := h["X-Oauth-Scopes"]; ok {
 		list := strings.Join(scopes, ",")
 		r.fact("Scopes: " + list)
-		var writes []string
-		for _, s := range strings.Split(list, ",") {
-			s = strings.TrimSpace(s)
-			for _, w := range githubWriteScopes {
-				if s == w {
-					writes = append(writes, s)
-				}
-			}
-		}
+		writes := githubWrites(list)
 		if len(writes) > 0 && access != "restore" {
 			r.warn("Scopes that write (" + strings.Join(writes, ", ") + "). A classic token cannot read an organisation's settings without them; a fine-grained token with read-only permissions can (stackdna permissions --platform github).")
 		}

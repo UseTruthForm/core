@@ -30,10 +30,24 @@ func TestRegenerateFixtures(t *testing.T) {
 			// wrapped list created by POST (variables), one created by PUT
 			// (environments, secrets) and a singleton (permissions).
 			want := map[string]bool{"github/repo/actions/variables": true, "github/repo/environments": true,
-				"github/repo/actions/secrets": true, "github/repo/actions/permissions": true}
+				"github/repo/actions/secrets": true, "github/repo/actions/permissions": true,
+				// Shapes the review found broke on the full description:
+				// a custom property (named property_name), organisation
+				// webhooks (all named "web") and teams (named by slug).
+				"github/org/properties/schema": true, "github/org/hooks": true, "github/org/teams": true}
 			for _, c := range Derive(full, p.Derive, p.Collections) {
 				if want[c.Kind] {
 					cols = append(cols, c)
+				}
+			}
+			// Collections that must not be derived stay in the fixture, so
+			// a test can show the rules leave them out: blocking, hosted
+			// runners and network configurations.
+			for _, path := range []string{"/orgs/{org}/blocks", "/orgs/{org}/actions/hosted-runners", "/orgs/{org}/settings/network-configurations"} {
+				for _, m := range []string{"get", "post", "put"} {
+					if full.Has(path, m) {
+						paths[path] = append(paths[path], m)
+					}
 				}
 			}
 		}

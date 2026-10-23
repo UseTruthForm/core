@@ -105,7 +105,19 @@ func (f *fake) serve(w http.ResponseWriter, r *http.Request) {
 					f.reply(w, 200, v, nil)
 					return
 				}
-				f.page(w, r, f.colls[path], col.Array)
+				// Cloudflare's /zones lists every account the token can
+				// see, unless filtered by account.id.
+				items := f.colls[path]
+				if acc := r.URL.Query().Get("account.id"); acc != "" {
+					var kept []map[string]any
+					for _, it := range items {
+						if stringOf(field(it, "account.id")) == acc {
+							kept = append(kept, it)
+						}
+					}
+					items = kept
+				}
+				f.page(w, r, items, col.Array)
 				return
 			}
 		case "POST", "PUT":

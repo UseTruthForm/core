@@ -15,6 +15,11 @@ type DeriveRules struct {
 	// with the subcategories to leave out ("*" in Allow means all of it).
 	Allow map[string][]string
 	Deny  map[string][]string
+	// Names overrides the field that names a collection's items, by list
+	// path, where the description's own "name" names nothing: every
+	// organisation webhook is named "web", so two of them made a capture
+	// fail ("two items are named web"); the URL names a hook.
+	Names map[string][]string
 }
 
 // Scope is a path prefix whose collections hang off a parent: every
@@ -40,9 +45,15 @@ var GitHubDerive = &DeriveRules{
 		"actions": {"*"}, "deployments": {"*"}, "repos": {"*"}, "orgs": {"*"}, "dependabot": {"*"},
 		"code-security": {"*"}, "pages": {"*"}, "teams": {"*"},
 	},
+	Names: map[string][]string{"/orgs/{org}/hooks": {"config.url"}},
 	Deny: map[string][]string{
-		"actions":     {"workflow-runs", "workflow-jobs", "artifacts", "cache", "self-hosted-runners", "workflows", "oidc"},
-		"orgs":        {"members", "outside-collaborators", "personal-access-tokens", "api-insights", "issue-types", "artifact-metadata", "attestations", "bypass-requests", "orgs"},
+		// Hosted runners are billed, and they and network configurations
+		// are created from IDs of the source organisation's own objects
+		// (runner_group_id, network_settings_ids), which a restore would
+		// send unchanged. Blocking is moderation, keyed by username, not
+		// configuration.
+		"actions":     {"workflow-runs", "workflow-jobs", "artifacts", "cache", "self-hosted-runners", "workflows", "oidc", "hosted-runners"},
+		"orgs":        {"members", "outside-collaborators", "personal-access-tokens", "api-insights", "issue-types", "artifact-metadata", "attestations", "bypass-requests", "orgs", "network-configurations", "blocking"},
 		"repos":       {"repos", "contents", "statistics", "traffic", "forks", "attestations", "bypass-requests"},
 		"deployments": {"deployments", "statuses"},
 	},
@@ -102,6 +113,9 @@ func Derive(s *Spec, r *DeriveRules, have []Collection) []Collection {
 				itemSchema = s.resolve(listItems(s, resp, arr))
 			}
 			c.Name = nameField(s, itemSchema)
+			if n, ok := r.Names[path]; ok {
+				c.Name = n
+			}
 			// Named only by a server ID, an item names something else in
 			// every account; and a collection keyed by another resource's
 			// ID (permissions/repositories/{repository_id}) would restore
@@ -110,7 +124,7 @@ func Derive(s *Spec, r *DeriveRules, have []Collection) []Collection {
 				continue
 			}
 			if param != "" {
-				c.Bind[param] = "item:" + paramField(param, c.Name)
+				c.Bind[param] = "item:" + paramField(param, c.Name, itemFields(s, itemSchema))
 			}
 			out = append(out, c)
 		case s.Has(path, "put") || s.Has(path, "patch"):
@@ -205,9 +219,29 @@ func nameField(s *Spec, item map[string]any) []string {
 	return []string{"id"}
 }
 
-// paramField says which item field fills an item path's parameter:
-// {name} is name, {environment_name} is name, {hook_id} is id.
-func paramField(param string, name []string) string {
+// itemFields lists an item schema's top-level fields.
+func itemFields(s *Spec, item map[string]any) []string {
+	props, _ := s.resolve(item)["properties"].(map[string]any)
+	return sortedKeys(props)
+}
+
+// paramField says which item field fills an item path's parameter. The
+// item's own field the parameter names comes first, by the longest suffix:
+// {custom_property_name} is property_name, {team_slug} is slug. Read as
+// "name" by its _name ending, a custom property's path could not be
+// filled and the whole capture failed; a team's was filled with its
+// display name ("Platform Team") and read nothing (review, 2026-10-22).
+// Otherwise: {hook_id} is id, {environment_name} is name.
+func paramField(param string, name, fields []string) string {
+	best := ""
+	for _, f := range fields {
+		if (param == f || strings.HasSuffix(param, "_"+f)) && len(f) > len(best) && f != "id" && f != "name" {
+			best = f
+		}
+	}
+	if best != "" {
+		return best
+	}
 	switch {
 	case strings.HasSuffix(param, "_id"):
 		return "id"

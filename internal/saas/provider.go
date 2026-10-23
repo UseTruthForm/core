@@ -1,6 +1,7 @@
 package saas
 
 import (
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -23,6 +24,8 @@ type Provider struct {
 	// Paging is "link" (an RFC 8288 Link header, rel="next") or "page"
 	// (page/per_page with result_info.total_pages).
 	Paging string
+	// PageSize is per_page (100 unless set; Cloudflare's /zones allows 50).
+	PageSize int
 	// Account names what a target points at (a GitHub organisation, a
 	// Cloudflare account ID). Its value is tokenized out of every spec.
 	Account string
@@ -66,10 +69,33 @@ type Collection struct {
 	CreateMethod string
 	// UpdateMethod is PATCH unless set.
 	UpdateMethod string
+	// ListQuery adds query parameters to the list, bound like path
+	// parameters ("account.id": "account"). Cloudflare's /zones lists every
+	// account the token can see; without the filter, --account limited
+	// nothing and another account's zones landed in the snapshot (review,
+	// 2026-10-22).
+	ListQuery map[string]string
 	// Singleton is settings with no list: GET and PUT on one path
 	// (Actions permissions). Captured as one item named "settings"; a
 	// restore applies it, since the target always has some value.
 	Singleton bool
+}
+
+// listPath is the list's path for a parent, with its query.
+func (c *Collection) listPath(account string, parent map[string]any) (string, bool) {
+	p, ok := expand(c.List, c.Bind, account, parent, nil)
+	if !ok || len(c.ListQuery) == 0 {
+		return p, ok
+	}
+	q := url.Values{}
+	for _, k := range sortedKeys(c.ListQuery) {
+		v, ok := expand("{"+k+"}", map[string]string{k: c.ListQuery[k]}, account, parent, nil)
+		if !ok {
+			return "", false
+		}
+		q.Set(k, v)
+	}
+	return p + "?" + q.Encode(), true
 }
 
 func (c *Collection) createMethod() string {
@@ -114,11 +140,11 @@ var GitHub = Provider{
 
 // Cloudflare is the descriptor for a Cloudflare account's zones and DNS.
 var Cloudflare = Provider{
-	Name: "cloudflare", Spec: "cloudflare.json", Base: "https://api.cloudflare.com/client/v4", Envelope: "result", Paging: "page",
+	Name: "cloudflare", Spec: "cloudflare.json", Base: "https://api.cloudflare.com/client/v4", Envelope: "result", Paging: "page", PageSize: 50,
 	SpecURL: "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
 	Account: "account", TokenEnv: "CLOUDFLARE_API_TOKEN",
 	Collections: []Collection{
-		{Kind: "cloudflare/zone", List: "/zones", Create: "/zones", Update: "/zones/{zone_id}",
+		{Kind: "cloudflare/zone", List: "/zones", Create: "/zones", Update: "/zones/{zone_id}", ListQuery: map[string]string{"account.id": "account"},
 			Bind: map[string]string{"zone_id": "item:id"}, Name: []string{"name"}},
 		// One name can hold several records, so type, name and content
 		// together name a record.
@@ -151,7 +177,9 @@ func expand(tmpl string, bind map[string]string, account string, parent, item ma
 		if s == "" {
 			ok = false
 		}
-		return s
+		// One path segment: a label named "area/api" went out as
+		// .../labels/area/api and found nothing.
+		return url.PathEscape(s)
 	})
 	return out, ok
 }

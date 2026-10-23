@@ -1,6 +1,90 @@
 {
  "components": {
   "examples": {
+   "actions-hosted-runner": {
+    "value": {
+     "id": 5,
+     "image": {
+      "id": "ubuntu-20.04",
+      "size": 86
+     },
+     "last_active_on": "2022-10-09T23:39:01Z",
+     "machine_size_details": {
+      "cpu_cores": 4,
+      "id": "4-core",
+      "memory_gb": 16,
+      "storage_gb": 150
+     },
+     "maximum_runners": 10,
+     "name": "My hosted ubuntu runner",
+     "platform": "linux-x64",
+     "public_ip_enabled": true,
+     "public_ips": [
+      {
+       "enabled": true,
+       "length": 31,
+       "prefix": "20.80.208.150"
+      }
+     ],
+     "runner_group_id": 2,
+     "status": "Ready"
+    }
+   },
+   "actions-hosted-runner-paginated": {
+    "value": {
+     "runners": [
+      {
+       "id": 5,
+       "image": {
+        "id": "ubuntu-20.04",
+        "size": 86
+       },
+       "last_active_on": "2022-10-09T23:39:01Z",
+       "machine_size_details": {
+        "cpu_cores": 4,
+        "id": "4-core",
+        "memory_gb": 16,
+        "storage_gb": 150
+       },
+       "maximum_runners": 10,
+       "name": "My hosted ubuntu runner",
+       "platform": "linux-x64",
+       "public_ip_enabled": true,
+       "public_ips": [
+        {
+         "enabled": true,
+         "length": 31,
+         "prefix": "20.80.208.150"
+        }
+       ],
+       "runner_group_id": 2,
+       "status": "Ready"
+      },
+      {
+       "id": 7,
+       "image": {
+        "id": "windows-latest",
+        "size": 256
+       },
+       "last_active_on": "2023-04-26T15:23:37Z",
+       "machine_size_details": {
+        "cpu_cores": 8,
+        "id": "8-core",
+        "memory_gb": 32,
+        "storage_gb": 300
+       },
+       "maximum_runners": 20,
+       "name": "My hosted Windows runner",
+       "platform": "win-x64",
+       "public_ip_enabled": false,
+       "public_ips": [],
+       "runner_group_id": 2,
+       "status": "Ready"
+      }
+     ],
+     "total_count": 2
+    }
+   },
    "actions-repository-permissions": {
     "value": {
      "allowed_actions": "selected",
@@ -58,6 +142,53 @@
        "value": "octocat@github.com"
       }
      ]
+    }
+   },
+   "custom-properties": {
+    "value": [
+     {
+      "allowed_values": [
+       "production",
+       "development"
+      ],
+      "default_value": "production",
+      "description": "Prod or dev environment",
+      "property_name": "environment",
+      "require_explicit_values": true,
+      "required": true,
+      "source_type": "organization",
+      "url": "https://api.github.com/orgs/github/properties/schema/environment",
+      "value_type": "single_select",
+      "values_editable_by": "org_actors"
+     },
+     {
+      "property_name": "service",
+      "source_type": "organization",
+      "url": "https://api.github.com/orgs/github/properties/schema/service",
+      "value_type": "string"
+     },
+     {
+      "description": "Team owning the repository",
+      "property_name": "team",
+      "source_type": "organization",
+      "url": "https://api.github.com/orgs/github/properties/schema/team",
+      "value_type": "string"
+     }
+    ]
+   },
+   "custom-property": {
+    "value": {
+     "allowed_values": [
+      "production",
+      "development"
+     ],
+     "default_value": "production",
+     "description": "Prod or dev environment",
+     "property_name": "environment",
+     "required": true,
+     "source_type": "organization",
+     "url": "https://api.github.com/orgs/github/properties/schema/environment",
+     "value_type": "single_select"
     }
    },
    "environment": {
@@ -1539,6 +1670,109 @@
      }
     ]
    },
+   "network-configuration": {
+    "value": {
+     "compute_service": "actions",
+     "created_on": "2022-10-09T23:39:01Z",
+     "id": "123456789ABCDEF",
+     "name": "My network configuration",
+     "network_settings_ids": [
+      "23456789ABDCEF1",
+      "3456789ABDCEF12"
+     ]
+    }
+   },
+   "network-configurations-paginated": {
+    "value": {
+     "network_configurations": [
+      {
+       "compute_service": "actions",
+       "created_on": "2022-10-09T23:39:01Z",
+       "id": "123456789ABCDEF",
+       "name": "My network configuration",
+       "network_settings_ids": [
+        "23456789ABDCEF1",
+        "3456789ABDCEF12"
+       ]
+      },
+      {
+       "compute_service": "none",
+       "created_on": "2023-04-26T15:23:37Z",
+       "id": "456789ABDCEF123",
+       "name": "My other configuration",
+       "network_settings_ids": [
+        "56789ABDCEF1234",
+        "6789ABDCEF12345"
+       ]
+      }
+     ],
+     "total_count": 2
+    }
+   },
+   "org-hook": {
+    "value": {
+     "active": true,
+     "config": {
+      "content_type": "json",
+      "url": "http://example.com"
+     },
+     "created_at": "2011-09-06T17:26:27Z",
+     "deliveries_url": "https://api.github.com/orgs/octocat/hooks/1/deliveries",
+     "events": [
+      "push",
+      "pull_request"
+     ],
+     "id": 1,
+     "name": "web",
+     "ping_url": "https://api.github.com/orgs/octocat/hooks/1/pings",
+     "type": "Organization",
+     "updated_at": "2011-09-06T20:39:23Z",
+     "url": "https://api.github.com/orgs/octocat/hooks/1"
+    }
+   },
+   "org-hook-2": {
+    "value": {
+     "active": true,
+     "config": {
+      "content_type": "json",
+      "url": "http://example.com"
+     },
+     "created_at": "2011-09-06T17:26:27Z",
+     "deliveries_url": "https://api.github.com/repos/octocat/Hello-World/hooks/12345678/deliveries",
+     "events": [
+      "pull_request"
+     ],
+     "id": 1,
+     "name": "web",
+     "ping_url": "https://api.github.com/orgs/octocat/hooks/1/pings",
+     "type": "Organization",
+     "updated_at": "2011-09-06T20:39:23Z",
+     "url": "https://api.github.com/orgs/octocat/hooks/1"
+    }
+   },
+   "org-hook-items": {
+    "value": [
+     {
+      "active": true,
+      "config": {
+       "content_type": "json",
+       "url": "http://example.com"
+      },
+      "created_at": "2011-09-06T17:26:27Z",
+      "deliveries_url": "https://api.github.com/orgs/octocat/hooks/1/deliveries",
+      "events": [
+       "push",
+       "pull_request"
+      ],
+      "id": 1,
+      "name": "web",
+      "ping_url": "https://api.github.com/orgs/octocat/hooks/1/pings",
+      "type": "Organization",
+      "updated_at": "2011-09-06T20:39:23Z",
+      "url": "https://api.github.com/orgs/octocat/hooks/1"
+     }
+    ]
+   },
    "repository-ruleset": {
     "value": {
      "_links": {
@@ -1626,6 +1860,100 @@
       "updated_at": "2023-09-23T16:29:47Z"
      }
     ]
+   },
+   "simple-user-items": {
+    "value": [
+     {
+      "avatar_url": "https://github.com/images/error/octocat_happy.gif",
+      "events_url": "https://api.github.com/users/octocat/events{/privacy}",
+      "followers_url": "https://api.github.com/users/octocat/followers",
+      "following_url": "https://api.github.com/users/octocat/following{/other_user}",
+      "gists_url": "https://api.github.com/users/octocat/gists{/gist_id}",
+      "gravatar_id": "",
+      "html_url": "https://github.com/octocat",
+      "id": 1,
+      "login": "octocat",
+      "node_id": "MDQ6VXNlcjE=",
+      "organizations_url": "https://api.github.com/users/octocat/orgs",
+      "received_events_url": "https://api.github.com/users/octocat/received_events",
+      "repos_url": "https://api.github.com/users/octocat/repos",
+      "site_admin": false,
+      "starred_url": "https://api.github.com/users/octocat/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/octocat/subscriptions",
+      "type": "User",
+      "url": "https://api.github.com/users/octocat"
+     }
+    ]
+   },
+   "team-full": {
+    "value": {
+     "created_at": "2017-07-14T16:53:42Z",
+     "description": "A great team.",
+     "html_url": "https://github.com/orgs/github/teams/justice-league",
+     "id": 1,
+     "members_count": 3,
+     "members_url": "https://api.github.com/teams/1/members{/member}",
+     "name": "Justice League",
+     "node_id": "MDQ6VGVhbTE=",
+     "notification_setting": "notifications_enabled",
+     "organization": {
+      "avatar_url": "https://github.com/images/error/octocat_happy.gif",
+      "blog": "https://github.com/blog",
+      "company": "GitHub",
+      "created_at": "2008-01-14T04:33:35Z",
+      "description": "A great organization",
+      "email": "octocat@github.com",
+      "events_url": "https://api.github.com/orgs/github/events",
+      "followers": 20,
+      "following": 0,
+      "has_organization_projects": true,
+      "has_repository_projects": true,
+      "hooks_url": "https://api.github.com/orgs/github/hooks",
+      "html_url": "https://github.com/octocat",
+      "id": 1,
+      "is_verified": true,
+      "issues_url": "https://api.github.com/orgs/github/issues",
+      "location": "San Francisco",
+      "login": "github",
+      "members_url": "https://api.github.com/orgs/github/members{/member}",
+      "name": "github",
+      "node_id": "MDEyOk9yZ2FuaXphdGlvbjE=",
+      "public_gists": 1,
+      "public_members_url": "https://api.github.com/orgs/github/public_members{/member}",
+      "public_repos": 2,
+      "repos_url": "https://api.github.com/orgs/github/repos",
+      "type": "Organization",
+      "updated_at": "2017-08-17T12:37:15Z",
+      "url": "https://api.github.com/orgs/github"
+     },
+     "parent": null,
+     "permission": "admin",
+     "privacy": "closed",
+     "repos_count": 10,
+     "repositories_url": "https://api.github.com/teams/1/repos",
+     "slug": "justice-league",
+     "updated_at": "2017-08-17T12:37:15Z",
+     "url": "https://api.github.com/teams/1"
+    }
+   },
+   "team-items": {
+    "value": [
+     {
+      "description": "A great team.",
+      "html_url": "https://github.com/orgs/github/teams/justice-league",
+      "id": 1,
+      "members_url": "https://api.github.com/teams/1/members{/member}",
+      "name": "Justice League",
+      "node_id": "MDQ6VGVhbTE=",
+      "notification_setting": "notifications_enabled",
+      "parent": null,
+      "permission": "admin",
+      "privacy": "closed",
+      "repositories_url": "https://api.github.com/teams/1/repos",
+      "slug": "justice-league",
+      "url": "https://api.github.com/teams/1"
+     }
+    ]
    }
   },
   "headers": {
@@ -1637,6 +1965,15 @@
    }
   },
   "parameters": {
+   "custom-property-name": {
+    "description": "The custom property name",
+    "in": "path",
+    "name": "custom_property_name",
+    "required": true,
+    "schema": {
+     "type": "string"
+    }
+   },
    "environment-name": {
     "description": "The name of the environment. The name must be URL encoded. For example, any slashes in the name must be replaced with `%2F`.",
     "in": "path",
@@ -1716,6 +2053,30 @@
     "name": "secret_name",
     "required": true,
     "schema": {
+     "type": "string"
+    }
+   },
+   "team-slug": {
+    "description": "The slug of the team name.",
+    "in": "path",
+    "name": "team_slug",
+    "required": true,
+    "schema": {
+     "type": "string"
+    }
+   },
+   "team-type": {
+    "description": "Filter team results by their type. For more information, see \"[What kind of team should I use?](https://docs.github.com/enterprise-cloud@latest/admin/concepts/enterprise-fundamentals/teams-in-an-enterprise#what-kind-of-team-should-i-use)\"",
+    "in": "query",
+    "name": "team_type",
+    "required": false,
+    "schema": {
+     "default": "all",
+     "enum": [
+      "all",
+      "enterprise",
+      "organization"
+     ],
      "type": "string"
     }
    },
@@ -1804,6 +2165,122 @@
    "actions-enabled": {
     "description": "Whether GitHub Actions is enabled on the repository.",
     "type": "boolean"
+   },
+   "actions-hosted-runner": {
+    "description": "A Github-hosted hosted runner.",
+    "properties": {
+     "id": {
+      "description": "The unique identifier of the hosted runner.",
+      "example": 5,
+      "type": "integer"
+     },
+     "image_details": {
+      "$ref": "#/components/schemas/nullable-actions-hosted-runner-pool-image"
+     },
+     "image_gen": {
+      "description": "Whether custom image generation is enabled for the hosted runners.",
+      "type": "boolean"
+     },
+     "last_active_on": {
+      "description": "The time at which the runner was last used, in ISO 8601 format.",
+      "example": "2022-10-09T23:39:01Z",
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "machine_size_details": {
+      "$ref": "#/components/schemas/actions-hosted-runner-machine-spec"
+     },
+     "maximum_runners": {
+      "default": 10,
+      "description": "The maximum amount of hosted runners. Runners will not scale automatically above this number. Use this setting to limit your cost.",
+      "example": 5,
+      "type": "integer"
+     },
+     "name": {
+      "description": "The name of the hosted runner.",
+      "example": "my-github-hosted-runner",
+      "type": "string"
+     },
+     "platform": {
+      "description": "The operating system of the image.",
+      "example": "linux-x64",
+      "type": "string"
+     },
+     "public_ip_enabled": {
+      "description": "Whether public IP is enabled for the hosted runners.",
+      "example": true,
+      "type": "boolean"
+     },
+     "public_ips": {
+      "description": "The public IP ranges when public IP is enabled for the hosted runners.",
+      "items": {
+       "$ref": "#/components/schemas/public-ip"
+      },
+      "type": "array"
+     },
+     "runner_group_id": {
+      "description": "The unique identifier of the group that the hosted runner belongs to.",
+      "example": 2,
+      "type": "integer"
+     },
+     "status": {
+      "description": "The status of the runner.",
+      "enum": [
+       "Ready",
+       "Provisioning",
+       "Shutdown",
+       "Deleting",
+       "Stuck"
+      ],
+      "example": "Ready",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "name",
+     "image_details",
+     "machine_size_details",
+     "status",
+     "public_ip_enabled",
+     "platform"
+    ],
+    "title": "GitHub-hosted hosted runner",
+    "type": "object"
+   },
+   "actions-hosted-runner-machine-spec": {
+    "description": "Provides details of a particular machine spec.",
+    "properties": {
+     "cpu_cores": {
+      "description": "The number of cores.",
+      "example": 8,
+      "type": "integer"
+     },
+     "id": {
+      "description": "The ID used for the `size` parameter when creating a new runner.",
+      "example": "8-core",
+      "type": "string"
+     },
+     "memory_gb": {
+      "description": "The available RAM for the machine spec.",
+      "example": 32,
+      "type": "integer"
+     },
+     "storage_gb": {
+      "description": "The available SSD storage for the machine spec.",
+      "example": 300,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "cpu_cores",
+     "memory_gb",
+     "storage_gb"
+    ],
+    "title": "Github-owned VM details.",
+    "type": "object"
    },
    "actions-repository-permissions": {
     "properties": {
@@ -1977,6 +2454,162 @@
      "html_url"
     ],
     "title": "Code Of Conduct Simple",
+    "type": "object"
+   },
+   "custom-property": {
+    "description": "Custom property defined on an organization",
+    "properties": {
+     "allowed_values": {
+      "description": "An ordered list of the allowed values of the property.\nThe property can have up to 200 allowed values.",
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "default_value": {
+      "description": "Default value of the property",
+      "nullable": true,
+      "oneOf": [
+       {
+        "type": "string"
+       },
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       }
+      ]
+     },
+     "description": {
+      "description": "Short description of the property",
+      "nullable": true,
+      "type": "string"
+     },
+     "property_name": {
+      "description": "The name of the property",
+      "type": "string"
+     },
+     "require_explicit_values": {
+      "description": "Whether setting properties values is mandatory",
+      "type": "boolean"
+     },
+     "required": {
+      "description": "Whether the property is required.",
+      "type": "boolean"
+     },
+     "source_type": {
+      "description": "The source type of the property",
+      "enum": [
+       "organization",
+       "enterprise"
+      ],
+      "example": "organization",
+      "type": "string"
+     },
+     "url": {
+      "description": "The URL that can be used to fetch, update, or delete info about this property via the API.",
+      "format": "uri",
+      "type": "string"
+     },
+     "value_type": {
+      "description": "The type of the value for the property",
+      "enum": [
+       "string",
+       "single_select",
+       "multi_select",
+       "true_false",
+       "url"
+      ],
+      "example": "single_select",
+      "type": "string"
+     },
+     "values_editable_by": {
+      "description": "Who can edit the values of the property",
+      "enum": [
+       "org_actors",
+       "org_and_repo_actors"
+      ],
+      "example": "org_actors",
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "required": [
+     "property_name",
+     "value_type"
+    ],
+    "title": "Organization Custom Property",
+    "type": "object"
+   },
+   "custom-property-set-payload": {
+    "description": "Custom property set payload",
+    "properties": {
+     "allowed_values": {
+      "description": "An ordered list of the allowed values of the property.\nThe property can have up to 200 allowed values.",
+      "items": {
+       "type": "string"
+      },
+      "nullable": true,
+      "type": "array"
+     },
+     "default_value": {
+      "description": "Default value of the property",
+      "nullable": true,
+      "oneOf": [
+       {
+        "nullable": true,
+        "type": "string"
+       },
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       }
+      ]
+     },
+     "description": {
+      "description": "Short description of the property",
+      "nullable": true,
+      "type": "string"
+     },
+     "require_explicit_values": {
+      "description": "Whether setting properties values is mandatory",
+      "type": "boolean"
+     },
+     "required": {
+      "description": "Whether the property is required.",
+      "type": "boolean"
+     },
+     "value_type": {
+      "description": "The type of the value for the property",
+      "enum": [
+       "string",
+       "single_select",
+       "multi_select",
+       "true_false",
+       "url"
+      ],
+      "example": "single_select",
+      "type": "string"
+     },
+     "values_editable_by": {
+      "description": "Who can edit the values of the property",
+      "enum": [
+       "org_actors",
+       "org_and_repo_actors"
+      ],
+      "example": "org_actors",
+      "nullable": true,
+      "type": "string"
+     }
+    },
+    "required": [
+     "value_type"
+    ],
+    "title": "Custom Property Set Payload",
     "type": "object"
    },
    "deployment-branch-policy-settings": {
@@ -2945,6 +3578,11 @@
     "title": "Label",
     "type": "object"
    },
+   "ldap-dn": {
+    "description": "The [distinguished name](https://www.ldap.com/ldap-dns-and-rdns) (DN) of the LDAP entry to map to a team.",
+    "example": "cn=Enterprise Ops,ou=teams,dc=github,dc=com",
+    "type": "string"
+   },
    "minimal-repository": {
     "description": "Minimal Repository",
     "properties": {
@@ -3404,6 +4042,108 @@
       "version": "2026-03-10"
      }
     ]
+   },
+   "network-configuration": {
+    "description": "A hosted compute network configuration.",
+    "properties": {
+     "compute_service": {
+      "description": "The hosted compute service the network configuration supports.",
+      "enum": [
+       "none",
+       "actions",
+       "codespaces"
+      ],
+      "type": "string"
+     },
+     "created_on": {
+      "description": "The time at which the network configuration was created, in ISO 8601 format.",
+      "example": "2024-04-26T11:31:07Z",
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "failover_network_enabled": {
+      "description": "Indicates whether the failover network resource is enabled.",
+      "example": true,
+      "type": "boolean"
+     },
+     "failover_network_settings_ids": {
+      "description": "The unique identifier of each failover network settings in the configuration.",
+      "example": "123ABC456DEF789",
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "id": {
+      "description": "The unique identifier of the network configuration.",
+      "example": "123ABC456DEF789",
+      "type": "string"
+     },
+     "name": {
+      "description": "The name of the network configuration.",
+      "example": "my-network-configuration",
+      "type": "string"
+     },
+     "network_settings_ids": {
+      "description": "The unique identifier of each network settings in the configuration.",
+      "example": "123ABC456DEF789",
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     }
+    },
+    "required": [
+     "id",
+     "name",
+     "created_on"
+    ],
+    "title": "Hosted compute network configuration",
+    "type": "object"
+   },
+   "nullable-actions-hosted-runner-pool-image": {
+    "description": "Provides details of a hosted runner image",
+    "nullable": true,
+    "properties": {
+     "display_name": {
+      "description": "Display name for this image.",
+      "example": 20.04,
+      "type": "string"
+     },
+     "id": {
+      "description": "The ID of the image. Use this ID for the `image` parameter when creating a new larger runner.",
+      "example": "ubuntu-20.04",
+      "type": "string"
+     },
+     "size_gb": {
+      "description": "Image size in GB.",
+      "example": 86,
+      "type": "integer"
+     },
+     "source": {
+      "description": "The image provider.",
+      "enum": [
+       "github",
+       "partner",
+       "custom"
+      ],
+      "type": "string"
+     },
+     "version": {
+      "description": "The image version of the hosted runner pool.",
+      "example": "latest",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "size_gb",
+     "display_name",
+     "source"
+    ],
+    "title": "GitHub-hosted runner image details.",
+    "type": "object"
    },
    "nullable-license-simple": {
     "description": "License Simple",
@@ -4363,6 +5103,96 @@
     "title": "Team Simple",
     "type": "object"
    },
+   "org-hook": {
+    "description": "Org Hook",
+    "properties": {
+     "active": {
+      "example": true,
+      "type": "boolean"
+     },
+     "config": {
+      "properties": {
+       "content_type": {
+        "example": "\"form\"",
+        "type": "string"
+       },
+       "insecure_ssl": {
+        "example": "\"0\"",
+        "type": "string"
+       },
+       "secret": {
+        "example": "\"********\"",
+        "type": "string"
+       },
+       "url": {
+        "example": "\"http://example.com/2\"",
+        "type": "string"
+       }
+      },
+      "type": "object"
+     },
+     "created_at": {
+      "example": "2011-09-06T17:26:27Z",
+      "format": "date-time",
+      "type": "string"
+     },
+     "deliveries_url": {
+      "example": "https://api.github.com/orgs/octocat/hooks/1/deliveries",
+      "format": "uri",
+      "type": "string"
+     },
+     "events": {
+      "example": [
+       "push",
+       "pull_request"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "id": {
+      "example": 1,
+      "type": "integer"
+     },
+     "name": {
+      "example": "web",
+      "type": "string"
+     },
+     "ping_url": {
+      "example": "https://api.github.com/orgs/octocat/hooks/1/pings",
+      "format": "uri",
+      "type": "string"
+     },
+     "type": {
+      "type": "string"
+     },
+     "updated_at": {
+      "example": "2011-09-06T20:39:23Z",
+      "format": "date-time",
+      "type": "string"
+     },
+     "url": {
+      "example": "https://api.github.com/orgs/octocat/hooks/1",
+      "format": "uri",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "url",
+     "type",
+     "name",
+     "active",
+     "events",
+     "config",
+     "ping_url",
+     "created_at",
+     "updated_at"
+    ],
+    "title": "Org Hook",
+    "type": "object"
+   },
    "org-ruleset-conditions": {
     "description": "Conditions for an organization ruleset.\nThe branch and tag rulesets conditions object should contain both `repository_name` and `ref_name` properties, or both `repository_id` and `ref_name` properties, or both `repository_property` and `ref_name` properties.\nThe push rulesets conditions object does not require the `ref_name` property.\nFor repository policy rulesets, the conditions object should only contain the `repository_name`, the `repository_id`, or the `repository_property`.",
     "oneOf": [
@@ -4413,6 +5243,28 @@
     "description": "Whether or not a user who created the job is prevented from approving their own job.",
     "example": false,
     "type": "boolean"
+   },
+   "public-ip": {
+    "description": "Provides details of Public IP for a GitHub-hosted larger runners",
+    "properties": {
+     "enabled": {
+      "description": "Whether public IP is enabled.",
+      "example": true,
+      "type": "boolean"
+     },
+     "length": {
+      "description": "The length of the IP prefix.",
+      "example": 28,
+      "type": "integer"
+     },
+     "prefix": {
+      "description": "The prefix for the public IP.",
+      "example": "20.80.208.150",
+      "type": "string"
+     }
+    },
+    "title": "Public IP for a GitHub-hosted larger runners.",
+    "type": "object"
    },
    "repository": {
     "description": "A repository on GitHub.",
@@ -6934,6 +7786,413 @@
     "title": "Team",
     "type": "object"
    },
+   "team-full": {
+    "description": "Groups of organization members that gives permissions on specified repositories.",
+    "properties": {
+     "created_at": {
+      "example": "2017-07-14T16:53:42Z",
+      "format": "date-time",
+      "type": "string"
+     },
+     "description": {
+      "example": "A great team.",
+      "nullable": true,
+      "type": "string"
+     },
+     "enterprise_id": {
+      "description": "Unique identifier of the enterprise to which this team belongs",
+      "example": 42,
+      "type": "integer"
+     },
+     "html_url": {
+      "example": "https://github.com/orgs/rails/teams/core",
+      "format": "uri",
+      "type": "string"
+     },
+     "id": {
+      "description": "Unique identifier of the team",
+      "example": 42,
+      "type": "integer"
+     },
+     "ldap_dn": {
+      "$ref": "#/components/schemas/ldap-dn"
+     },
+     "members_count": {
+      "example": 3,
+      "type": "integer"
+     },
+     "members_url": {
+      "example": "https://api.github.com/organizations/1/team/1/members{/member}",
+      "type": "string"
+     },
+     "name": {
+      "description": "Name of the team",
+      "example": "Developers",
+      "type": "string"
+     },
+     "node_id": {
+      "example": "MDQ6VGVhbTE=",
+      "type": "string"
+     },
+     "notification_setting": {
+      "description": "The notification setting the team has set",
+      "enum": [
+       "notifications_enabled",
+       "notifications_disabled"
+      ],
+      "example": "notifications_enabled",
+      "type": "string"
+     },
+     "organization": {
+      "$ref": "#/components/schemas/team-organization"
+     },
+     "organization_id": {
+      "description": "Unique identifier of the organization to which this team belongs",
+      "example": 37,
+      "type": "integer"
+     },
+     "parent": {
+      "$ref": "#/components/schemas/nullable-team-simple"
+     },
+     "permission": {
+      "description": "Permission that the team will have for its repositories",
+      "example": "push",
+      "type": "string"
+     },
+     "privacy": {
+      "description": "The level of privacy this team should have",
+      "enum": [
+       "closed",
+       "secret"
+      ],
+      "example": "closed",
+      "type": "string"
+     },
+     "repos_count": {
+      "example": 10,
+      "type": "integer"
+     },
+     "repositories_url": {
+      "example": "https://api.github.com/organizations/1/team/1/repos",
+      "format": "uri",
+      "type": "string"
+     },
+     "slug": {
+      "example": "justice-league",
+      "type": "string"
+     },
+     "type": {
+      "description": "The ownership type of the team",
+      "enum": [
+       "enterprise",
+       "organization"
+      ],
+      "type": "string"
+     },
+     "updated_at": {
+      "example": "2017-08-17T12:37:15Z",
+      "format": "date-time",
+      "type": "string"
+     },
+     "url": {
+      "description": "URL for the team",
+      "example": "https://api.github.com/organizations/1/team/1",
+      "format": "uri",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "node_id",
+     "url",
+     "members_url",
+     "name",
+     "description",
+     "permission",
+     "html_url",
+     "repositories_url",
+     "slug",
+     "type",
+     "created_at",
+     "updated_at",
+     "members_count",
+     "repos_count",
+     "organization"
+    ],
+    "title": "Full Team",
+    "type": "object"
+   },
+   "team-organization": {
+    "description": "Team Organization",
+    "properties": {
+     "archived_at": {
+      "format": "date-time",
+      "nullable": true,
+      "type": "string"
+     },
+     "avatar_url": {
+      "example": "https://github.com/images/error/octocat_happy.gif",
+      "type": "string"
+     },
+     "billing_email": {
+      "example": "org@example.com",
+      "format": "email",
+      "nullable": true,
+      "type": "string"
+     },
+     "blog": {
+      "example": "https://github.com/blog",
+      "format": "uri",
+      "nullable": true,
+      "type": "string"
+     },
+     "collaborators": {
+      "example": 8,
+      "nullable": true,
+      "type": "integer"
+     },
+     "company": {
+      "example": "GitHub",
+      "nullable": true,
+      "type": "string"
+     },
+     "created_at": {
+      "example": "2008-01-14T04:33:35Z",
+      "format": "date-time",
+      "type": "string"
+     },
+     "default_repository_permission": {
+      "nullable": true,
+      "type": "string"
+     },
+     "description": {
+      "example": "A great organization",
+      "nullable": true,
+      "type": "string"
+     },
+     "disk_usage": {
+      "example": 10000,
+      "nullable": true,
+      "type": "integer"
+     },
+     "email": {
+      "example": "octocat@github.com",
+      "format": "email",
+      "nullable": true,
+      "type": "string"
+     },
+     "events_url": {
+      "example": "https://api.github.com/orgs/github/events",
+      "format": "uri",
+      "type": "string"
+     },
+     "followers": {
+      "example": 20,
+      "type": "integer"
+     },
+     "following": {
+      "example": 0,
+      "type": "integer"
+     },
+     "has_organization_projects": {
+      "example": true,
+      "type": "boolean"
+     },
+     "has_repository_projects": {
+      "example": true,
+      "type": "boolean"
+     },
+     "hooks_url": {
+      "example": "https://api.github.com/orgs/github/hooks",
+      "type": "string"
+     },
+     "html_url": {
+      "example": "https://github.com/octocat",
+      "format": "uri",
+      "type": "string"
+     },
+     "id": {
+      "example": 1,
+      "type": "integer"
+     },
+     "is_verified": {
+      "example": true,
+      "type": "boolean"
+     },
+     "issues_url": {
+      "example": "https://api.github.com/orgs/github/issues",
+      "type": "string"
+     },
+     "location": {
+      "example": "San Francisco",
+      "nullable": true,
+      "type": "string"
+     },
+     "login": {
+      "example": "github",
+      "type": "string"
+     },
+     "members_allowed_repository_creation_type": {
+      "example": "all",
+      "type": "string"
+     },
+     "members_can_create_internal_repositories": {
+      "example": true,
+      "type": "boolean"
+     },
+     "members_can_create_pages": {
+      "example": true,
+      "type": "boolean"
+     },
+     "members_can_create_private_pages": {
+      "example": true,
+      "type": "boolean"
+     },
+     "members_can_create_private_repositories": {
+      "example": true,
+      "type": "boolean"
+     },
+     "members_can_create_public_pages": {
+      "example": true,
+      "type": "boolean"
+     },
+     "members_can_create_public_repositories": {
+      "example": true,
+      "type": "boolean"
+     },
+     "members_can_create_repositories": {
+      "example": true,
+      "nullable": true,
+      "type": "boolean"
+     },
+     "members_can_fork_private_repositories": {
+      "example": false,
+      "nullable": true,
+      "type": "boolean"
+     },
+     "members_url": {
+      "example": "https://api.github.com/orgs/github/members{/member}",
+      "type": "string"
+     },
+     "name": {
+      "example": "github",
+      "type": "string"
+     },
+     "node_id": {
+      "example": "MDEyOk9yZ2FuaXphdGlvbjE=",
+      "type": "string"
+     },
+     "owned_private_repos": {
+      "example": 100,
+      "type": "integer"
+     },
+     "plan": {
+      "properties": {
+       "filled_seats": {
+        "type": "integer"
+       },
+       "name": {
+        "type": "string"
+       },
+       "private_repos": {
+        "type": "integer"
+       },
+       "seats": {
+        "type": "integer"
+       },
+       "space": {
+        "type": "integer"
+       }
+      },
+      "required": [
+       "name",
+       "space",
+       "private_repos"
+      ],
+      "type": "object"
+     },
+     "private_gists": {
+      "example": 81,
+      "nullable": true,
+      "type": "integer"
+     },
+     "public_gists": {
+      "example": 1,
+      "type": "integer"
+     },
+     "public_members_url": {
+      "example": "https://api.github.com/orgs/github/public_members{/member}",
+      "type": "string"
+     },
+     "public_repos": {
+      "example": 2,
+      "type": "integer"
+     },
+     "repos_url": {
+      "example": "https://api.github.com/orgs/github/repos",
+      "format": "uri",
+      "type": "string"
+     },
+     "total_private_repos": {
+      "example": 100,
+      "type": "integer"
+     },
+     "twitter_username": {
+      "example": "github",
+      "nullable": true,
+      "type": "string"
+     },
+     "two_factor_requirement_enabled": {
+      "example": true,
+      "nullable": true,
+      "type": "boolean"
+     },
+     "type": {
+      "example": "Organization",
+      "type": "string"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "type": "string"
+     },
+     "url": {
+      "example": "https://api.github.com/orgs/github",
+      "format": "uri",
+      "type": "string"
+     },
+     "web_commit_signoff_required": {
+      "example": false,
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "login",
+     "url",
+     "id",
+     "node_id",
+     "repos_url",
+     "events_url",
+     "hooks_url",
+     "issues_url",
+     "members_url",
+     "public_members_url",
+     "avatar_url",
+     "description",
+     "html_url",
+     "has_organization_projects",
+     "has_repository_projects",
+     "public_repos",
+     "public_gists",
+     "followers",
+     "following",
+     "type",
+     "created_at",
+     "updated_at",
+     "archived_at"
+    ],
+    "title": "Team Organization",
+    "type": "object"
+   },
    "validation-error": {
     "description": "Validation Error",
     "properties": {
@@ -7067,6 +8326,774 @@
  },
  "openapi": "3.0.3",
  "paths": {
+  "/orgs/{org}/actions/hosted-runners": {
+   "get": {
+    "description": "Lists all GitHub-hosted runners configured in an organization.\n\nOAuth app tokens and personal access tokens (classic) need the `manage_runner:org` scope to use this endpoint.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/actions/hosted-runners#list-github-hosted-runners-for-an-organization"
+    },
+    "operationId": "actions/list-hosted-runners-for-org",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/per-page"
+     },
+     {
+      "$ref": "#/components/parameters/page"
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/actions-hosted-runner-paginated"
+         }
+        },
+        "schema": {
+         "properties": {
+          "runners": {
+           "items": {
+            "$ref": "#/components/schemas/actions-hosted-runner"
+           },
+           "type": "array"
+          },
+          "total_count": {
+           "type": "integer"
+          }
+         },
+         "required": [
+          "total_count",
+          "runners"
+         ],
+         "type": "object"
+        }
+       }
+      },
+      "description": "Response",
+      "headers": {
+       "Link": {
+        "$ref": "#/components/headers/link"
+       }
+      }
+     }
+    },
+    "summary": "List GitHub-hosted runners for an organization",
+    "tags": [
+     "actions"
+    ],
+    "x-github": {
+     "category": "actions",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "hosted-runners"
+    }
+   },
+   "post": {
+    "description": "Creates a GitHub-hosted runner for an organization.\nOAuth tokens and personal access tokens (classic) need the `manage_runners:org` scope to use this endpoint.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/actions/hosted-runners#create-a-github-hosted-runner-for-an-organization"
+    },
+    "operationId": "actions/create-hosted-runner-for-org",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "examples": {
+        "default": {
+         "value": {
+          "enable_static_ip": false,
+          "image": {
+           "id": "ubuntu-latest",
+           "source": "github"
+          },
+          "maximum_runners": 50,
+          "name": "My Hosted runner",
+          "runner_group_id": 1,
+          "size": "4-core"
+         }
+        }
+       },
+       "schema": {
+        "properties": {
+         "enable_static_ip": {
+          "description": "Whether this runner should be created with a static public IP. Note limit on account. To list limits on account, use `GET actions/hosted-runners/limits`",
+          "type": "boolean"
+         },
+         "image": {
+          "description": "The image of runner. To list all available images, use `GET /actions/hosted-runners/images/github-owned` or `GET /actions/hosted-runners/images/partner`.",
+          "properties": {
+           "id": {
+            "description": "The unique identifier of the runner image.",
+            "type": "string"
+           },
+           "source": {
+            "description": "The source of the runner image.",
+            "enum": [
+             "github",
+             "partner",
+             "custom"
+            ],
+            "type": "string"
+           },
+           "version": {
+            "description": "The version of the runner image to deploy. This is relevant only for runners using custom images.",
+            "nullable": true,
+            "type": "string"
+           }
+          },
+          "type": "object"
+         },
+         "image_gen": {
+          "default": false,
+          "description": "Whether this runner should be used to generate custom images.",
+          "type": "boolean"
+         },
+         "maximum_runners": {
+          "description": "The maximum amount of runners to scale up to. Runners will not auto-scale above this number. Use this setting to limit your cost.",
+          "type": "integer"
+         },
+         "name": {
+          "description": "Name of the runner. Must be between 1 and 64 characters and may only contain upper and lowercase letters a-z, numbers 0-9, '.', '-', and '_'.",
+          "type": "string"
+         },
+         "runner_group_id": {
+          "description": "The existing runner group to add this runner to.",
+          "type": "integer"
+         },
+         "size": {
+          "description": "The machine size of the runner. To list available sizes, use `GET actions/hosted-runners/machine-sizes`",
+          "type": "string"
+         }
+        },
+        "required": [
+         "name",
+         "image",
+         "size",
+         "runner_group_id"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/actions-hosted-runner"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/actions-hosted-runner"
+        }
+       }
+      },
+      "description": "Response"
+     }
+    },
+    "summary": "Create a GitHub-hosted runner for an organization",
+    "tags": [
+     "actions"
+    ],
+    "x-github": {
+     "category": "actions",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "hosted-runners"
+    }
+   }
+  },
+  "/orgs/{org}/blocks": {
+   "get": {
+    "description": "List the users blocked by an organization.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/orgs/blocking#list-users-blocked-by-an-organization"
+    },
+    "operationId": "orgs/list-blocked-users",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/per-page"
+     },
+     {
+      "$ref": "#/components/parameters/page"
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/simple-user-items"
+         }
+        },
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/simple-user"
+         },
+         "type": "array"
+        }
+       }
+      },
+      "description": "Response"
+     }
+    },
+    "summary": "List users blocked by an organization",
+    "tags": [
+     "orgs"
+    ],
+    "x-github": {
+     "category": "orgs",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "blocking"
+    }
+   }
+  },
+  "/orgs/{org}/hooks": {
+   "get": {
+    "description": "List webhooks for an organization.\n\nThe authenticated user must be an organization owner to use this endpoint.\n\nOAuth app tokens and personal access tokens (classic) need `admin:org_hook` scope. OAuth apps cannot list, view, or edit\nwebhooks that they did not create and users cannot list, view, or edit webhooks that were created by OAuth apps.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/orgs/webhooks#list-organization-webhooks"
+    },
+    "operationId": "orgs/list-webhooks",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/per-page"
+     },
+     {
+      "$ref": "#/components/parameters/page"
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/org-hook-items"
+         }
+        },
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/org-hook"
+         },
+         "type": "array"
+        }
+       }
+      },
+      "description": "Response",
+      "headers": {
+       "Link": {
+        "$ref": "#/components/headers/link"
+       }
+      }
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     }
+    },
+    "summary": "List organization webhooks",
+    "tags": [
+     "orgs"
+    ],
+    "x-github": {
+     "category": "orgs",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "webhooks"
+    }
+   },
+   "post": {
+    "description": "Create a hook that posts payloads in JSON format.\n\nYou must be an organization owner to use this endpoint.\n\nOAuth app tokens and personal access tokens (classic) need `admin:org_hook` scope. OAuth apps cannot list, view, or\nedit webhooks that they did not create and users cannot list, view, or edit webhooks that were created by OAuth apps.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/orgs/webhooks#create-an-organization-webhook"
+    },
+    "operationId": "orgs/create-webhook",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "examples": {
+        "default": {
+         "value": {
+          "active": true,
+          "config": {
+           "content_type": "json",
+           "url": "http://example.com/webhook"
+          },
+          "events": [
+           "push",
+           "pull_request"
+          ],
+          "name": "web"
+         }
+        }
+       },
+       "schema": {
+        "properties": {
+         "active": {
+          "default": true,
+          "description": "Determines if notifications are sent when the webhook is triggered. Set to `true` to send notifications.",
+          "type": "boolean"
+         },
+         "config": {
+          "description": "Key/value pairs to provide settings for this webhook.",
+          "properties": {
+           "content_type": {
+            "$ref": "#/components/schemas/webhook-config-content-type"
+           },
+           "insecure_ssl": {
+            "$ref": "#/components/schemas/webhook-config-insecure-ssl"
+           },
+           "password": {
+            "example": "\"password\"",
+            "type": "string"
+           },
+           "secret": {
+            "$ref": "#/components/schemas/webhook-config-secret"
+           },
+           "url": {
+            "$ref": "#/components/schemas/webhook-config-url"
+           },
+           "username": {
+            "example": "\"kdaigle\"",
+            "type": "string"
+           }
+          },
+          "required": [
+           "url"
+          ],
+          "type": "object"
+         },
+         "events": {
+          "default": [
+           "push"
+          ],
+          "description": "Determines what [events](https://docs.github.com/webhooks/event-payloads) the hook is triggered for. Set to `[\"*\"]` to receive all possible events.",
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "name": {
+          "description": "Must be passed as \"web\".",
+          "type": "string"
+         }
+        },
+        "required": [
+         "name",
+         "config"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/org-hook"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/org-hook"
+        }
+       }
+      },
+      "description": "Response",
+      "headers": {
+       "Location": {
+        "example": "https://api.github.com/orgs/octocat/hooks/1",
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     },
+     "422": {
+      "$ref": "#/components/responses/validation_failed"
+     }
+    },
+    "summary": "Create an organization webhook",
+    "tags": [
+     "orgs"
+    ],
+    "x-github": {
+     "category": "orgs",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "webhooks"
+    }
+   }
+  },
+  "/orgs/{org}/hooks/{hook_id}": {
+   "get": {
+    "description": "Returns a webhook configured in an organization. To get only the webhook\n`config` properties, see \"[Get a webhook configuration for an organization](/rest/orgs/webhooks#get-a-webhook-configuration-for-an-organization).\n\nYou must be an organization owner to use this endpoint.\n\nOAuth app tokens and personal access tokens (classic) need `admin:org_hook` scope. OAuth apps cannot list, view, or edit\nwebhooks that they did not create and users cannot list, view, or edit webhooks that were created by OAuth apps.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/orgs/webhooks#get-an-organization-webhook"
+    },
+    "operationId": "orgs/get-webhook",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/hook-id"
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/org-hook"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/org-hook"
+        }
+       }
+      },
+      "description": "Response"
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     }
+    },
+    "summary": "Get an organization webhook",
+    "tags": [
+     "orgs"
+    ],
+    "x-github": {
+     "category": "orgs",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "webhooks"
+    }
+   },
+   "patch": {
+    "description": "Updates a webhook configured in an organization. When you update a webhook,\nthe `secret` will be overwritten. If you previously had a `secret` set, you must\nprovide the same `secret` or set a new `secret` or the secret will be removed. If\nyou are only updating individual webhook `config` properties, use \"[Update a webhook\nconfiguration for an organization](/rest/orgs/webhooks#update-a-webhook-configuration-for-an-organization)\".\n\nYou must be an organization owner to use this endpoint.\n\nOAuth app tokens and personal access tokens (classic) need `admin:org_hook` scope. OAuth apps cannot list, view, or edit\nwebhooks that they did not create and users cannot list, view, or edit webhooks that were created by OAuth apps.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/orgs/webhooks#update-an-organization-webhook"
+    },
+    "operationId": "orgs/update-webhook",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/hook-id"
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "examples": {
+        "default": {
+         "value": {
+          "active": true,
+          "events": [
+           "pull_request"
+          ]
+         }
+        }
+       },
+       "schema": {
+        "properties": {
+         "active": {
+          "default": true,
+          "description": "Determines if notifications are sent when the webhook is triggered. Set to `true` to send notifications.",
+          "type": "boolean"
+         },
+         "config": {
+          "description": "Key/value pairs to provide settings for this webhook.",
+          "properties": {
+           "content_type": {
+            "$ref": "#/components/schemas/webhook-config-content-type"
+           },
+           "insecure_ssl": {
+            "$ref": "#/components/schemas/webhook-config-insecure-ssl"
+           },
+           "secret": {
+            "$ref": "#/components/schemas/webhook-config-secret"
+           },
+           "url": {
+            "$ref": "#/components/schemas/webhook-config-url"
+           }
+          },
+          "required": [
+           "url"
+          ],
+          "type": "object"
+         },
+         "events": {
+          "default": [
+           "push"
+          ],
+          "description": "Determines what [events](https://docs.github.com/webhooks/event-payloads) the hook is triggered for.",
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "name": {
+          "example": "\"web\"",
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": false
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/org-hook-2"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/org-hook"
+        }
+       }
+      },
+      "description": "Response"
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     },
+     "422": {
+      "$ref": "#/components/responses/validation_failed"
+     }
+    },
+    "summary": "Update an organization webhook",
+    "tags": [
+     "orgs"
+    ],
+    "x-github": {
+     "category": "orgs",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "webhooks"
+    }
+   }
+  },
+  "/orgs/{org}/properties/schema": {
+   "get": {
+    "description": "Gets all custom properties defined for an organization.\nOrganization members can read these properties.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/orgs/custom-properties#get-all-custom-properties-for-an-organization"
+    },
+    "operationId": "orgs/custom-properties-for-repos-get-organization-definitions",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/custom-properties"
+         }
+        },
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/custom-property"
+         },
+         "type": "array"
+        }
+       }
+      },
+      "description": "Response"
+     },
+     "403": {
+      "$ref": "#/components/responses/forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     }
+    },
+    "summary": "Get all custom properties for an organization",
+    "tags": [
+     "orgs"
+    ],
+    "x-github": {
+     "category": "orgs",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "custom-properties"
+    }
+   }
+  },
+  "/orgs/{org}/properties/schema/{custom_property_name}": {
+   "get": {
+    "description": "Gets a custom property that is defined for an organization.\nOrganization members can read these properties.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/orgs/custom-properties#get-a-custom-property-for-an-organization"
+    },
+    "operationId": "orgs/custom-properties-for-repos-get-organization-definition",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/custom-property-name"
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/custom-property"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/custom-property"
+        }
+       }
+      },
+      "description": "Response"
+     },
+     "403": {
+      "$ref": "#/components/responses/forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     }
+    },
+    "summary": "Get a custom property for an organization",
+    "tags": [
+     "orgs"
+    ],
+    "x-github": {
+     "category": "orgs",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "custom-properties"
+    }
+   },
+   "put": {
+    "description": "Creates a new or updates an existing custom property that is defined for an organization.\n\nTo use this endpoint, the authenticated user must be one of:\n- An administrator for the organization.\n- A user, or a user on a team, with the fine-grained permission of `custom_properties_org_definitions_manager` in the organization.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/orgs/custom-properties#create-or-update-a-custom-property-for-an-organization"
+    },
+    "operationId": "orgs/custom-properties-for-repos-create-or-update-organization-definition",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/custom-property-name"
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "examples": {
+        "default": {
+         "value": {
+          "allowed_values": [
+           "production",
+           "development"
+          ],
+          "default_value": "production",
+          "description": "Prod or dev environment",
+          "required": true,
+          "value_type": "single_select"
+         }
+        }
+       },
+       "schema": {
+        "$ref": "#/components/schemas/custom-property-set-payload"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/custom-property"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/custom-property"
+        }
+       }
+      },
+      "description": "Response"
+     },
+     "403": {
+      "$ref": "#/components/responses/forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     }
+    },
+    "summary": "Create or update a custom property for an organization",
+    "tags": [
+     "orgs"
+    ],
+    "x-github": {
+     "category": "orgs",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "custom-properties"
+    }
+   }
+  },
   "/orgs/{org}/repos": {
    "get": {
     "description": "Lists repositories for the specified organization.\n\n\u003e [!NOTE]\n\u003e In order to see the `security_and_analysis` block for a repository you must have admin permissions for the repository or be an owner or security manager for the organization that owns the repository. For more information, see \"[Managing security managers in your organization](https://docs.github.com/organizations/managing-peoples-access-to-your-organization-with-roles/managing-security-managers-in-your-organization).\"",
@@ -7401,6 +9428,565 @@
       "version": "2026-03-10"
      }
     ]
+   }
+  },
+  "/orgs/{org}/settings/network-configurations": {
+   "get": {
+    "description": "Lists all hosted compute network configurations configured in an organization.\n\nOAuth app tokens and personal access tokens (classic) need the `read:network_configurations` scope to use this endpoint.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/orgs/network-configurations#list-hosted-compute-network-configurations-for-an-organization"
+    },
+    "operationId": "hosted-compute/list-network-configurations-for-org",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/per-page"
+     },
+     {
+      "$ref": "#/components/parameters/page"
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/network-configurations-paginated"
+         }
+        },
+        "schema": {
+         "properties": {
+          "network_configurations": {
+           "items": {
+            "$ref": "#/components/schemas/network-configuration"
+           },
+           "type": "array"
+          },
+          "total_count": {
+           "type": "integer"
+          }
+         },
+         "required": [
+          "total_count",
+          "network_configurations"
+         ],
+         "type": "object"
+        }
+       }
+      },
+      "description": "Response",
+      "headers": {
+       "Link": {
+        "$ref": "#/components/headers/link"
+       }
+      }
+     }
+    },
+    "summary": "List hosted compute network configurations for an organization",
+    "tags": [
+     "hosted-compute"
+    ],
+    "x-github": {
+     "category": "orgs",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "network-configurations"
+    }
+   },
+   "post": {
+    "description": "Creates a hosted compute network configuration for an organization.\n\nOAuth app tokens and personal access tokens (classic) need the `write:network_configurations` scope to use this endpoint.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/orgs/network-configurations#create-a-hosted-compute-network-configuration-for-an-organization"
+    },
+    "operationId": "hosted-compute/create-network-configuration-for-org",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "examples": {
+        "default": {
+         "value": {
+          "compute_service": "actions",
+          "name": "my-network-configuration",
+          "network_settings_ids": [
+           "23456789ABDCEF1"
+          ]
+         }
+        }
+       },
+       "schema": {
+        "properties": {
+         "compute_service": {
+          "description": "The hosted compute service to use for the network configuration.",
+          "enum": [
+           "none",
+           "actions"
+          ],
+          "type": "string"
+         },
+         "failover_network_enabled": {
+          "description": "Indicates whether the failover network resource is enabled.",
+          "type": "boolean"
+         },
+         "failover_network_settings_ids": {
+          "description": "A list of identifiers of the failover network settings resources to use for the network configuration. Exactly one resource identifier must be specified in the list.",
+          "items": {
+           "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 0,
+          "type": "array"
+         },
+         "name": {
+          "description": "Name of the network configuration. Must be between 1 and 100 characters and may only contain upper and lowercase letters a-z, numbers 0-9, '.', '-', and '_'.",
+          "type": "string"
+         },
+         "network_settings_ids": {
+          "description": "A list of identifiers of the network settings resources to use for the network configuration. Exactly one resource identifier must be specified in the list.",
+          "items": {
+           "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "type": "array"
+         }
+        },
+        "required": [
+         "name",
+         "network_settings_ids"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/network-configuration"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/network-configuration"
+        }
+       }
+      },
+      "description": "Response"
+     }
+    },
+    "summary": "Create a hosted compute network configuration for an organization",
+    "tags": [
+     "hosted-compute"
+    ],
+    "x-github": {
+     "category": "orgs",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "network-configurations"
+    }
+   }
+  },
+  "/orgs/{org}/teams": {
+   "get": {
+    "description": "Lists all teams in an organization that are visible to the authenticated user.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/teams/teams#list-teams"
+    },
+    "operationId": "teams/list",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/per-page"
+     },
+     {
+      "$ref": "#/components/parameters/page"
+     },
+     {
+      "$ref": "#/components/parameters/team-type"
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/team-items"
+         }
+        },
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/team"
+         },
+         "type": "array"
+        }
+       }
+      },
+      "description": "Response",
+      "headers": {
+       "Link": {
+        "$ref": "#/components/headers/link"
+       }
+      }
+     },
+     "403": {
+      "$ref": "#/components/responses/forbidden"
+     }
+    },
+    "summary": "List teams",
+    "tags": [
+     "teams"
+    ],
+    "x-github": {
+     "category": "teams",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "teams"
+    }
+   },
+   "post": {
+    "description": "To create a team, the authenticated user must be a member or owner of `{org}`. By default, organization members can create teams. Organization owners can limit team creation to organization owners. For more information, see \"[Setting team creation permissions](https://docs.github.com/articles/setting-team-creation-permissions-in-your-organization).\"\n\nWhen you create a new team, you automatically become a team maintainer without explicitly adding yourself to the optional array of `maintainers`. For more information, see \"[About teams](https://docs.github.com/github/setting-up-and-managing-organizations-and-teams/about-teams)\".",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/teams/teams#create-a-team"
+    },
+    "operationId": "teams/create",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "examples": {
+        "default": {
+         "value": {
+          "description": "A great team",
+          "name": "Justice League",
+          "notification_setting": "notifications_enabled",
+          "permission": "push",
+          "privacy": "closed"
+         }
+        }
+       },
+       "schema": {
+        "properties": {
+         "description": {
+          "description": "The description of the team.",
+          "type": "string"
+         },
+         "maintainers": {
+          "description": "List GitHub usernames for organization members who will become team maintainers.",
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "name": {
+          "description": "The name of the team.",
+          "type": "string"
+         },
+         "notification_setting": {
+          "description": "The notification setting the team has chosen. The options are:  \n * `notifications_enabled` - team members receive notifications when the team is @mentioned.  \n * `notifications_disabled` - no one receives notifications.  \nDefault: `notifications_enabled`",
+          "enum": [
+           "notifications_enabled",
+           "notifications_disabled"
+          ],
+          "type": "string"
+         },
+         "parent_team_id": {
+          "description": "The ID of a team to set as the parent team.",
+          "type": "integer"
+         },
+         "parent_team_slug": {
+          "description": "The slug of a team to set as the parent team. Ignored when `parent_team_id` is also provided.",
+          "type": "string"
+         },
+         "permission": {
+          "default": "pull",
+          "description": "**Closing down notice**. The permission that new repositories will be added to the team with when none is specified.",
+          "enum": [
+           "pull",
+           "push"
+          ],
+          "type": "string"
+         },
+         "privacy": {
+          "description": "The level of privacy this team should have. The options are:  \n**For a non-nested team:**  \n * `secret` - only visible to organization owners and members of this team.  \n * `closed` - visible to all members of this organization.  \nDefault: `secret`  \n**For a parent or child team:**  \n * `closed` - visible to all members of this organization.  \nDefault for child team: `closed`",
+          "enum": [
+           "secret",
+           "closed"
+          ],
+          "type": "string"
+         },
+         "repo_names": {
+          "description": "The full name (e.g., \"organization-name/repository-name\") of repositories to add the team to.",
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         }
+        },
+        "required": [
+         "name"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/team-full"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/team-full"
+        }
+       }
+      },
+      "description": "Response"
+     },
+     "403": {
+      "$ref": "#/components/responses/forbidden"
+     },
+     "422": {
+      "$ref": "#/components/responses/validation_failed"
+     }
+    },
+    "summary": "Create a team",
+    "tags": [
+     "teams"
+    ],
+    "x-github": {
+     "category": "teams",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "teams"
+    },
+    "x-github-breaking-changes": [
+     {
+      "changeset": "remove_team_permission",
+      "patch": {
+       "requestBody": {
+        "content": {
+         "application/json": {
+          "schema": {
+           "properties": {
+            "permission": null
+           }
+          }
+         }
+        },
+        "required": true
+       }
+      },
+      "version": "2026-03-10"
+     }
+    ]
+   }
+  },
+  "/orgs/{org}/teams/{team_slug}": {
+   "get": {
+    "description": "Gets a team using the team's `slug`. To create the `slug`, GitHub replaces special characters in the `name` string, changes all words to lowercase, and replaces spaces with a `-` separator. For example, `\"My TEam Näme\"` would become `my-team-name`.\n\n\u003e [!NOTE]\n\u003e You can also specify a team by `org_id` and `team_id` using the route `GET /organizations/{org_id}/team/{team_id}`.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/teams/teams#get-a-team-by-name"
+    },
+    "operationId": "teams/get-by-name",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/team-slug"
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/team-full"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/team-full"
+        }
+       }
+      },
+      "description": "Response"
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     }
+    },
+    "summary": "Get a team by name",
+    "tags": [
+     "teams"
+    ],
+    "x-github": {
+     "category": "teams",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "teams"
+    }
+   },
+   "patch": {
+    "description": "To edit a team, the authenticated user must either be an organization owner or a team maintainer.\n\n\u003e [!NOTE]\n\u003e You can also specify a team by `org_id` and `team_id` using the route `PATCH /organizations/{org_id}/team/{team_id}`.",
+    "externalDocs": {
+     "description": "API method documentation",
+     "url": "https://docs.github.com/rest/teams/teams#update-a-team"
+    },
+    "operationId": "teams/update-in-org",
+    "parameters": [
+     {
+      "$ref": "#/components/parameters/org"
+     },
+     {
+      "$ref": "#/components/parameters/team-slug"
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "examples": {
+        "default": {
+         "value": {
+          "description": "new team description",
+          "name": "new team name",
+          "notification_setting": "notifications_enabled",
+          "privacy": "closed"
+         }
+        }
+       },
+       "schema": {
+        "properties": {
+         "description": {
+          "description": "The description of the team.",
+          "type": "string"
+         },
+         "name": {
+          "description": "The name of the team.",
+          "type": "string"
+         },
+         "notification_setting": {
+          "description": "The notification setting the team has chosen. Editing teams without specifying this parameter leaves `notification_setting` intact. The options are: \n * `notifications_enabled` - team members receive notifications when the team is @mentioned.  \n * `notifications_disabled` - no one receives notifications.",
+          "enum": [
+           "notifications_enabled",
+           "notifications_disabled"
+          ],
+          "type": "string"
+         },
+         "parent_team_id": {
+          "description": "The ID of a team to set as the parent team.",
+          "nullable": true,
+          "type": "integer"
+         },
+         "parent_team_slug": {
+          "description": "The slug of a team to set as the parent team. Ignored when `parent_team_id` is also provided.",
+          "nullable": true,
+          "type": "string"
+         },
+         "permission": {
+          "default": "pull",
+          "description": "**Closing down notice**. The permission that new repositories will be added to the team with when none is specified.",
+          "enum": [
+           "pull",
+           "push",
+           "admin"
+          ],
+          "type": "string"
+         },
+         "privacy": {
+          "description": "The level of privacy this team should have. Editing teams without specifying this parameter leaves `privacy` intact. When a team is nested, the `privacy` for parent teams cannot be `secret`. The options are:  \n**For a non-nested team:**  \n * `secret` - only visible to organization owners and members of this team.  \n * `closed` - visible to all members of this organization.  \n**For a parent or child team:**  \n * `closed` - visible to all members of this organization.",
+          "enum": [
+           "secret",
+           "closed"
+          ],
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": false
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/team-full"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/team-full"
+        }
+       }
+      },
+      "description": "Response when the updated information already exists"
+     },
+     "201": {
+      "content": {
+       "application/json": {
+        "examples": {
+         "default": {
+          "$ref": "#/components/examples/team-full"
+         }
+        },
+        "schema": {
+         "$ref": "#/components/schemas/team-full"
+        }
+       }
+      },
+      "description": "Response"
+     },
+     "403": {
+      "$ref": "#/components/responses/forbidden"
+     },
+     "404": {
+      "$ref": "#/components/responses/not_found"
+     },
+     "422": {
+      "$ref": "#/components/responses/validation_failed"
+     }
+    },
+    "summary": "Update a team",
+    "tags": [
+     "teams"
+    ],
+    "x-github": {
+     "category": "teams",
+     "enabledForGitHubApps": true,
+     "githubCloudOnly": false,
+     "subcategory": "teams"
+    }
    }
   },
   "/repos/{owner}/{repo}": {

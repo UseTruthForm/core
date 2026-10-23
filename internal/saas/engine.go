@@ -127,7 +127,11 @@ func (c *Client) list(ctx context.Context, path, array string) ([]map[string]any
 	if strings.Contains(path, "?") {
 		sep = "&"
 	}
-	next := path + sep + "per_page=100"
+	size := c.P.PageSize
+	if size == 0 {
+		size = 100
+	}
+	next := path + sep + fmt.Sprintf("per_page=%d", size)
 	for page := 1; next != ""; page++ {
 		v, whole, resp, err := c.call(ctx, "GET", next, nil)
 		if err != nil {
@@ -151,7 +155,7 @@ func (c *Client) list(ctx context.Context, path, array string) ([]map[string]any
 		case "page":
 			info, _ := whole["result_info"].(map[string]any)
 			if total, _ := info["total_pages"].(float64); float64(page) < total {
-				next = path + sep + fmt.Sprintf("per_page=100&page=%d", page+1)
+				next = path + sep + fmt.Sprintf("per_page=%d&page=%d", size, page+1)
 			}
 		}
 	}
@@ -271,12 +275,22 @@ func (c *Client) inventory(ctx context.Context) ([]*item, []snapshot.Coverage, e
 		}
 		w := c.writes(col)
 		cv := snapshot.Coverage{Resource: col.Kind, Kind: col.Kind}
+		// One coverage line covers every parent. A failure is never
+		// overwritten by a later parent's milder answer: a 502 on one
+		// repository's rulesets, then "Upgrade to GitHub Pro" on the next,
+		// read as "not available on this plan" and the capture as complete
+		// (review, 2026-10-22).
+		note := func(msg string) {
+			if !strings.HasPrefix(cv.NotCaptured, "list failed") {
+				cv.NotCaptured = msg
+			}
+		}
 		for _, p := range parents {
 			var praw map[string]any
 			if p != nil {
 				praw = p.raw
 			}
-			path, ok := expand(col.List, col.Bind, c.Account, praw, nil)
+			path, ok := col.listPath(c.Account, praw)
 			if !ok {
 				return nil, nil, fmt.Errorf("%s: cannot fill %s", col.Kind, col.List)
 			}
@@ -293,14 +307,14 @@ func (c *Client) inventory(ctx context.Context) ([]*item, []snapshot.Coverage, e
 			}
 			if err != nil {
 				if c.unavailable(err) {
-					cv.NotCaptured = "not available on this account's plan: " + err.Error()
+					note("not available on this account's plan: " + err.Error())
 					continue
 				}
 				// GitHub answers 404 both for "not enabled" (Pages) and for
 				// "not visible to this token", to hide what exists. Not a
 				// failure, and not proof of absence: said as such.
 				if errors.Is(err, ErrNotFound) {
-					cv.NotCaptured = "not found: not enabled here, or not visible to this token"
+					note("not found: not enabled here, or not visible to this token")
 					continue
 				}
 				cv.NotCaptured = "list failed: " + err.Error()
@@ -314,7 +328,9 @@ func (c *Client) inventory(ctx context.Context) ([]*item, []snapshot.Coverage, e
 					}
 					full, _, err := c.do(ctx, "GET", gp, nil)
 					if err != nil {
-						cv.NotCaptured = "list failed: read " + gp + ": " + err.Error()
+						if !strings.HasPrefix(cv.NotCaptured, "list failed") {
+							cv.NotCaptured = "list failed: read " + gp + ": " + err.Error()
+						}
 						break
 					}
 					raw, _ = full.(map[string]any)
@@ -497,7 +513,7 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 	// What exists under this parent in the target, read once.
 	lk := col.Kind + "|" + parentName
 	if listed[lk] == nil {
-		path, ok := expand(col.List, col.Bind, c.Account, parentRaw, nil)
+		path, ok := col.listPath(c.Account, parentRaw)
 		if !ok {
 			return false, "cannot fill " + col.List
 		}
@@ -596,7 +612,12 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		}
 	}
 	if col.Update != "" && extra {
+		// GitHub answers a variable's create with an empty object: the item
+		// is named by what was sent.
 		up, ok := expand(col.Update, col.Bind, c.Account, parentRaw, raw)
+		if !ok {
+			up, ok = expand(col.Update, col.Bind, c.Account, parentRaw, desired)
+		}
 		if !ok {
 			return false, "created, but cannot fill " + col.Update
 		}
@@ -605,6 +626,9 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		} else if m, ok := updated.(map[string]any); ok {
 			raw = m
 		}
+	}
+	if len(raw) == 0 {
+		raw = desired // the create answered with nothing (a variable)
 	}
 	targets[col.Kind+"|"+full] = raw
 	made[col.Kind+"|"+full] = true

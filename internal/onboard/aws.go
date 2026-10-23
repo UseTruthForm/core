@@ -91,7 +91,8 @@ func buildAWS(r Request) (Plan, error) {
 	if r.Access == "restore" {
 		p.Status = "Expected. PowerUserAccess restored the drill's 14 types, held by a user, not through this role."
 	} else {
-		p.Status = "Expected. Captures have run with ReadOnlyAccess and PowerUserAccess together; this role, holding ReadOnlyAccess alone, has not yet captured an account."
+		p.Status = "Verified with a gap (2026-10-23): deployed from this template in a sandbox account (trusting a user in the same account), the role captured us-east-2 and could write nothing, but ReadOnlyAccess was refused 87 types that PowerUserAccess reads, and the capture held 5 fewer resources. Removing the stack removed the role and the access. A principal in another account has not yet been tried."
+		p.Warnings = append(p.Warnings, "AWS's ReadOnlyAccess does not cover some newer services (Bedrock, Location, MediaTailor, Control Tower, QuickSight and others: 87 of about 1,500 types in one sandbox region). A capture with this role reports those types as incomplete; stackdna check lists the ones refused in this account.")
 	}
 
 	p.Before = []Step{

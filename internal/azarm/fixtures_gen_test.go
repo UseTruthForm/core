@@ -23,6 +23,20 @@ var fixtureTypes = []string{
 	"Microsoft.Web/serverfarms@2024-11-01",
 	"Microsoft.Web/sites@2024-11-01",
 	"Microsoft.Compute/virtualMachines@2025-04-01",
+	// Extension resources, which the subscription's resource list does not
+	// return, and children found through their parent.
+	"Microsoft.Authorization/roleAssignments@2022-04-01",
+	"Microsoft.Authorization/roleDefinitions@2022-04-01",
+	"Microsoft.Authorization/locks@2020-05-01",
+	"Microsoft.Authorization/policyAssignments@2025-11-01",
+	"Microsoft.Insights/diagnosticSettings@2016-09-01",
+	"Microsoft.Storage/storageAccounts/blobServices@2025-08-01",
+	"Microsoft.Storage/storageAccounts/blobServices/containers@2025-08-01",
+	"Microsoft.Network/virtualNetworks/subnets@2025-07-01",
+	"Microsoft.Network/networkSecurityGroups/securityRules@2025-07-01",
+	// Azure creates these with every NSG and no one can PUT them
+	// (writableScopes 0): capture must leave them out.
+	"Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2025-07-01",
 }
 
 const fixtureDir = "../../testdata/azure/types"

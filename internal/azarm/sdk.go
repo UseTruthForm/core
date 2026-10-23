@@ -84,7 +84,14 @@ func (s *SDK) getJSON(ctx context.Context, u string, v any) error {
 		return fmt.Errorf("%s: %w", u, ErrNotFound)
 	}
 	if !runtime.HasStatusCode(resp, http.StatusOK) {
-		return runtime.NewResponseError(resp)
+		err := runtime.NewResponseError(resp)
+		// A collection a resource does not have, or a type that does not
+		// support it (diagnostic settings on most types), answers 400 or
+		// 405 with a recognisable code; it means "none here".
+		if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusMethodNotAllowed {
+			return fmt.Errorf("%w: %v", ErrNotApplicable, err)
+		}
+		return err
 	}
 	return runtime.UnmarshalAsJSON(resp, v)
 }
@@ -147,6 +154,24 @@ func (s *SDK) APIVersions(ctx context.Context, namespace string) (map[string][]s
 		m[strings.ToLower(out.Namespace+"/"+rt.ResourceType)] = rt.APIVersions
 	}
 	return m, nil
+}
+
+// List reads a collection, following nextLink.
+func (s *SDK) List(ctx context.Context, path, apiVersion string) ([]map[string]any, error) {
+	var out []map[string]any
+	u := s.url(path, apiVersion)
+	for u != "" {
+		var page struct {
+			Value    []map[string]any `json:"value"`
+			NextLink string           `json:"nextLink"`
+		}
+		if err := s.getJSON(ctx, u, &page); err != nil {
+			return nil, err
+		}
+		out = append(out, page.Value...)
+		u = page.NextLink
+	}
+	return out, nil
 }
 
 func (s *SDK) Get(ctx context.Context, id, apiVersion string) (map[string]any, error) {

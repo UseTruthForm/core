@@ -1,19 +1,49 @@
 {
  "resources": {
+  "Microsoft.Authorization/locks@2020-05-01": {
+   "$ref": "resources_0/microsoft.authorization/2020-05-01/types.json#/22"
+  },
+  "Microsoft.Authorization/policyAssignments@2025-11-01": {
+   "$ref": "resources_1/microsoft.authorization/2025-11-01/types.json#/59"
+  },
+  "Microsoft.Authorization/roleAssignments@2022-04-01": {
+   "$ref": "authorization/microsoft.authorization/2022-04-01/types.json#/24"
+  },
+  "Microsoft.Authorization/roleDefinitions@2022-04-01": {
+   "$ref": "authorization/microsoft.authorization/2022-04-01/types.json#/36"
+  },
   "Microsoft.Compute/virtualMachines@2025-04-01": {
    "$ref": "compute_1/microsoft.compute/2025-04-01/types.json#/485"
+  },
+  "Microsoft.Insights/diagnosticSettings@2016-09-01": {
+   "$ref": "monitor_1/microsoft.insights/2016-09-01/types.json#/25"
   },
   "Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31": {
    "$ref": "msi/microsoft.managedidentity/2023-01-31/types.json#/18"
   },
+  "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2025-07-01": {
+   "$ref": "network/microsoft.network/2025-07-01/types.json#/625"
+  },
+  "Microsoft.Network/networkSecurityGroups/securityRules@2025-07-01": {
+   "$ref": "network/microsoft.network/2025-07-01/types.json#/617"
+  },
   "Microsoft.Network/networkSecurityGroups@2025-07-01": {
    "$ref": "network/microsoft.network/2025-07-01/types.json#/608"
+  },
+  "Microsoft.Network/virtualNetworks/subnets@2025-07-01": {
+   "$ref": "network/microsoft.network/2025-07-01/types.json#/621"
   },
   "Microsoft.Network/virtualNetworks@2025-07-01": {
    "$ref": "network/microsoft.network/2025-07-01/types.json#/613"
   },
   "Microsoft.Resources/resourceGroups@2024-11-01": {
    "$ref": "resources_11/microsoft.resources/2024-11-01/types.json#/7"
+  },
+  "Microsoft.Storage/storageAccounts/blobServices/containers@2025-08-01": {
+   "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/304"
+  },
+  "Microsoft.Storage/storageAccounts/blobServices@2025-08-01": {
+   "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/262"
   },
   "Microsoft.Storage/storageAccounts@2025-08-01": {
    "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/229"

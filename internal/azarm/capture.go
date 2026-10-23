@@ -22,6 +22,7 @@ const APIVersion = "azure.stackdna.org/v1"
 const (
 	annAPIVersion = "stackdna.org/api-version"
 	annSecrets    = "stackdna.org/secrets"
+	annID         = "stackdna.org/id"
 	tokSub        = "{{stackdna|subscription}}"
 	tokTenant     = "{{stackdna|tenant}}"
 	groupType     = "Microsoft.Resources/resourceGroups"
@@ -173,9 +174,9 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 	}
 	wg.Wait()
 
+	var caps []*captured
 	for i, r := range todo {
 		rid, _ := ParseID(r.ID)
-		c := out[i]
 		switch {
 		case errors.Is(errs[i], errNoVersion):
 			cover(rid.Type).NotCaptured = errs[i].Error()
@@ -186,6 +187,44 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, Unreadable+errs[i].Error())
 			continue
 		}
+		caps = append(caps, out[i])
+	}
+	// What the resource list does not return: extension resources and
+	// children. Their own skips go to coverage like any other.
+	for _, f := range discover(ctx, api, &v, tenant, caps, par) {
+		if !p.selected(f.typ) {
+			cover(f.typ).NotCaptured = "not selected (--types)"
+			continue
+		}
+		switch {
+		case f.count:
+			c := cover(f.typ)
+			if c.Skipped == nil {
+				c.Skipped = map[string]int{}
+			}
+			c.Skipped[f.reason]++
+		case f.reason != "":
+			skip(f.typ, f.name, f.reason)
+		default:
+			caps = append(caps, f.c)
+		}
+	}
+	// A resource can be reachable two ways (a SQL database is tracked and
+	// also its server's child). The first read is kept; a second would be
+	// a duplicate object, which the snapshot refuses to write.
+	seenID := map[string]bool{}
+	unique := caps[:0]
+	for _, c := range caps {
+		if k := strings.ToLower(c.rid.String()); !seenID[k] {
+			seenID[k] = true
+			unique = append(unique, c)
+		}
+	}
+	caps = unique
+	principalRefs(caps)
+
+	for _, c := range caps {
+		rid := c.rid
 		obj := toObject(c)
 		if p.Baseline != nil {
 			if b, ok := p.Baseline[snapshot.Object{Body: obj}.Key()]; ok && sameSpec(obj, b) {
@@ -198,7 +237,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 	}
 
 	seen := map[string]bool{}
-	for _, c := range out {
+	for _, c := range caps {
 		if c == nil || seen[strings.ToLower(c.rid.Type)] {
 			continue
 		}
@@ -283,16 +322,22 @@ func read(ctx context.Context, api ARM, v *versions, r Ref, tenant string) (*cap
 	if err != nil {
 		return nil, err
 	}
+	return process(api, tenant, rid, ver, s, body), nil
+}
+
+// process turns a body, however it was read (a GET, or an item of a
+// list), into a captured resource.
+func process(api ARM, tenant string, rid ResourceID, ver string, s *Schema, body map[string]any) *captured {
 	spec, sp := s.normalize(body)
 	spec = tokenize(spec, api.Subscription(), tenant)
-	status := map[string]any{"id": tokenizeString(r.ID, api.Subscription(), tenant)}
+	status := map[string]any{"id": tokenizeString(rid.String(), api.Subscription(), tenant)}
 	for k, x := range sp.readOnly {
 		if str, ok := x.(string); ok {
 			x = tokenizeString(str, api.Subscription(), tenant)
 		}
 		status[k] = x
 	}
-	return &captured{rid: rid, version: ver, schema: s, spec: spec, status: status, secrets: relevantSecrets(spec, s.secretPaths())}, nil
+	return &captured{rid: rid, version: ver, schema: s, spec: spec, status: status, secrets: relevantSecrets(spec, s.secretPaths())}
 }
 
 // relevantSecrets keeps the secret paths whose parent object is present:
@@ -317,12 +362,14 @@ func relevantSecrets(spec map[string]any, paths []string) []string {
 }
 
 func toObject(c *captured) map[string]any {
-	ann := map[string]any{annAPIVersion: c.version}
+	// The ID is kept because an extension resource's scope cannot be
+	// rebuilt from its kind and name alone; restore PUTs to it.
+	ann := map[string]any{annAPIVersion: c.version, annID: c.status["id"]}
 	if len(c.secrets) > 0 {
 		ann[annSecrets] = strings.Join(c.secrets, ",")
 	}
-	meta := map[string]any{"name": c.rid.Name, "annotations": ann}
-	if !strings.EqualFold(c.rid.Type, groupType) {
+	meta := map[string]any{"name": c.rid.LocalName(), "annotations": ann}
+	if !strings.EqualFold(c.rid.Type, groupType) && c.rid.ResourceGroup != "" {
 		meta["namespace"] = c.rid.ResourceGroup
 	}
 	return map[string]any{"apiVersion": APIVersion, "kind": c.rid.Type, "metadata": meta, "spec": c.spec, "status": c.status}

@@ -10,7 +10,10 @@
 #   baseline
 #
 # Free only: a resource group, network security group, virtual network with
-# a subnet that references the NSG, and a user-assigned managed identity.
+# a subnet that references the NSG, a user-assigned managed identity, a
+# Reader role assignment for that identity on the group, and a delete lock
+# on the group. The assignment proves the principal remap: restoring the
+# identity creates a new principal, and the assignment must follow it.
 # None is metered. Not used: VMs, storage, public IPs, Log Analytics. An
 # App Service plan and web app (Free F1) were in the first run, to test a
 # map keyed by resource ID against Azure, but the subscription's F1 quota is
@@ -38,9 +41,17 @@ step() { printf '\n== %s\n' "$*"; }
 
 had_watcher=$(az group exists --name NetworkWatcherRG)
 
+unlock() {
+  # A CanNotDelete lock blocks deleting the group; it goes first.
+  for l in $(az lock list --resource-group "$RG" --query "[].id" -o tsv 2>/dev/null); do
+    az lock delete --ids "$l" && echo "deleted lock $l"
+  done
+}
+
 cleanup() {
   step "cleanup: delete $RG"
   if [ "$(az group exists --name "$RG")" = true ]; then
+    unlock
     az group delete --name "$RG" --yes
     echo "deleted $RG"
   fi
@@ -58,7 +69,12 @@ seed() {
     --access Allow --direction Inbound --protocol Tcp --destination-port-ranges 443 -o none
   az network vnet create -g "$RG" -n "$N-vnet" -l "$LOCATION" --address-prefixes 10.42.0.0/16 \
     --subnet-name app --subnet-prefixes 10.42.1.0/24 --network-security-group "$N-nsg" -o none
-  az identity create -g "$RG" -n "$N-id" -l "$LOCATION" -o none
+  principal=$(az identity create -g "$RG" -n "$N-id" -l "$LOCATION" --query principalId -o tsv)
+  rgid=$(az group show --name "$RG" --query id -o tsv)
+  # principalType skips the directory lookup that fails for a few seconds
+  # after an identity is created (replication delay).
+  az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal     --role Reader --scope "$rgid" -o none
+  az lock create --name "$N-lock" --lock-type CanNotDelete --resource-group "$RG" --notes "StackDNA drill" -o none
   echo "seeded $RG"
 }
 
@@ -88,10 +104,15 @@ d1=$(grep '^digest:' "$OUT/snap/snapshot.yaml"); d2=$(grep '^digest:' "$OUT/snap
 echo "deterministic: $d1"
 
 step "disaster: delete $RG"
+unlock
 az group delete --name "$RG" --yes
 
 step "restore from the snapshot"
 sd restore --from "$OUT/snap"
+# The restored assignment must name the restored identity's new principal.
+newp=$(az identity show -g "$RG" -n "$N-id" --query principalId -o tsv)
+az role assignment list --scope "$(az group show --name "$RG" --query id -o tsv)" --query "[?principalId=='$newp'].roleDefinitionName" -o tsv | grep -qx Reader   || { echo "FAIL: the restored role assignment does not name the restored identity ($newp)"; exit 1; }
+echo "role assignment follows the restored identity's new principal $newp"
 step "diff: the subscription must match the snapshot"
 sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
 echo "DRILL PASSED"

@@ -2977,5 +2977,1154 @@
   "name": "Microsoft.Storage/storageAccounts@2025-08-01",
   "readableScopes": 8,
   "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "default"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Storage/storageAccounts/blobServices"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-08-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Storage/storageAccounts/blobServices",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/232"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/230"
+    }
+   },
+   "properties": {
+    "description": "The properties of a storage account’s Blob service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/234"
+    }
+   },
+   "sku": {
+    "description": "Sku name and tier.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/189"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/231"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "BlobServicePropertiesProperties",
+  "properties": {
+   "automaticSnapshotPolicyEnabled": {
+    "description": "Deprecated in favor of isVersioningEnabled property.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "changeFeed": {
+    "description": "The blob service properties for change feed events.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/256"
+    }
+   },
+   "containerDeleteRetentionPolicy": {
+    "description": "The blob service properties for container soft delete.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/253"
+    }
+   },
+   "cors": {
+    "description": "Specifies CORS rules for the Blob service. You can include up to five CorsRule elements in the request. If no CorsRule elements are included in the request body, all CORS rules will be deleted, and CORS will be disabled for the Blob service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/235"
+    }
+   },
+   "defaultServiceVersion": {
+    "description": "DefaultServiceVersion indicates the default version to use for requests to the Blob service if an incoming request’s version is not specified. Possible values include version 2008-10-27 and all more recent versions.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "deleteRetentionPolicy": {
+    "description": "The blob service properties for blob soft delete.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/253"
+    }
+   },
+   "isVersioningEnabled": {
+    "description": "Versioning is enabled if set to true.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "lastAccessTimeTrackingPolicy": {
+    "description": "The blob service property to configure last access time based tracking policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/258"
+    }
+   },
+   "restorePolicy": {
+    "description": "The blob service properties for blob restore policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/257"
+    }
+   },
+   "staticWebsite": {
+    "description": "The static website properties for blob storage.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/255"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "CorsRules",
+  "properties": {
+   "corsRules": {
+    "description": "The List of CORS rules. You can include up to five CorsRule elements in the request.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/252"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "CorsRule",
+  "properties": {
+   "allowedHeaders": {
+    "description": "Required if CorsRule element is present. A list of headers allowed to be part of the cross-origin request.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/251"
+    }
+   },
+   "allowedMethods": {
+    "description": "Required if CorsRule element is present. A list of HTTP methods that are allowed to be executed by the origin.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/249"
+    }
+   },
+   "allowedOrigins": {
+    "description": "Required if CorsRule element is present. A list of origin domains that will be allowed via CORS, or \"*\" to allow all domains",
+    "flags": 1,
+    "type": {
+     "$ref": "#/237"
+    }
+   },
+   "exposedHeaders": {
+    "description": "Required if CorsRule element is present. A list of response headers to expose to CORS clients.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/250"
+    }
+   },
+   "maxAgeInSeconds": {
+    "description": "Required if CorsRule element is present. The number of seconds that the client/browser should cache a preflight response.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/61"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/2"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "DELETE"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "GET"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "HEAD"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "MERGE"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "POST"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "OPTIONS"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PUT"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PATCH"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "CONNECT"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "TRACE"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/238"
+   },
+   {
+    "$ref": "#/239"
+   },
+   {
+    "$ref": "#/240"
+   },
+   {
+    "$ref": "#/241"
+   },
+   {
+    "$ref": "#/242"
+   },
+   {
+    "$ref": "#/243"
+   },
+   {
+    "$ref": "#/244"
+   },
+   {
+    "$ref": "#/245"
+   },
+   {
+    "$ref": "#/246"
+   },
+   {
+    "$ref": "#/247"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/248"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/2"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/2"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/236"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DeleteRetentionPolicy",
+  "properties": {
+   "allowPermanentDelete": {
+    "description": "This property when set to true allows deletion of the soft deleted blob versions and snapshots. This property cannot be used blob restore policy. This property only applies to blob service and does not apply to containers or file share.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "days": {
+    "description": "Indicates the number of days that the deleted item should be retained. The minimum specified value can be 1 and the maximum value can be 365.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/254"
+    }
+   },
+   "enabled": {
+    "description": "Indicates whether DeleteRetentionPolicy is enabled.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   }
+  }
+ },
+ {
+  "$type": "IntegerType",
+  "maxValue": 365,
+  "minValue": 1
+ },
+ {
+  "$type": "ObjectType",
+  "name": "StaticWebsite",
+  "properties": {
+   "defaultIndexDocumentPath": {
+    "description": "The absolute path where the default index file is present. This absolute path is mutually exclusive to \"indexDocument\" and it is case-sensitive.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "enabled": {
+    "description": "Indicates whether static website support is enabled for the specified account.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "errorDocument404Path": {
+    "description": "The absolute path to a webpage that Azure Storage serves for requests that don't correspond to an existing file. The contents of the page are returned with HTTP 404 Not Found. Only a single custom 404 page is supported in each static website.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "indexDocument": {
+    "description": "The webpage that Azure Storage serves for requests to the root of a website or any subfolder (for example, index.html). The value is case-sensitive.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ChangeFeed",
+  "properties": {
+   "enabled": {
+    "description": "Indicates whether change feed event logging is enabled for the Blob service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "retentionInDays": {
+    "description": "Indicates the duration of changeFeed retention in days. Minimum value is 1 day and maximum value is 146000 days (400 years). A null value indicates an infinite retention of the change feed.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/136"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RestorePolicyProperties",
+  "properties": {
+   "days": {
+    "description": "how long this blob can be restored. It should be great than zero and less than DeleteRetentionPolicy.days.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/254"
+    }
+   },
+   "enabled": {
+    "description": "Blob restore is enabled if set to true.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "lastEnabledTime": {
+    "description": "Deprecated in favor of minRestoreTime property.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "minRestoreTime": {
+    "description": "Returns the minimum date and time that the restore can be started.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "LastAccessTimeTrackingPolicy",
+  "properties": {
+   "blobType": {
+    "description": "An array of predefined supported blob types. Only blockBlob is the supported value. This field is currently read only",
+    "flags": 0,
+    "type": {
+     "$ref": "#/261"
+    }
+   },
+   "enable": {
+    "description": "When set to true last access time based tracking is enabled.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "name": {
+    "description": "Name of the policy. The valid value is AccessTimeTracking. This field is currently read only",
+    "flags": 0,
+    "type": {
+     "$ref": "#/260"
+    }
+   },
+   "trackingGranularityInDays": {
+    "description": "The field specifies blob object tracking granularity in days, typically how often the blob object should be tracked.This field is currently read only with value as 1",
+    "flags": 0,
+    "type": {
+     "$ref": "#/61"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AccessTimeTracking"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/259"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/2"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/233"
+  },
+  "name": "Microsoft.Storage/storageAccounts/blobServices@2025-08-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringType",
+  "maxLength": 63,
+  "minLength": 3
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Storage/storageAccounts/blobServices/containers"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-08-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Storage/storageAccounts/blobServices/containers",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/265"
+    }
+   },
+   "etag": {
+    "description": "Resource Etag.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/263"
+    }
+   },
+   "properties": {
+    "description": "Properties of the blob container.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/267"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/189"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/264"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ContainerProperties",
+  "properties": {
+   "defaultEncryptionScope": {
+    "description": "Default the container to use specified encryption scope for all writes.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "deleted": {
+    "description": "Indicates whether the blob container was deleted.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "deletedTime": {
+    "description": "Blob container deletion time.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "denyEncryptionScopeOverride": {
+    "description": "Block override of encryption scope from the container default.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "enableNfsV3AllSquash": {
+    "description": "Enable NFSv3 all squash on blob container.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "enableNfsV3RootSquash": {
+    "description": "Enable NFSv3 root squash on blob container.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "hasImmutabilityPolicy": {
+    "description": "The hasImmutabilityPolicy public property is set to true by SRP if ImmutabilityPolicy has been created for this container. The hasImmutabilityPolicy public property is set to false by SRP if ImmutabilityPolicy has not been created for this container.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "hasLegalHold": {
+    "description": "The hasLegalHold public property is set to true by SRP if there are at least one existing tag. The hasLegalHold public property is set to false by SRP if all existing legal hold tags are cleared out. There can be a maximum of 1000 blob containers with hasLegalHold=true for a given account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "immutabilityPolicy": {
+    "description": "The ImmutabilityPolicy property of the container.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/285"
+    }
+   },
+   "immutableStorageWithVersioning": {
+    "description": "The object level immutability property of the container. The property is immutable and can only be set to true at the container creation time. Existing containers must undergo a migration process.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/300"
+    }
+   },
+   "lastModifiedTime": {
+    "description": "Returns the date and time the container was last modified.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "leaseDuration": {
+    "description": "Specifies whether the lease on a container is of infinite or fixed duration, only when the container is leased.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/283"
+    }
+   },
+   "leaseState": {
+    "description": "Lease state of the container.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/280"
+    }
+   },
+   "leaseStatus": {
+    "description": "The lease status of the container.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/274"
+    }
+   },
+   "legalHold": {
+    "description": "The LegalHold property of the container.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/296"
+    }
+   },
+   "metadata": {
+    "description": "A name-value pair to associate with the container as metadata.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/284"
+    }
+   },
+   "publicAccess": {
+    "description": "Specifies whether data in the container may be accessed publicly and the level of access.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/271"
+    }
+   },
+   "remainingRetentionDays": {
+    "description": "Remaining retention days for soft deleted blob container.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "version": {
+    "description": "The version of the deleted blob container.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Container"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Blob"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/268"
+   },
+   {
+    "$ref": "#/269"
+   },
+   {
+    "$ref": "#/270"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Locked"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Unlocked"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/272"
+   },
+   {
+    "$ref": "#/273"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Available"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Leased"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Expired"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Breaking"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Broken"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/275"
+   },
+   {
+    "$ref": "#/276"
+   },
+   {
+    "$ref": "#/277"
+   },
+   {
+    "$ref": "#/278"
+   },
+   {
+    "$ref": "#/279"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Infinite"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Fixed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/281"
+   },
+   {
+    "$ref": "#/282"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "ContainerPropertiesMetadata",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ImmutabilityPolicyProperties",
+  "properties": {
+   "etag": {
+    "description": "ImmutabilityPolicy Etag.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "properties": {
+    "description": "The properties of an ImmutabilityPolicy of a blob container.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/286"
+    }
+   },
+   "updateHistory": {
+    "description": "The ImmutabilityPolicy update history of the blob container.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/295"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ImmutabilityPolicyProperty",
+  "properties": {
+   "allowProtectedAppendWrites": {
+    "description": "This property can only be changed for unlocked time-based retention policies. When enabled, new blocks can be written to an append blob while maintaining immutability protection and compliance. Only new blocks can be added and any existing blocks cannot be modified or deleted. This property cannot be changed with ExtendImmutabilityPolicy API.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "allowProtectedAppendWritesAll": {
+    "description": "This property can only be changed for unlocked time-based retention policies. When enabled, new blocks can be written to both 'Append and Bock Blobs' while maintaining immutability protection and compliance. Only new blocks can be added and any existing blocks cannot be modified or deleted. This property cannot be changed with ExtendImmutabilityPolicy API. The 'allowProtectedAppendWrites' and 'allowProtectedAppendWritesAll' properties are mutually exclusive.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "immutabilityPeriodSinceCreationInDays": {
+    "description": "The immutability period for the blobs in the container since the policy creation, in days.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "state": {
+    "description": "The ImmutabilityPolicy state of a blob container, possible values include: Locked and Unlocked.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/289"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Locked"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Unlocked"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/287"
+   },
+   {
+    "$ref": "#/288"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "UpdateHistoryProperty",
+  "properties": {
+   "allowProtectedAppendWrites": {
+    "description": "This property can only be changed for unlocked time-based retention policies. When enabled, new blocks can be written to an append blob while maintaining immutability protection and compliance. Only new blocks can be added and any existing blocks cannot be modified or deleted. This property cannot be changed with ExtendImmutabilityPolicy API.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "allowProtectedAppendWritesAll": {
+    "description": "This property can only be changed for unlocked time-based retention policies. When enabled, new blocks can be written to both 'Append and Bock Blobs' while maintaining immutability protection and compliance. Only new blocks can be added and any existing blocks cannot be modified or deleted. This property cannot be changed with ExtendImmutabilityPolicy API. The 'allowProtectedAppendWrites' and 'allowProtectedAppendWritesAll' properties are mutually exclusive.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "immutabilityPeriodSinceCreationInDays": {
+    "description": "The immutability period for the blobs in the container since the policy creation, in days.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "objectIdentifier": {
+    "description": "Returns the Object ID of the user who updated the ImmutabilityPolicy.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "tenantId": {
+    "description": "Returns the Tenant ID that issued the token for the user who updated the ImmutabilityPolicy.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "timestamp": {
+    "description": "Returns the date and time the ImmutabilityPolicy was updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "update": {
+    "description": "The ImmutabilityPolicy update type of a blob container, possible values include: put, lock and extend.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/294"
+    }
+   },
+   "upn": {
+    "description": "Returns the User Principal Name of the user who updated the ImmutabilityPolicy.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "put"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "lock"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "extend"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/291"
+   },
+   {
+    "$ref": "#/292"
+   },
+   {
+    "$ref": "#/293"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/290"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "LegalHoldProperties",
+  "properties": {
+   "hasLegalHold": {
+    "description": "The hasLegalHold public property is set to true by SRP if there are at least one existing tag. The hasLegalHold public property is set to false by SRP if all existing legal hold tags are cleared out. There can be a maximum of 1000 blob containers with hasLegalHold=true for a given account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "protectedAppendWritesHistory": {
+    "description": "Protected append blob writes history.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/299"
+    }
+   },
+   "tags": {
+    "description": "The list of LegalHold tags of a blob container.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/298"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "TagProperty",
+  "properties": {
+   "objectIdentifier": {
+    "description": "Returns the Object ID of the user who added the tag.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "tag": {
+    "description": "The tag value.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "tenantId": {
+    "description": "Returns the Tenant ID that issued the token for the user who added the tag.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "timestamp": {
+    "description": "Returns the date and time the tag was added.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "upn": {
+    "description": "Returns the User Principal Name of the user who added the tag.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/297"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ProtectedAppendWritesHistory",
+  "properties": {
+   "allowProtectedAppendWritesAll": {
+    "description": "When enabled, new blocks can be written to both 'Append and Bock Blobs' while maintaining legal hold protection and compliance. Only new blocks can be added and any existing blocks cannot be modified or deleted.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "timestamp": {
+    "description": "Returns the date and time the tag was added.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ImmutableStorageWithVersioning",
+  "properties": {
+   "enabled": {
+    "description": "This is an immutable property, when set to true it enables object level immutability at the container level.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "migrationState": {
+    "description": "This property denotes the container level immutability to object level immutability migration state.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/303"
+    }
+   },
+   "timeStamp": {
+    "description": "Returns the date and time the object level immutability was enabled.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "InProgress"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Completed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/301"
+   },
+   {
+    "$ref": "#/302"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/266"
+  },
+  "name": "Microsoft.Storage/storageAccounts/blobServices/containers@2025-08-01",
+  "readableScopes": 8,
+  "writableScopes": 8
  }
 ]

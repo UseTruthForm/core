@@ -24,8 +24,30 @@ func TestParseIDRoundTrip(t *testing.T) {
 			t.Errorf("round trip %s -> %s", c.id, r.String())
 		}
 	}
-	if _, err := ParseID("/subscriptions/s/providers/Microsoft.Authorization/roleDefinitions/x"); err == nil {
-		t.Error("a subscription-level ID is not a resource-group resource")
+	// Extension resources, at every scope: what the subscription's resource
+	// list does not return.
+	for _, c := range []struct{ id, rg, scope, typ, name, local string }{
+		{"/subscriptions/s/providers/Microsoft.Authorization/roleDefinitions/r1", "", "", "Microsoft.Authorization/roleDefinitions", "r1",
+			"providers/Microsoft.Authorization/roleDefinitions/r1"},
+		{"/subscriptions/s/resourceGroups/rg/providers/Microsoft.Authorization/locks/no-delete", "rg", "", "Microsoft.Authorization/locks", "no-delete",
+			"no-delete"},
+		{"/subscriptions/s/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/acct/providers/Microsoft.Authorization/roleAssignments/g1", "rg",
+			"/subscriptions/s/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/acct", "Microsoft.Authorization/roleAssignments", "g1",
+			"providers/Microsoft.Storage/storageAccounts/acct/providers/Microsoft.Authorization/roleAssignments/g1"},
+	} {
+		r, err := ParseID(c.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.ResourceGroup != c.rg || r.Scope != c.scope || r.Type != c.typ || r.Name != c.name || r.String() != c.id {
+			t.Errorf("%s parsed as %+v, rebuilt as %s", c.id, r, r.String())
+		}
+		if r.LocalName() != c.local {
+			t.Errorf("%s local name %q, want %q", c.id, r.LocalName(), c.local)
+		}
+	}
+	if _, err := ParseID("/providers/Microsoft.Management/managementGroups/mg/providers/Microsoft.Authorization/roleAssignments/g"); err == nil {
+		t.Error("a management-group assignment is not in a subscription")
 	}
 }
 

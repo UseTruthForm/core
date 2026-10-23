@@ -64,9 +64,11 @@ func (s *Schema) clean(v any, t int, path string, sp *split) {
 			case !known:
 				// kept, see normalize
 			case p.Flags&flagReadOnly != 0:
-				if isScalar(c[k]) {
-					sp.readOnly[full] = c[k]
-				}
+				// A read-only object (a managed identity's whole properties
+				// block) keeps its scalars for status. Dropping them lost
+				// the identity's principalId, so a role assignment for it
+				// could never be remapped to the restored identity.
+				recordScalars(c[k], full, sp)
 				delete(c, k)
 			case s.secret(p):
 				sp.secrets = append(sp.secrets, full)
@@ -131,6 +133,20 @@ func (s *Schema) secretPaths() []string {
 	walk(s.body, "", 0, map[int]bool{})
 	sort.Strings(out)
 	return out
+}
+
+// recordScalars keeps every scalar under v by dotted path. Arrays are not
+// followed: their positions are not stable names.
+func recordScalars(v any, path string, sp *split) {
+	if isScalar(v) {
+		sp.readOnly[path] = v
+		return
+	}
+	if m, ok := v.(map[string]any); ok {
+		for _, k := range sortedKeys(m) {
+			recordScalars(m[k], join(path, k), sp)
+		}
+	}
 }
 
 func isScalar(v any) bool {

@@ -3,6 +3,7 @@ package azarm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -32,6 +33,10 @@ func Restore(ctx context.Context, api ARM, reg *Registry, s snapshot.Snapshot, o
 		}
 		return results
 	}
+	byKey := map[string]snapshot.Object{}
+	for _, o := range s.Objects {
+		byKey[strings.ToLower(o.Key())] = o
+	}
 	order, cyclic := restoreOrder(s.Objects)
 	for _, o := range cyclic {
 		results = append(results, snapshot.Result{Key: o.Key(), Detail: "its references form a cycle; no creation order exists"})
@@ -39,7 +44,7 @@ func Restore(ctx context.Context, api ARM, reg *Registry, s snapshot.Snapshot, o
 	failed := map[string]string{}
 	for _, o := range order {
 		res := snapshot.Result{Key: o.Key()}
-		res.OK, res.Detail = restoreOne(ctx, api, reg, o, sub, tenant, opt, failed)
+		res.OK, res.Detail = restoreOne(ctx, api, reg, o, sub, tenant, opt, failed, byKey)
 		if !res.OK {
 			failed[strings.ToLower(o.Key())] = res.Detail
 		}
@@ -49,13 +54,20 @@ func Restore(ctx context.Context, api ARM, reg *Registry, s snapshot.Snapshot, o
 }
 
 func objectID(o snapshot.Object, sub string) ResourceID {
+	if ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any); ann != nil {
+		if id, _ := ann[annID].(string); id != "" {
+			if rid, err := ParseID(strings.ReplaceAll(id, tokSub, sub)); err == nil {
+				return rid
+			}
+		}
+	}
 	if strings.EqualFold(o.Kind(), groupType) {
 		return ResourceID{Subscription: sub, ResourceGroup: o.Name(), Type: groupType, Name: o.Name()}
 	}
 	return ResourceID{Subscription: sub, ResourceGroup: o.Namespace(), Type: o.Kind(), Name: o.Name()}
 }
 
-func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, sub, tenant string, opt RestoreOptions, failed map[string]string) (bool, string) {
+func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, sub, tenant string, opt RestoreOptions, failed map[string]string, byKey map[string]snapshot.Object) (bool, string) {
 	for _, d := range deps(o) {
 		if why, bad := failed[d]; bad {
 			return false, "depends on " + d + ", which was not restored (" + why + ")"
@@ -73,6 +85,23 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 		return false, err.Error()
 	}
 	spec, _ := o.Body["spec"].(map[string]any)
+	// References to values the target generated (a restored identity's new
+	// principalId) are resolved first, so the comparison below sees what
+	// would be sent.
+	var missing string
+	spec = rewriteAll(deepCopy(spec), func(v string) string {
+		return refRE.ReplaceAllStringFunc(v, func(tok string) string {
+			got, err := resolveRef(ctx, api, sub, tok, byKey)
+			if err != nil {
+				missing = err.Error()
+				return tok
+			}
+			return got
+		})
+	}).(map[string]any)
+	if missing != "" {
+		return false, missing
+	}
 
 	existing, err := api.Get(ctx, id, ver)
 	switch {
@@ -116,16 +145,57 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	return true, detail
 }
 
+// resolveRef reads a referenced value from the target: the referenced
+// object's ID in the target, then the value at the token's path.
+func resolveRef(ctx context.Context, api ARM, sub, tok string, byKey map[string]snapshot.Object) (string, error) {
+	m := refRE.FindStringSubmatch(tok)
+	key := strings.ToLower(APIVersion + "|" + m[1] + "|" + m[2] + "|" + m[3])
+	r, ok := byKey[key]
+	if !ok {
+		return "", fmt.Errorf("refers to %s %s/%s, which is not in the snapshot", m[1], m[2], m[3])
+	}
+	ann, _ := r.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+	ver, _ := ann[annAPIVersion].(string)
+	body, err := api.Get(ctx, objectID(r, sub).String(), ver)
+	if err != nil {
+		return "", fmt.Errorf("refers to %s %s/%s: %v", m[1], m[2], m[3], err)
+	}
+	v, ok := lookup(body, strings.Split(m[4], "."))
+	if s, isStr := v.(string); ok && isStr {
+		return s, nil
+	}
+	return "", fmt.Errorf("refers to %s of %s %s/%s, which the target does not have", m[4], m[1], m[2], m[3])
+}
+
 // deps lists the snapshot keys (lower case) an object needs first: its
-// resource group, its parent, and every resource its spec's IDs name.
+// resource group, its parent, its scope, what its references name, and
+// every resource its spec's IDs name.
 func deps(o snapshot.Object) []string {
 	var out []string
 	add := func(rid ResourceID) {
 		out = append(out, strings.ToLower(keyOf(rid)))
 	}
-	if !strings.EqualFold(o.Kind(), groupType) {
+	for _, m := range refRE.FindAllStringSubmatch(canon(o.Body["spec"]), -1) {
+		out = append(out, strings.ToLower(APIVersion+"|"+m[1]+"|"+m[2]+"|"+m[3]))
+	}
+	extension := false
+	if ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any); ann != nil {
+		if id, _ := ann[annID].(string); id != "" {
+			if rid, err := ParseID(id); err == nil {
+				extension = rid.Extension()
+				if rid.Scope != "" {
+					if sc, err := ParseID(rid.Scope); err == nil {
+						add(sc)
+					}
+				}
+			}
+		}
+	}
+	if !strings.EqualFold(o.Kind(), groupType) && o.Namespace() != "" {
 		add(ResourceID{ResourceGroup: o.Namespace(), Type: groupType, Name: o.Namespace()})
-		if i := strings.LastIndex(o.Name(), "/"); i > 0 {
+		// An extension resource's name is a path below its scope, not a
+		// parent/child name; its scope, added above, is what it needs.
+		if i := strings.LastIndex(o.Name(), "/"); i > 0 && !extension {
 			add(ResourceID{ResourceGroup: o.Namespace(), Type: o.Kind()[:strings.LastIndex(o.Kind(), "/")], Name: o.Name()[:i]})
 		}
 	}

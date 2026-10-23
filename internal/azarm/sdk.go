@@ -2,12 +2,14 @@ package azarm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -79,22 +81,45 @@ func (s *SDK) getJSON(ctx context.Context, u string, v any) error {
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
-		return fmt.Errorf("%s: %w", u, ErrNotFound)
-	}
 	if !runtime.HasStatusCode(resp, http.StatusOK) {
 		err := runtime.NewResponseError(resp)
-		// A collection a resource does not have, or a type that does not
-		// support it (diagnostic settings on most types), answers 400 or
-		// 405 with a recognisable code; it means "none here".
-		if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusMethodNotAllowed {
-			return fmt.Errorf("%w: %v", ErrNotApplicable, err)
+		code := ""
+		var re *azcore.ResponseError
+		if errors.As(err, &re) {
+			code = re.ErrorCode
+		}
+		if c := classifyARM(resp.StatusCode, code); c != nil {
+			return fmt.Errorf("%s: %w: %v", u, c, err)
+		}
+		if resp.StatusCode == http.StatusBadRequest && (code == "InvalidApiVersionParameter" || strings.Contains(strings.ToLower(err.Error()), "invalid api-version")) {
+			return fmt.Errorf("%s: %w: %v", u, ErrAPIVersion, err)
 		}
 		return err
 	}
 	return runtime.UnmarshalAsJSON(resp, v)
 }
+
+// classifyARM says which refusals mean "none here", by ARM's error code,
+// not by status alone. A type without diagnostic settings answers
+// 400 ResourceTypeNotSupported (seen in the sandbox, 2026-10-22); a list
+// at an API version the provider lacks answers 404 InvalidResourceType.
+// Every 400 and 404 used to read as "none here", so a list that was
+// refused looked exactly like a list that was empty (review,
+// 2026-10-22). nil means a real failure.
+func classifyARM(status int, code string) error {
+	switch {
+	case status == http.StatusMethodNotAllowed,
+		status == http.StatusBadRequest && code == "ResourceTypeNotSupported":
+		return ErrNotApplicable
+	case status == http.StatusNotFound && !notAnAbsence[code]:
+		return ErrNotFound
+	}
+	return nil
+}
+
+// notAnAbsence are 404 codes that say the request was wrong, not that the
+// thing is not there.
+var notAnAbsence = map[string]bool{"InvalidResourceType": true, "InvalidApiVersionParameter": true, "NoRegisteredProviderFound": true, "InvalidResourceNamespace": true}
 
 // Tenant reads the subscription's tenant.
 func (s *SDK) Tenant(ctx context.Context) (string, error) {

@@ -274,6 +274,9 @@ func captureEnvironment(ctx context.Context, configPath, out string) int {
 	if err := writeEnvironment(out, env.Name, results); err != nil {
 		return fail(err)
 	}
+	if jsonOut {
+		emit(map[string]any{"schema": jsonSchema, "command": "capture", "environment": env.Name, "out": out, "targets": results})
+	}
 	code := 0
 	for _, r := range results {
 		fmt.Printf("%-10s %-11s %-10s %5d objects  %s%s\n", r.Status, r.Platform, r.Name, r.Objects, r.Digest, errSuffix(r.Error))
@@ -362,34 +365,49 @@ func diffEnvironment(ctx context.Context, configPath, from string) int {
 		last[r.Name] = r
 	}
 	code := 0
+	type targetDiff struct {
+		Name        string       `json:"name"`
+		Platform    string       `json:"platform"`
+		Error       string       `json:"error,omitempty"`
+		Differences int          `json:"differences"`
+		Changes     []changeJSON `json:"changes"`
+	}
+	var diffs []targetDiff
+	if jsonOut {
+		defer func() {
+			emit(map[string]any{"schema": jsonSchema, "command": "diff", "environment": env.Name, "from": from, "targets": diffs})
+		}()
+	}
+	failTarget := func(t Target, msg string) {
+		fmt.Printf("%s: %s\n", t.Name, msg)
+		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Error: msg, Changes: []changeJSON{}})
+		code = 1
+	}
 	for _, t := range env.Targets {
 		if r, ok := last[t.Name]; !ok || r.Status == "failed" {
 			why := "it is not in the last environment capture"
 			if ok {
 				why = "its last capture failed (" + r.Error + ")"
 			}
-			fmt.Printf("%s: not diffed: %s, so any snapshot there is older than the rest\n", t.Name, why)
-			code = 1
+			failTarget(t, "not diffed: "+why+", so any snapshot there is older than the rest")
 			continue
 		}
 		want, err := snapshot.Read(filepath.Join(from, t.Name))
 		if err != nil {
-			fmt.Printf("%s: cannot read its snapshot: %v\n", t.Name, err)
-			code = 1
+			failTarget(t, "cannot read its snapshot: "+err.Error())
 			continue
 		}
 		got, err := captureTarget(ctx, t)
 		if err != nil {
-			fmt.Printf("%s: capture failed: %v\n", t.Name, err)
-			code = 1
+			failTarget(t, "capture failed: "+err.Error())
 			continue
 		}
 		if got.Policy != want.Policy {
-			fmt.Printf("%s: captured with policy %q but the config now gives %q\n", t.Name, want.Policy, got.Policy)
-			code = 1
+			failTarget(t, fmt.Sprintf("captured with policy %q but the config now gives %q", want.Policy, got.Policy))
 			continue
 		}
 		ch := snapshot.Compare(want, got)
+		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Differences: len(ch), Changes: changesJSON(ch)})
 		fmt.Printf("== %s (%s): %d differences\n", t.Name, t.Platform, len(ch))
 		for _, c := range ch {
 			if c.Kind == "changed" {

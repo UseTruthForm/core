@@ -86,6 +86,7 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 	if err := snap.Write(out); err != nil {
 		return fail(err)
 	}
+	emitCapture(out, snap, "azure "+a.subscription)
 	if err := writeReport(out, snap, "azure "+a.subscription); err != nil {
 		return fail(err)
 	}
@@ -148,6 +149,9 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 		}
 	}
 	results := ad.Restore(ctx, snap)
+	if jsonOut {
+		defer emitRestore(results, "azure "+a.subscription)
+	}
 	ok := 0
 	var partial []string
 	for _, r := range results {

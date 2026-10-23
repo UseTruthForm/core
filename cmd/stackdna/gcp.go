@@ -80,6 +80,7 @@ func captureGCP(ctx context.Context, g *gcpFlags, out string) int {
 	if err := snap.Write(out); err != nil {
 		return fail(err)
 	}
+	emitCapture(out, snap, "gcp "+g.project)
 	if err := writeReport(out, snap, "gcp "+g.project); err != nil {
 		return fail(err)
 	}
@@ -116,6 +117,9 @@ func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot, update
 	}
 	ad.Options.Update = update
 	results := ad.Restore(ctx, snap)
+	if jsonOut {
+		defer emitRestore(results, "gcp "+g.project)
+	}
 	ok := 0
 	for _, r := range results {
 		if r.OK {

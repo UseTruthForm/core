@@ -51,6 +51,9 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN):
   stackdna capture --platform cloudflare --account <account-id> --out <dir>
   stackdna restore --platform github --account <org> --from <dir> [--values <file>] [--update]
 
+Machine-readable: add --json to capture, diff, restore or compare; stdout is then
+one JSON document (everything else goes to stderr) and the exit code is unchanged.
+
 For agents (MCP on stdin/stdout; every tool read-only, no restore tool):
   stackdna mcp
 
@@ -72,28 +75,33 @@ func main() {
 	}
 	ctx := context.Background()
 	var code int
+	args, asJSON := takeJSONFlag(os.Args[2:])
+	command = os.Args[1]
+	if asJSON {
+		jsonOut, jsonDst, os.Stdout = true, os.Stdout, os.Stderr
+	}
 	switch os.Args[1] {
 	case "capture":
-		code = capture(ctx, os.Args[2:])
+		code = capture(ctx, args)
 	case "restore":
 		if captureOnly {
 			fmt.Fprintln(os.Stderr, "stackdna: this is a capture-only build; restore is disabled and every request is read-only")
 			code = 1
 			break
 		}
-		code = restore(ctx, os.Args[2:])
+		code = restore(ctx, args)
 	case "diff":
-		code = diff(ctx, os.Args[2:])
+		code = diff(ctx, args)
 	case "compare":
-		code = compare(os.Args[2:])
+		code = compare(args)
 	case "schema-diff":
-		code = schemaDiff(os.Args[2:])
+		code = schemaDiff(args)
 	case "aws-coverage":
-		code = awsCoverage(os.Args[2:])
+		code = awsCoverage(args)
 	case "report":
-		code = reportCmd(os.Args[2:])
+		code = reportCmd(args)
 	case "mcp":
-		code = mcpCmd(ctx, os.Args[2:])
+		code = mcpCmd(ctx, args)
 	case "version", "--version", "-version":
 		fmt.Println(versionString())
 	default:
@@ -159,6 +167,7 @@ func capture(ctx context.Context, args []string) int {
 	if err := snap.Write(*out); err != nil {
 		return fail(err)
 	}
+	emitCapture(*out, snap, *kctx)
 	if err := writeReport(*out, snap, *kctx); err != nil {
 		return fail(err)
 	}
@@ -236,6 +245,9 @@ func restore(ctx context.Context, args []string) int {
 		}
 	}
 	results := kube.Restore(ctx, c, snap, opt)
+	if jsonOut {
+		defer emitRestore(results, *kctx)
+	}
 	ok := 0
 	for _, r := range results {
 		if r.OK {
@@ -369,6 +381,9 @@ func schemaDiff(args []string) int {
 }
 
 func report(changes []snapshot.Change, want, got string) int {
+	if jsonOut {
+		emitDiff(changes, want, got)
+	}
 	if len(changes) == 0 {
 		fmt.Printf("no differences: %s matches %s\n", got, want)
 		return 0

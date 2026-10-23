@@ -156,6 +156,7 @@ func captureAWS(ctx context.Context, a *awsFlags, out string) int {
 	if err := snap.Write(out); err != nil {
 		return fail(err)
 	}
+	emitCapture(out, snap, "aws "+a.region)
 	if err := writeReport(out, snap, "aws "+a.region); err != nil {
 		return fail(err)
 	}
@@ -229,6 +230,9 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 		}
 	}
 	results := ad.Restore(ctx, snap)
+	if jsonOut {
+		defer emitRestore(results, "aws "+a.region)
+	}
 	ok := 0
 	var partial []string
 	for _, r := range results {

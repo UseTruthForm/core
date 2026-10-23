@@ -30,6 +30,9 @@ read-only capture and diff; restore is deliberately not a tool. See
 platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.
 
+**Using StackDNA:** the [user guide](docs/guide.md) and the
+[permissions](docs/permissions.md) to grant on each platform.
+
 ## Commands
 
 ```bash

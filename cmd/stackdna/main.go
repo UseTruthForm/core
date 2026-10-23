@@ -62,6 +62,7 @@ Any platform:
   stackdna compare <dir-a> <dir-b>
   stackdna schema-diff <old-dir> <new-dir>
   stackdna report <dir>        (re)write REPORT.md for a snapshot
+  stackdna version             which build this is (version, commit, edition)
 `
 
 func main() {
@@ -93,6 +94,8 @@ func main() {
 		code = reportCmd(os.Args[2:])
 	case "mcp":
 		code = mcpCmd(ctx, os.Args[2:])
+	case "version", "--version", "-version":
+		fmt.Println(versionString())
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		code = 1

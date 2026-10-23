@@ -34,7 +34,7 @@ func mcpCmd(ctx context.Context, args []string) int {
 		fmt.Fprintln(os.Stderr, "mcp: takes no arguments; it serves on stdin and stdout")
 		return 1
 	}
-	s := &mcp.Server{Name: "stackdna", Version: "dev", Instructions: mcpInstructions, Tools: mcpTools()}
+	s := &mcp.Server{Name: "stackdna", Version: version, Instructions: mcpInstructions, Tools: mcpTools()}
 	if err := s.Serve(ctx, os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "mcp:", err)
 		return 1

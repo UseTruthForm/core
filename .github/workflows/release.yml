@@ -24,9 +24,25 @@ jobs:
       # code no pull request's checks ran on.
       - name: Refuse a tag that is not on main
         run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "$GITHUB_REF_NAME is not on main"; exit 1; }
+      # Everything CI runs, on the exact commit released: main is not
+      # protected (a private repo on GitHub Free), so that a commit is on
+      # main does not prove its checks passed (review of #20).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/stackdna/envtest
+          key: envtest-1.37.0
+      - name: Fetch etcd and kube-apiserver
+        run: |
+          assets="$(bash scripts/envtest-assets.sh)"
+          test -d "$assets" || { echo "envtest assets missing: '$assets'"; exit 1; }
+          echo "STACKDNA_KUBE_ASSETS=$assets" >> "$GITHUB_ENV"
+      - run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt needed"; exit 1; }
       - run: go vet ./...
-      # The capture-only edition is what a client is handed; that it
-      # refuses restore is checked again on the exact commit released.
+      - run: go test -count=1 ./...
+        env:
+          STACKDNA_REQUIRE_KUBE_ASSETS: "1"
+      - run: go test -race -count=1 ./internal/awscc/ ./internal/azarm/ ./internal/gcp/ ./internal/saas/ ./internal/schedule/
+      # The capture-only edition is what a client is handed.
       - run: go test -tags captureonly -count=1 ./cmd/stackdna/
       - run: bash scripts/build-release.sh "$GITHUB_REF_NAME"
       - name: Draft the release

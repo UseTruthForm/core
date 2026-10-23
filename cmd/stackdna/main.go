@@ -79,6 +79,17 @@ func main() {
 	command = os.Args[1]
 	if asJSON {
 		jsonOut, jsonDst, os.Stdout = true, os.Stdout, os.Stderr
+		// A command with no document of its own refuses --json rather than
+		// run quietly: "mcp --json" served the protocol on stderr and
+		// "version --json" printed nothing (review of #21).
+		if !jsonCommands[command] {
+			code := fail(fmt.Errorf("--json is supported by capture, diff, restore and compare, not %s", command))
+			emitError(code)
+			os.Exit(code)
+		}
+		// Every run ends with one document: an error (a missing snapshot, a
+		// refused login, a bad flag) gave none, and "| jq .differences"
+		// printed nothing and exited 0, which reads as all clear.
 	}
 	switch os.Args[1] {
 	case "capture":
@@ -108,11 +119,14 @@ func main() {
 		fmt.Fprint(os.Stderr, usage)
 		code = 1
 	}
+	if jsonOut && !emitted {
+		emitError(code)
+	}
 	os.Exit(code)
 }
 
 func capture(ctx context.Context, args []string) int {
-	fs := flag.NewFlagSet("capture", flag.ExitOnError)
+	fs := flag.NewFlagSet("capture", flag.ContinueOnError)
 	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig (default: standard loading rules)")
 	kctx := fs.String("context", "", "kubeconfig context to capture")
 	out := fs.String("out", "", "snapshot directory to write")
@@ -129,7 +143,12 @@ func capture(ctx context.Context, args []string) int {
 	g.register(fs)
 	var sf saasFlags
 	sf.register(fs)
-	_ = fs.Parse(args)
+	if err := parseFlags(fs, args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
+		return fail(err)
+	}
 	if *out == "" || fs.NArg() > 0 {
 		fmt.Fprintln(os.Stderr, "capture: --out is required and no positional arguments are accepted")
 		return 1
@@ -194,7 +213,7 @@ func capture(ctx context.Context, args []string) int {
 }
 
 func restore(ctx context.Context, args []string) int {
-	fs := flag.NewFlagSet("restore", flag.ExitOnError)
+	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
 	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
 	kctx := fs.String("context", "", "kubeconfig context to restore into")
 	from := fs.String("from", "", "snapshot directory")
@@ -210,7 +229,12 @@ func restore(ctx context.Context, args []string) int {
 	g.register(fs)
 	var sf saasFlags
 	sf.register(fs)
-	_ = fs.Parse(args)
+	if err := parseFlags(fs, args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
+		return fail(err)
+	}
 	if *from == "" || (*kctx == "" && *platform == "kubernetes") {
 		fmt.Fprintln(os.Stderr, "restore: --from and a target (--context, --platform aws --region, --platform azure --subscription, or --platform gcp --project) are required (restore never guesses its target)")
 		return 1
@@ -264,7 +288,7 @@ func restore(ctx context.Context, args []string) int {
 }
 
 func diff(ctx context.Context, args []string) int {
-	fs := flag.NewFlagSet("diff", flag.ExitOnError)
+	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
 	kctx := fs.String("context", "", "kubeconfig context to compare against")
 	from := fs.String("from", "", "snapshot directory")
@@ -279,7 +303,12 @@ func diff(ctx context.Context, args []string) int {
 	g.register(fs)
 	var sf saasFlags
 	sf.register(fs)
-	_ = fs.Parse(args)
+	if err := parseFlags(fs, args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
+		return fail(err)
+	}
 	if *config != "" && *from != "" {
 		return diffEnvironment(ctx, *config, *from)
 	}
@@ -484,5 +513,14 @@ func samePlatform(s snapshot.Snapshot, platform string) error {
 
 func fail(err error) int {
 	fmt.Fprintln(os.Stderr, "stackdna:", err)
+	lastErr = err
 	return 1
+}
+
+// parseFlags parses a command's flags. A bad flag is an error (exit 1), not
+// exit 2: flag.ExitOnError exits 2, which this command's exit codes reserve
+// for "differences found", so a typo in a diff read as drift.
+func parseFlags(fs *flag.FlagSet, args []string) error {
+	fs.SetOutput(os.Stderr)
+	return fs.Parse(args)
 }

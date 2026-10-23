@@ -20,7 +20,24 @@ var (
 	// command is the subcommand run, named in the document (diff and
 	// compare share one report).
 	command = "diff"
+	// emitted is set once a document is written; lastErr is the error
+	// fail reported, for the document a failed run ends with.
+	emitted bool
+	lastErr error
 )
+
+// jsonCommands produce a document of their own.
+var jsonCommands = map[string]bool{"capture": true, "diff": true, "restore": true, "compare": true}
+
+// emitError is the document of a run that produced none: what went wrong
+// and the exit code, so a pipeline sees the failure, not empty output.
+func emitError(code int) {
+	msg := "failed; see stderr"
+	if lastErr != nil {
+		msg = lastErr.Error()
+	}
+	emit(map[string]any{"schema": jsonSchema, "command": command, "error": msg, "exit": code})
+}
 
 // jsonSchema names the document's shape; it changes only with a new name.
 const jsonSchema = "stackdna.org/output/v1"
@@ -41,6 +58,7 @@ func takeJSONFlag(args []string) ([]string, bool) {
 }
 
 func emit(v any) {
+	emitted = true
 	enc := json.NewEncoder(jsonDst)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(v)

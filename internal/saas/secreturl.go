@@ -15,17 +15,27 @@ import (
 // of the snapshot, named in its secrets annotation, given back at restore
 // with --values.
 
-// credentialHosts are services whose incoming-webhook URL is itself the
-// credential: anyone holding it can post. Data, by host and path prefix.
-var credentialHosts = []string{
-	"hooks.slack.com/services/",
-	"discord.com/api/webhooks/",
-	"discordapp.com/api/webhooks/",
-	".webhook.office.com/",
-	"outlook.office.com/webhook",
-	"api.telegram.org/bot",
-	"hooks.zapier.com/hooks/",
-	"chat.googleapis.com/v1/spaces/",
+// tokenHost is a service whose incoming-webhook URL carries its token in
+// the path: anyone holding the URL can post. Matched on the host (any
+// subdomain, any port) and, where the host serves more than webhooks, on a
+// path segment. A first version matched host and path as one prefix, and
+// missed Slack's Workflow Builder URLs, canary.discord.com, Discord's
+// versioned /api/v10/webhooks/, an explicit :443 and an upper-case scheme
+// (review of #22).
+type tokenHost struct {
+	host string // the host or a parent domain
+	path string // a path segment that marks a webhook; "" for any path
+}
+
+var tokenHosts = []tokenHost{
+	{"hooks.slack.com", ""},
+	{"discord.com", "/webhooks/"},
+	{"discordapp.com", "/webhooks/"},
+	{"webhook.office.com", ""},
+	{"outlook.office.com", "/webhook"},
+	{"api.telegram.org", "/bot"},
+	{"hooks.zapier.com", ""},
+	{"chat.googleapis.com", "/spaces/"},
 }
 
 // credentialParams are query parameters that carry a credential.
@@ -34,16 +44,34 @@ var credentialParams = map[string]bool{
 	"secret": true, "client_secret": true, "password": true, "pass": true, "sig": true, "signature": true, "code": true,
 }
 
-// secretURL reports a string that is a URL carrying a credential.
-func secretURL(s string) bool {
-	if !strings.HasPrefix(s, "https://") && !strings.HasPrefix(s, "http://") {
-		return false
-	}
+func parseHTTP(s string) (*url.URL, bool) {
 	u, err := url.Parse(s)
 	if err != nil {
+		return nil, false
+	}
+	sc := strings.ToLower(u.Scheme)
+	return u, (sc == "https" || sc == "http") && u.Host != ""
+}
+
+// tokenInPath reports a URL of a service that puts its token in the path.
+func tokenInPath(u *url.URL) bool {
+	h := strings.ToLower(u.Hostname())
+	p := strings.ToLower(u.Path)
+	for _, t := range tokenHosts {
+		if (h == t.host || strings.HasSuffix(h, "."+t.host)) && (t.path == "" || strings.Contains(p, t.path)) {
+			return true
+		}
+	}
+	return false
+}
+
+// secretURL reports a string that is a URL carrying a credential.
+func secretURL(s string) bool {
+	u, ok := parseHTTP(s)
+	if !ok {
 		return false
 	}
-	if u.User != nil {
+	if u.User != nil || tokenInPath(u) {
 		return true
 	}
 	for k := range u.Query() {
@@ -51,28 +79,32 @@ func secretURL(s string) bool {
 			return true
 		}
 	}
-	hp := strings.ToLower(u.Host + u.Path)
-	for _, h := range credentialHosts {
-		if strings.HasPrefix(h, ".") {
-			if i := strings.Index(hp, h); i > 0 && !strings.Contains(hp[:i], "/") {
-				return true
-			}
-		} else if strings.HasPrefix(hp, h) {
-			return true
-		}
-	}
 	return false
 }
 
-// urlName names an item whose name would be a secret URL: its host and a
-// short hash of the whole URL. The same URL names the same item in every
-// capture and account, so a restore still recognises it; a hash prefix of a
-// token-bearing URL gives nothing usable back.
+// urlName names an item whose name would be a secret URL, the same in every
+// capture and account so a restore still recognises it. Where the
+// credential is only in the user info or the query, the URL without it is
+// the name. Where the token is the path (Slack, Discord), the host and a
+// hash of the URL are: such tokens are long and random, so the hash gives
+// nothing back. A hash of a URL holding a password could be tested against
+// guesses offline, so a password is never hashed (review of #22).
 func urlName(s string) string {
-	h := sha256.Sum256([]byte(s))
-	host := s
-	if u, err := url.Parse(s); err == nil && u.Host != "" {
-		host = u.Hostname()
+	u, ok := parseHTTP(s)
+	if !ok {
+		return s
 	}
-	return host + "~" + hex.EncodeToString(h[:6])
+	if tokenInPath(u) {
+		h := sha256.Sum256([]byte(s))
+		return strings.ToLower(u.Hostname()) + "~" + hex.EncodeToString(h[:6])
+	}
+	u.User = nil
+	q := u.Query()
+	for k := range q {
+		if credentialParams[strings.ToLower(k)] {
+			q.Del(k)
+		}
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }

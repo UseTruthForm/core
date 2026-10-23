@@ -19,6 +19,14 @@ func TestSecretURL(t *testing.T) {
 		"https://ci.example.com/hook?ref=main":                  false,
 		"https://example.com/hooks.slack.com/services/x":        false,
 		"hooks.slack.com/services/T/B/x (not a URL, no scheme)": false,
+		// Missed by the first version (review of #22).
+		"https://hooks.slack.com/workflows/T0/A0/1/tok": true,
+		"https://hooks.slack.com/triggers/T0/1/tok":     true,
+		"https://canary.discord.com/api/webhooks/1/tok": true,
+		"https://discord.com/api/v10/webhooks/1/tok":    true,
+		"HTTPS://hooks.slack.com/services/T/B/tok":      true,
+		"https://hooks.slack.com:443/services/T/B/tok":  true,
+		"https://discord.com/channels/1/2":              false,
 	} {
 		if got := secretURL(s); got != want {
 			t.Errorf("%q: got %v, want %v", s, got, want)
@@ -97,5 +105,23 @@ func TestWritesKeepWriteOnly(t *testing.T) {
 	kept, _ := keep(map[string]any{"name": "x", "token": "t"}, f, "", &masked)
 	if _, ok := kept.(map[string]any)["token"]; ok || len(masked) != 1 {
 		t.Errorf("capture kept a write-only field: %v %v", kept, masked)
+	}
+}
+
+// A name never carries a credential, and a password is never hashed (a
+// hash of a short one could be tested against guesses offline): the URL
+// without it names the item; a token in the path gives host and hash.
+func TestURLName(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://user:hunter2@ci.example.com/hook":    "https://ci.example.com/hook",
+		"https://ci.example.com/hook?token=abc&ref=x": "https://ci.example.com/hook?ref=x",
+		"https://ci.example.com/hook?ref=x":           "https://ci.example.com/hook?ref=x",
+	} {
+		if got := urlName(in); got != want {
+			t.Errorf("%q: got %q, want %q", in, got, want)
+		}
+	}
+	if got := urlName(slack); !strings.HasPrefix(got, "hooks.slack.com~") || strings.Contains(got, "s3cr3t") {
+		t.Errorf("slack: %q", got)
 	}
 }

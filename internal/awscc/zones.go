@@ -113,26 +113,58 @@ func Retarget(s snapshot.Snapshot, to string, fromZones, toZones []Zone, explici
 	for _, z := range dst {
 		dstByID[z.ID] = z
 	}
+	srcIDs := map[string]bool{}
+	for _, z := range src {
+		srcIDs[z.ID] = true
+	}
+	// An entry naming no source zone was dropped without a word, and the
+	// default pairing used: a zone name ("us-east-1a") where an ID was
+	// meant is the easy mistake (review, 2026-10-22).
+	taken := map[string]bool{}
+	for k, v := range explicit {
+		if !srcIDs[k] {
+			return s, nil, fmt.Errorf("zone map: %s is not a zone ID of %s (zone IDs look like use1-az1)", k, from)
+		}
+		if _, ok := dstByID[v]; !ok {
+			return s, nil, fmt.Errorf("zone map: %s is not a zone of %s", v, to)
+		}
+		taken[v] = true
+	}
+	// Default pairing skips the targets explicit entries took: otherwise
+	// use1-az1=usw2-az3 and the default use1-az3 -> usw2-az3 put two zones
+	// into one, and resources meant to be apart were not.
+	var free []Zone
+	for _, z := range dst {
+		if !taken[z.ID] {
+			free = append(free, z)
+		}
+	}
 	zmap := map[string]string{} // source zone ID or name -> target
 	var unmapped []string
 	var notes []string
-	for i, z := range src {
+	n := 0
+	for _, z := range src {
 		var t Zone
 		if id, ok := explicit[z.ID]; ok {
-			var known bool
-			if t, known = dstByID[id]; !known {
-				return s, nil, fmt.Errorf("zone map: %s is not a zone of %s", id, to)
-			}
-		} else if i < len(dst) {
-			t = dst[i]
+			t = dstByID[id]
+		} else if n < len(free) {
+			t = free[n]
+			n++
 		} else {
-			unmapped = append(unmapped, z.ID)
+			// A resource can name the zone by ID or by name (a volume's
+			// AvailabilityZone); either must be refused.
+			unmapped = append(unmapped, z.ID, z.Name)
 			continue
 		}
 		zmap[z.ID], zmap[z.Name] = t.ID, t.Name
 		notes = append(notes, z.ID+" ("+z.Name+") -> "+t.ID+" ("+t.Name+")")
 	}
 	arn := regexp.MustCompile(`(arn:aws[a-z-]*:[a-z0-9-]*:)` + regexp.QuoteMeta(from) + `(:)`)
+	// A regional endpoint names the region in its host: an ECR image
+	// (1234.dkr.ecr.us-east-1.amazonaws.com/app), a service principal in a
+	// key policy (logs.us-east-1.amazonaws.com). Left as it was, a restored
+	// task still pulled from the lost region (review, 2026-10-22).
+	host := regexp.MustCompile(`\.` + regexp.QuoteMeta(from) + `(\.amazonaws\.com)`)
 	var blocked []string
 	out := s
 	out.Objects = make([]snapshot.Object, len(s.Objects))
@@ -152,7 +184,7 @@ func Retarget(s snapshot.Snapshot, to string, fromZones, toZones []Zone, explici
 			if v == from {
 				return to
 			}
-			return arn.ReplaceAllString(v, "${1}"+to+"${2}")
+			return host.ReplaceAllString(arn.ReplaceAllString(v, "${1}"+to+"${2}"), "."+to+"${1}")
 		})
 		for u := range uses {
 			blocked = append(blocked, o.Key()+" uses "+u)
@@ -162,7 +194,7 @@ func Retarget(s snapshot.Snapshot, to string, fromZones, toZones []Zone, explici
 	if len(blocked) > 0 {
 		sort.Strings(blocked)
 		return s, nil, fmt.Errorf("%s has %d zones and %s %d; no counterpart for %s (map them with --zone-map):\n  %s",
-			from, len(src), to, len(dst), strings.Join(unmapped, ", "), strings.Join(blocked, "\n  "))
+			from, len(src), to, len(dst), strings.Join(dedupe(unmapped), ", "), strings.Join(blocked, "\n  "))
 	}
 	out.ServerVersion = "cloudcontrol/" + to
 	return out, append([]string{from + " -> " + to}, notes...), nil

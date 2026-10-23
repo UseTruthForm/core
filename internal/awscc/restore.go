@@ -305,6 +305,16 @@ func (a *Adapter) Restore(ctx context.Context, s snapshot.Snapshot) []snapshot.R
 // String is used in errors and logs.
 func (a *Adapter) String() string { return fmt.Sprintf("aws %s", a.Region) }
 
+// hasPointerPrefix reports ptr, or a pointer above it, in ptrs.
+func hasPointerPrefix(ptrs []string, ptr string) bool {
+	for _, p := range ptrs {
+		if p == ptr || strings.HasPrefix(ptr, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // readBack reads a resource just created or updated. Cloud Control
 // reported a bucket created, then "Bucket not found" on the read straight
 // after (real drill, a bucket recreated minutes after its deletion). A read
@@ -330,6 +340,11 @@ func readBack(ctx context.Context, api CloudControl, kind, id string) (map[strin
 // would replace the resource, deleting what depends on it.
 func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *resource, desired map[string]any, resolved map[string]map[string]any) (bool, string) {
 	live := normalize(t, ex.id, ex.props).spec
+	// The snapshot sorted its sets by the tokens in them; resolved, they
+	// can be out of order, and the reordered subnet list of a node group
+	// read as a change to a create-only property, so the update was
+	// refused (review, 2026-10-22). Sorted as the live side is.
+	sortSets(desired, map[string]any{"properties": t.Properties}, t.Definitions)
 	ops, replace := planUpdate(t, live, desired)
 	if len(replace) > 0 {
 		return false, "differs in " + strings.Join(replace, ", ") + ", which AWS can only change by replacing the resource; StackDNA does not replace resources"
@@ -381,6 +396,12 @@ func createOnlyChanges(t *TypeInfo, a, b map[string]any) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, ptr := range t.CreateOnly {
+		// A create-only field that is also write-only is never read back,
+		// so it cannot be compared: a value supplied for it would always
+		// "differ" and refuse every update.
+		if hasPointerPrefix(t.WriteOnly, ptr) {
+			continue
+		}
 		var field string
 		if strings.Contains(ptr, "*") {
 			top := segments(ptr)[0]

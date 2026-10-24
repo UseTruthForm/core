@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stackdna/core/internal/awscc"
@@ -18,15 +19,21 @@ func reg(schemas map[string]string) *awscc.Registry {
 	return r
 }
 
-func TestMissingIsWhatTheBaseLacks(t *testing.T) {
-	base, err := ParsePolicy([]byte(`{"Statement":[{"Effect":"Allow","Action":["x:List*","kms:Describe*"]}]}`))
+func grants(t *testing.T, actions ...string) *Grants {
+	t.Helper()
+	b, _ := json.Marshal(map[string]any{"Statement": []any{map[string]any{"Effect": "Allow", "Action": actions}}})
+	g, err := ParsePolicy(b)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return g
+}
+
+func TestMissingIsWhatTheBaseLacks(t *testing.T) {
 	m, err := Missing([]*awscc.Registry{reg(map[string]string{
 		"AWS::X::A": `{"handlers":{"list":{"permissions":["x:ListA"]},"read":{"permissions":["x:GetA","x:DescribeA"]}}}`,
 		"AWS::X::D": `{"handlers":{"list":{"permissions":["x:ListD"]},"create":{"permissions":["x:CreateD"]}}}`,
-	})}, base)
+	})}, grants(t, "x:List*"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,82 +42,114 @@ func TestMissingIsWhatTheBaseLacks(t *testing.T) {
 	}
 }
 
-// Kept only when named as a read and AWS does not say otherwise; secrets
-// never. Each case is a real action from 2026-10-24: names alone kept
-// bedrock:GetSession (AWS: data plane); AWS alone would keep
-// secretsmanager:GetSecretValue and cleanrooms:PassMembership (no flags)
-// and drop quicksight:DescribeTopicPermissions (filed as permissions
-// management, so marked a write).
+// Each source catches what the others miss; every case is a real action
+// (2026-10-24, review of #24). Names alone kept bedrock:GetSession (AWS:
+// data plane). AWS's flags alone keep secretsmanager:GetSecretValue,
+// ivs:GetStreamKey and glue:GetConnection (no flags), and drop
+// quicksight:DescribeTopicPermissions (filed as permissions management).
+// AWS's sensitive mark alone is on names and descriptions too.
 func TestJudge(t *testing.T) {
-	ref := &Reference{Actions: map[string]Flags{
-		"bedrock:getblueprint":                       {},
-		"bedrock:getsession":                         {IsDataPlane: true},
-		"bedrock:listsessions":                       {IsDataPlane: true, IsList: true},
-		"quicksight:describetopicpermissions":        {IsPermissionManagement: true, IsWrite: true},
-		"bcm-pricing-calculator:listtagsforresource": {IsTaggingOnly: true, IsWrite: true},
-		"route53globalresolver:listtagsforresource":  {IsWrite: true},
-		"cloudwatch:putmetricalarm":                  {IsWrite: true},
-		"secretsmanager:getsecretvalue":              {},
-		"kms:decrypt":                                {},
-		"cleanrooms:passmembership":                  {},
-		"cassandra:selectmultiregionresource":        {},
-	}}
-	for a, want := range map[string]bool{
-		"bedrock:GetBlueprint":                       true,
-		"bedrock:GetSession":                         false,
-		"bedrock:ListSessions":                       false,
-		"quicksight:DescribeTopicPermissions":        true,
-		"bcm-pricing-calculator:ListTagsForResource": true,
-		"route53globalresolver:ListTagsForResource":  false, // a bare write flag: refused, conservatively
-		"cloudwatch:PutMetricAlarm":                  false,
-		"secretsmanager:GetSecretValue":              false,
-		"kms:Decrypt":                                false,
-		"cleanrooms:PassMembership":                  false,
-		"cassandra:SelectMultiRegionResource":        false,
-		"mediatailor:GetFunction":                    true, // not listed: kept by name
-		"mediatailor:StartChannel":                   false,
-		"securitylake:List*":                         false,
+	ref := &Reference{
+		Actions: map[string]Flags{
+			"bedrock:getblueprint":                {},
+			"bedrock:getsession":                  {IsDataPlane: true},
+			"quicksight:describetopicpermissions": {IsPermissionManagement: true, IsWrite: true},
+			"datazone:getdomainpolicy":            {IsPermissionManagement: true, IsWrite: true},
+			"cloudwatch:putmetricalarm":           {IsWrite: true},
+			"secretsmanager:getsecretvalue":       {},
+			"ivs:getstreamkey":                    {},
+			"glue:getconnection":                  {},
+			"datazone:getconnection":              {},
+			"quicksight:describedashboard":        {},
+			"geo:describekey":                     {},
+			"cleanrooms:passmembership":           {},
+			"x:getunchecked":                      {},
+		},
+		SecretFields: map[string][]string{
+			"bedrock:getblueprint":                {},
+			"quicksight:describetopicpermissions": {},
+			"datazone:getconnection":              {"GetConnectionOutput.connectionCredentials"},
+			"quicksight:describedashboard":        {},
+			"geo:describekey":                     {"DescribeKeyResponse.Key"},
+		},
+	}
+	for a, want := range map[string]string{
+		"bedrock:GetBlueprint":                "read",
+		"bedrock:GetSession":                  "AWS: data plane",
+		"quicksight:DescribeTopicPermissions": "read",       // on the reviewed list
+		"datazone:GetDomainPolicy":            "AWS: write", // same category, not on the list
+		"cloudwatch:PutMetricAlarm":           "not named as a read",
+		"secretsmanager:GetSecretValue":       "named like a secret or data read",
+		"ivs:GetStreamKey":                    "named like a secret or data read",
+		"glue:GetConnection":                  "returns the connection's password",
+		"datazone:GetConnection":              "AWS marks its output sensitive: GetConnectionOutput.connectionCredentials",
+		"geo:DescribeKey":                     "AWS marks its output sensitive",
+		"quicksight:DescribeDashboard":        "read",
+		"cleanrooms:PassMembership":           "not named as a read",
+		"ec2:GetPasswordData":                 "named like a secret or data read",
+		"sts:GetServiceBearerToken":           "named like a secret or data read",
+		"ecr:GetDownloadUrlForLayer":          "named like a secret or data read",
+		"securitylake:List*":                  "wildcard",
 	} {
-		if got := ref.Judge(a); got.Keep != want {
-			t.Errorf("%s: keep=%v (%s), want %v", a, got.Keep, got.Why, want)
+		if got := ref.Judge(a); !strings.HasPrefix(got.Why, want) {
+			t.Errorf("%s: %q (keep=%v), want %q", a, got.Why, got.Keep, want)
 		}
 	}
-	if v := ref.Judge("mediatailor:GetFunction"); v.Why != "read by name" {
-		t.Errorf("an action AWS does not list must say it was kept by name: %q", v.Why)
+	if v := ref.Judge("mediatailor:GetFunction"); !v.Keep || !strings.Contains(v.Unverified, "does not list") {
+		t.Errorf("an action AWS does not list is kept by name and says so: %+v", v)
+	}
+	if v := ref.Judge("x:GetUnchecked"); !v.Keep || !strings.Contains(v.Unverified, "output could not be checked") {
+		t.Errorf("an action whose output was not checked is kept and says so: %+v", v)
 	}
 }
 
-// A schema's wildcard becomes the concrete reads AWS lists: securitylake:List*
-// and managed-fleets:Get* (a service AWS does not list) were in the first
-// add-on as wildcards, which grant whatever AWS adds later.
-func TestWildcardsAreExpandedNotGranted(t *testing.T) {
+// A wildcard's expansion leaves out what ReadOnlyAccess grants (one took
+// 15 such actions), and a refused expansion leaves the type short: the
+// first version counted it complete (review of #24).
+func TestDecideExpandsWildcardsAndCountsRefusals(t *testing.T) {
 	ref := &Reference{
-		Actions: map[string]Flags{"securitylake:listdatalakes": {IsList: true}, "securitylake:listlogsources": {IsList: true},
-			"securitylake:listsecretthings": {IsDataPlane: true}, "securitylake:createdatalake": {IsWrite: true}},
-		Names: map[string]string{"securitylake:listdatalakes": "securitylake:ListDataLakes", "securitylake:listlogsources": "securitylake:ListLogSources",
-			"securitylake:listsecretthings": "securitylake:ListSecretThings", "securitylake:createdatalake": "securitylake:CreateDataLake"},
+		Actions:      map[string]Flags{"w:listportals": {IsList: true}, "w:listsessions": {IsList: true}, "w:listgranted": {IsList: true}, "w:createportal": {IsWrite: true}},
+		Names:        map[string]string{"w:listportals": "w:ListPortals", "w:listsessions": "w:ListSessions", "w:listgranted": "w:ListGranted", "w:createportal": "w:CreatePortal"},
+		SecretFields: map[string][]string{"w:listportals": {}, "w:listsessions": {"SessionSummary.username"}},
 	}
-	res := Decide(map[string][]string{"AWS::SecurityLake::DataLake": {"securitylake:List*"}, "AWS::X::Y": {"managed-fleets:Get*"}}, ref)
-	if !reflect.DeepEqual(res.Actions, []string{"securitylake:ListDataLakes", "securitylake:ListLogSources"}) {
-		t.Errorf("actions %v", res.Actions)
+	base := grants(t, "w:ListGranted", "q:Get*")
+	res := Decide(map[string][]string{"AWS::W::Portal": {"w:List*"}, "AWS::Q::Y": {"managed-fleets:Get*"}}, ref, base)
+	if !reflect.DeepEqual(res.Actions, []string{"w:ListPortals"}) {
+		t.Errorf("actions %v: ReadOnlyAccess's w:ListGranted and the refused w:ListSessions must not be in it", res.Actions)
 	}
-	if !reflect.DeepEqual(res.Completed, []string{"AWS::SecurityLake::DataLake"}) || res.Short["AWS::X::Y"]["managed-fleets:Get*"] == "" {
+	if res.Short["AWS::W::Portal"]["w:ListSessions"] == "" || res.Short["AWS::Q::Y"]["managed-fleets:Get*"] == "" || len(res.Completed) != 0 {
 		t.Errorf("completed %v short %v", res.Completed, res.Short)
+	}
+	if !reflect.DeepEqual(res.OmittedByReadOnlyAccess, []string{"w:ListPortals"}) {
+		t.Errorf("ReadOnlyAccess covers w and leaves ListPortals out: listed for review, got %v", res.OmittedByReadOnlyAccess)
 	}
 }
 
-func TestDecide(t *testing.T) {
-	ref := &Reference{Actions: map[string]Flags{"x:geta": {}, "x:getb": {}, "kms:decrypt": {}}}
-	res := Decide(map[string][]string{
-		"AWS::X::A": {"x:GetA"},
-		"AWS::X::B": {"x:GetB", "kms:Decrypt"},
-		"AWS::X::N": {"new:GetThing"},
-	}, ref)
-	if !reflect.DeepEqual(res.Actions, []string{"new:GetThing", "x:GetA", "x:GetB"}) || !reflect.DeepEqual(res.Unverified, []string{"new:GetThing"}) {
-		t.Errorf("actions %v unverified %v", res.Actions, res.Unverified)
+// AWS marks names and descriptions sensitive too; only fields named like
+// a secret count, and a bare value or key only inside a secret's shape.
+func TestSecretFields(t *testing.T) {
+	sens := map[string]any{"smithy.api#sensitive": map[string]any{}}
+	shapes := map[string]shape{
+		"x#GetStreamKey":         {Type: "operation", Output: &member{Target: "x#GetStreamKeyResponse"}},
+		"x#GetStreamKeyResponse": {Members: map[string]member{"streamKey": {Target: "x#StreamKey"}, "nextToken": {Target: "x#Token"}}},
+		"x#StreamKey":            {Members: map[string]member{"value": {Target: "x#Value", Traits: sens}, "name": {Target: "x#Name", Traits: sens}}},
+		"x#Token":                {Traits: sens},
+		"x#Dashboard":            {Members: map[string]member{"Value": {Target: "x#V", Traits: sens}, "Description": {Target: "x#D", Traits: sens}, "Items": {Target: "x#List"}}},
+		"x#List":                 {Member: &member{Target: "x#Cred"}},
+		"x#Cred":                 {Members: map[string]member{"password": {Target: "x#P", Traits: sens}}},
 	}
-	if !reflect.DeepEqual(res.Completed, []string{"AWS::X::A", "AWS::X::N"}) || res.Short["AWS::X::B"]["kms:Decrypt"] == "" {
-		t.Errorf("completed %v short %v", res.Completed, res.Short)
+	out := map[string]bool{}
+	secretFields(shapes, "x#GetStreamKeyResponse", map[string]bool{}, out)
+	if !reflect.DeepEqual(out, map[string]bool{"StreamKey.value": true}) {
+		t.Errorf("stream key: %v (the name is sensitive but not a secret; nextToken is paging)", out)
+	}
+	out = map[string]bool{}
+	secretFields(shapes, "x#Dashboard", map[string]bool{}, out)
+	if !reflect.DeepEqual(out, map[string]bool{"Cred.password": true}) {
+		t.Errorf("dashboard: %v (a Value outside a secret's shape is configuration; the nested password is not)", out)
+	}
+	if o, ok := outputOf(shapes, "GetStreamKey"); !ok || o != "x#GetStreamKeyResponse" {
+		t.Errorf("outputOf: %q %v", o, ok)
 	}
 }
 
@@ -121,9 +160,9 @@ func TestParsePolicyRefusesWhatItCannotList(t *testing.T) {
 	if _, err := ParsePolicy([]byte(`{"Statement":[{"Effect":"Deny","Action":"*"}]}`)); err == nil {
 		t.Error("a policy granting nothing accepted")
 	}
-	g, _ := ParsePolicy([]byte(`{"Statement":[{"Effect":"Allow","Action":"Bedrock:Get*"}]}`))
-	if !g.Allows("bedrock:GetBlueprint") || g.Allows("bedrock:ListBlueprints") || g.Allows("xbedrock:GetX") {
-		t.Error("glob matching is wrong")
+	g := grants(t, "Bedrock:Get*")
+	if !g.Allows("bedrock:GetBlueprint") || g.Allows("bedrock:ListBlueprints") || g.Allows("xbedrock:GetX") || !g.Covers("bedrock:Anything") || g.Covers("x:y") {
+		t.Error("glob matching or service coverage is wrong")
 	}
 }
 
@@ -146,9 +185,27 @@ func TestParsePolicyPage(t *testing.T) {
 	}
 }
 
-// The committed add-on is what a capture role is given: no wildcard, no
-// secret or data read, each policy within IAM's size limit, its count as
-// stated. A hand edit that slips in a write fails here.
+// Allowed is the floor the committed file is held to. The reviewer put
+// iam:CreateAccessKey, s3:PutBucketPolicy and sts:AssumeRole into the file
+// and the tests passed (review of #24); these must never be allowed.
+func TestAllowedRefusesWritesAndSecrets(t *testing.T) {
+	for _, a := range []string{"iam:CreateAccessKey", "s3:PutBucketPolicy", "sts:AssumeRole", "ivs:GetStreamKey", "ivs:BatchGetStreamKey",
+		"glue:GetConnection", "secretsmanager:GetSecretValue", "ec2:GetPasswordData", "ssm:GetParameterHistory", "s3:GetObjectVersion",
+		"kms:Decrypt", "securitylake:List*", "waf:GetChangeToken", "datazone:GetEnvironmentCredentials"} {
+		if Allowed(a) {
+			t.Errorf("%s allowed", a)
+		}
+	}
+	for _, a := range []string{"bedrock:GetBlueprint", "quicksight:DescribeDashboard", "geo:ListMaps"} {
+		if !Allowed(a) {
+			t.Errorf("%s refused", a)
+		}
+	}
+}
+
+// The committed add-on is what a capture role is given: only actions
+// Allowed accepts, each policy within IAM's size limit, its count as
+// stated.
 func TestCommittedAddOnIsOnlyReadsAndFits(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "templates", "aws-read-addon.json"))
 	if err != nil {
@@ -168,8 +225,8 @@ func TestCommittedAddOnIsOnlyReadsAndFits(t *testing.T) {
 			t.Errorf("policy %d is %d characters, over IAM's %d", i, len(pol), MaxPolicyChars)
 		}
 		for _, x := range c {
-			if !IsConfigurationRead(x) {
-				t.Errorf("%s is not a read of configuration", x)
+			if !Allowed(x) {
+				t.Errorf("%s may not be in the add-on", x)
 			}
 			if seen[x] {
 				t.Errorf("%s twice", x)

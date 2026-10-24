@@ -89,8 +89,14 @@ func FetchReference(prefixes []string) (*Reference, error) {
 	for _, s := range list {
 		urls[s.Service] = s.URL
 	}
-	ref := &Reference{Actions: map[string]Flags{}, Names: map[string]string{}}
-	for _, p := range prefixes {
+	ref := &Reference{Actions: map[string]Flags{}, Names: map[string]string{}, SecretFields: map[string][]string{}, ops: map[string][]operation{}}
+	// The canary's service is always read, so the canary always runs.
+	seen := map[string]bool{}
+	for _, p := range append(prefixes, "bedrock") {
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
 		u, ok := urls[p]
 		if !ok {
 			continue
@@ -106,18 +112,55 @@ func FetchReference(prefixes []string) (*Reference, error) {
 					Properties Flags `json:"Properties"`
 				} `json:"Annotations"`
 			} `json:"Actions"`
+			Operations []struct {
+				Name              string `json:"Name"`
+				AuthorizedActions []struct {
+					Name    string `json:"Name"`
+					Service string `json:"Service"`
+				} `json:"AuthorizedActions"`
+				SDK []struct {
+					Name    string `json:"Name"`
+					Package string `json:"Package"`
+				} `json:"SDK"`
+			} `json:"Operations"`
 		}
 		if err := json.Unmarshal(b, &svc); err != nil {
 			return nil, fmt.Errorf("%s: %w", p, err)
+		}
+		// A service file with no actions is a changed or broken file, and
+		// would turn every action of it into "read by name" without a word
+		// (review of #24).
+		if len(svc.Actions) == 0 {
+			return nil, fmt.Errorf("%s: the Service Reference lists no actions; its format may have changed", p)
 		}
 		for _, a := range svc.Actions {
 			k := strings.ToLower(p + ":" + a.Name)
 			ref.Actions[k] = a.Annotations.Properties
 			ref.Names[k] = p + ":" + a.Name
 		}
+		for _, o := range svc.Operations {
+			for _, sdk := range o.SDK {
+				if sdk.Package != "Boto3" {
+					continue
+				}
+				for _, aa := range o.AuthorizedActions {
+					k := strings.ToLower(aa.Service + ":" + aa.Name)
+					ref.ops[k] = append(ref.ops[k], operation{model: sdk.Name, name: o.Name})
+				}
+			}
+		}
+	}
+	// Canary: if AWS stops marking this as data plane, the reference is
+	// not being read as it should be, and every judgement would loosen.
+	if f, ok := ref.Actions["bedrock:getsession"]; !ok || !f.IsDataPlane {
+		return nil, fmt.Errorf("the Service Reference no longer marks bedrock:GetSession as data plane; its format may have changed")
 	}
 	return ref, nil
 }
+
+// operation is an API operation behind an action: the AWS API model it is
+// in, and its name there.
+type operation struct{ model, name string }
 
 // Prefixes are the services the actions belong to.
 func Prefixes(missing map[string][]string) []string {

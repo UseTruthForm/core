@@ -1,5 +1,5 @@
 {
- "actionCount": 569,
+ "actionCount": 533,
  "chunks": [
   [
    "account-access:GetApplication",
@@ -68,14 +68,12 @@
    "bedrock-agentcore:GetGatewayRateLimit",
    "bedrock-agentcore:GetGatewayRule",
    "bedrock-agentcore:GetPaymentConnector",
-   "bedrock-agentcore:GetPaymentCredentialProvider",
    "bedrock-agentcore:GetPaymentManager",
    "bedrock-agentcore:ListConsentPortals",
    "bedrock-agentcore:ListDatasets",
    "bedrock-agentcore:ListGatewayRateLimits",
    "bedrock-agentcore:ListGatewayRules",
    "bedrock-agentcore:ListPaymentConnectors",
-   "bedrock-agentcore:ListPaymentCredentialProviders",
    "bedrock-agentcore:ListPaymentManagers",
    "bedrock:GetPromptRouter",
    "bedrock:GetRetrievalInstruction",
@@ -86,11 +84,9 @@
    "bedrock:ListPromptRouters",
    "bedrock:ListRetrievalInstructions",
    "bedrock:ListTagsForResource",
-   "billing:GetBillingViewData",
    "braket:ListTagsForResource",
    "cases:BatchGetCaseRule",
    "cases:BatchGetField",
-   "cases:GetCase",
    "cases:GetDomain",
    "cases:GetLayout",
    "cases:GetTemplate",
@@ -100,8 +96,6 @@
    "cases:ListLayouts",
    "cases:ListTagsForResource",
    "cases:ListTemplates",
-   "cases:SearchCases",
-   "cases:SearchRelatedItems",
    "chime:DescribeAppInstance",
    "chime:DescribeAppInstanceBot",
    "chime:DescribeAppInstanceUser",
@@ -132,8 +126,6 @@
    "controltower:ListTagsForResource",
    "cur:DescribeReportDefinitions",
    "cur:ListTagsForResource",
-   "datazone:GetConnection",
-   "datazone:ListConnections",
    "deadline:GetMeteredProduct",
    "detective:DescribeOrganizationConfiguration",
    "drs:GetRecoveryPlan",
@@ -168,7 +160,6 @@
    "fms:ListResourceSetResources",
    "fms:ListResourceSets",
    "geo:DescribeGeofenceCollection",
-   "geo:DescribeKey",
    "geo:DescribeMap",
    "geo:DescribePlaceIndex",
    "geo:DescribeRouteCalculator",
@@ -183,12 +174,8 @@
    "glue:DescribeConnectionType",
    "glue:DescribeIntegrations",
    "glue:GetBlueprint",
-   "glue:GetConnection",
-   "glue:GetConnections",
    "glue:GetCustomEntityType",
-   "glue:GetDataQualityRuleset"
-  ],
-  [
+   "glue:GetDataQualityRuleset",
    "glue:GetGlueIdentityCenterConfiguration",
    "glue:GetIntegrationResourceProperty",
    "glue:GetUsageProfile",
@@ -199,13 +186,14 @@
    "glue:ListIntegrationResourceProperties",
    "glue:ListUsageProfiles",
    "health-agent:GetDomain",
-   "health-agent:ListDomains",
+   "health-agent:ListDomains"
+  ],
+  [
    "health-agent:ListTagsForResource",
    "healthlake:GetDataTransformationProfile",
    "healthlake:ListDataTransformationProfiles",
    "initech:DescribeReport",
    "initech:ListReports",
-   "inspector2:GetCodeSecurityIntegration",
    "inspector2:GetCodeSecurityScanConfiguration",
    "inspector2:ListCodeSecurityIntegrations",
    "inspector2:ListCodeSecurityScanConfigurations",
@@ -232,7 +220,6 @@
    "iottwinmaker:ListTagsForResource",
    "iottwinmaker:ListWorkspaces",
    "ivs:GetAdConfiguration",
-   "ivs:GetStreamKey",
    "ivs:ListAdConfigurations",
    "kafka-cluster:DescribeTopic",
    "kafka-cluster:DescribeTopicDynamicConfiguration",
@@ -250,7 +237,6 @@
    "license-manager-user-subscriptions:ListLicenseServerEndpoints",
    "license-manager-user-subscriptions:ListTagsForResource",
    "lightsail:GetContactMethods",
-   "managedblockchain:GetAccessor",
    "managedblockchain:ListAccessors",
    "mediaconnect:DescribeBridge",
    "medialive:DescribeNode",
@@ -313,6 +299,7 @@
    "nova-act:GetWorkflowDefinition",
    "nova-act:ListWorkflowDefinitions",
    "oam:ListTagsForResource",
+   "observabilityadmin:GetDatasetIntegration",
    "observabilityadmin:ListDatasetIntegrations",
    "odb:GetCloudAutonomousVmCluster",
    "odb:GetCloudExadataInfrastructure",
@@ -337,7 +324,6 @@
    "panorama:ListPackages",
    "panorama:ListTagsForResource",
    "payment-cryptography:GetResourcePolicy",
-   "pi:GetPerformanceAnalysisReport",
    "pi:ListPerformanceAnalysisReports",
    "pi:ListTagsForResource",
    "pricingplanmanager:GetSubscription",
@@ -363,22 +349,21 @@
    "profile:ListRecommenderFilters",
    "profile:ListRecommenderSchemas",
    "profile:ListRecommenders",
-   "profile:ListSegmentDefinitions"
-  ],
-  [
+   "profile:ListSegmentDefinitions",
    "profile:ListTagsForResource",
    "proton:GetEnvironmentAccountConnection",
    "qbusiness:GetPolicy",
    "qbusiness:ListDataAccessors",
    "quicksight:DescribeAccountCustomization",
-   "quicksight:DescribeActionConnector",
    "quicksight:DescribeActionConnectorPermissions",
    "quicksight:DescribeAgent",
    "quicksight:DescribeAgentPermissions",
    "quicksight:DescribeAnalysis",
    "quicksight:DescribeAnalysisPermissions",
    "quicksight:DescribeApprovalPolicy",
-   "quicksight:DescribeBrand",
+   "quicksight:DescribeBrand"
+  ],
+  [
    "quicksight:DescribeCustomPermissions",
    "quicksight:DescribeDashboard",
    "quicksight:DescribeDashboardPermissions",
@@ -396,7 +381,6 @@
    "quicksight:DescribeKnowledgeBase",
    "quicksight:DescribeKnowledgeBasePermissions",
    "quicksight:DescribeLimitsProfile",
-   "quicksight:DescribeOAuthClientApplication",
    "quicksight:DescribeRefreshSchedule",
    "quicksight:DescribeSpace",
    "quicksight:DescribeSpacePermissions",
@@ -477,11 +461,6 @@
    "securityagent:DescribePrivateConnection",
    "securityagent:ListPrivateConnections",
    "securityagent:ListTagsForResource",
-   "securitylake:ListDataLakeExceptions",
-   "securitylake:ListDataLakes",
-   "securitylake:ListLogSources",
-   "securitylake:ListSubscribers",
-   "securitylake:ListTagsForResource",
    "simspaceweaver:DescribeSimulation",
    "simspaceweaver:ListSimulations",
    "sms-voice:DescribeNotifyConfigurations",
@@ -500,8 +479,6 @@
    "supportauthz:ListTagsForResource",
    "textract:GetAdapter",
    "textract:ListAdapters",
-   "thinclient:GetEnvironment",
-   "thinclient:ListEnvironments",
    "thinclient:ListTagsForResource",
    "timestream-influxdb:GetDbBackup",
    "timestream-influxdb:GetDbCluster",
@@ -533,10 +510,8 @@
    "wisdom:GetAIPromptVersion",
    "wisdom:GetAssistant",
    "wisdom:GetAssistantAssociation",
-   "wisdom:GetContent",
    "wisdom:GetContentAssociation",
    "wisdom:GetKnowledgeBase",
-   "wisdom:GetMessageTemplate",
    "wisdom:GetQuickResponse",
    "wisdom:ListAIAgentVersions",
    "wisdom:ListAIAgents",
@@ -548,9 +523,7 @@
    "wisdom:ListAssistants",
    "wisdom:ListContentAssociations",
    "wisdom:ListContents",
-   "wisdom:ListKnowledgeBases"
-  ],
-  [
+   "wisdom:ListKnowledgeBases",
    "wisdom:ListMessageTemplateVersions",
    "wisdom:ListMessageTemplates",
    "wisdom:ListQuickResponses",
@@ -560,26 +533,191 @@
    "workspaces-instances:ListWorkspaceInstances",
    "workspaces-web:GetDataProtectionSettings",
    "workspaces-web:GetIpAccessSettings",
-   "workspaces-web:GetPortal",
-   "workspaces-web:GetPortalServiceProviderMetadata",
    "workspaces-web:GetSessionLogger",
    "workspaces-web:GetTrustStoreCertificate",
-   "workspaces-web:ListBrowserSettings",
    "workspaces-web:ListDataProtectionSettings",
-   "workspaces-web:ListIdentityProviders",
    "workspaces-web:ListIpAccessSettings",
-   "workspaces-web:ListNetworkSettings",
-   "workspaces-web:ListPortals",
    "workspaces-web:ListSessionLoggers",
-   "workspaces-web:ListSessions",
-   "workspaces-web:ListTagsForResource",
-   "workspaces-web:ListTrustStoreCertificates",
-   "workspaces-web:ListTrustStores",
-   "workspaces-web:ListUserAccessLoggingSettings",
-   "workspaces-web:ListUserSettings"
+   "workspaces-web:ListTrustStoreCertificates"
   ]
  ],
- "note": "Generated by go run ./internal/onboard/awsreads/gen; do not edit. Reads the CloudFormation registry's list and read handlers need that ReadOnlyAccess does not grant: kept only when named as a read and not marked by AWS's Service Reference as a write or data plane; no secrets, wildcards expanded to concrete actions.",
+ "note": "Generated by go run ./internal/onboard/awsreads/gen; do not edit. The reads the CloudFormation registry's list and read handlers need that ReadOnlyAccess does not grant, each kept only when named as a read, not named like a secret or data read, not denied, not marked by AWS's Service Reference as data plane or a write, and with no output field AWS marks sensitive that is named like a secret. Wildcards are expanded to concrete actions. unverified and omittedByReadOnlyAccess are kept, and listed for review.",
+ "omittedByReadOnlyAccess": [
+  "aidevops:GetAsset",
+  "aidevops:GetOperatorAppTeams",
+  "aidevops:GetTrigger",
+  "aidevops:ListAssets",
+  "aidevops:ListTriggers",
+  "aiops:GetInvestigationGroupPolicy",
+  "aiops:ListTagsForResource",
+  "airflow:GetEnvironment",
+  "amplify:GetWebACLForResource",
+  "aoss:GetIndex",
+  "apigateway:GetTags",
+  "application-signals:GetInstrumentationConfiguration",
+  "bedrock-agentcore:GetConsentPortal",
+  "bedrock-agentcore:GetGatewayRateLimit",
+  "bedrock-agentcore:GetGatewayRule",
+  "bedrock-agentcore:GetPaymentConnector",
+  "bedrock-agentcore:GetPaymentManager",
+  "bedrock-agentcore:ListConsentPortals",
+  "bedrock-agentcore:ListDatasets",
+  "bedrock-agentcore:ListGatewayRateLimits",
+  "bedrock-agentcore:ListGatewayRules",
+  "bedrock-agentcore:ListPaymentConnectors",
+  "bedrock-agentcore:ListPaymentManagers",
+  "bedrock:GetPromptRouter",
+  "bedrock:GetRetrievalInstruction",
+  "bedrock:ListAutomatedReasoningPolicies",
+  "bedrock:ListBlueprints",
+  "bedrock:ListDataAutomationLibraries",
+  "bedrock:ListDataAutomationProjects",
+  "bedrock:ListPromptRouters",
+  "bedrock:ListRetrievalInstructions",
+  "bedrock:ListTagsForResource",
+  "braket:ListTagsForResource",
+  "chime:DescribeAppInstance",
+  "chime:DescribeAppInstanceBot",
+  "chime:DescribeAppInstanceUser",
+  "chime:DescribeChannel",
+  "chime:DescribeChannelFlow",
+  "cleanrooms-ml:GetConfiguredModelAlgorithm",
+  "cleanrooms-ml:GetConfiguredModelAlgorithmAssociation",
+  "cleanrooms-ml:ListConfiguredModelAlgorithmAssociations",
+  "cleanrooms-ml:ListConfiguredModelAlgorithms",
+  "cleanrooms:GetIntermediateTable",
+  "cleanrooms:GetIntermediateTableAnalysisRule",
+  "cleanrooms:ListIntermediateTables",
+  "codeartifact:DescribePackageGroup",
+  "codeartifact:ListAllowedRepositoriesForGroup",
+  "codeartifact:ListPackageGroups",
+  "cognito-identity:GetPrincipalTagAttributeMap",
+  "connect:SearchEmailAddresses",
+  "connect:SearchVocabularies",
+  "connect:SearchWorkspaceAssociations",
+  "cur:DescribeReportDefinitions",
+  "cur:ListTagsForResource",
+  "deadline:GetMeteredProduct",
+  "detective:DescribeOrganizationConfiguration",
+  "drs:GetRecoveryPlan",
+  "drs:ListRecoveryPlans",
+  "elasticloadbalancing:GetLoadBalancerWebACL",
+  "elasticmapreduce:GetStudioSessionMapping",
+  "elemental-inference:ListTagsForResource",
+  "emr-containers:DescribeJobTemplate",
+  "emr-containers:DescribeSecurityConfiguration",
+  "emr-containers:ListJobTemplates",
+  "emr-containers:ListSecurityConfigurations",
+  "events:GetResourcePolicy",
+  "evidently:ListSegment",
+  "fms:GetResourceSet",
+  "fms:ListResourceSetResources",
+  "fms:ListResourceSets",
+  "glue:DescribeConnectionType",
+  "glue:DescribeIntegrations",
+  "glue:GetBlueprint",
+  "glue:GetCustomEntityType",
+  "glue:GetDataQualityRuleset",
+  "glue:GetGlueIdentityCenterConfiguration",
+  "glue:GetIntegrationResourceProperty",
+  "glue:GetUsageProfile",
+  "glue:ListBlueprints",
+  "glue:ListConnectionTypes",
+  "glue:ListCustomEntityTypes",
+  "glue:ListDataQualityRulesets",
+  "glue:ListIntegrationResourceProperties",
+  "glue:ListUsageProfiles",
+  "healthlake:GetDataTransformationProfile",
+  "healthlake:ListDataTransformationProfiles",
+  "inspector2:GetCodeSecurityScanConfiguration",
+  "inspector2:ListCodeSecurityIntegrations",
+  "inspector2:ListCodeSecurityScanConfigurations",
+  "invoicing:GetInvoiceUnit",
+  "invoicing:GetProcurementPortalPreference",
+  "invoicing:ListInvoiceUnits",
+  "invoicing:ListProcurementPortalPreferences",
+  "invoicing:ListTagsForResource",
+  "iotfleetwise:GetStateTemplate",
+  "iotfleetwise:ListStateTemplates",
+  "ivs:GetAdConfiguration",
+  "ivs:ListAdConfigurations",
+  "kafkaconnect:ListTagsForResource",
+  "kendra:DescribeFeaturedResultsSet",
+  "kendra:ListFeaturedResultsSets",
+  "lakeformation:DescribeLakeFormationIdentityCenterConfiguration",
+  "lex:ListCustomVocabularies",
+  "lightsail:GetContactMethods",
+  "managedblockchain:ListAccessors",
+  "mediaconnect:DescribeBridge",
+  "medialive:DescribeNode",
+  "medialive:DescribeSdiSource",
+  "medialive:ListChannelPlacementGroups",
+  "medialive:ListClusters",
+  "medialive:ListNetworks",
+  "medialive:ListNodes",
+  "medialive:ListSdiSources",
+  "mgn:GetNetworkMigrationDefinition",
+  "mgn:ListConnectors",
+  "mgn:ListNetworkMigrationDefinitions",
+  "mgn:ListTagsForResource",
+  "network-firewall:DescribeContainerAssociation",
+  "network-firewall:DescribeVpcEndpointAssociation",
+  "network-firewall:ListContainerAssociations",
+  "network-firewall:ListTagsForResources",
+  "network-firewall:ListVpcEndpointAssociations",
+  "networkflowmonitor:ListTagsForResource",
+  "networkmanager:GetDirectConnectGatewayAttachment",
+  "oam:ListTagsForResource",
+  "observabilityadmin:GetDatasetIntegration",
+  "observabilityadmin:ListDatasetIntegrations",
+  "osis:GetResourcePolicy",
+  "payment-cryptography:GetResourcePolicy",
+  "pi:ListPerformanceAnalysisReports",
+  "pi:ListTagsForResource",
+  "proton:GetEnvironmentAccountConnection",
+  "qbusiness:GetPolicy",
+  "qbusiness:ListDataAccessors",
+  "redshift:GetResourcePolicy",
+  "rekognition:DescribeCollection",
+  "rum:BatchGetRumMetricDefinitions",
+  "rum:GetResourcePolicy",
+  "rum:ListRumMetricsDestinations",
+  "rum:ListTagsForResource",
+  "s3express:GetInventoryConfiguration",
+  "s3express:GetMetricsConfiguration",
+  "s3tables:GetTableBucketMetricsConfiguration",
+  "s3vectors:ListTagsForResource",
+  "sagemaker:GetModelPackageGroupPolicy",
+  "securityagent:BatchGetSecurityRequirements",
+  "securityagent:DescribePrivateConnection",
+  "securityagent:ListPrivateConnections",
+  "securityagent:ListTagsForResource",
+  "sms-voice:DescribeNotifyConfigurations",
+  "sms-voice:DescribeRcsAgents",
+  "sms-voice:GetProtectConfigurationCountryRuleSet",
+  "sms-voice:GetResourcePolicy",
+  "ssm-contacts:GetRotation",
+  "ssm-contacts:ListRotations",
+  "ssm-contacts:ListTagsForResource",
+  "timestream:DescribeScheduledQuery",
+  "timestream:ListScheduledQueries",
+  "translate:ListTagsForResource",
+  "verifiedpermissions:GetPolicyStoreAlias",
+  "verifiedpermissions:ListPolicyStoreAliases",
+  "verifiedpermissions:ListTagsForResource",
+  "vpc-lattice:DescribeServiceNetworkVpcEndpointAssociation",
+  "wellarchitected:GetAgentContext",
+  "wellarchitected:GetAgentGoal",
+  "wellarchitected:GetAgentProfile",
+  "workspaces-web:GetDataProtectionSettings",
+  "workspaces-web:GetIpAccessSettings",
+  "workspaces-web:GetSessionLogger",
+  "workspaces-web:GetTrustStoreCertificate",
+  "workspaces-web:ListDataProtectionSettings",
+  "workspaces-web:ListIpAccessSettings",
+  "workspaces-web:ListSessionLoggers",
+  "workspaces-web:ListTrustStoreCertificates"
+ ],
  "readOnlyAccess": "v190",
  "registries": [
   "us-east-1=sha256:85d0f594df8a88f71d45105a6696416642e22a673cf73c0c87dbc60d53a87045",
@@ -616,17 +754,13 @@
   "AWS::BedrockAgentCore::GatewayRateLimit",
   "AWS::BedrockAgentCore::GatewayRule",
   "AWS::BedrockAgentCore::PaymentConnector",
-  "AWS::BedrockAgentCore::PaymentCredentialProvider",
   "AWS::BedrockAgentCore::PaymentManager",
   "AWS::Braket::SpendingLimit",
-  "AWS::Budgets::Budget",
   "AWS::CUR::ReportDefinition",
-  "AWS::Cases::Case",
   "AWS::Cases::CaseRule",
   "AWS::Cases::Domain",
   "AWS::Cases::Field",
   "AWS::Cases::Layout",
-  "AWS::Cases::RelatedItem",
   "AWS::Cases::Template",
   "AWS::Chime::AppInstance",
   "AWS::Chime::AppInstanceBot",
@@ -653,7 +787,6 @@
   "AWS::CustomerProfiles::Integration",
   "AWS::CustomerProfiles::RecommenderSchema",
   "AWS::DRS::RecoveryPlan",
-  "AWS::DataZone::Connection",
   "AWS::Deadline::MeteredProduct",
   "AWS::Detective::Graph",
   "AWS::DevOpsAgent::Asset",
@@ -676,11 +809,9 @@
   "AWS::FMS::ResourceSet",
   "AWS::FinSpace::Environment",
   "AWS::Glue::Blueprint",
-  "AWS::Glue::Connection",
   "AWS::Glue::ConnectionType",
   "AWS::Glue::CustomEntityType",
   "AWS::Glue::DataQualityRuleset",
-  "AWS::Glue::Database",
   "AWS::Glue::IdentityCenterConfiguration",
   "AWS::Glue::Integration",
   "AWS::Glue::IntegrationResourceProperty",
@@ -689,8 +820,6 @@
   "AWS::HealthImaging::Datastore",
   "AWS::HealthLake::DataTransformationProfile",
   "AWS::IVS::AdConfiguration",
-  "AWS::IVS::StreamKey",
-  "AWS::InspectorV2::CodeSecurityIntegration",
   "AWS::InspectorV2::CodeSecurityScanConfiguration",
   "AWS::Invoicing::InvoiceUnit",
   "AWS::Invoicing::ProcurementPortalPreference",
@@ -710,7 +839,6 @@
   "AWS::LicenseManagerLinuxSubscriptions::SubscriptionProvider",
   "AWS::LicenseManagerUserSubscriptions::LicenseServerEndpoint",
   "AWS::Lightsail::ContactMethod",
-  "AWS::Location::APIKey",
   "AWS::Location::GeofenceCollection",
   "AWS::Location::Map",
   "AWS::Location::PlaceIndex",
@@ -720,7 +848,6 @@
   "AWS::MGN::Connector",
   "AWS::MGN::NetworkMigrationDefinition",
   "AWS::MWAA::Environment",
-  "AWS::ManagedBlockchain::Accessor",
   "AWS::MediaConnect::Bridge",
   "AWS::MediaConnect::BridgeOutput",
   "AWS::MediaConnect::BridgeSource",
@@ -763,14 +890,13 @@
   "AWS::OSIS::Pipeline",
   "AWS::Oam::Link",
   "AWS::Oam::Sink",
-  "AWS::PI::PerfReports",
+  "AWS::ObservabilityAdmin::DatasetIntegration",
   "AWS::Panorama::ApplicationInstance",
   "AWS::Panorama::Package",
   "AWS::Panorama::PackageVersion",
   "AWS::PaymentCryptography::Key",
   "AWS::PricingPlanManager::Subscription",
   "AWS::QBusiness::Permission",
-  "AWS::QuickSight::ActionConnector",
   "AWS::QuickSight::Agent",
   "AWS::QuickSight::Analysis",
   "AWS::QuickSight::ApprovalPolicy",
@@ -787,7 +913,6 @@
   "AWS::QuickSight::Group",
   "AWS::QuickSight::KnowledgeBase",
   "AWS::QuickSight::LimitsProfile",
-  "AWS::QuickSight::OAuthClientApplication",
   "AWS::QuickSight::RefreshSchedule",
   "AWS::QuickSight::Space",
   "AWS::QuickSight::Template",
@@ -852,31 +977,28 @@
   "AWS::Wisdom::AIPromptVersion",
   "AWS::Wisdom::Assistant",
   "AWS::Wisdom::AssistantAssociation",
-  "AWS::Wisdom::Content",
   "AWS::Wisdom::ContentAssociation",
   "AWS::Wisdom::KnowledgeBase",
-  "AWS::Wisdom::MessageTemplate",
-  "AWS::Wisdom::MessageTemplateVersion",
   "AWS::Wisdom::QuickResponse",
   "AWS::WorkSpacesWeb::TrustStore",
   "AWS::WorkspacesInstances::VolumeAssociation",
   "AWS::WorkspacesInstances::WorkspaceInstance"
  ],
- "typesCompletedN": 275,
+ "typesCompletedN": 259,
  "typesStillShort": {
   "AWS::AIOps::InvestigationGroup": {
-   "kms:Decrypt": "secret or data",
+   "kms:Decrypt": "not named as a read",
    "kms:Encrypt": "not named as a read"
   },
   "AWS::AWSExternalAnthropic::Workspace": {
-   "sts:GetWebIdentityToken": "secret or data",
+   "sts:GetWebIdentityToken": "named like a secret or data read",
    "sts:TagGetWebIdentityToken": "not named as a read"
   },
   "AWS::AgentRegistry::Registry": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::AgentRegistry::RegistryRecord": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Amplify::App": {
    "iam:PassRole": "not named as a read"
@@ -918,62 +1040,76 @@
    "managed-fleets:Get*": "wildcard for actions AWS does not list"
   },
   "AWS::Bedrock::Agent": {
-   "kms:Decrypt": "secret or data",
+   "kms:Decrypt": "not named as a read",
    "kms:Encrypt": "not named as a read",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::Bedrock::Blueprint": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Bedrock::DataAutomationLibrary": {
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::Bedrock::DataAutomationProject": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Bedrock::Flow": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Bedrock::FlowVersion": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Bedrock::Guardrail": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Bedrock::GuardrailVersion": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Bedrock::Prompt": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Bedrock::PromptVersion": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Bedrock::RetrievalInstruction": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Bedrock::Session": {
    "bedrock:GetSession": "AWS: data plane",
    "bedrock:ListSessions": "AWS: data plane",
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::BedrockAgentCore::ConfigurationBundle": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::BedrockAgentCore::Dataset": {
-   "bedrock-agentcore:GetDataset": "secret or data",
-   "kms:Decrypt": "secret or data"
+   "bedrock-agentcore:GetDataset": "named like a secret or data read",
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::BedrockAgentCore::Evaluator": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::BedrockAgentCore::Memory": {
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
+  },
+  "AWS::BedrockAgentCore::PaymentCredentialProvider": {
+   "bedrock-agentcore:GetPaymentCredentialProvider": "named like a secret or data read",
+   "bedrock-agentcore:ListPaymentCredentialProviders": "named like a secret or data read"
   },
   "AWS::BedrockAgentCore::PolicyEngine": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
+  },
+  "AWS::Budgets::Budget": {
+   "billing:GetBillingViewData": "returns billing data"
+  },
+  "AWS::Cases::Case": {
+   "cases:GetCase": "returns case fields and comments: customer data",
+   "cases:SearchCases": "returns case fields: customer data"
+  },
+  "AWS::Cases::RelatedItem": {
+   "cases:SearchRelatedItems": "returns case comments and contacts: customer data"
   },
   "AWS::Cassandra::Keyspace": {
    "cassandra:SelectMultiRegionResource": "not named as a read"
@@ -990,29 +1126,29 @@
    "cleanrooms:PassMembership": "not named as a read"
   },
   "AWS::Cognito::UserPool": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Cognito::UserPoolDomain": {
    "kms:CreateGrant": "not named as a read",
-   "kms:Decrypt": "secret or data",
+   "kms:Decrypt": "not named as a read",
    "kms:Encrypt": "not named as a read",
-   "kms:GenerateDataKeyWithoutPlaintext": "secret or data",
+   "kms:GenerateDataKeyWithoutPlaintext": "not named as a read",
    "kms:ReEncryptFrom": "not named as a read",
    "kms:ReEncryptTo": "not named as a read"
   },
   "AWS::Cognito::UserPoolRegionalConfigurationAttachment": {
    "kms:CreateGrant": "not named as a read",
-   "kms:Decrypt": "secret or data",
+   "kms:Decrypt": "not named as a read",
    "kms:Encrypt": "not named as a read",
-   "kms:GenerateDataKeyWithoutPlaintext": "secret or data",
+   "kms:GenerateDataKeyWithoutPlaintext": "not named as a read",
    "kms:ReEncryptFrom": "not named as a read",
    "kms:ReEncryptTo": "not named as a read"
   },
   "AWS::Cognito::UserPoolReplica": {
    "kms:CreateGrant": "not named as a read",
-   "kms:Decrypt": "secret or data",
+   "kms:Decrypt": "not named as a read",
    "kms:Encrypt": "not named as a read",
-   "kms:GenerateDataKeyWithoutPlaintext": "secret or data",
+   "kms:GenerateDataKeyWithoutPlaintext": "not named as a read",
    "kms:ReEncryptFrom": "not named as a read",
    "kms:ReEncryptTo": "not named as a read"
   },
@@ -1021,37 +1157,41 @@
    "kms:PutKeyPolicy": "not named as a read"
   },
   "AWS::CustomerProfiles::DomainObjectType": {
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::CustomerProfiles::ObjectType": {
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::CustomerProfiles::Recommender": {
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::CustomerProfiles::RecommenderFilter": {
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::CustomerProfiles::SegmentDefinition": {
    "kms:CreateGrant": "not named as a read",
-   "kms:GenerateDataKey": "secret or data",
+   "kms:GenerateDataKey": "not named as a read",
    "kms:PutKeyPolicy": "not named as a read"
+  },
+  "AWS::DataZone::Connection": {
+   "datazone:GetConnection": "AWS marks its output sensitive: GetConnectionOutput.connectionCredentials, OAuth2Properties.oAuth2Credentials, RedshiftCredentials.usernamePassword, RedshiftPropertiesOutput.credentials, SparkEmrPropertiesOutput.credentials, SparkEmrPropertiesOutput.managedEndpointCredentials, UsernamePassword.password",
+   "datazone:ListConnections": "AWS marks its output sensitive: OAuth2Properties.oAuth2Credentials, RedshiftCredentials.usernamePassword, RedshiftPropertiesOutput.credentials, SparkEmrPropertiesOutput.credentials, SparkEmrPropertiesOutput.managedEndpointCredentials, UsernamePassword.password"
   },
   "AWS::Deadline::Farm": {
    "kms:CreateGrant": "not named as a read",
-   "kms:Decrypt": "secret or data",
+   "kms:Decrypt": "not named as a read",
    "kms:Encrypt": "not named as a read",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::Deadline::Limit": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::DevOpsAgent::AgentSpace": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::DynamoDB::GlobalTable": {
    "cloudwatch:PutMetricData": "not named as a read"
@@ -1065,103 +1205,119 @@
    "sts:AssumeRole": "not named as a read"
   },
   "AWS::EC2::VerifiedAccessEndpoint": {
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::EC2::VerifiedAccessGroup": {
    "kms:CreateGrant": "not named as a read",
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data",
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read",
    "kms:RetireGrant": "not named as a read"
   },
   "AWS::EC2::VerifiedAccessTrustProvider": {
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::ElasticBeanstalk::ConfigurationTemplate": {
    "ec2:CreateLaunchTemplate": "not named as a read"
   },
   "AWS::Events::Archive": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Events::Connection": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Events::Rule": {
    "iam:PassRole": "not named as a read"
   },
   "AWS::EventsV2::EventSource": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::GameLift::MatchmakingRuleSet": {
    "gamelift:ValidateMatchmakingRuleSet": "not named as a read"
   },
   "AWS::Glue::Catalog": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
+  },
+  "AWS::Glue::Connection": {
+   "glue:GetConnection": "returns the connection's password unless the caller asks to hide it, which IAM cannot require",
+   "glue:GetConnections": "returns connection passwords unless the caller asks to hide them"
   },
   "AWS::Glue::Crawler": {
    "iam:PassRole": "not named as a read"
   },
+  "AWS::Glue::Database": {
+   "glue:GetConnection": "returns the connection's password unless the caller asks to hide it, which IAM cannot require"
+  },
   "AWS::Glue::Table": {
    "glue:CreateTable": "not named as a read",
    "lakeformation:CreateTable": "not named as a read",
-   "lakeformation:GetDataAccess": "secret or data"
+   "lakeformation:GetDataAccess": "named like a secret or data read"
   },
   "AWS::GroundStation::MissionProfile": {
    "kms:CreateGrant": "not named as a read"
   },
+  "AWS::IVS::StreamKey": {
+   "ivs:GetStreamKey": "named like a secret or data read"
+  },
   "AWS::ImageBuilder::Component": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::ImageBuilder::ContainerRecipe": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::ImageBuilder::Workflow": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Inspector::ResourceGroup": {
    "inspector:CreateResourceGroup": "not named as a read"
   },
+  "AWS::InspectorV2::CodeSecurityIntegration": {
+   "inspector2:GetCodeSecurityIntegration": "AWS marks its output sensitive: GetCodeSecurityIntegrationResponse.authorizationUrl"
+  },
   "AWS::IoT::Authorizer": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::IoT::CACertificate": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::IoT::Certificate": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::IoT::CertificateProvider": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::IoT::DomainConfiguration": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::IoT::Policy": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::IoT::ProvisioningTemplate": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::IoT::RoleAlias": {
    "iam:PassRole": "not named as a read",
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Lambda::EventSourceMapping": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Lambda::Function": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Lambda::WebFunctionRevision": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
+  },
+  "AWS::Location::APIKey": {
+   "geo:DescribeKey": "AWS marks its output sensitive: DescribeKeyResponse.Key"
   },
   "AWS::Logs::LogAnomalyDetector": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::MSK::BatchScramSecret": {
    "kms:CreateGrant": "not named as a read",
-   "secretsmanager:GetSecretValue": "secret or data"
+   "secretsmanager:GetSecretValue": "named like a secret or data read"
   },
   "AWS::MSK::Topic": {
    "kafka-cluster:Connect": "not named as a read"
@@ -1170,18 +1326,18 @@
    "kms:CreateGrant": "not named as a read"
   },
   "AWS::MWAAServerless::Workflow": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
+  },
+  "AWS::ManagedBlockchain::Accessor": {
+   "managedblockchain:GetAccessor": "returns the accessor's billing token"
   },
   "AWS::Neptune::DBCluster": {
    "kms:CreateGrant": "not named as a read"
   },
   "AWS::NimbleStudio::Studio": {
-   "kms:Decrypt": "secret or data",
+   "kms:Decrypt": "not named as a read",
    "kms:Encrypt": "not named as a read",
-   "kms:GenerateDataKey": "secret or data"
-  },
-  "AWS::ObservabilityAdmin::DatasetIntegration": {
-   "observabilityadmin:GetDatasetIntegration": "secret or data"
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::OpenSearchServerless::CollectionIndex": {
    "aoss:APIAccessAll": "not named as a read"
@@ -1189,8 +1345,11 @@
   "AWS::OpenSearchServerless::Index": {
    "aoss:APIAccessAll": "not named as a read"
   },
+  "AWS::PI::PerfReports": {
+   "pi:GetPerformanceAnalysisReport": "returns a report of database activity: data"
+  },
   "AWS::Pipes::Pipe": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Proton::EnvironmentAccountConnection": {
    "iam:PassRole": "not named as a read"
@@ -1208,7 +1367,7 @@
    "kms:DisableKeyRotation": "not named as a read",
    "kms:EnableKey": "not named as a read",
    "kms:EnableKeyRotation": "not named as a read",
-   "kms:GenerateDataKey": "secret or data",
+   "kms:GenerateDataKey": "not named as a read",
    "kms:PutKeyPolicy": "not named as a read",
    "kms:RevokeGrant": "not named as a read",
    "kms:ScheduleKeyDeletion": "not named as a read",
@@ -1234,7 +1393,7 @@
    "kms:DisableKeyRotation": "not named as a read",
    "kms:EnableKey": "not named as a read",
    "kms:EnableKeyRotation": "not named as a read",
-   "kms:GenerateDataKey": "secret or data",
+   "kms:GenerateDataKey": "not named as a read",
    "kms:PutKeyPolicy": "not named as a read",
    "kms:RevokeGrant": "not named as a read",
    "kms:ScheduleKeyDeletion": "not named as a read",
@@ -1246,7 +1405,13 @@
    "kms:UpdatePrimaryRegion": "not named as a read"
   },
   "AWS::QBusiness::DataAccessor": {
-   "qbusiness:GetDataAccessor": "secret or data"
+   "qbusiness:GetDataAccessor": "named like a secret or data read"
+  },
+  "AWS::QuickSight::ActionConnector": {
+   "quicksight:DescribeActionConnector": "AWS marks its output sensitive: ReadBasicAuthConnectionMetadata.Username"
+  },
+  "AWS::QuickSight::OAuthClientApplication": {
+   "quicksight:DescribeOAuthClientApplication": "AWS marks its output sensitive: OAuthClientApplication.OAuthAuthorizationEndpointUrl, OAuthClientApplication.OAuthTokenEndpointUrl"
   },
   "AWS::RUM::AppMonitor": {
    "s3:DoesObjectExist": "not named as a read"
@@ -1263,23 +1428,23 @@
    "iam:PassRole": "not named as a read"
   },
   "AWS::ResilienceHubV2::Policy": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::ResilienceHubV2::Service": {
    "kms:CreateGrant": "not named as a read",
-   "kms:Decrypt": "secret or data",
+   "kms:Decrypt": "not named as a read",
    "kms:Encrypt": "not named as a read",
-   "kms:GenerateDataKey": "secret or data",
+   "kms:GenerateDataKey": "not named as a read",
    "kms:RetireGrant": "not named as a read"
   },
   "AWS::ResilienceHubV2::System": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Route53GlobalResolver::AccessSource": {
    "route53globalresolver:ListTagsForResource": "AWS: write"
   },
   "AWS::Route53GlobalResolver::AccessToken": {
-   "route53globalresolver:GetAccessToken": "secret or data",
+   "route53globalresolver:GetAccessToken": "named like a secret or data read",
    "route53globalresolver:ListTagsForResource": "AWS: write"
   },
   "AWS::Route53GlobalResolver::DnsView": {
@@ -1295,44 +1460,44 @@
    "sdb:DomainMetadata": "not named as a read"
   },
   "AWS::SageMaker::ModelCard": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::SageMaker::ModelPackage": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::SecretsManager::Secret": {
-   "secretsmanager:GetSecretValue": "secret or data"
+   "secretsmanager:GetSecretValue": "named like a secret or data read"
   },
   "AWS::SecretsManager::SecretTargetAttachment": {
-   "secretsmanager:GetSecretValue": "secret or data"
+   "secretsmanager:GetSecretValue": "named like a secret or data read"
   },
   "AWS::SecurityAgent::AgentSpace": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::SecurityAgent::Pentest": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::SecurityAgent::SecurityRequirementPack": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::StepFunctions::StateMachine": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Synthetics::Canary": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Timestream::ScheduledQuery": {
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::Translate::ParallelData": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::Translate::Terminology": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::VoiceID::Domain": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::WAFv2::WebACLAssociation": {
    "apigateway:SetWebACL": "not named as a read",
@@ -1354,59 +1519,103 @@
    "wafv2:AssociateWebACL": "not named as a read",
    "wafv2:DisassociateWebACL": "not named as a read"
   },
+  "AWS::Wisdom::Content": {
+   "wisdom:GetContent": "AWS marks its output sensitive: ContentData.url"
+  },
+  "AWS::Wisdom::MessageTemplate": {
+   "wisdom:GetMessageTemplate": "AWS marks its output sensitive: MessageTemplateAttachment.url, PushADMMessageTemplateContent.imageIconUrl, PushADMMessageTemplateContent.imageUrl, PushADMMessageTemplateContent.smallImageIconUrl, PushADMMessageTemplateContent.url, PushAPNSMessageTemplateContent.mediaUrl, PushAPNSMessageTemplateContent.url, PushBaiduMessageTemplateContent.imageIconUrl, PushBaiduMessageTemplateContent.imageUrl, PushBaiduMessageTemplateContent.smallImageIconUrl, PushBaiduMessageTemplateContent.url, PushFCMMessageTemplateContent.imageIconUrl, PushFCMMessageTemplateContent.imageUrl, PushFCMMessageTemplateContent.smallImageIconUrl, PushFCMMessageTemplateContent.url"
+  },
+  "AWS::Wisdom::MessageTemplateVersion": {
+   "wisdom:GetMessageTemplate": "AWS marks its output sensitive: MessageTemplateAttachment.url, PushADMMessageTemplateContent.imageIconUrl, PushADMMessageTemplateContent.imageUrl, PushADMMessageTemplateContent.smallImageIconUrl, PushADMMessageTemplateContent.url, PushAPNSMessageTemplateContent.mediaUrl, PushAPNSMessageTemplateContent.url, PushBaiduMessageTemplateContent.imageIconUrl, PushBaiduMessageTemplateContent.imageUrl, PushBaiduMessageTemplateContent.smallImageIconUrl, PushBaiduMessageTemplateContent.url, PushFCMMessageTemplateContent.imageIconUrl, PushFCMMessageTemplateContent.imageUrl, PushFCMMessageTemplateContent.smallImageIconUrl, PushFCMMessageTemplateContent.url"
+  },
   "AWS::WorkSpacesThinClient::Environment": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "thinclient:GetEnvironment": "AWS marks its output sensitive: Environment.activationCode",
+   "thinclient:ListEnvironments": "AWS marks its output sensitive: EnvironmentSummary.activationCode"
   },
   "AWS::WorkSpacesWeb::BrowserSettings": {
    "kms:CreateGrant": "not named as a read",
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::WorkSpacesWeb::DataProtectionSettings": {
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::WorkSpacesWeb::IpAccessSettings": {
    "kms:CreateGrant": "not named as a read",
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   },
   "AWS::WorkSpacesWeb::Portal": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "workspaces-web:ListSessions": "AWS marks its output sensitive: SessionSummary.username"
   },
   "AWS::WorkSpacesWeb::SessionLogger": {
-   "kms:Decrypt": "secret or data"
+   "kms:Decrypt": "not named as a read"
   },
   "AWS::WorkSpacesWeb::UserSettings": {
    "kms:CreateGrant": "not named as a read",
-   "kms:Decrypt": "secret or data",
-   "kms:GenerateDataKey": "secret or data"
+   "kms:Decrypt": "not named as a read",
+   "kms:GenerateDataKey": "not named as a read"
   }
  },
- "typesStillShortN": 127,
- "unverifiedByAWS": [
-  "aidevops:GetOperatorAppTeams",
-  "apigateway:GetTags",
-  "deadline:GetMeteredProduct",
-  "emrwal:ListTagsForResource",
-  "emrwal:ListWorkspaces",
-  "evidently:ListSegment",
-  "initech:DescribeReport",
-  "initech:ListReports",
-  "lex:ListCustomVocabularies",
-  "mediatailor:GetFunction",
-  "mediatailor:ListFunctions",
-  "network-firewall:ListTagsForResources",
-  "refactor-spacess:GetService",
-  "resolverdnssec:GetConfig",
-  "resolverdnssec:ListConfig",
-  "resolverquerylogging:GetConfig",
-  "resolverquerylogging:GetConfigAssociation",
-  "resolverquerylogging:ListConfig",
-  "resolverquerylogging:ListConfigAssociations",
-  "vpc-lattice:DescribeServiceNetworkVpcEndpointAssociation",
-  "wisdom:GetAIAgentVersion",
-  "wisdom:GetAIGuardrailVersion",
-  "wisdom:GetAIPromptVersion"
- ]
+ "typesStillShortN": 143,
+ "unverified": {
+  "aidevops:GetAsset": "its output could not be checked against AWS's API models",
+  "aidevops:GetOperatorAppTeams": "AWS's Service Reference does not list it",
+  "aidevops:GetTrigger": "its output could not be checked against AWS's API models",
+  "aidevops:ListAssets": "its output could not be checked against AWS's API models",
+  "aidevops:ListTriggers": "its output could not be checked against AWS's API models",
+  "amplify:GetWebACLForResource": "its output could not be checked against AWS's API models",
+  "apigateway:GetTags": "AWS's Service Reference does not list it",
+  "aws-external-anthropic:GetWorkspace": "its output could not be checked against AWS's API models",
+  "aws-external-anthropic:ListTagsForResource": "its output could not be checked against AWS's API models",
+  "aws-external-anthropic:ListWorkspaces": "its output could not be checked against AWS's API models",
+  "codeartifact:DescribePackageGroup": "its output could not be checked against AWS's API models",
+  "codeartifact:ListAllowedRepositoriesForGroup": "its output could not be checked against AWS's API models",
+  "codeartifact:ListPackageGroups": "its output could not be checked against AWS's API models",
+  "cur:DescribeReportDefinitions": "its output could not be checked against AWS's API models",
+  "cur:ListTagsForResource": "its output could not be checked against AWS's API models",
+  "deadline:GetMeteredProduct": "AWS's Service Reference does not list it",
+  "emrwal:ListTagsForResource": "AWS's Service Reference does not list it",
+  "emrwal:ListWorkspaces": "AWS's Service Reference does not list it",
+  "evidently:ListSegment": "AWS's Service Reference does not list it",
+  "finspace:GetEnvironment": "its output could not be checked against AWS's API models",
+  "finspace:ListEnvironments": "its output could not be checked against AWS's API models",
+  "initech:DescribeReport": "AWS's Service Reference does not list it",
+  "initech:ListReports": "AWS's Service Reference does not list it",
+  "kafka-cluster:DescribeTopic": "its output could not be checked against AWS's API models",
+  "kafka-cluster:DescribeTopicDynamicConfiguration": "its output could not be checked against AWS's API models",
+  "lex:ListCustomVocabularies": "AWS's Service Reference does not list it",
+  "mediatailor:GetFunction": "AWS's Service Reference does not list it",
+  "mediatailor:ListFunctions": "AWS's Service Reference does not list it",
+  "network-firewall:ListTagsForResources": "AWS's Service Reference does not list it",
+  "panorama:DescribeApplicationInstance": "its output could not be checked against AWS's API models",
+  "panorama:DescribeApplicationInstanceDetails": "its output could not be checked against AWS's API models",
+  "panorama:DescribePackage": "its output could not be checked against AWS's API models",
+  "panorama:DescribePackageVersion": "its output could not be checked against AWS's API models",
+  "panorama:ListApplicationInstances": "its output could not be checked against AWS's API models",
+  "panorama:ListPackages": "its output could not be checked against AWS's API models",
+  "panorama:ListTagsForResource": "its output could not be checked against AWS's API models",
+  "refactor-spacess:GetService": "AWS's Service Reference does not list it",
+  "resolverdnssec:GetConfig": "AWS's Service Reference does not list it",
+  "resolverdnssec:ListConfig": "AWS's Service Reference does not list it",
+  "resolverquerylogging:GetConfig": "AWS's Service Reference does not list it",
+  "resolverquerylogging:GetConfigAssociation": "AWS's Service Reference does not list it",
+  "resolverquerylogging:ListConfig": "AWS's Service Reference does not list it",
+  "resolverquerylogging:ListConfigAssociations": "AWS's Service Reference does not list it",
+  "s3express:GetInventoryConfiguration": "its output could not be checked against AWS's API models",
+  "s3express:GetMetricsConfiguration": "its output could not be checked against AWS's API models",
+  "s3vectors:ListTagsForResource": "its output could not be checked against AWS's API models",
+  "simspaceweaver:DescribeSimulation": "its output could not be checked against AWS's API models",
+  "simspaceweaver:ListSimulations": "its output could not be checked against AWS's API models",
+  "verifiedpermissions:GetPolicyStoreAlias": "its output could not be checked against AWS's API models",
+  "verifiedpermissions:ListPolicyStoreAliases": "its output could not be checked against AWS's API models",
+  "verifiedpermissions:ListTagsForResource": "its output could not be checked against AWS's API models",
+  "vpc-lattice:DescribeServiceNetworkVpcEndpointAssociation": "AWS's Service Reference does not list it",
+  "wisdom:GetAIAgentVersion": "AWS's Service Reference does not list it",
+  "wisdom:GetAIGuardrailVersion": "AWS's Service Reference does not list it",
+  "wisdom:GetAIPromptVersion": "AWS's Service Reference does not list it"
+ }
 }

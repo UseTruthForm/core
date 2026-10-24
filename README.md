@@ -50,7 +50,18 @@ stackdna aws-coverage   # offline: what the public registry lets StackDNA captur
 
 stackdna capture --platform azure --subscription <id> --out snap/ [--types 'Microsoft.Network/*']
 stackdna restore --platform azure --subscription <id> --from snap/ [--values secrets.yaml]
+
+stackdna permissions --platform aws --account 111122223333 --principal arn:aws:iam::111122223333:role/ops [--write dir/]
+stackdna check --platform aws --region us-east-1 --profile stackdna-reader
 ```
+
+- **permissions** writes the grant StackDNA needs as a template for the
+  platform's own tool and prints the commands to deploy, verify and remove
+  it, with no placeholders. It grants nothing. See [docs/agents.md](docs/agents.md)
+  for guiding someone through it.
+- **check** names the identity StackDNA runs as, warns about root users,
+  long-lived keys and write access a capture does not need, and runs a
+  capture written nowhere to show what it can read, type by type.
 
 - **capture** discovers every resource type the cluster serves, including custom
   resources no StackDNA code knows about. It keeps what someone configured and

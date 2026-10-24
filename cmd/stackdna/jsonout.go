@@ -27,7 +27,7 @@ var (
 )
 
 // jsonCommands produce a document of their own.
-var jsonCommands = map[string]bool{"capture": true, "diff": true, "restore": true, "compare": true}
+var jsonCommands = map[string]bool{"capture": true, "diff": true, "restore": true, "compare": true, "check": true, "permissions": true}
 
 // emitError is the document of a run that produced none: what went wrong
 // and the exit code, so a pipeline sees the failure, not empty output.

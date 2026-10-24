@@ -1,0 +1,49 @@
+name: aws-reads
+# Weekly: regenerates the AWS read add-on (the reads a capture role needs
+# that AWS's ReadOnlyAccess lacks) and opens a pull request when what a
+# role would be given changed. Every source is AWS's public documentation,
+# so this holds no AWS credentials.
+#
+# Cost: one short job a week; nothing when the result is unchanged.
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+permissions:
+  contents: write # push the branch
+  pull-requests: write # open the pull request
+  actions: write # start CI on the branch (see below)
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go run ./internal/onboard/awsreads/gen
+      # The file a role is given is checked here too: only reads, each
+      # policy within IAM's limit.
+      - run: go test -count=1 ./internal/onboard/...
+      - name: Open a pull request if it changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet; then echo "unchanged"; exit 0; fi
+          branch="aws-reads/${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -qam "Regenerate the AWS read add-on
+
+          AWS changed ReadOnlyAccess, the CloudFormation registry or its
+          Service Reference. Review the diff of aws-read-addon.json: it is
+          what a capture role is given."
+          git push -q origin "$branch"
+          gh pr create --base main --head "$branch" --title "Regenerate the AWS read add-on" \
+            --body "Weekly regeneration (workflow aws-reads). Review the actions added and removed in internal/onboard/templates/aws-read-addon.json: a capture role is given them."
+          # A pull request opened with this workflow's token triggers no
+          # workflows, so CI would never run on it and the PR would look
+          # unchecked. workflow_dispatch is the one trigger that token may
+          # use: start CI on the branch explicitly.
+          gh workflow run ci.yml --ref "$branch"

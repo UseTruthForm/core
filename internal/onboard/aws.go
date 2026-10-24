@@ -1,9 +1,35 @@
 package onboard
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
+
+// addOn is the generated AWS read add-on (scripts/gen-aws-reads.sh).
+type addOn struct {
+	ReadOnlyAccess string     `json:"readOnlyAccess"`
+	Chunks         [][]string `json:"chunks"`
+	ActionCount    int        `json:"actionCount"`
+	ShortN         int        `json:"typesStillShortN"`
+}
+
+func loadAddOn() (addOn, error) {
+	var a addOn
+	b, err := templates.ReadFile("templates/aws-read-addon.json")
+	if err != nil {
+		return a, err
+	}
+	if err := json.Unmarshal(b, &a); err != nil {
+		return a, fmt.Errorf("aws-read-addon.json: %w", err)
+	}
+	// An empty add-on would deploy and read as complete while the gap it
+	// exists for is back.
+	if len(a.Chunks) == 0 || a.ReadOnlyAccess == "" {
+		return a, fmt.Errorf("aws-read-addon.json holds no reads; regenerate it with scripts/gen-aws-reads.sh")
+	}
+	return a, nil
+}
 
 func buildAWS(r Request) (Plan, error) {
 	var miss MissingError
@@ -68,7 +94,11 @@ func buildAWS(r Request) (Plan, error) {
 		}
 		return cmd(a...)
 	}
-	b, err := render("stackdna-aws.yaml", nil)
+	add, err := loadAddOn()
+	if err != nil {
+		return Plan{}, err
+	}
+	b, err := render("stackdna-aws.yaml.tmpl", map[string]any{"Chunks": add.Chunks, "ReadOnlyVersion": add.ReadOnlyAccess})
 	if err != nil {
 		return Plan{}, err
 	}
@@ -85,14 +115,15 @@ func buildAWS(r Request) (Plan, error) {
 		p.Warnings = append(p.Warnings, "Restore access writes. Grant it for the restore and remove it afterwards; capture and diff need only the capture role.",
 			"IAM roles and policies in a snapshot are not restorable with this role: add an IAM grant scoped to the names being restored (docs/permissions.md).")
 	} else {
-		p.Grants = append(p.Grants, "Nothing that writes. Run StackDNA's capture-only binary with it too: one that cannot send a write at all.")
+		p.Grants = append(p.Grants, fmt.Sprintf("and %d customer managed policies, %s-reads-0 to -%d: %d reads AWS's ReadOnlyAccess (%s) lacks for newer services, generated from the CloudFormation registry and kept to reads of configuration (no secret values, no data)", len(add.Chunks), role, len(add.Chunks)-1, add.ActionCount, add.ReadOnlyAccess),
+			"Nothing that writes. Run StackDNA's capture-only binary with it too: one that cannot send a write at all.")
 		p.Warnings = append(p.Warnings, "ReadOnlyAccess reads data as well as configuration: S3 objects, DynamoDB items, queue messages. StackDNA reads configuration only and never writes data to a snapshot, but whoever holds this role could read the data.")
 	}
 	if r.Access == "restore" {
 		p.Status = "Expected. PowerUserAccess restored the drill's 14 types, held by a user, not through this role."
 	} else {
-		p.Status = "Verified with a gap (2026-10-23): deployed from this template in a sandbox account (trusting a user in the same account), the role captured us-east-2 and could write nothing, but ReadOnlyAccess was refused 87 types that PowerUserAccess reads, and the capture held 5 fewer resources. Removing the stack removed the role and the access. A principal in another account has not yet been tried."
-		p.Warnings = append(p.Warnings, "AWS's ReadOnlyAccess does not cover some newer services (Bedrock, Location, MediaTailor, Control Tower, QuickSight and others: 87 of about 1,500 types in one sandbox region). A capture with this role reports those types as incomplete; stackdna check lists the ones refused in this account.")
+		p.Status = "Verified (2026-10-23) in a sandbox account, trusting a user in the same account: deployed from this template, the role captured us-east-2 to the same digest as an identity holding ReadOnlyAccess and PowerUserAccess (98 resources, 1,158 types), and no sampled write was allowed. Without the add-on it was refused 87 types. Deleting the stack removed the role, the add-on and the access. A principal in another account has not yet been tried."
+		p.Warnings = append(p.Warnings, fmt.Sprintf("%d types need an action the add-on does not grant (mostly kms:Decrypt for resources encrypted with a customer's key, or a write a schema lists under read). A capture reports any it cannot read; stackdna check lists them.", add.ShortN))
 	}
 
 	p.Before = []Step{

@@ -1,5 +1,5 @@
 {
- "actionCount": 533,
+ "actionCount": 527,
  "chunks": [
   [
    "account-access:GetApplication",
@@ -19,7 +19,6 @@
    "airflow-serverless:GetWorkflow",
    "airflow-serverless:ListTagsForResource",
    "airflow-serverless:ListWorkflows",
-   "airflow:GetEnvironment",
    "amplify:GetWebACLForResource",
    "amplifyuibuilder:GetComponent",
    "amplifyuibuilder:GetForm",
@@ -67,7 +66,6 @@
    "bedrock-agentcore:GetConsentPortal",
    "bedrock-agentcore:GetGatewayRateLimit",
    "bedrock-agentcore:GetGatewayRule",
-   "bedrock-agentcore:GetPaymentConnector",
    "bedrock-agentcore:GetPaymentManager",
    "bedrock-agentcore:ListConsentPortals",
    "bedrock-agentcore:ListDatasets",
@@ -151,7 +149,6 @@
    "entityresolution:ListTagsForResource",
    "events:GetResourcePolicy",
    "evidently:ListSegment",
-   "evs:GetEnvironment",
    "evs:ListEnvironments",
    "evs:ListTagsForResource",
    "finspace:GetEnvironment",
@@ -186,11 +183,11 @@
    "glue:ListIntegrationResourceProperties",
    "glue:ListUsageProfiles",
    "health-agent:GetDomain",
-   "health-agent:ListDomains"
+   "health-agent:ListDomains",
+   "health-agent:ListTagsForResource",
+   "healthlake:GetDataTransformationProfile"
   ],
   [
-   "health-agent:ListTagsForResource",
-   "healthlake:GetDataTransformationProfile",
    "healthlake:ListDataTransformationProfiles",
    "initech:DescribeReport",
    "initech:ListReports",
@@ -198,7 +195,6 @@
    "inspector2:ListCodeSecurityIntegrations",
    "inspector2:ListCodeSecurityScanConfigurations",
    "invoicing:GetInvoiceUnit",
-   "invoicing:GetProcurementPortalPreference",
    "invoicing:ListInvoiceUnits",
    "invoicing:ListProcurementPortalPreferences",
    "invoicing:ListTagsForResource",
@@ -236,7 +232,6 @@
    "license-manager-linux-subscriptions:ListTagsForResource",
    "license-manager-user-subscriptions:ListLicenseServerEndpoints",
    "license-manager-user-subscriptions:ListTagsForResource",
-   "lightsail:GetContactMethods",
    "managedblockchain:ListAccessors",
    "mediaconnect:DescribeBridge",
    "medialive:DescribeNode",
@@ -361,18 +356,17 @@
    "quicksight:DescribeAnalysis",
    "quicksight:DescribeAnalysisPermissions",
    "quicksight:DescribeApprovalPolicy",
-   "quicksight:DescribeBrand"
-  ],
-  [
+   "quicksight:DescribeBrand",
    "quicksight:DescribeCustomPermissions",
    "quicksight:DescribeDashboard",
    "quicksight:DescribeDashboardPermissions",
-   "quicksight:DescribeDataSet",
+   "quicksight:DescribeDataSet"
+  ],
+  [
    "quicksight:DescribeDataSetPermissions",
    "quicksight:DescribeDataSetRefreshProperties",
    "quicksight:DescribeDataSource",
    "quicksight:DescribeDataSourcePermissions",
-   "quicksight:DescribeDlpSetting",
    "quicksight:DescribeFlow",
    "quicksight:DescribeFolder",
    "quicksight:DescribeFolderPermissions",
@@ -550,7 +544,6 @@
   "aidevops:ListTriggers",
   "aiops:GetInvestigationGroupPolicy",
   "aiops:ListTagsForResource",
-  "airflow:GetEnvironment",
   "amplify:GetWebACLForResource",
   "aoss:GetIndex",
   "apigateway:GetTags",
@@ -558,7 +551,6 @@
   "bedrock-agentcore:GetConsentPortal",
   "bedrock-agentcore:GetGatewayRateLimit",
   "bedrock-agentcore:GetGatewayRule",
-  "bedrock-agentcore:GetPaymentConnector",
   "bedrock-agentcore:GetPaymentManager",
   "bedrock-agentcore:ListConsentPortals",
   "bedrock-agentcore:ListDatasets",
@@ -633,7 +625,6 @@
   "inspector2:ListCodeSecurityIntegrations",
   "inspector2:ListCodeSecurityScanConfigurations",
   "invoicing:GetInvoiceUnit",
-  "invoicing:GetProcurementPortalPreference",
   "invoicing:ListInvoiceUnits",
   "invoicing:ListProcurementPortalPreferences",
   "invoicing:ListTagsForResource",
@@ -646,7 +637,6 @@
   "kendra:ListFeaturedResultsSets",
   "lakeformation:DescribeLakeFormationIdentityCenterConfiguration",
   "lex:ListCustomVocabularies",
-  "lightsail:GetContactMethods",
   "managedblockchain:ListAccessors",
   "mediaconnect:DescribeBridge",
   "medialive:DescribeNode",
@@ -720,7 +710,7 @@
  ],
  "readOnlyAccess": "v190",
  "registries": [
-  "us-east-1=sha256:85d0f594df8a88f71d45105a6696416642e22a673cf73c0c87dbc60d53a87045",
+  "us-east-1=sha256:ae5f7607577ce23fad015ce5aebfa3a60e0b70d4a14dcf976bec8aaa39227523",
   "us-east-2=sha256:b39c937637fedfe9f78e97ec2cfa11b7aebf21b2f162c0dd21fb01419ffaeee0"
  ],
  "typesCompleted": [
@@ -753,7 +743,6 @@
   "AWS::BedrockAgentCore::ConsentPortal",
   "AWS::BedrockAgentCore::GatewayRateLimit",
   "AWS::BedrockAgentCore::GatewayRule",
-  "AWS::BedrockAgentCore::PaymentConnector",
   "AWS::BedrockAgentCore::PaymentManager",
   "AWS::Braket::SpendingLimit",
   "AWS::CUR::ReportDefinition",
@@ -796,7 +785,6 @@
   "AWS::EMR::WALWorkspace",
   "AWS::EMRContainers::JobTemplate",
   "AWS::EMRContainers::SecurityConfiguration",
-  "AWS::EVS::Environment",
   "AWS::ElementalInference::Dictionary",
   "AWS::ElementalInference::Feed",
   "AWS::EntityResolution::IdMappingWorkflow",
@@ -822,7 +810,6 @@
   "AWS::IVS::AdConfiguration",
   "AWS::InspectorV2::CodeSecurityScanConfiguration",
   "AWS::Invoicing::InvoiceUnit",
-  "AWS::Invoicing::ProcurementPortalPreference",
   "AWS::IoTCoreDeviceAdvisor::SuiteDefinition",
   "AWS::IoTFleetWise::StateTemplate",
   "AWS::IoTTwinMaker::ComponentType",
@@ -838,7 +825,6 @@
   "AWS::Lex::Bot",
   "AWS::LicenseManagerLinuxSubscriptions::SubscriptionProvider",
   "AWS::LicenseManagerUserSubscriptions::LicenseServerEndpoint",
-  "AWS::Lightsail::ContactMethod",
   "AWS::Location::GeofenceCollection",
   "AWS::Location::Map",
   "AWS::Location::PlaceIndex",
@@ -847,7 +833,6 @@
   "AWS::Location::TrackerConsumer",
   "AWS::MGN::Connector",
   "AWS::MGN::NetworkMigrationDefinition",
-  "AWS::MWAA::Environment",
   "AWS::MediaConnect::Bridge",
   "AWS::MediaConnect::BridgeOutput",
   "AWS::MediaConnect::BridgeSource",
@@ -904,7 +889,6 @@
   "AWS::QuickSight::Brand",
   "AWS::QuickSight::CustomPermissions",
   "AWS::QuickSight::Customization",
-  "AWS::QuickSight::DLPSetting",
   "AWS::QuickSight::Dashboard",
   "AWS::QuickSight::DataSet",
   "AWS::QuickSight::DataSource",
@@ -984,7 +968,7 @@
   "AWS::WorkspacesInstances::VolumeAssociation",
   "AWS::WorkspacesInstances::WorkspaceInstance"
  ],
- "typesCompletedN": 259,
+ "typesCompletedN": 253,
  "typesStillShort": {
   "AWS::AIOps::InvestigationGroup": {
    "kms:Decrypt": "not named as a read",
@@ -1076,8 +1060,8 @@
    "kms:Decrypt": "not named as a read"
   },
   "AWS::Bedrock::Session": {
-   "bedrock:GetSession": "AWS: data plane",
-   "bedrock:ListSessions": "AWS: data plane",
+   "bedrock:GetSession": "AWS: data plane (agent session state)",
+   "bedrock:ListSessions": "AWS: data plane (agent sessions)",
    "kms:Decrypt": "not named as a read"
   },
   "AWS::BedrockAgentCore::ConfigurationBundle": {
@@ -1093,6 +1077,9 @@
   "AWS::BedrockAgentCore::Memory": {
    "kms:Decrypt": "not named as a read",
    "kms:GenerateDataKey": "not named as a read"
+  },
+  "AWS::BedrockAgentCore::PaymentConnector": {
+   "bedrock-agentcore:GetPaymentConnector": "returns an OAuth consent URL"
   },
   "AWS::BedrockAgentCore::PaymentCredentialProvider": {
    "bedrock-agentcore:GetPaymentCredentialProvider": "named like a secret or data read",
@@ -1178,8 +1165,8 @@
    "kms:PutKeyPolicy": "not named as a read"
   },
   "AWS::DataZone::Connection": {
-   "datazone:GetConnection": "AWS marks its output sensitive: GetConnectionOutput.connectionCredentials, OAuth2Properties.oAuth2Credentials, RedshiftCredentials.usernamePassword, RedshiftPropertiesOutput.credentials, SparkEmrPropertiesOutput.credentials, SparkEmrPropertiesOutput.managedEndpointCredentials, UsernamePassword.password",
-   "datazone:ListConnections": "AWS marks its output sensitive: OAuth2Properties.oAuth2Credentials, RedshiftCredentials.usernamePassword, RedshiftPropertiesOutput.credentials, SparkEmrPropertiesOutput.credentials, SparkEmrPropertiesOutput.managedEndpointCredentials, UsernamePassword.password"
+   "datazone:GetConnection": "returns connection credentials and OAuth tokens",
+   "datazone:ListConnections": "returns connection credentials"
   },
   "AWS::Deadline::Farm": {
    "kms:CreateGrant": "not named as a read",
@@ -1217,6 +1204,9 @@
   "AWS::EC2::VerifiedAccessTrustProvider": {
    "kms:Decrypt": "not named as a read",
    "kms:GenerateDataKey": "not named as a read"
+  },
+  "AWS::EVS::Environment": {
+   "evs:GetEnvironment": "returns VMware licence keys (solutionKey, vsanKey)"
   },
   "AWS::ElasticBeanstalk::ConfigurationTemplate": {
    "ec2:CreateLaunchTemplate": "not named as a read"
@@ -1273,7 +1263,10 @@
    "inspector:CreateResourceGroup": "not named as a read"
   },
   "AWS::InspectorV2::CodeSecurityIntegration": {
-   "inspector2:GetCodeSecurityIntegration": "AWS marks its output sensitive: GetCodeSecurityIntegrationResponse.authorizationUrl"
+   "inspector2:GetCodeSecurityIntegration": "returns an OAuth authorization URL"
+  },
+  "AWS::Invoicing::ProcurementPortalPreference": {
+   "invoicing:GetProcurementPortalPreference": "returns the procurement portal's shared secret, which AWS does not mark sensitive in the output"
   },
   "AWS::IoT::Authorizer": {
    "kms:Decrypt": "not named as a read"
@@ -1309,8 +1302,11 @@
   "AWS::Lambda::WebFunctionRevision": {
    "kms:Decrypt": "not named as a read"
   },
+  "AWS::Lightsail::ContactMethod": {
+   "lightsail:GetContactMethods": "returns contact email addresses and phone numbers"
+  },
   "AWS::Location::APIKey": {
-   "geo:DescribeKey": "AWS marks its output sensitive: DescribeKeyResponse.Key"
+   "geo:DescribeKey": "returns the API key value"
   },
   "AWS::Logs::LogAnomalyDetector": {
    "kms:Decrypt": "not named as a read"
@@ -1324,6 +1320,9 @@
   },
   "AWS::MSK::VpcConnection": {
    "kms:CreateGrant": "not named as a read"
+  },
+  "AWS::MWAA::Environment": {
+   "airflow:GetEnvironment": "returns Airflow configuration options, which AWS marks sensitive and can hold connection strings"
   },
   "AWS::MWAAServerless::Workflow": {
    "kms:Decrypt": "not named as a read"
@@ -1408,7 +1407,10 @@
    "qbusiness:GetDataAccessor": "named like a secret or data read"
   },
   "AWS::QuickSight::ActionConnector": {
-   "quicksight:DescribeActionConnector": "AWS marks its output sensitive: ReadBasicAuthConnectionMetadata.Username"
+   "quicksight:DescribeActionConnector": "AWS marks its output sensitive: ReadAuthenticationMetadata.ApiKeyConnectionMetadata, ReadAuthenticationMetadata.ClientCredentialsGrantMetadata, ReadAuthorizationCodeGrantMetadata.ReadAuthorizationCodeGrantCredentialsDetails, ReadBasicAuthConnectionMetadata.Username, ReadClientCredentialsDetails.ReadClientCredentialsGrantDetails, ReadClientCredentialsGrantMetadata.ReadClientCredentialsDetails"
+  },
+  "AWS::QuickSight::DLPSetting": {
+   "quicksight:DescribeDlpSetting": "AWS marks its output sensitive: MicrosoftPurviewProviderConfig.Credentials"
   },
   "AWS::QuickSight::OAuthClientApplication": {
    "quicksight:DescribeOAuthClientApplication": "AWS marks its output sensitive: OAuthClientApplication.OAuthAuthorizationEndpointUrl, OAuthClientApplication.OAuthTokenEndpointUrl"
@@ -1520,7 +1522,7 @@
    "wafv2:DisassociateWebACL": "not named as a read"
   },
   "AWS::Wisdom::Content": {
-   "wisdom:GetContent": "AWS marks its output sensitive: ContentData.url"
+   "wisdom:GetContent": "returns a download URL to the content"
   },
   "AWS::Wisdom::MessageTemplate": {
    "wisdom:GetMessageTemplate": "AWS marks its output sensitive: MessageTemplateAttachment.url, PushADMMessageTemplateContent.imageIconUrl, PushADMMessageTemplateContent.imageUrl, PushADMMessageTemplateContent.smallImageIconUrl, PushADMMessageTemplateContent.url, PushAPNSMessageTemplateContent.mediaUrl, PushAPNSMessageTemplateContent.url, PushBaiduMessageTemplateContent.imageIconUrl, PushBaiduMessageTemplateContent.imageUrl, PushBaiduMessageTemplateContent.smallImageIconUrl, PushBaiduMessageTemplateContent.url, PushFCMMessageTemplateContent.imageIconUrl, PushFCMMessageTemplateContent.imageUrl, PushFCMMessageTemplateContent.smallImageIconUrl, PushFCMMessageTemplateContent.url"
@@ -1530,8 +1532,8 @@
   },
   "AWS::WorkSpacesThinClient::Environment": {
    "kms:Decrypt": "not named as a read",
-   "thinclient:GetEnvironment": "AWS marks its output sensitive: Environment.activationCode",
-   "thinclient:ListEnvironments": "AWS marks its output sensitive: EnvironmentSummary.activationCode"
+   "thinclient:GetEnvironment": "returns the environment's activation code",
+   "thinclient:ListEnvironments": "returns activation codes"
   },
   "AWS::WorkSpacesWeb::BrowserSettings": {
    "kms:CreateGrant": "not named as a read",
@@ -1549,7 +1551,7 @@
   },
   "AWS::WorkSpacesWeb::Portal": {
    "kms:Decrypt": "not named as a read",
-   "workspaces-web:ListSessions": "AWS marks its output sensitive: SessionSummary.username"
+   "workspaces-web:ListSessions": "returns session usernames"
   },
   "AWS::WorkSpacesWeb::SessionLogger": {
    "kms:Decrypt": "not named as a read"
@@ -1560,7 +1562,7 @@
    "kms:GenerateDataKey": "not named as a read"
   }
  },
- "typesStillShortN": 143,
+ "typesStillShortN": 149,
  "unverified": {
   "aidevops:GetAsset": "its output could not be checked against AWS's API models",
   "aidevops:GetOperatorAppTeams": "AWS's Service Reference does not list it",

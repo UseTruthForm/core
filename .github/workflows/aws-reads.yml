@@ -37,7 +37,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # The token only lifts GitHub's 60-an-hour limit on the models tree
+      # listing; the generator sends it to api.github.com and nowhere else.
       - run: go run ./internal/onboard/awsreads/gen
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       # The file a role is given is checked here too: only reads, each
       # policy within IAM's limit.
       - run: go test -count=1 ./internal/onboard/...
@@ -46,6 +50,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if git diff --quiet; then echo "unchanged"; exit 0; fi
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Already proposed: the open branch holds this same add-on. Nothing
+          # to push and nothing to say (a comment every week was noise).
+          if git fetch -q "$remote" "$BRANCH" 2>/dev/null &&
+             git diff --quiet FETCH_HEAD -- internal/onboard/templates/aws-read-addon.json; then
+            echo "already proposed on $BRANCH"; exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH"
@@ -57,7 +68,9 @@ jobs:
           # One branch, replaced each time: while a regeneration is waiting
           # for review, the next one updates it instead of opening another
           # pull request (review of #24).
-          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+          # Replaces the branch, including any commit a person added to it:
+          # the branch is the job's, and a fix belongs in the generator.
+          git push -q --force "$remote" "$BRANCH"
           open="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
           if [ -z "$open" ]; then
             gh pr create --base main --head "$BRANCH" --title "Regenerate the AWS read add-on" \

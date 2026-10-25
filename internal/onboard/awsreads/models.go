@@ -16,11 +16,21 @@ const (
 )
 
 var (
-	// secretField is a field name that holds a secret when AWS marks it
+	// secretName2 is a field name that is a secret whatever AWS marks:
+	// passwords, shared secrets, credentials, private and API keys,
+	// activation codes, licence keys (evs's solutionKey), and OAuth
+	// consent URLs (bedrock-agentcore's authorizationUrl was kept while
+	// inspector2's, which AWS marks, was refused; second review of #24).
+	secretName2 = regexp.MustCompile(`(?i)(password|passphrase|secret|credential|privatekey|apikey|accesskey|secretkey|activationcode|licensekey|solutionkey|authorizationurl|consenturl)`)
+	// notTheSecret is a name that points at or describes a secret rather
+	// than holding it: SecretArn, CredentialProviderArn, CredentialStatus,
+	// PasswordField, sshPublicKeys. A first cut refused 20 such reads.
+	notTheSecret = regexp.MustCompile(`(?i)(public|(arns?|ids?|identifier|status|field|fields|type|types|name|names|configuration|config|provider|providers|enabled|date|time|timestamp|policy|rotation|version|location|source|length|format|reference|mode|at|xpath|stringkey)$)`)
+	// markedSecret is a field name that holds a secret when AWS marks it
 	// sensitive. The mark alone is not enough: AWS marks names,
 	// descriptions and times too (126 of the first add-on's actions had
 	// some), and refusing on it would refuse ordinary configuration.
-	secretField = regexp.MustCompile(`(?i)(password|secret|credential|privatekey|apikey|activationcode|url$|^username$|token$)`)
+	markedSecret = regexp.MustCompile(`(?i)(token$|url$|^username$)`)
 	// A bare value or key is a secret when the shape holding it is one:
 	// ivs's StreamKey.value, location's DescribeKeyResponse.Key.
 	bareValue   = regexp.MustCompile(`(?i)^(value|key)$`)
@@ -157,15 +167,22 @@ func secretFields(shapes map[string]shape, id string, seen, out map[string]bool)
 	if !ok {
 		return
 	}
+	// An enum's members are its values (PropertyType.SECRET), not fields.
+	if s.Type == "enum" || s.Type == "intEnum" {
+		return
+	}
 	owner := id[strings.LastIndex(id, "#")+1:]
 	for name, m := range s.Members {
-		_, marked := m.Traits[sensitiveTrait]
-		if t, ok := shapes[m.Target]; ok {
-			_, onShape := t.Traits[sensitiveTrait]
-			marked = marked || onShape
-		}
-		// NextToken is paging, not a secret.
-		if marked && !strings.EqualFold(name, "nexttoken") && (secretField.MatchString(name) || bareValue.MatchString(name) && secretOwner.MatchString(owner)) {
+		marked := isMarked(shapes, m)
+		switch {
+		// Paging, not a secret.
+		case strings.EqualFold(name, "nexttoken"):
+		// Named as a secret: refused whether AWS marked it or not. AWS did
+		// not mark invoicing's ProcurementPortalSharedSecret in the output
+		// (only in the inputs that set it), and it was granted (second
+		// review of #24).
+		case secretName2.MatchString(name) && !notTheSecret.MatchString(name),
+			marked && (markedSecret.MatchString(name) || bareValue.MatchString(name) && secretOwner.MatchString(owner)):
 			out[owner+"."+name] = true
 		}
 		secretFields(shapes, m.Target, seen, out)
@@ -175,4 +192,35 @@ func secretFields(shapes map[string]shape, id string, seen, out map[string]bool)
 			secretFields(shapes, m.Target, seen, out)
 		}
 	}
+}
+
+// isMarked reports whether a member is sensitive: on itself, on its
+// target, or, for a list or map, on its elements. Element marks were
+// missed at first: a list of sensitive strings named passwords read as
+// clean (second review of #24).
+func isMarked(shapes map[string]shape, m member) bool {
+	if _, ok := m.Traits[sensitiveTrait]; ok {
+		return true
+	}
+	t, ok := shapes[m.Target]
+	if !ok {
+		return false
+	}
+	if _, ok := t.Traits[sensitiveTrait]; ok {
+		return true
+	}
+	for _, e := range []*member{t.Member, t.Value} {
+		if e == nil {
+			continue
+		}
+		if _, ok := e.Traits[sensitiveTrait]; ok {
+			return true
+		}
+		if et, ok := shapes[e.Target]; ok {
+			if _, ok := et.Traits[sensitiveTrait]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }

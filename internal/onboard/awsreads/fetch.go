@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -22,7 +23,18 @@ const (
 var client = &http.Client{Timeout: 60 * time.Second}
 
 func get(url string) ([]byte, error) {
-	resp, err := client.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	// api.github.com allows 60 unauthenticated requests an hour per IP,
+	// and hosted runners share IPs: the weekly job would fail now and
+	// then. With GITHUB_TOKEN set (the workflow sets it), it is sent to
+	// GitHub's API, and to nothing else (second review of #24).
+	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" && strings.HasPrefix(url, "https://api.github.com/") {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +104,10 @@ func FetchReference(prefixes []string) (*Reference, error) {
 	ref := &Reference{Actions: map[string]Flags{}, Names: map[string]string{}, SecretFields: map[string][]string{}, ops: map[string][]operation{}}
 	// The canary's service is always read, so the canary always runs.
 	seen := map[string]bool{}
-	for _, p := range append(prefixes, "bedrock") {
+	// ivs too: the models canary needs ivs:GetStreamKey's operation, which
+	// is only known if ivs is read, and no schema may name it (second
+	// review of #24).
+	for _, p := range append(prefixes, "bedrock", "ivs") {
 		if seen[p] {
 			continue
 		}

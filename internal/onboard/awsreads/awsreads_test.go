@@ -64,6 +64,7 @@ func TestJudge(t *testing.T) {
 			"geo:describekey":                     {},
 			"cleanrooms:passmembership":           {},
 			"x:getunchecked":                      {},
+			"x:getconfig":                         {},
 		},
 		SecretFields: map[string][]string{
 			"bedrock:getblueprint":                {},
@@ -71,6 +72,7 @@ func TestJudge(t *testing.T) {
 			"datazone:getconnection":              {"GetConnectionOutput.connectionCredentials"},
 			"quicksight:describedashboard":        {},
 			"geo:describekey":                     {"DescribeKeyResponse.Key"},
+			"x:getconfig":                         {"Config.secretToken"},
 		},
 	}
 	for a, want := range map[string]string{
@@ -82,8 +84,8 @@ func TestJudge(t *testing.T) {
 		"secretsmanager:GetSecretValue":       "named like a secret or data read",
 		"ivs:GetStreamKey":                    "named like a secret or data read",
 		"glue:GetConnection":                  "returns the connection's password",
-		"datazone:GetConnection":              "AWS marks its output sensitive: GetConnectionOutput.connectionCredentials",
-		"geo:DescribeKey":                     "AWS marks its output sensitive",
+		"datazone:GetConnection":              "returns connection credentials", // denied by name now; was found by the models
+		"x:GetConfig":                         "AWS marks its output sensitive: Config.secretToken",
 		"quicksight:DescribeDashboard":        "read",
 		"cleanrooms:PassMembership":           "not named as a read",
 		"ec2:GetPasswordData":                 "named like a secret or data read",
@@ -239,5 +241,71 @@ func TestCommittedAddOnIsOnlyReadsAndFits(t *testing.T) {
 	}
 	if len(a.Chunks) > 9 {
 		t.Errorf("%d policies: with ReadOnlyAccess that is over a role's 10 managed policies", len(a.Chunks))
+	}
+}
+
+// Second review of #24: a secret AWS did not mark (invoicing's shared
+// secret), a list of sensitive elements, and a mark only on the target
+// shape (ivs's StreamKeyValue) must all be found.
+func TestSecretFieldsBeyondTheMark(t *testing.T) {
+	sens := map[string]any{"smithy.api#sensitive": map[string]any{}}
+	shapes := map[string]shape{
+		"x#Pref":     {Members: map[string]member{"ProcurementPortalSharedSecret": {Target: "x#S"}, "Name": {Target: "x#S"}}},
+		"x#Lic":      {Members: map[string]member{"solutionKey": {Target: "x#S"}, "passwords": {Target: "x#PwList"}, "endpointUrl": {Target: "x#S"}}},
+		"x#PwList":   {Member: &member{Target: "x#Secret"}},
+		"x#Secret":   {Traits: sens},
+		"x#Key":      {Members: map[string]member{"value": {Target: "x#KeyValue"}}},
+		"x#KeyValue": {Traits: sens},
+	}
+	for id, want := range map[string]map[string]bool{
+		"x#Pref": {"Pref.ProcurementPortalSharedSecret": true},     // named a secret: refused unmarked
+		"x#Lic":  {"Lic.solutionKey": true, "Lic.passwords": true}, // licence key by name; list elements marked; an unmarked URL is configuration
+		"x#Key":  {"Key.value": true},                              // marked on the target shape only
+	} {
+		out := map[string]bool{}
+		secretFields(shapes, id, map[string]bool{}, out)
+		if !reflect.DeepEqual(out, want) {
+			t.Errorf("%s: %v, want %v", id, out, want)
+		}
+	}
+}
+
+// The committed add-on must never hold these, whatever the network sources
+// say on the day: the second review added them to the file by hand and the
+// tests passed, because only the generator's network checks refused them.
+func TestCommittedAddOnHoldsNoKnownSecret(t *testing.T) {
+	for a := range denied {
+		if Allowed(a) {
+			t.Errorf("%s is denied but Allowed accepts it", a)
+		}
+	}
+	for _, a := range []string{"bedrock:GetSession", "datazone:GetConnection", "geo:DescribeKey", "wisdom:GetContent",
+		"workspaces-web:ListSessions", "thinclient:GetEnvironment", "inspector2:GetCodeSecurityIntegration",
+		"invoicing:GetProcurementPortalPreference", "evs:GetEnvironment", "airflow:GetEnvironment"} {
+		if Allowed(a) {
+			t.Errorf("%s allowed", a)
+		}
+	}
+}
+
+// A name that points at or describes a secret is not one: a first cut of
+// the unmarked-name rule refused 20 reads over SecretArn,
+// CredentialProviderArn, CredentialStatus, PasswordField, sshPublicKeys,
+// LastCredentialVerifiedAt, and enum values named SECRET.
+func TestSecretFieldsIgnorePointersAndEnums(t *testing.T) {
+	sens := map[string]any{"smithy.api#sensitive": map[string]any{}}
+	shapes := map[string]shape{
+		"x#Conf": {Members: map[string]member{
+			"SecretArn": {Target: "x#S"}, "CredentialProviderArn": {Target: "x#S"}, "CredentialStatus": {Target: "x#S"},
+			"PasswordField": {Target: "x#S"}, "sshPublicKeys": {Target: "x#S", Traits: sens}, "LastCredentialVerifiedAt": {Target: "x#S"},
+			"PasswordButtonXpath": {Target: "x#S"}, "SecretStringKey": {Target: "x#S"}, "Auth": {Target: "x#AuthType"},
+			"Credentials": {Target: "x#S"},
+		}},
+		"x#AuthType": {Type: "enum", Members: map[string]member{"PASSWORD": {}, "SECRET": {}}},
+	}
+	out := map[string]bool{}
+	secretFields(shapes, "x#Conf", map[string]bool{}, out)
+	if !reflect.DeepEqual(out, map[string]bool{"Conf.Credentials": true}) {
+		t.Errorf("%v: only Credentials holds a secret", out)
 	}
 }

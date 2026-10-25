@@ -56,6 +56,29 @@ var denied = map[string]string{
 	"pi:getperformanceanalysisreport":    "returns a report of database activity: data",
 	"billing:getbillingviewdata":         "returns billing data",
 	"datazone:getenvironmentcredentials": "returns credentials",
+	// Second review of #24: an unmarked secret, licence keys in a field
+	// the name rules missed, free-form configuration AWS marks sensitive,
+	// and contact details ReadOnlyAccess leaves out on purpose.
+	"invoicing:getprocurementportalpreference": "returns the procurement portal's shared secret, which AWS does not mark sensitive in the output",
+	"evs:getenvironment":                       "returns VMware licence keys (solutionKey, vsanKey)",
+	"airflow:getenvironment":                   "returns Airflow configuration options, which AWS marks sensitive and can hold connection strings",
+	"bedrock-agentcore:getpaymentconnector":    "returns an OAuth consent URL",
+	"lightsail:getcontactmethods":              "returns contact email addresses and phone numbers",
+	// Refused by AWS's Service Reference or API models: named here too, so
+	// the committed add-on is held to it by the tests even if a source
+	// changes or cannot be read (the second review re-added these to the
+	// file by hand and the tests passed).
+	"bedrock:getsession":                                    "AWS: data plane (agent session state)",
+	"bedrock:listsessions":                                  "AWS: data plane (agent sessions)",
+	"datazone:getconnection":                                "returns connection credentials and OAuth tokens",
+	"datazone:listconnections":                              "returns connection credentials",
+	"geo:describekey":                                       "returns the API key value",
+	"thinclient:getenvironment":                             "returns the environment's activation code",
+	"thinclient:listenvironments":                           "returns activation codes",
+	"wisdom:getcontent":                                     "returns a download URL to the content",
+	"workspaces-web:listsessions":                           "returns session usernames",
+	"inspector2:getcodesecurityintegration":                 "returns an OAuth authorization URL",
+	"application-signals:listinstrumentationconfigurations": "AWS: data plane",
 }
 
 // readsFiledAsWrites are reads AWS files under permissions management or

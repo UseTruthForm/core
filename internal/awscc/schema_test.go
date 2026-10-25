@@ -19,8 +19,8 @@ func fixtures(t *testing.T) *Registry {
 // here rather than as a capture that quietly stops working.
 func TestSchemaFacts(t *testing.T) {
 	reg := fixtures(t)
-	if len(reg.Types) != 17 {
-		t.Fatalf("loaded %d types, want 17", len(reg.Types))
+	if len(reg.Types) != 18 {
+		t.Fatalf("loaded %d types, want 18", len(reg.Types))
 	}
 	cases := []struct {
 		typ         string

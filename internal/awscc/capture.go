@@ -524,18 +524,25 @@ func name(rs []*resource, account string) {
 				ready = append(ready, r)
 			}
 		}
-		if len(ready) == 0 {
-			// A reference cycle. What is left keeps its literal values for
-			// references not yet named; a diff across accounts shows them.
+		cycle := len(ready) == 0
+		if cycle {
+			// A reference cycle (an IAM role and the managed policy
+			// attached to it name each other). A name normally comes from
+			// the tokenized spec; here every member needs the others'
+			// names first, so the members are named from what they are,
+			// then tokenized. Left literal, the references were invisible
+			// to restore, which created the role first and AWS refused it
+			// (real IAM drill, 2026-10-24).
 			for _, r := range rs {
 				if !done[r] {
 					ready = append(ready, r)
 				}
 			}
-		}
-		for _, r := range ready {
-			tokenize(r, values, owners)
-			accountize(r, account)
+		} else {
+			for _, r := range ready {
+				tokenize(r, values, owners)
+				accountize(r, account)
+			}
 		}
 		sort.SliceStable(ready, func(i, j int) bool {
 			a, b := ready[i], ready[j]
@@ -559,6 +566,12 @@ func name(rs []*resource, account string) {
 			used[r.t.Name+"|"+n] = true
 			r.name = n
 			done[r] = true
+		}
+		if cycle {
+			for _, r := range ready {
+				tokenize(r, values, owners)
+				accountize(r, account)
+			}
 		}
 	}
 }

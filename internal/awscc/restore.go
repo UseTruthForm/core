@@ -164,13 +164,31 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 	})
 	// The deferred properties, now that everything they name exists: the
 	// object is read back and brought in line with its full snapshot, as
-	// --update would.
+	// --update would. One reread for all of them, of only their types and
+	// the types they name (the same set the first inventory used for
+	// them), rather than a full reread per deferred object.
+	var again map[string]*resource
+	if len(defs) > 0 {
+		want := map[string]bool{}
+		for _, d := range defs {
+			want[d.full.Kind()] = true
+			for _, m := range tokenRE.FindAllStringSubmatch(canon(d.full.Body["spec"]), -1) {
+				want[m[1]] = true
+			}
+		}
+		again = map[string]*resource{}
+		if in2, err := inventory(ctx, api, reg, func(n string) bool { return want[n] }, tun); err == nil {
+			for _, r := range in2.named() {
+				again[r.key()] = r
+			}
+		}
+	}
 	for _, d := range defs {
 		for i := range done {
 			if done[i].Key != d.full.Key() || !done[i].OK {
 				continue
 			}
-			ex := reread(d.full.Key())
+			ex := again[d.full.Key()]
 			if ex == nil {
 				done[i].OK, done[i].Detail = false, done[i].Detail+"; then not found again to set "+strings.Join(d.props, ", ")
 				break

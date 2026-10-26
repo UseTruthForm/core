@@ -346,7 +346,7 @@ whose read handlers fail.
 
 **Still unverified against AWS:**
 
-- restore beyond the 14 types the drill uses (the full capture proves
+- restore beyond the 17 types the drill uses (the full capture proves
   reading, not recreating);
 - IAM (the sandbox user can list roles but not read them);
 - cross-account restore;

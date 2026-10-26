@@ -28,13 +28,13 @@ jobs:
     # A stalled download must not bill for GitHub's six-hour default.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The token is not left in .git/config while go run and go test
           # execute third-party module code; it is given to git only for
           # the push below (review of #24).
           persist-credentials: false
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       # The token only lifts GitHub's 60-an-hour limit on the models tree

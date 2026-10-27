@@ -190,6 +190,29 @@ func TestReport(t *testing.T) {
 	}
 }
 
+// A throttled gap is set apart with what to do about it, after the gaps a
+// later capture would not close.
+func TestReportSaysWhatWasThrottled(t *testing.T) {
+	s := snapshot.Snapshot{Platform: "azure", Policy: "default",
+		Coverage: []snapshot.Coverage{{Resource: "Microsoft.Web/sites", Kind: "Microsoft.Web/sites", NotCaptured: "list failed: 500 Internal Server Error"}},
+		Skips: []snapshot.Skip{{Resource: "Microsoft.ServiceBus/namespaces/queues", Name: "/x/queues",
+			Reason: "listed but could not be read: GET /x: 429 Too Many Requests: GetEntityAsync failed"}},
+	}
+	dir := t.TempDir()
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeReport(dir, s, "test"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "REPORT.md"))
+	txt := string(b)
+	failed, thr, queue := strings.Index(txt, "Microsoft.Web/sites: list failed"), strings.Index(txt, "**Throttled: 1.**"), strings.Index(txt, "429 Too Many Requests")
+	if failed < 0 || thr < 0 || queue < 0 || !(failed < thr && thr < queue) || !strings.Contains(txt, "lower `--parallel`") {
+		t.Errorf("report:\n%s", txt)
+	}
+}
+
 // Failures from the review of #11, 2026-10-22.
 func TestLoadEnvironmentRefusesWhatWouldMisfire(t *testing.T) {
 	dir := t.TempDir()

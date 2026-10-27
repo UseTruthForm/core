@@ -76,6 +76,27 @@ func TestCheckCountsEachSkipOnceAndRefusedItemsAsRefused(t *testing.T) {
 // is a 403: neither is a permission to grant (review of #23). A "not
 // found" or "not set up" a missing permission can also produce is listed
 // as unsure, not counted as fine.
+// A throttled read is its own result: not denied, so no grant is widened
+// for it, and not failed, since running the capture again reads it.
+func TestCheckThrottledIsNeitherDeniedNorFailed(t *testing.T) {
+	rc := classify(snapshot.Snapshot{
+		Coverage: []snapshot.Coverage{
+			{Resource: "github/org/teams", NotCaptured: "list failed: HTTP 403: You have exceeded a secondary rate limit"},
+			{Resource: "compute.googleapis.com/Instance", NotCaptured: "list failed: HTTP 403: rateLimitExceeded"},
+			{Resource: "AWS::SQS::Queue", NotCaptured: "list failed: AccessDenied: not authorized to perform cloudformation:ListResources"},
+			{Resource: "Microsoft.ServiceBus/namespaces/queues", Skipped: map[string]int{unreadable: 1}},
+			{Resource: "Microsoft.Web/sites", Skipped: map[string]int{unreadable: 1}},
+		},
+		Skips: []snapshot.Skip{
+			{Resource: "Microsoft.ServiceBus/namespaces/queues", Name: "/x/queues", Reason: unreadable + ": GET /x: 429 Too Many Requests: GetEntityAsync failed"},
+			{Resource: "Microsoft.Web/sites", Name: "/x/sites", Reason: unreadable + ": GET /x: 500 Internal Server Error"},
+		},
+	})
+	if len(rc.Throttled) != 3 || len(rc.Denied) != 1 || len(rc.Failed) != 1 {
+		t.Errorf("throttled %v\ndenied %v\nfailed %v", rc.Throttled, rc.Denied, rc.Failed)
+	}
+}
+
 func TestCheckDeniedIsOnlyPermission(t *testing.T) {
 	for msg, want := range map[string]bool{
 		"list failed: HTTP 403: Resource not accessible by integration": true,
@@ -88,6 +109,8 @@ func TestCheckDeniedIsOnlyPermission(t *testing.T) {
 		// of #32).
 		"listed but could not be read: GET https://management.azure.com/x?api-version=1: 403 Forbidden InsufficientPermissions": true,
 		"listed but could not be read: GET https://management.azure.com/x?api-version=1: 404 Not Found ResourceNotFound":        false,
+		// Compute answers its rate limit with 403 too: not a permission.
+		"list failed: HTTP 403: userRateLimitExceeded": false,
 	} {
 		if got := isDenied(msg); got != want {
 			t.Errorf("%q: denied=%v, want %v", msg, got, want)

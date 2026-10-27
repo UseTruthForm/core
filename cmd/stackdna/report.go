@@ -28,10 +28,27 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 	w("| Skipped on purpose | %d resources |\n| Types not captured | %d |\n\n", len(s.Skips)+countedSkips(s), notCaptured+len(failed))
 
 	if len(g) > 0 {
+		var throttled, other []string
+		for _, x := range g {
+			if snapshot.Throttled(x) {
+				throttled = append(throttled, x)
+			} else {
+				other = append(other, x)
+			}
+		}
 		w("## Incomplete: %d gaps\n\n", len(g))
 		w("These are **not in the snapshot**, and restoring it will not recreate them.\n\n")
-		for _, x := range g {
+		for _, x := range other {
 			w("- %s\n", md(x))
+		}
+		if len(throttled) > 0 {
+			if len(other) > 0 {
+				w("\n")
+			}
+			w("**Throttled: %d.** The platform asked for fewer calls and the retries ran out. Nothing was refused: capture again later, or with a lower `--parallel`.\n\n", len(throttled))
+			for _, x := range throttled {
+				w("- %s\n", md(x))
+			}
 		}
 		w("\n")
 	} else {

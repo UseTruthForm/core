@@ -114,7 +114,13 @@ func emitCapture(dir string, s snapshot.Snapshot, target string) {
 	}
 	g := gaps(s)
 	sort.Strings(g)
+	throttled := []string{} // the gaps a later capture can close as it is
+	for _, x := range g {
+		if snapshot.Throttled(x) {
+			throttled = append(throttled, x)
+		}
+	}
 	emit(map[string]any{"schema": jsonSchema, "command": "capture", "target": target, "out": dir,
 		"digest": digest, "objects": len(s.Objects), "typesRead": read, "typesNotCaptured": notCaptured,
-		"failed": failed, "gaps": g, "complete": len(g) == 0, "skipped": skipped})
+		"failed": failed, "gaps": g, "throttled": throttled, "complete": len(g) == 0, "skipped": skipped})
 }

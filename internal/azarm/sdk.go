@@ -2,10 +2,12 @@ package azarm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -88,15 +90,81 @@ func (s *SDK) getJSON(ctx context.Context, u string, v any) error {
 		if errors.As(err, &re) {
 			code = re.ErrorCode
 		}
+		ae := &armError{url: u, status: resp.StatusCode, code: code, msg: armMessage(resp), err: err}
 		if c := classifyARM(resp.StatusCode, code); c != nil {
-			return fmt.Errorf("%s: %w: %v", u, c, err)
+			return fmt.Errorf("%w: %v", c, ae)
 		}
 		if resp.StatusCode == http.StatusBadRequest && (code == "InvalidApiVersionParameter" || strings.Contains(strings.ToLower(err.Error()), "invalid api-version")) {
-			return fmt.Errorf("%s: %w: %v", u, ErrAPIVersion, err)
+			return fmt.Errorf("%w: %v", ErrAPIVersion, ae)
 		}
-		return err
+		return ae
 	}
 	return runtime.UnmarshalAsJSON(resp, v)
+}
+
+// armError is a refusal in one line: the request, status, code and Azure's
+// message without its per-request IDs. The SDK's own text is a multi-line
+// dump of the request and response; written into coverage it made a report
+// hard to read, and an Operation Id in it made two captures of an unchanged
+// subscription differ. The SDK's error is kept underneath, for errors.As.
+type armError struct {
+	url    string
+	status int
+	code   string
+	msg    string
+	err    error
+}
+
+// Error keeps the status text: check reads "Forbidden" as a denial when
+// the code does not say so (review of #32).
+func (e *armError) Error() string {
+	s := fmt.Sprintf("GET %s: %d %s", e.url, e.status, http.StatusText(e.status))
+	if e.code != "" {
+		s += " " + e.code
+	}
+	if e.msg != "" {
+		s += ": " + e.msg
+	}
+	return s
+}
+
+func (e *armError) Unwrap() error { return e.err }
+
+// requestIDRE matches the per-request IDs Azure puts in error messages
+// ("Operation Id: '…'", "(Request ID: …)", Tracking, Correlation, Activity
+// and Trace IDs) and the time the request was answered. An ID is matched
+// only after a label and a separator, and only as a whole GUID or 32 hex
+// digits, so a resource named "request id deadbeefcafe" keeps its name
+// (review of #32).
+var requestIDRE = regexp.MustCompile(`(?i)\s*[(\[]?\b(?:operation|tracking|correlation|request|activity|trace)[ _-]?id\s*[:=]\s*'?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32})\b'?[)\]]?\.?` +
+	`|\s*\btimestamp\s*[:=]\s*'?\d{4}-\d{2}-\d{2}[ T][0-9:.]+(?:Z|[+-]\d{2}:?\d{2})?'?\.?`)
+
+// armMessage reads ARM's error message from a response body, in the
+// {"error": {"message": …}} envelope or bare. A body that is not JSON (a
+// gateway's error page) gives its first 200 bytes. Either way it is one
+// line, without per-request IDs.
+func armMessage(resp *http.Response) string {
+	b, err := runtime.Payload(resp)
+	if err != nil {
+		return ""
+	}
+	var body struct {
+		Error   struct{ Message string } `json:"error"`
+		Message string                   `json:"message"`
+	}
+	m := ""
+	if json.Unmarshal(b, &body) == nil {
+		m = body.Error.Message
+		if m == "" {
+			m = body.Message
+		}
+	} else {
+		if len(b) > 200 {
+			b = b[:200]
+		}
+		m = string(b)
+	}
+	return strings.Join(strings.Fields(requestIDRE.ReplaceAllString(m, "")), " ")
 }
 
 // classifyARM says which refusals mean "none here", by ARM's error code,
@@ -109,13 +177,22 @@ func (s *SDK) getJSON(ctx context.Context, u string, v any) error {
 func classifyARM(status int, code string) error {
 	switch {
 	case status == http.StatusMethodNotAllowed,
-		status == http.StatusBadRequest && code == "ResourceTypeNotSupported":
+		status == http.StatusBadRequest && cannotExistHere[code]:
 		return ErrNotApplicable
 	case status == http.StatusNotFound && !notAnAbsence[code]:
 		return ErrNotFound
 	}
 	return nil
 }
+
+// cannotExistHere are 400 codes that say the collection cannot hold
+// anything for this resource, so it is "none here". In a real subscription,
+// workload groups answer FeatureDisabledOnSelectedEdition on every database
+// below the edition that has them, and a Recovery Services vault's
+// cross-tenant mappings BMSUserErrorFeatureNotAvailable in a region without
+// the feature; both read as failed, and an otherwise complete capture
+// reported itself incomplete.
+var cannotExistHere = map[string]bool{"ResourceTypeNotSupported": true, "FeatureDisabledOnSelectedEdition": true, "BMSUserErrorFeatureNotAvailable": true}
 
 // notAnAbsence are 404 codes that say the request was wrong, not that the
 // thing is not there.

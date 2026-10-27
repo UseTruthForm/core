@@ -3,9 +3,16 @@ package azarm
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 
 	"github.com/stackdna/core/internal/snapshot"
 )
@@ -100,6 +107,9 @@ func TestClassifyARM(t *testing.T) {
 		want   error
 	}{
 		{http.StatusBadRequest, "ResourceTypeNotSupported", ErrNotApplicable},
+		{http.StatusBadRequest, "FeatureDisabledOnSelectedEdition", ErrNotApplicable},
+		{http.StatusBadRequest, "BMSUserErrorFeatureNotAvailable", ErrNotApplicable},
+		{http.StatusBadRequest, "KindNotSpecified", nil},
 		{http.StatusMethodNotAllowed, "", ErrNotApplicable},
 		{http.StatusNotFound, "ResourceNotFound", ErrNotFound},
 		{http.StatusNotFound, "", ErrNotFound},
@@ -110,6 +120,60 @@ func TestClassifyARM(t *testing.T) {
 		if got := classifyARM(c.status, c.code); !errors.Is(got, c.want) || (c.want == nil && got != nil) {
 			t.Errorf("%d %s: got %v, want %v", c.status, c.code, got, c.want)
 		}
+	}
+}
+
+// A refusal is one line, with no per-request ID in it: it is written into
+// coverage, and an ID made two captures of an unchanged subscription
+// differ. The SDK's error stays reachable underneath.
+func TestARMErrorIsOneStableLine(t *testing.T) {
+	msg := func(m string) string { return `{"error":{"code":"SomeCode","message":` + strconv.Quote(m) + `}}` }
+	for _, c := range []struct{ body, code, want string }{
+		{msg("Must specify a valid kind filter. Operation Id: 'a93efd0df1b36819d71b12b24e5b56b4'"), "SomeCode", "400 Bad Request SomeCode: Must specify a valid kind filter."},
+		{msg("The feature is not available here. (Request ID: 0f8fad5b-d9cb-469f-a165-70867728950e)"), "SomeCode", "400 Bad Request SomeCode: The feature is not available here."},
+		{msg("Something failed. Tracking ID: 6d1f9a0e-1b2c-4d5e-8f90-123456789abc Timestamp: 2026-10-21T08:15:00Z"), "SomeCode", "400 Bad Request SomeCode: Something failed."},
+		// Azure also writes the time with a space, and a Trace ID (review of #32).
+		{msg("Failed. Correlation ID: 6d1f9a0e-1b2c-4d5e-8f90-123456789abc Trace ID: 0f8fad5b-d9cb-469f-a165-70867728950e Timestamp: 2026-10-27 10:00:00Z"), "SomeCode", "400 Bad Request SomeCode: Failed."},
+		// Words that only look like a label keep their content.
+		{msg("Workload group 'request id deadbeefcafe' not supported"), "SomeCode", "400 Bad Request SomeCode: Workload group 'request id deadbeefcafe' not supported"},
+		{msg("The request id abcdef12 is used."), "SomeCode", "400 Bad Request SomeCode: The request id abcdef12 is used."},
+		// One line, whatever the message holds; a page that is not JSON
+		// keeps its start; no code, no stray space.
+		{msg("First line.\n  Second line."), "SomeCode", "400 Bad Request SomeCode: First line. Second line."},
+		{"<html><body>Bad gateway</body></html>", "", "400 Bad Request: <html><body>Bad gateway</body></html>"},
+	} {
+		resp := &http.Response{StatusCode: http.StatusBadRequest, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(c.body)), Request: httptest.NewRequest(http.MethodGet, "https://management.example/x?api-version=1", nil)}
+		sdkErr := runtime.NewResponseError(resp)
+		e := &armError{url: "https://management.example/x?api-version=1", status: resp.StatusCode, code: c.code, msg: armMessage(resp), err: sdkErr}
+		if want := "GET https://management.example/x?api-version=1: " + c.want; e.Error() != want {
+			t.Errorf("got  %q\nwant %q", e.Error(), want)
+		}
+		var re *azcore.ResponseError
+		if !errors.As(fmt.Errorf("wrapped: %w", e), &re) {
+			t.Errorf("SDK error not reachable under %q", e)
+		}
+	}
+}
+
+// A resource that is both a root and another root's child has its children
+// listed once: listed twice, each failure among them was reported twice.
+func TestChildrenOfARootAreListedOnce(t *testing.T) {
+	e := newEnv(t)
+	e.src.AlsoTracked = map[string]bool{"Microsoft.Storage/storageAccounts/blobServices": true}
+	e.src.RefuseVersion = func(path, _ string) bool { return strings.HasSuffix(strings.ToLower(path), "/containers") }
+	snap, err := e.adapter(e.src).Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, s := range snap.Skips {
+		if strings.HasSuffix(s.Resource, "/containers") && strings.HasPrefix(s.Reason, Unreadable) {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("the refused container list was reported %d times, want 1: %+v", n, snap.Skips)
 	}
 }
 

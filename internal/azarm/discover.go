@@ -98,9 +98,18 @@ func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []
 			}
 		})
 	}
+	// A resource can be both a root and another root's child (a SQL
+	// database is tracked and its server's child). Its children are listed
+	// once, from the root: listed twice, every failure among them was
+	// reported twice, and every call made twice. Roots are marked before
+	// any walk starts, so which walk reaches one first does not matter.
+	rootIDs := map[string]bool{}
+	for _, r := range roots {
+		rootIDs[strings.ToLower(r.rid.String())] = true
+	}
 	var children func(parent *captured, depth int)
 	children = func(parent *captured, depth int) {
-		if depth > childDepth {
+		if depth > childDepth || (depth > 1 && rootIDs[strings.ToLower(parent.rid.String())]) {
 			return
 		}
 		for _, ct := range v.childTypes(parent.rid.Type) {

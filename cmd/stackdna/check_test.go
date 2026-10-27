@@ -83,6 +83,11 @@ func TestCheckDeniedIsOnlyPermission(t *testing.T) {
 		"list failed: HTTP 401: Bad credentials":                        false,
 		"list failed: HTTP 403: API rate limit exceeded for user":       false,
 		"list failed: HTTP 4030 weird":                                  false,
+		// Azure's one-line refusal (azarm.armError) with a code the
+		// pattern does not know: the status text still says it (review
+		// of #32).
+		"listed but could not be read: GET https://management.azure.com/x?api-version=1: 403 Forbidden InsufficientPermissions": true,
+		"listed but could not be read: GET https://management.azure.com/x?api-version=1: 404 Not Found ResourceNotFound":        false,
 	} {
 		if got := isDenied(msg); got != want {
 			t.Errorf("%q: denied=%v, want %v", msg, got, want)

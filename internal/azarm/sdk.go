@@ -115,8 +115,13 @@ type armError struct {
 	err    error
 }
 
+// Error keeps the status text: check reads "Forbidden" as a denial when
+// the code does not say so (review of #32).
 func (e *armError) Error() string {
-	s := fmt.Sprintf("GET %s: %d %s", e.url, e.status, e.code)
+	s := fmt.Sprintf("GET %s: %d %s", e.url, e.status, http.StatusText(e.status))
+	if e.code != "" {
+		s += " " + e.code
+	}
 	if e.msg != "" {
 		s += ": " + e.msg
 	}
@@ -125,13 +130,19 @@ func (e *armError) Error() string {
 
 func (e *armError) Unwrap() error { return e.err }
 
-// requestIDRE matches the per-request IDs Azure puts in error messages:
-// "Operation Id: '…'", "(Request ID: …)", "Tracking ID", "Correlation ID",
-// "Activity ID", and the time the request was answered.
-var requestIDRE = regexp.MustCompile(`(?i)\s*[(\[]?\b(operation|tracking|correlation|request|activity)[ _-]?id\s*[:=]?\s*'?[0-9a-f][0-9a-f-]{7,}'?[)\]]?\.?|\s*\btimestamp\s*[:=]\s*\S+`)
+// requestIDRE matches the per-request IDs Azure puts in error messages
+// ("Operation Id: '…'", "(Request ID: …)", Tracking, Correlation, Activity
+// and Trace IDs) and the time the request was answered. An ID is matched
+// only after a label and a separator, and only as a whole GUID or 32 hex
+// digits, so a resource named "request id deadbeefcafe" keeps its name
+// (review of #32).
+var requestIDRE = regexp.MustCompile(`(?i)\s*[(\[]?\b(?:operation|tracking|correlation|request|activity|trace)[ _-]?id\s*[:=]\s*'?(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32})\b'?[)\]]?\.?` +
+	`|\s*\btimestamp\s*[:=]\s*'?\d{4}-\d{2}-\d{2}[ T][0-9:.]+(?:Z|[+-]\d{2}:?\d{2})?'?\.?`)
 
 // armMessage reads ARM's error message from a response body, in the
-// {"error": {"message": …}} envelope or bare.
+// {"error": {"message": …}} envelope or bare. A body that is not JSON (a
+// gateway's error page) gives its first 200 bytes. Either way it is one
+// line, without per-request IDs.
 func armMessage(resp *http.Response) string {
 	b, err := runtime.Payload(resp)
 	if err != nil {
@@ -141,14 +152,19 @@ func armMessage(resp *http.Response) string {
 		Error   struct{ Message string } `json:"error"`
 		Message string                   `json:"message"`
 	}
-	if json.Unmarshal(b, &body) != nil {
-		return ""
+	m := ""
+	if json.Unmarshal(b, &body) == nil {
+		m = body.Error.Message
+		if m == "" {
+			m = body.Message
+		}
+	} else {
+		if len(b) > 200 {
+			b = b[:200]
+		}
+		m = string(b)
 	}
-	m := body.Error.Message
-	if m == "" {
-		m = body.Message
-	}
-	return strings.TrimSpace(requestIDRE.ReplaceAllString(m, ""))
+	return strings.Join(strings.Fields(requestIDRE.ReplaceAllString(m, "")), " ")
 }
 
 // classifyARM says which refusals mean "none here", by ARM's error code,

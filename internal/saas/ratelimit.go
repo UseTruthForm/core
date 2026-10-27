@@ -34,12 +34,19 @@ var rateWaitCap = 15 * time.Minute
 // rateTries is how many times a throttled read is sent in all.
 const rateTries = 5
 
+// rateBudget bounds all the waiting for one account: past it, every read
+// fails at once as throttled. Without it, one read could wait over two
+// hours and a capture of thousands could run for many more, saying
+// nothing (review of #37).
+var rateBudget = 30 * time.Minute
+
 var (
 	clock     = time.Now
 	sleepCtx  = func(ctx context.Context, d time.Duration) error { return sleepFor(ctx, d) }
-	cfResetRE = regexp.MustCompile(`(?:^|[;,\s])t=(\d+)`)
-	cfLeftRE  = regexp.MustCompile(`(?:^|[;,\s])r=(\d+)`)
+	cfResetRE = regexp.MustCompile(`(?:^|[;\s])t=(\d+)`)
+	cfLeftRE  = regexp.MustCompile(`(?:^|[;\s])r=(\d+)`)
 	limitRE   = regexp.MustCompile(`(?i)rate limit|abuse detection`)
+	urlRE     = regexp.MustCompile(`https?://\S+`)
 )
 
 func sleepFor(ctx context.Context, d time.Duration) error {
@@ -53,11 +60,13 @@ func sleepFor(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// pacer holds the time before which no request is sent: a response that
-// said the budget is spent sets it to the reset.
+// pacer holds the time before which no request is sent (a response that
+// said the budget is spent sets it to the reset), and how long the account
+// has been waited for in all.
 type pacer struct {
-	mu    sync.Mutex
-	until time.Time
+	mu     sync.Mutex
+	until  time.Time
+	waited time.Duration
 }
 
 func (p *pacer) wait(ctx context.Context) error {
@@ -70,6 +79,19 @@ func (p *pacer) wait(ctx context.Context) error {
 	if d > rateWaitCap {
 		return fmt.Errorf("API rate limit exceeded: it resets at %s, past the %s a capture waits", p.until.UTC().Format(time.RFC3339), rateWaitCap)
 	}
+	return p.sleep(ctx, d)
+}
+
+// sleep waits d, charged to the account's budget.
+func (p *pacer) sleep(ctx context.Context, d time.Duration) error {
+	p.mu.Lock()
+	if p.waited+d > rateBudget {
+		w := p.waited
+		p.mu.Unlock()
+		return fmt.Errorf("API rate limit exceeded: %s already waited for this account, the most a capture waits in all", w.Round(time.Second))
+	}
+	p.waited += d
+	p.mu.Unlock()
 	return sleepCtx(ctx, d)
 }
 
@@ -87,7 +109,7 @@ func limited(resp *http.Response, body []byte) (bool, time.Duration) {
 	wait := retryAfter(resp)
 	switch {
 	case resp.StatusCode == http.StatusTooManyRequests:
-	case resp.StatusCode == http.StatusForbidden && (resp.Header.Get("x-ratelimit-remaining") == "0" || wait > 0 || limitRE.Match(body)):
+	case resp.StatusCode == http.StatusForbidden && (resp.Header.Get("x-ratelimit-remaining") == "0" || wait > 0 || limitRE.Match(urlRE.ReplaceAll(body, nil))):
 	default:
 		return false, 0
 	}
@@ -121,12 +143,20 @@ func untilReset(resp *http.Response) time.Duration {
 			return max(time.Unix(s, 0).Sub(clock())+time.Second, 0)
 		}
 	}
-	rl := resp.Header.Get("Ratelimit")
-	if m := cfLeftRE.FindStringSubmatch(rl); m != nil && m[1] == "0" {
-		if t := cfResetRE.FindStringSubmatch(rl); t != nil {
-			s, _ := strconv.Atoi(t[1])
-			return time.Duration(s+1) * time.Second
+	// Ratelimit is a list of policies, over one header line or several
+	// ("default";r=50;t=30, "burst";r=0;t=10): any spent policy holds,
+	// until the latest of their resets (review of #37).
+	longest := 0
+	for _, line := range resp.Header.Values("Ratelimit") {
+		for _, policy := range strings.Split(line, ",") {
+			left, reset := cfLeftRE.FindStringSubmatch(policy), cfResetRE.FindStringSubmatch(policy)
+			if left == nil || left[1] != "0" || reset == nil {
+				continue
+			}
+			if s, err := strconv.Atoi(reset[1]); err == nil {
+				longest = max(longest, s+1)
+			}
 		}
 	}
-	return 0
+	return time.Duration(longest) * time.Second
 }

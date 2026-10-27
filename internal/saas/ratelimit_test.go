@@ -146,3 +146,65 @@ func TestRateLimitsThatCannotBeWaitedOut(t *testing.T) {
 		t.Errorf("waits %v: a minute, then longer", got)
 	}
 }
+
+// Cloudflare's Ratelimit is a list of policies, over one line or several:
+// a spent policy after a healthy one still holds the next request, until
+// the latest reset (review of #37).
+func TestSpentPolicyInAListPaces(t *testing.T) {
+	for name, set := range map[string]func(h http.Header){
+		"one line":  func(h http.Header) { h.Set("Ratelimit", `"default";r=50;t=30, "burst";r=0;t=10, "slow";r=0;t=20`) },
+		"two lines": func(h http.Header) { h.Add("Ratelimit", `"default";r=50;t=30`); h.Add("Ratelimit", `"burst";r=0;t=20`) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			elapsed, _ := fakeTime(t)
+			cl, rs := rateClient(t, elapsed, func(w http.ResponseWriter) { set(w.Header()); ok(w) }, ok)
+			for range 2 {
+				if _, _, err := cl.do(context.Background(), "GET", "/x", nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if len(rs.at) != 2 || rs.at[1] != 21*time.Second {
+				t.Errorf("requests at %v: the second must wait for the latest spent policy's reset", rs.at)
+			}
+		})
+	}
+}
+
+// All the waiting for an account is bounded: past the budget, a read
+// fails at once as throttled, naming the request (review of #37).
+func TestWaitingIsBudgeted(t *testing.T) {
+	elapsed, slept := fakeTime(t)
+	defer func(b time.Duration) { rateBudget = b }(rateBudget)
+	rateBudget = 90 * time.Second
+	var steps []func(http.ResponseWriter)
+	for range rateTries {
+		steps = append(steps, refuse(429, `{}`, "retry-after", "60"))
+	}
+	cl, rs := rateClient(t, elapsed, steps...)
+	_, _, err := cl.do(context.Background(), "GET", "/x", nil)
+	if err == nil || !strings.Contains(err.Error(), "already waited") || !strings.Contains(err.Error(), "GET /x") || !snapshot.Throttled(err.Error()) {
+		t.Errorf("past the budget: %v", err)
+	}
+	if len(*slept) != 1 || len(rs.at) != 2 {
+		t.Errorf("waits %v and %d requests: one wait of 60s fits in 90s, a second does not", *slept, len(rs.at))
+	}
+}
+
+// Cancelling during a wait is a cancellation, not throttling; a
+// Retry-After given as a date is honoured.
+func TestCancelAndRetryAfterDate(t *testing.T) {
+	elapsed, slept := fakeTime(t)
+	sleepCtx = func(ctx context.Context, d time.Duration) error { return context.Canceled }
+	cl, _ := rateClient(t, elapsed, refuse(429, `{}`, "retry-after", "5"))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := cl.do(ctx, "GET", "/x", nil); err == nil || snapshot.Throttled(err.Error()) {
+		t.Errorf("cancelled: %v must not read as throttled", err)
+	}
+	elapsed, slept = fakeTime(t)
+	date := clock().Add(90 * time.Second).UTC().Format(http.TimeFormat)
+	cl, _ = rateClient(t, elapsed, refuse(429, `{}`, "retry-after", date), ok)
+	if _, _, err := cl.do(context.Background(), "GET", "/x", nil); err != nil || len(*slept) != 1 || (*slept)[0] != 90*time.Second {
+		t.Errorf("retry-after date: %v, waits %v", err, *slept)
+	}
+}

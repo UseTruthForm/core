@@ -41,7 +41,7 @@ type Client struct {
 	Account string
 	Token   string
 	HTTP    *http.Client
-	pace    *pacer // shared by copies, so one budget is kept for the account
+	pace    *pacer // shared by copies, so one budget is kept for the account; NewClient sets it
 }
 
 // NewClient connects to an account. readOnly puts every request behind
@@ -83,8 +83,11 @@ func (c *Client) call(ctx context.Context, method, path string, body any) (any, 
 		if wait > rateWaitCap {
 			return v, whole, resp, fmt.Errorf("%w (the limit resets in %s, past the %s a capture waits)", err, wait.Round(time.Second), rateWaitCap)
 		}
-		if serr := sleepCtx(ctx, wait); serr != nil {
-			return v, whole, resp, err
+		if serr := c.pace.sleep(ctx, wait); serr != nil {
+			if ctx.Err() != nil {
+				return v, whole, resp, serr // cancelled: not throttled
+			}
+			return v, whole, resp, fmt.Errorf("%s %s: %w", method, path, serr)
 		}
 	}
 }
@@ -93,11 +96,11 @@ func (c *Client) call(ctx context.Context, method, path string, body any) (any, 
 // for its rate limit, and then how long it asked to wait (0: not said).
 func (c *Client) once(ctx context.Context, method, path string, body any) (v any, whole map[string]any, resp *http.Response, wait time.Duration, err error) {
 	wait = -1
-	if c.pace == nil {
-		c.pace = &pacer{}
-	}
 	if err := c.pace.wait(ctx); err != nil {
-		return nil, nil, nil, -1, err
+		if ctx.Err() != nil {
+			return nil, nil, nil, -1, err
+		}
+		return nil, nil, nil, -1, fmt.Errorf("%s %s: %w", method, path, err)
 	}
 	v, whole, resp, b, err := c.send(ctx, method, path, body)
 	if resp == nil {

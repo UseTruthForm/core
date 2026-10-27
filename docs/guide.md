@@ -142,6 +142,11 @@ empty or denied: capture again later.
   read still throttled after that is read again after at least 1 and then
   2 minutes, or the longer `Retry-After` Azure gave (up to 5). A lower
   `--parallel` (which `check` takes too) eases a throttled subscription.
+- **Google Cloud:** a 429, and Compute's 403 `rateLimitExceeded`, are
+  sent again after 1, 2, 4… seconds plus up to a second of jitter, at most
+  64 seconds a wait and 8 tries in all, as Google asks. A 503 is sent
+  again only for a read. A quota spent for the day is not retried: it is
+  reported as a failure, since running again soon will not help.
 - **GitHub and Cloudflare:** read one request at a time. A rate-limited
   read waits for `retry-after`, or for the reset the limit headers give,
   or at least a minute, and is sent again. Once a response says the

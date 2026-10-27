@@ -465,7 +465,15 @@ The first runs found three things the fake had not shown:
   `2026-03-01` definition doesn't declare, so a restored VNet showed it as
   drift. `provisioningState` and `resourceGuid` are set by the server under
   ARM's resource-provider contract, so they're treated as read-only even
-  when undeclared. Every other undeclared field is still kept.
+  when undeclared. Every other undeclared field is still kept, except an
+  empty object: it holds no settings, and Azure returns some only
+  sometimes (a Service Bus rule's `sqlFilter.parameters`), which made two
+  captures of an unchanged subscription differ.
+- **Observations are not status.** `status` keeps the read-only values a
+  reference can point at: IDs, GUIDs, host names. Times, counters and
+  flags (`accessedAt`, `earliestRestoreDate`, message counts) change on
+  their own, so they are left out, and an unchanged subscription captures
+  to the same digest.
 
 A web app was meant to test, against real Azure, a map keyed by resource
 ID (`identity.userAssignedIdentities`). The subscription's Free (F1) App

@@ -326,6 +326,40 @@ func TestFakeRefusesForeignSubscription(t *testing.T) {
 	_ = snapshot.Object{}
 }
 
+// An unchanged subscription captures to the same digest when only Azure's
+// observations move between two reads: a time, a counter, an undeclared
+// empty object that comes and goes.
+func TestObservationsLeaveTheDigestAlone(t *testing.T) {
+	e := newEnv(t)
+	digest := func() string {
+		t.Helper()
+		snap, err := e.adapter(e.src).Capture(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := t.TempDir()
+		if err := snap.Write(dir); err != nil {
+			t.Fatal(err)
+		}
+		d, err := snapshot.Digest(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	first := digest()
+	vm := id(srcSub, "shop-rg", "Microsoft.Compute/virtualMachines", "shop-vm")
+	body := e.src.Stored(vm)
+	props := body["properties"].(map[string]any)
+	props["timeCreated"] = "2026-10-22T09:00:00Z"
+	props["instanceView"] = map[string]any{"platformFaultDomain": 2.0}
+	props["futureEmpty"] = map[string]any{}
+	e.src.SeedAzure(vm, stable(e.reg, "Microsoft.Compute/virtualMachines"), body)
+	if second := digest(); second != first {
+		t.Errorf("digest moved with observations only: %s, then %s", first, second)
+	}
+}
+
 // A resource reachable two ways (tracked, and its parent's child) is
 // captured once; a duplicate object would make the snapshot unwritable.
 func TestReachableTwiceIsCapturedOnce(t *testing.T) {

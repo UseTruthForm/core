@@ -167,6 +167,11 @@ anything. An agent setting up someone's access should follow
 
 ## Known limits
 
+- A Log Analytics workspace's data sources can only be listed one kind at
+  a time. StackDNA lists every kind Azure's definition names; a data
+  source of a kind it does not name is not found. The change-tracking
+  default registry keys Azure makes up on every read are counted in
+  coverage, not captured.
 - S3 bucket names are global: a bucket cannot be restored under the same
   name while the original exists, or in another region shortly after it
   was deleted.

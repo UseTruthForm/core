@@ -61,8 +61,14 @@ func NewSDK(subscription string, readOnly bool) (*SDK, error) {
 
 func (s *SDK) Subscription() string { return s.sub }
 
+// url adds the API version to a path, which may already carry a query (a
+// list filtered by kind).
 func (s *SDK) url(path, apiVersion string) string {
-	return s.ep + path + "?api-version=" + url.QueryEscape(apiVersion)
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return s.ep + path + sep + "api-version=" + url.QueryEscape(apiVersion)
 }
 
 func (s *SDK) do(ctx context.Context, method, u string, body any) (*http.Response, error) {
@@ -93,6 +99,9 @@ func (s *SDK) getJSON(ctx context.Context, u string, v any) error {
 		ae := &armError{url: u, status: resp.StatusCode, code: code, msg: armMessage(resp), err: err}
 		if c := classifyARM(resp.StatusCode, code); c != nil {
 			return fmt.Errorf("%w: %v", c, ae)
+		}
+		if resp.StatusCode == http.StatusBadRequest && code == "KindNotSpecified" {
+			return fmt.Errorf("%w: %v", ErrNeedsKind, ae)
 		}
 		if resp.StatusCode == http.StatusBadRequest && (code == "InvalidApiVersionParameter" || strings.Contains(strings.ToLower(err.Error()), "invalid api-version")) {
 			return fmt.Errorf("%w: %v", ErrAPIVersion, ae)
@@ -177,7 +186,10 @@ func armMessage(resp *http.Response) string {
 func classifyARM(status int, code string) error {
 	switch {
 	case status == http.StatusMethodNotAllowed,
-		status == http.StatusBadRequest && cannotExistHere[code]:
+		status == http.StatusBadRequest && cannotExistHere[code],
+		// A data source kind the definition names but the service does
+		// not implement (ApplicationInsights, SqlDataClassification).
+		status == http.StatusNotImplemented && code == "DataSourceNotImplemented":
 		return ErrNotApplicable
 	case status == http.StatusNotFound && !notAnAbsence[code]:
 		return ErrNotFound

@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/stackdna/core/internal/readonly"
 	"github.com/stackdna/core/internal/snapshot"
@@ -40,6 +41,7 @@ type Client struct {
 	Account string
 	Token   string
 	HTTP    *http.Client
+	pace    *pacer // shared by copies, so one budget is kept for the account
 }
 
 // NewClient connects to an account. readOnly puts every request behind
@@ -52,7 +54,7 @@ func NewClient(p Provider, spec *Spec, account, token string, readOnly bool) *Cl
 	if p.Derive != nil {
 		p.Collections = append(append([]Collection(nil), p.Collections...), Derive(spec, p.Derive, p.Collections)...)
 	}
-	return &Client{P: p, Spec: spec, Account: account, Token: token, HTTP: hc}
+	return &Client{P: p, Spec: spec, Account: account, Token: token, HTTP: hc, pace: &pacer{}}
 }
 
 // ErrNotFound means the item does not exist.
@@ -66,7 +68,56 @@ func (c *Client) do(ctx context.Context, method, path string, body any) (any, *h
 	return v, resp, err
 }
 
+// call sends one request, waiting out the provider's rate limits as it
+// documents them (ratelimit.go): a read is sent again after the wait, a
+// write never is.
 func (c *Client) call(ctx context.Context, method, path string, body any) (any, map[string]any, *http.Response, error) {
+	for try := 1; ; try++ {
+		v, whole, resp, wait, err := c.once(ctx, method, path, body)
+		if wait < 0 || method != http.MethodGet || try == rateTries {
+			return v, whole, resp, err
+		}
+		if wait == 0 {
+			wait = time.Minute << (try - 1) // GitHub: at least a minute, then longer
+		}
+		if wait > rateWaitCap {
+			return v, whole, resp, fmt.Errorf("%w (the limit resets in %s, past the %s a capture waits)", err, wait.Round(time.Second), rateWaitCap)
+		}
+		if serr := sleepCtx(ctx, wait); serr != nil {
+			return v, whole, resp, err
+		}
+	}
+}
+
+// once sends a request one time. wait is -1 unless the provider refused it
+// for its rate limit, and then how long it asked to wait (0: not said).
+func (c *Client) once(ctx context.Context, method, path string, body any) (v any, whole map[string]any, resp *http.Response, wait time.Duration, err error) {
+	wait = -1
+	if c.pace == nil {
+		c.pace = &pacer{}
+	}
+	if err := c.pace.wait(ctx); err != nil {
+		return nil, nil, nil, -1, err
+	}
+	v, whole, resp, b, err := c.send(ctx, method, path, body)
+	if resp == nil {
+		return v, whole, resp, -1, err
+	}
+	// The budget is spent: nothing more is sent until it refills, so
+	// Cloudflare never locks the account out for 5 minutes.
+	if d := untilReset(resp); d > 0 {
+		c.pace.hold(clock().Add(d))
+	}
+	if err != nil {
+		if ok, d := limited(resp, b); ok {
+			wait = d
+		}
+	}
+	return v, whole, resp, wait, err
+}
+
+// send is one request and its decoded answer; b is the raw body.
+func (c *Client) send(ctx context.Context, method, path string, body any) (any, map[string]any, *http.Response, []byte, error) {
 	u := path
 	if !strings.HasPrefix(u, "http") {
 		u = c.P.Base + path
@@ -75,13 +126,13 @@ func (c *Client) call(ctx context.Context, method, path string, body any) (any, 
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		rd = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u, rd)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	for k, v := range c.P.Headers {
 		req.Header.Set(k, v)
@@ -92,30 +143,30 @@ func (c *Client) call(ctx context.Context, method, path string, body any) (any, 
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil, resp, fmt.Errorf("%s %s: %w", method, path, ErrNotFound)
+		return nil, nil, resp, b, fmt.Errorf("%s %s: %w", method, path, ErrNotFound)
 	}
 	if resp.StatusCode >= 300 {
-		return nil, nil, resp, fmt.Errorf("%s %s: HTTP %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(b)))
+		return nil, nil, resp, b, fmt.Errorf("%s %s: HTTP %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	var v any
 	if len(b) > 0 {
 		if err := json.Unmarshal(b, &v); err != nil {
-			return nil, nil, resp, fmt.Errorf("%s %s: %w", method, path, err)
+			return nil, nil, resp, b, fmt.Errorf("%s %s: %w", method, path, err)
 		}
 	}
 	whole, _ := v.(map[string]any)
 	if c.P.Envelope != "" {
 		if ok, _ := whole["success"].(bool); whole != nil && whole["success"] != nil && !ok {
-			return nil, nil, resp, fmt.Errorf("%s %s: %v", method, path, whole["errors"])
+			return nil, nil, resp, b, fmt.Errorf("%s %s: %v", method, path, whole["errors"])
 		}
-		return whole[c.P.Envelope], whole, resp, nil
+		return whole[c.P.Envelope], whole, resp, b, nil
 	}
-	return v, whole, resp, nil
+	return v, whole, resp, b, nil
 }
 
 var nextRE = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)

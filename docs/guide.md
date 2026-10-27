@@ -134,12 +134,22 @@ flight at once; 8 by default), as `--parallel` does for one target.
 
 ## Throttling
 
-Every platform limits how fast it is read. StackDNA waits as each one
-asks. On Azure, the SDK honours a `Retry-After` of up to 2 minutes, and a
-read still throttled after that is read again after at least 1 and then
-2 minutes, or the longer `Retry-After` Azure gave (up to 5). A read that
-stays throttled is reported as **throttled**, never as empty or denied:
-capture again later, or with a lower `--parallel` (`check` takes it too).
+Every platform limits how fast it is read, and StackDNA waits as each one
+asks. A read that stays throttled is reported as **throttled**, never as
+empty or denied: capture again later.
+
+- **Azure:** the SDK honours a `Retry-After` of up to 2 minutes, and a
+  read still throttled after that is read again after at least 1 and then
+  2 minutes, or the longer `Retry-After` Azure gave (up to 5). A lower
+  `--parallel` (which `check` takes too) eases a throttled subscription.
+- **GitHub and Cloudflare:** read one request at a time. A rate-limited
+  read waits for `retry-after`, or for the reset the limit headers give,
+  or at least a minute, and is sent again. Once a response says the
+  budget is spent, nothing more is sent until it refills, so Cloudflare
+  never locks the account out for its 5 minutes. A wait past 15 minutes
+  (GitHub's hourly limit, shared with every other tool using the token)
+  is not sat out: the read is reported as throttled, with when the limit
+  resets.
 
 ## Exit codes
 

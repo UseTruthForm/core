@@ -23,7 +23,7 @@ var serverSet = map[string]bool{"provisioningState": true, "resourceGuid": true}
 
 // split is what normalize removed from a resource body.
 type split struct {
-	readOnly map[string]any // scalar read-only values by dotted path, for people
+	readOnly map[string]any // scalar read-only values by dotted path; status keeps those that are not observations
 	secrets  []string       // paths of properties Azure never returns
 }
 
@@ -83,13 +83,15 @@ func (s *Schema) clean(v any, t int, path string, sp *split) {
 			default:
 				before := -1
 				if m, ok := c[k].(map[string]any); ok {
-					before = len(m)
+					before = s.settings(m, p.Type.index())
 				}
 				s.clean(c[k], p.Type.index(), full, sp)
 				// An object emptied by stripping (properties whose every
 				// field is read-only) is removed, so a restore does not send
 				// an empty object Azure never received. One that arrived
-				// empty is kept as it was.
+				// empty is kept as it was, and so is one that held only an
+				// undeclared empty object: otherwise {x: {}} in one capture
+				// and {} in the next would still differ (review of #31).
 				if m, ok := c[k].(map[string]any); ok && before > 0 && len(m) == 0 {
 					delete(c, k)
 				}
@@ -156,12 +158,29 @@ func recordScalars(v any, path string, sp *split) {
 	}
 }
 
+// settings counts the entries of an object that clean does not drop as
+// undeclared and empty.
+func (s *Schema) settings(m map[string]any, t int) int {
+	props, add, ok := s.object(t, m)
+	n := 0
+	for k, v := range m {
+		if _, known := props[k]; ok && !known && add == nil && !serverSet[k] && isEmptyObject(v) {
+			continue
+		}
+		n++
+	}
+	return n
+}
+
 func isEmptyObject(v any) bool {
 	m, ok := v.(map[string]any)
 	return ok && len(m) == 0
 }
 
-var timeRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}`)
+// timeRE matches the forms Azure returns times in: ISO 8601 with a T or a
+// space, a bare date, and the US form some older APIs use
+// (10/21/2026 8:15:00 AM).
+var timeRE = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}|$)|\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2})`)
 
 // observed reports a read-only value that records what happened rather than
 // what was made: a time (a queue's accessedAt, a database's

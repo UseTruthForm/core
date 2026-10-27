@@ -228,10 +228,12 @@ func TestDataSourcesAreListedByKind(t *testing.T) {
 // kind's items get a new name on every read.
 type byKindARM struct {
 	ARM
-	items  map[string][]map[string]any
-	refuse map[string]error
-	fresh  map[string]int // kind -> how many items it makes up per read
-	reads  *int
+	items   map[string][]map[string]any
+	refuse  map[string]error
+	fresh   map[string]int    // filter -> how many items it makes up per read
+	freshAs map[string]string // filter -> the kind those items carry (another kind's, when aliased)
+	lagged  map[string]int    // filter -> the read (1-based) that leaves its first item out
+	reads   map[string]int
 }
 
 func (b byKindARM) List(_ context.Context, path, _ string) ([]map[string]any, error) {
@@ -241,13 +243,21 @@ func (b byKindARM) List(_ context.Context, path, _ string) ([]map[string]any, er
 	if m == nil {
 		return nil, ErrNeedsKind
 	}
-	if err := b.refuse[m[1]]; err != nil {
+	k := m[1]
+	if err := b.refuse[k]; err != nil {
 		return nil, err
 	}
-	out := b.items[m[1]]
-	for i := range b.fresh[m[1]] {
-		*b.reads++
-		out = append(out, item(fmt.Sprintf("/x/dataSources/DataSource_%s_%d_%d", m[1], *b.reads, i), m[1]))
+	b.reads[k]++
+	out := b.items[k]
+	if n := b.lagged[k]; n == b.reads[k] && len(out) > 0 {
+		out = out[1:]
+	}
+	as := k
+	if b.freshAs[k] != "" {
+		as = b.freshAs[k]
+	}
+	for i := range b.fresh[k] {
+		out = append(out, item(fmt.Sprintf("/x/dataSources/DataSource_%s_%d_%d", k, b.reads[k], i), as))
 	}
 	return out, nil
 }
@@ -264,8 +274,13 @@ func TestListByKindKeepsOnlyWhatIsThereEveryRead(t *testing.T) {
 			"ApplicationInsights": fmt.Errorf("x: %w", ErrNotApplicable), // 501 DataSourceNotImplemented
 			"Office365":           fmt.Errorf("x: %w", ErrNeedsKind),     // the filter itself refused
 		},
-		fresh: map[string]int{"ChangeTrackingDefaultRegistry": 3},
-		reads: new(int),
+		// The made-up items come back under the aliased filter too, still
+		// carrying their own kind: counted once, not twice (review of #34).
+		fresh:   map[string]int{"ChangeTrackingDefaultRegistry": 3, "ChangeTrackingRegistry": 3},
+		freshAs: map[string]string{"ChangeTrackingRegistry": "ChangeTrackingDefaultRegistry"},
+		// A real item a lagging second read leaves out is kept (review of #34).
+		lagged: map[string]int{"WindowsEvent": 2},
+		reads:  map[string]int{},
 	}
 	kinds := []string{"ApplicationInsights", "ChangeTrackingDefaultRegistry", "ChangeTrackingRegistry", "Office365", "WindowsEvent"}
 	got, generated, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds)
@@ -275,6 +290,11 @@ func TestListByKindKeepsOnlyWhatIsThereEveryRead(t *testing.T) {
 	if len(got) != 2 || generated != 3 {
 		t.Errorf("items %v and %d generated, want reg1 and ev1 once each, and 3 generated", got, generated)
 	}
+	if api.reads["WindowsEvent"] != 3 || api.reads["ChangeTrackingDefaultRegistry"] != 3 {
+		t.Errorf("reads %v: a kind with anything missing is read three times", api.reads)
+	}
+	api.reads = map[string]int{}
+	api.lagged = nil
 	api.refuse["WindowsEvent"] = errors.New("500 InternalServerError")
 	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds); err == nil || !strings.Contains(err.Error(), "kind WindowsEvent") {
 		t.Errorf("a kind that fails must fail the collection, naming the kind: %v", err)

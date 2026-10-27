@@ -323,10 +323,10 @@ func tracked(rid ResourceID) bool {
 // List serves the collections capture reads: an extension type across the
 // subscription, a resource's diagnostic settings, or a child collection.
 func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any, error) {
+	path, query, _ := strings.Cut(path, "?")
 	if f.RefuseVersion != nil && f.RefuseVersion(path, version) {
 		return nil, fmt.Errorf("%s: %w: Invalid api-version query string value", path, ErrAPIVersion)
 	}
-	path, query, _ := strings.Cut(path, "?")
 	kind := ""
 	if q, err := url.ParseQuery(query); err == nil {
 		if m := kindFilterRE.FindStringSubmatch(q.Get("$filter")); m != nil {
@@ -363,7 +363,7 @@ func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any
 		if err != nil {
 			return nil, err
 		}
-		if kind != "" && b["kind"] != kind {
+		if bk, _ := b["kind"].(string); kind != "" && !strings.EqualFold(bk, kind) {
 			continue
 		}
 		out = append(out, b)
@@ -371,7 +371,7 @@ func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any
 	return out, nil
 }
 
-var kindFilterRE = regexp.MustCompile(`^kind eq '([^']+)'$`)
+var kindFilterRE = regexp.MustCompile(`(?i)^kind eq '([^']+)'$`)
 
 // SeedAzure stores what Azure itself creates, bypassing validation (an
 // NSG's default rules, which no caller can PUT).

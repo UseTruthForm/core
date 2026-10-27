@@ -135,11 +135,11 @@ flight at once; 8 by default), as `--parallel` does for one target.
 ## Throttling
 
 Every platform limits how fast it is read. StackDNA waits as each one
-asks: on Azure, the SDK honours a `Retry-After` of up to 5 minutes over 6
-retries, and a read still throttled after that is tried again after 1 and
-then 2 more minutes. A read that stays throttled is reported as
-**throttled**, never as empty or denied; capture again later, or with a
-lower `--parallel`.
+asks. On Azure, the SDK honours a `Retry-After` of up to 2 minutes, and a
+read still throttled after that is read again after at least 1 and then
+2 minutes, or the longer `Retry-After` Azure gave (up to 5). A read that
+stays throttled is reported as **throttled**, never as empty or denied:
+capture again later, or with a lower `--parallel` (`check` takes it too).
 
 ## Exit codes
 

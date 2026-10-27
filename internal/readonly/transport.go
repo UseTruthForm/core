@@ -40,10 +40,20 @@ type guard struct{ base http.RoundTripper }
 
 func (g *guard) RoundTrip(req *http.Request) (*http.Response, error) {
 	if ok, why := Allowed(req); !ok {
-		return nil, fmt.Errorf("%w: %s %s (%s)", ErrWrite, req.Method, redact(req.URL), why)
+		return nil, refusal{fmt.Errorf("%w: %s %s (%s)", ErrWrite, req.Method, redact(req.URL), why)}
 	}
 	return g.base.RoundTrip(req)
 }
+
+// refusal is the guard's error. NonRetriable tells the Azure SDK's retry
+// policy not to send the request again: it took the refusal for a network
+// failure and retried it for seconds, minutes with longer retries (review
+// of #36). Sent again, it would only be refused again.
+type refusal struct{ error }
+
+func (r refusal) Unwrap() error { return r.error }
+
+func (refusal) NonRetriable() {}
 
 // readTargets are AWS JSON-RPC operations (X-Amz-Target) that only read.
 // Cloud Control sends every call as POST /; the operation is in the header.

@@ -34,17 +34,21 @@ func checkCmd(ctx context.Context, args []string) int {
 	account := fs.String("account", "", "github: the organisation; cloudflare: the account ID")
 	types := fs.String("types", "", "type patterns to limit the trial capture to (default: every type)")
 	accessFor := fs.String("access", "capture", "what the identity is for: capture (any write is more than needed) or restore")
+	parallel := fs.Int("parallel", 0, "aws, azure, gcp: API calls in flight at once (default 8); lower it if the trial capture is throttled")
 	if err := parseFlags(fs, args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
 		}
 		return fail(err)
 	}
+	if *parallel < 0 {
+		return fail(fmt.Errorf("--parallel must be 1 or more"))
+	}
 	if *accessFor != "capture" && *accessFor != "restore" {
 		return fail(fmt.Errorf("--access is capture or restore, not %q", *accessFor))
 	}
 	t := Target{Name: "check", Platform: *platform, Context: *kctx, Kubeconfig: *kubeconfig, Region: *region, Profile: *profile,
-		Subscription: *subscription, Project: *project, Account: *account}
+		Subscription: *subscription, Project: *project, Account: *account, Parallel: *parallel}
 	for _, p := range strings.Split(*types, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			t.Types = append(t.Types, p)

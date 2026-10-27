@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -52,6 +53,96 @@ func TestListByKindOverHTTP(t *testing.T) {
 		if q.Get("$filter") != "kind eq 'WindowsEvent'" || q.Get("api-version") != "2025-07-01" {
 			t.Errorf("query %v", q)
 		}
+	}
+}
+
+// The retry policy waits out what ARM documents: a Retry-After the SDK's
+// default 60-second cap would have refused, and more than three retries.
+func TestClientOptionsWaitOutThrottling(t *testing.T) {
+	o := clientOptions(true)
+	if o.Retry.MaxRetryDelay < 5*time.Minute || o.Retry.MaxRetries < 6 || o.Transport == nil {
+		t.Errorf("client options %+v", o.Retry)
+	}
+	if clientOptions(false).Transport != nil {
+		t.Error("a restore client must not sit behind the read-only guard")
+	}
+}
+
+// A read still throttled after the SDK's retries is read again after a
+// pause, and given up only after the last; any other failure is not
+// retried here.
+func TestThrottledReadsAreReadAgain(t *testing.T) {
+	defer func(w []time.Duration) { patientWaits = w }(patientWaits)
+	patientWaits = []time.Duration{time.Millisecond, time.Millisecond}
+	serve := func(status func(n int) int) (*SDK, *int, func()) {
+		var mu sync.Mutex
+		n := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			n++
+			s := status(n)
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(s)
+			if s == http.StatusOK {
+				w.Write([]byte(`{"name":"q"}`))
+				return
+			}
+			w.Write([]byte(`{"error":{"code":"Throttled","message":"slow down"}}`))
+		}))
+		// No SDK retries here: only the layer under test retries.
+		pl := runtime.NewPipeline("stackdna", "v0.1.0", runtime.PipelineOptions{}, &policy.ClientOptions{Transport: readonly.Client(), Retry: policy.RetryOptions{MaxRetries: -1}})
+		return &SDK{sub: "s", pl: pl, ep: srv.URL}, &n, srv.Close
+	}
+	s, n, done := serve(func(n int) int {
+		if n < 3 {
+			return http.StatusTooManyRequests
+		}
+		return http.StatusOK
+	})
+	if _, err := s.Get(context.Background(), "/x/queues/q", "1"); err != nil || *n != 3 {
+		t.Errorf("throttled twice, then answered: %v after %d reads", err, *n)
+	}
+	done()
+	s, n, done = serve(func(int) int { return http.StatusTooManyRequests })
+	_, err := s.Get(context.Background(), "/x/queues/q", "1")
+	var ae *armError
+	if !errors.As(err, &ae) || ae.status != http.StatusTooManyRequests || *n != 1+len(patientWaits) {
+		t.Errorf("throttled every time: %v after %d reads", err, *n)
+	}
+	done()
+	s, n, done = serve(func(int) int { return http.StatusInternalServerError })
+	if _, err := s.Get(context.Background(), "/x/queues/q", "1"); err == nil || *n != 1 {
+		t.Errorf("a server error is the SDK's to retry, not this layer's: %v after %d reads", err, *n)
+	}
+	done()
+}
+
+// With StackDNA's retry policy, the SDK waits the Retry-After ARM gives.
+func TestRetryAfterIsHonoured(t *testing.T) {
+	var mu sync.Mutex
+	var at []time.Time
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		at = append(at, time.Now())
+		first := len(at) == 1
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if first {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Write([]byte(`{"name":"q"}`))
+	}))
+	defer srv.Close()
+	pl := runtime.NewPipeline("stackdna", "v0.1.0", runtime.PipelineOptions{}, &clientOptions(true).ClientOptions)
+	s := &SDK{sub: "s", pl: pl, ep: srv.URL}
+	if _, err := s.Get(context.Background(), "/x/queues/q", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(at) != 2 || at[1].Sub(at[0]) < 900*time.Millisecond {
+		t.Errorf("reads at %v: the second must follow the Retry-After", at)
 	}
 }
 

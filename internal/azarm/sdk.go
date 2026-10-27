@@ -39,6 +39,23 @@ const (
 	subscriptionsAPI = "2022-12-01"
 )
 
+// retryOptions is the SDK's retry policy for every call. Its defaults
+// gave up too soon for a capture: 3 retries at most a minute apart, and a
+// Retry-After over 60 seconds ends the retries at once. ARM throttles reads
+// per subscription and principal, and each resource provider throttles on
+// its own behind it (Storage allows 100 list calls in 5 minutes); in a
+// real subscription Service Bus answered 429 after the default retries.
+// Each call now waits at most about 10 minutes, as on AWS.
+var retryOptions = policy.RetryOptions{MaxRetries: 6, RetryDelay: 2 * time.Second, MaxRetryDelay: 5 * time.Minute}
+
+func clientOptions(readOnly bool) *arm.ClientOptions {
+	o := &arm.ClientOptions{ClientOptions: policy.ClientOptions{Retry: retryOptions}}
+	if readOnly {
+		o.Transport = readonly.Client()
+	}
+	return o
+}
+
 // NewSDK connects to a subscription with the default credential chain.
 func NewSDK(subscription string, readOnly bool) (*SDK, error) {
 	if subscription == "" {
@@ -48,11 +65,7 @@ func NewSDK(subscription string, readOnly bool) (*SDK, error) {
 	if err != nil {
 		return nil, fmt.Errorf("azure credentials: %w", err)
 	}
-	var opts *arm.ClientOptions
-	if readOnly {
-		opts = &arm.ClientOptions{ClientOptions: policy.ClientOptions{Transport: readonly.Client()}}
-	}
-	c, err := arm.NewClient("stackdna", "v0.1.0", cred, opts)
+	c, err := arm.NewClient("stackdna", "v0.1.0", cred, clientOptions(readOnly))
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +97,29 @@ func (s *SDK) do(ctx context.Context, method, u string, body any) (*http.Respons
 	return s.pl.Do(req)
 }
 
+// patientWaits are the pauses before reading again what was still
+// throttled after the SDK's own retries: a burst a few minutes long is
+// waited out, and the slot the read holds stays taken, so the capture as
+// a whole slows down instead of adding to the burst.
+var patientWaits = []time.Duration{time.Minute, 2 * time.Minute}
+
+// getJSON reads one URL. Reads only: a write is never sent twice here.
 func (s *SDK) getJSON(ctx context.Context, u string, v any) error {
+	for i := 0; ; i++ {
+		err := s.getOnce(ctx, u, v)
+		var ae *armError
+		if i == len(patientWaits) || !errors.As(err, &ae) || ae.status != http.StatusTooManyRequests {
+			return err
+		}
+		select {
+		case <-time.After(patientWaits[i]):
+		case <-ctx.Done():
+			return err
+		}
+	}
+}
+
+func (s *SDK) getOnce(ctx context.Context, u string, v any) error {
 	resp, err := s.do(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return err

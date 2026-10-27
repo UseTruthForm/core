@@ -128,7 +128,18 @@ stackdna diff    --config prod.yaml --from snap/
 ```
 
 One target that cannot be reached is recorded as failed without stopping
-the others. Restore stays per target, on purpose.
+the others. Restore stays per target, on purpose. An AWS, Azure or Google
+Cloud target the platform throttles can take `parallel: 4` (calls in
+flight at once; 8 by default), as `--parallel` does for one target.
+
+## Throttling
+
+Every platform limits how fast it is read. StackDNA waits as each one
+asks: on Azure, the SDK honours a `Retry-After` of up to 5 minutes over 6
+retries, and a read still throttled after that is tried again after 1 and
+then 2 more minutes. A read that stays throttled is reported as
+**throttled**, never as empty or denied; capture again later, or with a
+lower `--parallel`.
 
 ## Exit codes
 

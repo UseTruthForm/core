@@ -54,6 +54,17 @@ type Target struct {
 	// any cloud
 	Types    []string `json:"types,omitempty"`
 	Baseline string   `json:"baseline,omitempty"`
+	// Parallel is the API calls in flight at once (default 8); lower it
+	// for a target the platform throttles.
+	Parallel int `json:"parallel,omitempty"`
+}
+
+// parallel is the target's calls in flight at once.
+func (t Target) parallel() int {
+	if t.Parallel > 0 {
+		return t.Parallel
+	}
+	return 8
 }
 
 // loadEnvironment reads and checks a config. Unknown keys and missing
@@ -97,6 +108,9 @@ func loadEnvironment(path string) (*Environment, error) {
 		// Relative baselines are relative to the config file, not to
 		// wherever the command happens to run; each of a comma-separated
 		// list (one per region), not only the first.
+		if t.Parallel < 0 {
+			return nil, fmt.Errorf("%s: target %s: parallel must be 1 or more", path, t.Name)
+		}
 		if t.Baseline != "" {
 			parts := strings.Split(t.Baseline, ",")
 			for j, b := range parts {
@@ -118,12 +132,12 @@ func inapplicable(t Target) string {
 	set := map[string]bool{"context": t.Context != "", "kubeconfig": t.Kubeconfig != "", "includeSystem": t.IncludeSystem,
 		"captureRendered": t.CaptureRender, "captureManaged": t.CaptureManaged, "region": t.Region != "", "profile": t.Profile != "",
 		"subscription": t.Subscription != "", "project": t.Project != "", "account": t.Account != "", "types": len(t.Types) > 0,
-		"baseline": t.Baseline != ""}
+		"baseline": t.Baseline != "", "parallel": t.Parallel != 0}
 	applies := map[string][]string{
 		"kubernetes": {"context", "kubeconfig", "includeSystem", "captureRendered", "baseline"},
-		"aws":        {"region", "profile", "types", "baseline", "captureManaged"},
-		"azure":      {"subscription", "types", "baseline", "captureManaged"},
-		"gcp":        {"project", "types", "baseline"},
+		"aws":        {"region", "profile", "types", "baseline", "captureManaged", "parallel"},
+		"azure":      {"subscription", "types", "baseline", "captureManaged", "parallel"},
+		"gcp":        {"project", "types", "baseline", "parallel"},
 		"github":     {"account"},
 		"cloudflare": {"account"},
 	}
@@ -174,21 +188,21 @@ func captureTarget(ctx context.Context, t Target) (snapshot.Snapshot, error) {
 		}
 		return kube.Capture(ctx, c, pol)
 	case "aws":
-		a := awsFlags{region: t.Region, profile: t.Profile, types: strings.Join(t.Types, ","), baseline: t.Baseline, managed: t.CaptureManaged, parallel: 8}
+		a := awsFlags{region: t.Region, profile: t.Profile, types: strings.Join(t.Types, ","), baseline: t.Baseline, managed: t.CaptureManaged, parallel: t.parallel()}
 		ad, err := a.connect(ctx, true)
 		if err != nil {
 			return snapshot.Snapshot{}, err
 		}
 		return ad.Capture(ctx)
 	case "azure":
-		a := azureFlags{subscription: t.Subscription, types: strings.Join(t.Types, ","), baseline: t.Baseline, managed: t.CaptureManaged, parallel: 8}
+		a := azureFlags{subscription: t.Subscription, types: strings.Join(t.Types, ","), baseline: t.Baseline, managed: t.CaptureManaged, parallel: t.parallel()}
 		ad, err := a.connect(true)
 		if err != nil {
 			return snapshot.Snapshot{}, err
 		}
 		return ad.Capture(ctx)
 	case "gcp":
-		g := gcpFlags{project: t.Project, types: strings.Join(t.Types, ","), baseline: t.Baseline, parallel: 8}
+		g := gcpFlags{project: t.Project, types: strings.Join(t.Types, ","), baseline: t.Baseline, parallel: t.parallel()}
 		ad, err := g.connect(ctx, true)
 		if err != nil {
 			return snapshot.Snapshot{}, err

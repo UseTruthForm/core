@@ -124,13 +124,17 @@ func BundleURL(region string) string {
 // LoadBundle downloads (or reads from the cache) a region's schema bundle.
 // The cache is refreshed after maxAge, so captures follow AWS's schema
 // updates without anyone shipping a StackDNA release.
+var bundleClient = &http.Client{Timeout: 5 * time.Minute}
+
 func LoadBundle(region, cacheDir string, maxAge time.Duration) (*Registry, error) {
 	if err := CheckRegion(region); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(cacheDir, "aws-schemas-"+region+".zip")
 	if st, err := os.Stat(path); err != nil || time.Since(st.ModTime()) > maxAge {
-		resp, err := http.Get(BundleURL(region)) //nolint:gosec // fixed AWS URL
+		// Bounded: http.Get never times out, and a stalled download held a
+		// scheduled job until GitHub's six-hour limit (review of #24).
+		resp, err := bundleClient.Get(BundleURL(region)) //nolint:gosec // fixed AWS URL
 		if err != nil {
 			return nil, fmt.Errorf("download schema bundle: %w", err)
 		}

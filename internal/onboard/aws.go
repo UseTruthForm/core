@@ -122,7 +122,7 @@ func buildAWS(r Request) (Plan, error) {
 	if r.Access == "restore" {
 		p.Status = "Expected. PowerUserAccess restored the drill's 14 types, held by a user, not through this role."
 	} else {
-		p.Status = "Verified (2026-10-23) in a sandbox account, trusting a user in the same account: deployed from this template, the role captured us-east-2 to the same digest as an identity holding ReadOnlyAccess and PowerUserAccess (98 resources, 1,158 types), and no sampled write was allowed. Without the add-on it was refused 87 types. Deleting the stack removed the role, the add-on and the access. A principal in another account has not yet been tried."
+		p.Status = "Verified (2026-10-24) in a sandbox account, trusting a user in the same account: deployed from this template, the role captured us-east-2 with the same 97 resources as an identity holding ReadOnlyAccess and PowerUserAccess (stackdna compare: no differences) and was refused 2 types of 1,161, both on purpose: AWS::Bedrock::Session (AWS marks its reads data plane) and AWS::BedrockAgentCore::PaymentCredentialProvider (its reads return credentials). No sampled write was allowed. Without the add-on it was refused 87 types. Deleting the stack removed the role, the add-on and the access. The sandbox holds few resources: in an account using services whose listing needs a withheld read (about 37 types), more are refused, and a capture reports them. A principal in another account has not yet been tried."
 		p.Warnings = append(p.Warnings, fmt.Sprintf("%d types need an action the add-on does not grant (mostly kms:Decrypt for resources encrypted with a customer's key, or a write a schema lists under read). A capture reports any it cannot read; stackdna check lists them.", add.ShortN))
 	}
 

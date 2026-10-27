@@ -2,6 +2,7 @@ package azarm
 
 import (
 	"encoding/json"
+	"regexp"
 	"sort"
 )
 
@@ -60,6 +61,12 @@ func (s *Schema) clean(v any, t int, path string, sp *split) {
 				if isScalar(c[k]) {
 					sp.readOnly[full] = c[k]
 				}
+				delete(c, k)
+			case !known && isEmptyObject(c[k]):
+				// No settings in it, so nothing is lost. Azure returns some
+				// of these only sometimes: a Service Bus rule's
+				// sqlFilter.parameters came and went between two captures
+				// of a real subscription a minute apart.
 				delete(c, k)
 			case !known:
 				// kept, see normalize
@@ -147,6 +154,30 @@ func recordScalars(v any, path string, sp *split) {
 			recordScalars(m[k], join(path, k), sp)
 		}
 	}
+}
+
+func isEmptyObject(v any) bool {
+	m, ok := v.(map[string]any)
+	return ok && len(m) == 0
+}
+
+var timeRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}`)
+
+// observed reports a read-only value that records what happened rather than
+// what was made: a time (a queue's accessedAt, a database's
+// earliestRestoreDate), or a number or flag (message counts, sizes). Status
+// is kept for what a reference can point at, and that is always a string
+// that is not a time: an ID, a GUID, a host name. Observations change on
+// their own; kept, they made two captures of an unchanged real subscription
+// differ in over a hundred files.
+func observed(v any) bool {
+	switch x := v.(type) {
+	case float64, bool:
+		return true
+	case string:
+		return timeRE.MatchString(x)
+	}
+	return false
 }
 
 func isScalar(v any) bool {

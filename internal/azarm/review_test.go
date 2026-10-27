@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -110,6 +112,8 @@ func TestClassifyARM(t *testing.T) {
 		{http.StatusBadRequest, "FeatureDisabledOnSelectedEdition", ErrNotApplicable},
 		{http.StatusBadRequest, "BMSUserErrorFeatureNotAvailable", ErrNotApplicable},
 		{http.StatusBadRequest, "KindNotSpecified", nil},
+		{http.StatusNotImplemented, "DataSourceNotImplemented", ErrNotApplicable},
+		{http.StatusNotImplemented, "", nil},
 		{http.StatusMethodNotAllowed, "", ErrNotApplicable},
 		{http.StatusNotFound, "ResourceNotFound", ErrNotFound},
 		{http.StatusNotFound, "", ErrNotFound},
@@ -176,6 +180,111 @@ func TestChildrenOfARootAreListedOnce(t *testing.T) {
 		t.Fatalf("the refused container list was reported %d times, want 1: %+v", n, snap.Skips)
 	}
 }
+
+// A workspace's data sources answer only a list filtered by kind. Each kind
+// the definition names is listed, so they are captured, not reported as a
+// failed collection.
+func TestDataSourcesAreListedByKind(t *testing.T) {
+	ds := schema(t, fixtures(t), "Microsoft.OperationalInsights/workspaces/dataSources")
+	kinds := ds.kinds()
+	if !contains(kinds, "WindowsEvent") || !contains(kinds, "LinuxSyslog") || contains(kinds, "") {
+		t.Fatalf("kinds %v", kinds)
+	}
+	e := newEnv(t)
+	e.src.ByKind = map[string]bool{"datasources": true}
+	put(t, e.src, "shop-rg", "Microsoft.OperationalInsights/workspaces", "shop-logs", map[string]any{"location": "eastus", "properties": map[string]any{"retentionInDays": 30.0}})
+	ws := id(srcSub, "shop-rg", "Microsoft.OperationalInsights/workspaces", "shop-logs")
+	for name, body := range map[string]map[string]any{
+		"app-events": {"kind": "WindowsEvent", "properties": map[string]any{"eventLogName": "Application"}},
+		"syslog":     {"kind": "LinuxSyslog", "properties": map[string]any{"syslogName": "auth"}},
+	} {
+		if _, err := e.src.Put(context.Background(), ws+"/dataSources/"+name, stable(e.reg, "Microsoft.OperationalInsights/workspaces/dataSources"), body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snap, err := e.adapter(e.src).Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, o := range snap.Objects {
+		if strings.EqualFold(o.Kind(), "Microsoft.OperationalInsights/workspaces/dataSources") {
+			got = append(got, o.Name())
+		}
+	}
+	sort.Strings(got)
+	if want := []string{"shop-logs/app-events", "shop-logs/syslog"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("data sources captured %v, want %v", got, want)
+	}
+	for _, s := range snap.Skips {
+		if strings.HasPrefix(s.Reason, Unreadable) {
+			t.Errorf("failed: %s %s: %s", s.Resource, s.Name, s.Reason)
+		}
+	}
+}
+
+// byKindARM answers a list by kind as a real workspace does: some named
+// kinds are refused, one filter returns another kind's items, and one
+// kind's items get a new name on every read.
+type byKindARM struct {
+	ARM
+	items  map[string][]map[string]any
+	refuse map[string]error
+	fresh  map[string]int // kind -> how many items it makes up per read
+	reads  *int
+}
+
+func (b byKindARM) List(_ context.Context, path, _ string) ([]map[string]any, error) {
+	_, query, _ := strings.Cut(path, "?")
+	q, _ := url.ParseQuery(query)
+	m := kindFilterRE.FindStringSubmatch(q.Get("$filter"))
+	if m == nil {
+		return nil, ErrNeedsKind
+	}
+	if err := b.refuse[m[1]]; err != nil {
+		return nil, err
+	}
+	out := b.items[m[1]]
+	for i := range b.fresh[m[1]] {
+		*b.reads++
+		out = append(out, item(fmt.Sprintf("/x/dataSources/DataSource_%s_%d_%d", m[1], *b.reads, i), m[1]))
+	}
+	return out, nil
+}
+
+func TestListByKindKeepsOnlyWhatIsThereEveryRead(t *testing.T) {
+	reg := item("/x/dataSources/reg1", "ChangeTrackingDefaultRegistry")
+	api := byKindARM{
+		items: map[string][]map[string]any{
+			"ChangeTrackingDefaultRegistry": {reg},
+			"ChangeTrackingRegistry":        {reg}, // another kind's items
+			"WindowsEvent":                  {item("/x/dataSources/ev1", "WindowsEvent")},
+		},
+		refuse: map[string]error{
+			"ApplicationInsights": fmt.Errorf("x: %w", ErrNotApplicable), // 501 DataSourceNotImplemented
+			"Office365":           fmt.Errorf("x: %w", ErrNeedsKind),     // the filter itself refused
+		},
+		fresh: map[string]int{"ChangeTrackingDefaultRegistry": 3},
+		reads: new(int),
+	}
+	kinds := []string{"ApplicationInsights", "ChangeTrackingDefaultRegistry", "ChangeTrackingRegistry", "Office365", "WindowsEvent"}
+	got, generated, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || generated != 3 {
+		t.Errorf("items %v and %d generated, want reg1 and ev1 once each, and 3 generated", got, generated)
+	}
+	api.refuse["WindowsEvent"] = errors.New("500 InternalServerError")
+	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds); err == nil || !strings.Contains(err.Error(), "kind WindowsEvent") {
+		t.Errorf("a kind that fails must fail the collection, naming the kind: %v", err)
+	}
+	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", nil); !errors.Is(err, ErrNeedsKind) {
+		t.Errorf("no kinds named: %v", err)
+	}
+}
+
+func item(id, kind string) map[string]any { return map[string]any{"id": id, "kind": kind} }
 
 // A secret inside an array counts when the array is there.
 func TestSecretsInArrays(t *testing.T) {

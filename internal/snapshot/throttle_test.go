@@ -22,6 +22,17 @@ func TestThrottled(t *testing.T) {
 		"list failed: HTTP 500: InternalServerError":                                                                                   false,
 		"listed but could not be read: GET /x/4290: 400 Bad Request InvalidParameter":                                                  false,
 		"listed but could not be read: GET /queues/429/rules: 400 Bad Request InvalidParameter":                                        false,
+		// Names chosen by people are not signals (review of #35).
+		"listed but could not be read: GET https://management.azure.com/subscriptions/s/resourceGroups/rg-throttling/providers/x: 403 Forbidden AuthorizationFailed": false,
+		"list failed: deployments.apps \"ratelimiter\" is forbidden: User \"u\" cannot list resource":                                                                false,
+		"list failed: HTTP 403: Resource not accessible by integration (repo api-rate-limit-proxy)":                                                                  false,
+		// Signals the first version missed.
+		"list failed: RequestLimitExceeded: Request limit exceeded.":                   true,
+		"list failed: SlowDown: Please reduce your request rate.":                      true,
+		"list failed: HTTP 403: You have triggered an abuse detection mechanism":       true,
+		"list failed: SubscriptionRequestsThrottled: Number of read requests exceeded": true,
+		// A daily quota is not refilled by running again soon.
+		"list failed: HTTP 429: RESOURCE_EXHAUSTED: Quota exceeded for quota metric 'Queries per day'": false,
 	} {
 		if got := Throttled(reason); got != want {
 			t.Errorf("%q: throttled=%v, want %v", reason, got, want)

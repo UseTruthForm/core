@@ -72,10 +72,6 @@ func TestCheckCountsEachSkipOnceAndRefusedItemsAsRefused(t *testing.T) {
 	}
 }
 
-// A 401 is a credential that expired or is wrong, and GitHub's rate limit
-// is a 403: neither is a permission to grant (review of #23). A "not
-// found" or "not set up" a missing permission can also produce is listed
-// as unsure, not counted as fine.
 // A throttled read is its own result: not denied, so no grant is widened
 // for it, and not failed, since running the capture again reads it.
 func TestCheckThrottledIsNeitherDeniedNorFailed(t *testing.T) {
@@ -90,13 +86,19 @@ func TestCheckThrottledIsNeitherDeniedNorFailed(t *testing.T) {
 		Skips: []snapshot.Skip{
 			{Resource: "Microsoft.ServiceBus/namespaces/queues", Name: "/x/queues", Reason: unreadable + ": GET /x: 429 Too Many Requests: GetEntityAsync failed"},
 			{Resource: "Microsoft.Web/sites", Name: "/x/sites", Reason: unreadable + ": GET /x: 500 Internal Server Error"},
+			// A name that says "throttling" does not make a denial one (review of #35).
+			{Resource: "Microsoft.Web/sites", Name: "/rg-throttling/sites", Reason: unreadable + ": GET https://management.azure.com/subscriptions/s/resourceGroups/rg-throttling/providers/Microsoft.Web/sites?api-version=1: 403 Forbidden AuthorizationFailed"},
 		},
 	})
-	if len(rc.Throttled) != 3 || len(rc.Denied) != 1 || len(rc.Failed) != 1 {
+	if len(rc.Throttled) != 3 || len(rc.Denied) != 2 || len(rc.Failed) != 1 {
 		t.Errorf("throttled %v\ndenied %v\nfailed %v", rc.Throttled, rc.Denied, rc.Failed)
 	}
 }
 
+// A 401 is a credential that expired or is wrong, and GitHub's rate limit
+// is a 403: neither is a permission to grant (review of #23). A "not
+// found" or "not set up" a missing permission can also produce is listed
+// as unsure, not counted as fine.
 func TestCheckDeniedIsOnlyPermission(t *testing.T) {
 	for msg, want := range map[string]bool{
 		"list failed: HTTP 403: Resource not accessible by integration": true,

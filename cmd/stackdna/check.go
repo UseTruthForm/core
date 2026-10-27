@@ -311,7 +311,10 @@ func emitCheck(id access.Report, rc readCheck, capErr error) {
 	doc := map[string]any{"schema": jsonSchema, "command": "check",
 		"identity": map[string]any{"platform": id.Platform, "who": id.Who, "kind": id.Kind, "facts": nonNil(id.Facts),
 			"warnings": nonNil(id.Warnings), "unchecked": nonNil(id.Unchecked)},
-		"reads": rc}
+		"reads": rc,
+		// Complete is the one answer a script needs: throttled reads moved
+		// out of "failed" into their own list (review of #35).
+		"complete": capErr == nil && len(rc.Denied)+len(rc.Throttled)+len(rc.Failed) == 0}
 	if capErr != nil {
 		doc["error"] = capErr.Error()
 	}

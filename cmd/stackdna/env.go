@@ -153,6 +153,8 @@ type TargetResult struct {
 	Digest   string   `json:"digest,omitempty"`
 	Error    string   `json:"error,omitempty"`
 	Gaps     []string `json:"gaps,omitempty"`
+	// Throttled are the gaps a later capture can close as it is.
+	Throttled []string `json:"throttled,omitempty"`
 }
 
 // captureTarget captures one target with the same code the single-target
@@ -223,6 +225,27 @@ func gaps(s snapshot.Snapshot) []string {
 	return out
 }
 
+// throttledGaps are the gaps that throttling caused, each judged by its
+// failure's own text, never by the name of the type or resource it is
+// about: a denial on "ns/throttle-config" is still a denial (review of
+// #35).
+func throttledGaps(s snapshot.Snapshot) map[string]bool {
+	out := map[string]bool{}
+	for _, c := range s.Coverage {
+		if strings.HasPrefix(c.NotCaptured, "list failed") || strings.HasPrefix(c.NotCaptured, "API group discovery failed") {
+			if snapshot.Throttled(c.NotCaptured) {
+				out[c.Resource+": "+c.NotCaptured] = true
+			}
+		}
+	}
+	for _, sk := range s.Skips {
+		if strings.HasPrefix(sk.Reason, "listed but could not be read") && snapshot.Throttled(sk.Reason) {
+			out[sk.Resource+" "+sk.Name+": "+sk.Reason] = true
+		}
+	}
+	return out
+}
+
 // captureEnvironment captures every target, a few at a time. A target that
 // fails is recorded and the others still run: one unreachable cluster
 // must not cost the rest of the environment's backup.
@@ -260,6 +283,12 @@ func captureEnvironment(ctx context.Context, configPath, out string) int {
 				return
 			}
 			r.Gaps = gaps(snap)
+			th := throttledGaps(snap)
+			for _, g := range r.Gaps {
+				if th[g] {
+					r.Throttled = append(r.Throttled, g)
+				}
+			}
 			r.Status = "complete"
 			if len(r.Gaps) > 0 {
 				r.Status = "incomplete"
@@ -280,8 +309,16 @@ func captureEnvironment(ctx context.Context, configPath, out string) int {
 	code := 0
 	for _, r := range results {
 		fmt.Printf("%-10s %-11s %-10s %5d objects  %s%s\n", r.Status, r.Platform, r.Name, r.Objects, r.Digest, errSuffix(r.Error))
+		th := map[string]bool{}
+		for _, g := range r.Throttled {
+			th[g] = true
+		}
 		for _, g := range r.Gaps {
-			fmt.Println("    gap:", g)
+			if th[g] {
+				fmt.Println("    gap (throttled; capture again later):", g)
+			} else {
+				fmt.Println("    gap:", g)
+			}
 		}
 		switch {
 		case r.Status == "failed":

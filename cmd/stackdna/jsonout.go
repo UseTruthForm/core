@@ -115,8 +115,9 @@ func emitCapture(dir string, s snapshot.Snapshot, target string) {
 	g := gaps(s)
 	sort.Strings(g)
 	throttled := []string{} // the gaps a later capture can close as it is
+	th := throttledGaps(s)
 	for _, x := range g {
-		if snapshot.Throttled(x) {
+		if th[x] {
 			throttled = append(throttled, x)
 		}
 	}

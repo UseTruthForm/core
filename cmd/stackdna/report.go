@@ -29,8 +29,9 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 
 	if len(g) > 0 {
 		var throttled, other []string
+		th := throttledGaps(s)
 		for _, x := range g {
-			if snapshot.Throttled(x) {
+			if th[x] {
 				throttled = append(throttled, x)
 			} else {
 				other = append(other, x)
@@ -144,8 +145,16 @@ func writeEnvReport(dir, name string, results []TargetResult) error {
 		if r.Error != "" {
 			w("- **%s failed:** %s\n", md(r.Name), md(r.Error))
 		}
+		th := map[string]bool{}
+		for _, x := range r.Throttled {
+			th[x] = true
+		}
 		for _, x := range r.Gaps {
-			w("- %s: %s\n", md(r.Name), md(x))
+			if th[x] {
+				w("- %s (throttled; capture again later): %s\n", md(r.Name), md(x))
+			} else {
+				w("- %s: %s\n", md(r.Name), md(x))
+			}
 		}
 	}
 	return os.WriteFile(filepath.Join(dir, "REPORT.md"), []byte(b.String()), 0o644)

@@ -2,8 +2,16 @@ package kube
 
 import (
 	"context"
+	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/stackdna/core/internal/snapshot"
 )
@@ -207,6 +215,54 @@ func TestHelmReleaseSecretIsSkipped(t *testing.T) {
 	s := k8sObj("Secret", "monitoring", "sh.helm.release.v1.prometheus.v3", nil, map[string]any{"type": "helm.sh/release.v1"})
 	if got := (Policy{}).skipReason("", "secrets", s); !strings.Contains(got, "Helm release history") {
 		t.Fatalf("reason %q", got)
+	}
+}
+
+// Helm history is recorded once per release. A managed add-on moves to a
+// new revision every few seconds while keeping the same number of them;
+// listed by revision, the coverage of an unchanged cluster differed between
+// two captures.
+func TestHelmHistoryIsRecordedPerRelease(t *testing.T) {
+	secrets := schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
+	history := func(ns, name, release string) *unstructured.Unstructured {
+		labels := map[string]any{"owner": "helm"}
+		if release != "" {
+			labels["name"] = release
+		}
+		return &unstructured.Unstructured{Object: k8sObj("Secret", ns, name, map[string]any{"labels": labels}, map[string]any{"type": "helm.sh/release.v1"})}
+	}
+	capture := func(revs ...int) snapshot.Snapshot {
+		t.Helper()
+		var objs []runtime.Object
+		for _, r := range revs {
+			objs = append(objs, history("addons", fmt.Sprintf("sh.helm.release.v1.overlay-upgrade.v%d", r), "overlay-upgrade"))
+		}
+		// Two releases, one without Helm's name label, in two namespaces.
+		objs = append(objs, history("shop", "sh.helm.release.v1.web.v3", ""), history("shop", "sh.helm.release.v1.web.v4", ""),
+			history("other", "sh.helm.release.v1.web.v1", ""))
+		dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{secrets: "SecretList"}, objs...)
+		var snap snapshot.Snapshot
+		cov := &snapshot.Coverage{}
+		if err := captureType(context.Background(), &Clients{Dynamic: dyn}, Policy{}, secrets, "Secret", cov, &snap); err != nil {
+			t.Fatal(err)
+		}
+		snap.Coverage = []snapshot.Coverage{*cov}
+		return snap
+	}
+	first, second := capture(430432, 430433), capture(430433, 430434)
+	if !reflect.DeepEqual(first, second) {
+		t.Errorf("coverage moved with the revision:\n%+v\n%+v", first, second)
+	}
+	var names []string
+	for _, s := range first.Skips {
+		names = append(names, s.Namespace+"/"+s.Name)
+	}
+	sort.Strings(names)
+	if want := []string{"addons/sh.helm.release.v1.overlay-upgrade", "other/sh.helm.release.v1.web", "shop/sh.helm.release.v1.web"}; !reflect.DeepEqual(names, want) {
+		t.Errorf("skips %v, want %v", names, want)
+	}
+	if len(first.Objects) != 0 {
+		t.Errorf("history captured: %v", first.Objects)
 	}
 }
 

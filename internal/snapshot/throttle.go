@@ -27,8 +27,10 @@ var throttledRE = regexp.MustCompile(`(?:HTTP |: )429\b|(?i:too many requests)|T
 var urlRE = regexp.MustCompile(`https?://\S+`)
 
 // dailyRE is a quota that a later capture that day will not find refilled:
-// Google's per-day quotas answer RESOURCE_EXHAUSTED too.
-var dailyRE = regexp.MustCompile(`(?i)per ?day|daily`)
+// Google's per-day quotas answer RESOURCE_EXHAUSTED too. Matched by the
+// quota's name, never a bare "daily", which a resource can be named
+// (review of #38).
+var dailyRE = regexp.MustCompile(`(?i)\bper ?day\b|PerDay|dailyLimitExceeded`)
 
 // Throttled reports a failure that the platform's throttling caused, read
 // from the failure's own text (not from a name the failure is about).

@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -77,12 +78,18 @@ func TestThrottlingIsBackedOffAsGoogleAsks(t *testing.T) {
 		"503 write: not resent":   {"POST", []step{answer(503, `{}`)}, 1, nil},
 		"permission: not resent":  {"GET", []step{answer(403, denied)}, 1, nil},
 		"daily quota: not resent": {"GET", []step{answer(429, perDay)}, 1, nil},
+		// A name is not a quota (review of #38).
+		"429 naming daily-backups": {"GET", []step{answer(429, `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"rate limit on bucket daily-backups"}}`)}, 2, []time.Duration{time.Second}},
+		// Server errors: a read is sent again, a write is not (review of #38).
+		"500 read":              {"GET", []step{answer(500, `{}`)}, 2, []time.Duration{time.Second}},
+		"502 read":              {"GET", []step{answer(502, `{}`)}, 2, []time.Duration{time.Second}},
+		"500 write: not resent": {"PATCH", []step{answer(500, `{}`)}, 1, nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			waits := recordWaits(t)
 			s, u, n := stepServer(t, c.steps...)
 			var body any
-			if c.method == http.MethodPost {
+			if c.method != http.MethodGet {
 				body = map[string]any{"a": 1}
 			}
 			var out map[string]any
@@ -121,5 +128,16 @@ func TestThrottlingThatDoesNotClear(t *testing.T) {
 	s, u, _ = stepServer(t, answer(429, perDay))
 	if err := s.do(context.Background(), http.MethodGet, u, nil, nil); err == nil || snapshot.Throttled(err.Error()) {
 		t.Errorf("a daily quota: %v must read as a failure", err)
+	}
+}
+
+// Cancelled while waiting, the error says so (review of #38).
+func TestCancelledWhileBackingOff(t *testing.T) {
+	old := sleepCtx
+	t.Cleanup(func() { sleepCtx = old })
+	sleepCtx = func(context.Context, time.Duration) error { return context.Canceled }
+	s, u, _ := stepServer(t, answer(429, exhausted))
+	if err := s.do(context.Background(), http.MethodGet, u, nil, nil); !errors.Is(err, context.Canceled) {
+		t.Errorf("err %v must be a cancellation", err)
 	}
 }

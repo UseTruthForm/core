@@ -113,6 +113,8 @@ func TestCheckDeniedIsOnlyPermission(t *testing.T) {
 		"listed but could not be read: GET https://management.azure.com/x?api-version=1: 404 Not Found ResourceNotFound":        false,
 		// Compute answers its rate limit with 403 too: not a permission.
 		"list failed: HTTP 403: userRateLimitExceeded": false,
+		// A spent quota is not a permission either (review of #38).
+		"list failed: GET https://compute.googleapis.com/x: HTTP 403: Daily Limit Exceeded (dailyLimitExceeded)": false,
 	} {
 		if got := isDenied(msg); got != want {
 			t.Errorf("%q: denied=%v, want %v", msg, got, want)

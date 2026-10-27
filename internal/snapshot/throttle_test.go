@@ -33,6 +33,9 @@ func TestThrottled(t *testing.T) {
 		"list failed: SubscriptionRequestsThrottled: Number of read requests exceeded": true,
 		// A daily quota is not refilled by running again soon.
 		"list failed: HTTP 429: RESOURCE_EXHAUSTED: Quota exceeded for quota metric 'Queries per day'": false,
+		"list failed: HTTP 403: Daily Limit Exceeded (dailyLimitExceeded)":                             false,
+		// A resource named "daily" is not a daily quota (review of #38).
+		"list failed: HTTP 429: RESOURCE_EXHAUSTED: rate limit on bucket daily-backups": true,
 	} {
 		if got := Throttled(reason); got != want {
 			t.Errorf("%q: throttled=%v, want %v", reason, got, want)

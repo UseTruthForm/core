@@ -222,7 +222,8 @@ func (s *SDK) do(ctx context.Context, method, u string, body, out any) error {
 			return fmt.Errorf("%s %s: %w", method, u, ErrNotFound)
 		case retryable(method, resp.StatusCode, b) && attempt < maxAttempts-1:
 			if err := sleepCtx(ctx, backoff(attempt, resp)); err != nil {
-				return fmt.Errorf("%s %s: HTTP %d: %s", method, u, resp.StatusCode, apiError(b))
+				// Cancelled: said as such, not as the throttling (review of #38).
+				return fmt.Errorf("%s %s: HTTP %d: %s: %w", method, u, resp.StatusCode, apiError(b), err)
 			}
 			continue
 		case resp.StatusCode >= 300:
@@ -261,13 +262,16 @@ var (
 			return ctx.Err()
 		}
 	}
-	jitter   = func() time.Duration { return time.Duration(rand.Int64N(int64(time.Second))) }
-	rateRE   = regexp.MustCompile(`\b(?:user)?[Rr]ateLimitExceeded\b|\bRATE_LIMIT_EXCEEDED\b`)
-	perDayRE = regexp.MustCompile(`(?i)per ?day|daily`)
+	jitter = func() time.Duration { return time.Duration(rand.Int64N(int64(time.Second))) }
+	rateRE = regexp.MustCompile(`\b(?:user)?[Rr]ateLimitExceeded\b|\bRATE_LIMIT_EXCEEDED\b`)
+	// A quota by its name ("limit 'Queries per day'", QueriesPerDay,
+	// dailyLimitExceeded), never a bare "daily": a bucket named
+	// daily-backups is not a daily quota (review of #38).
+	perDayRE = regexp.MustCompile(`(?i)\bper ?day\b|PerDay|dailyLimitExceeded`)
 )
 
 // retryable reports a refusal Google documents as one to send again. A
-// 503 is retried only for a read: a write Google may have started can
+// server error (500, 502, 503, 504) is retried only for a read: a write Google may have started can
 // collide with itself. A 429 or a rate limit was refused before anything
 // was done, so a write is sent again too. A quota spent for the day is not.
 func retryable(method string, status int, body []byte) bool {
@@ -279,7 +283,10 @@ func retryable(method string, status int, body []byte) bool {
 		return true
 	case status == http.StatusForbidden:
 		return rateRE.Match(body)
-	case status == http.StatusServiceUnavailable:
+	case status == http.StatusInternalServerError, status == http.StatusBadGateway,
+		status == http.StatusServiceUnavailable, status == http.StatusGatewayTimeout:
+		// Google retries these for idempotent calls; a write Google may
+		// have started could collide with itself (review of #38).
 		return method == http.MethodGet
 	}
 	return false
@@ -312,7 +319,10 @@ func apiError(b []byte) string {
 	if json.Unmarshal(b, &e) != nil || e.Error.Message == "" {
 		return strings.TrimSpace(string(b))
 	}
-	msg := e.Error.Status + ": " + e.Error.Message
+	msg := e.Error.Message
+	if e.Error.Status != "" { // Compute's envelope has none
+		msg = e.Error.Status + ": " + msg
+	}
 	for _, d := range e.Error.Details {
 		if d.Reason != "" {
 			msg += " (" + d.Reason + ")"

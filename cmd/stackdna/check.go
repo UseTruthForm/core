@@ -135,7 +135,15 @@ var deniedRE = regexp.MustCompile(`(?i)not authorized to perform|accessdenied|ac
 
 // A throttled read is never a denial: GitHub answers its rate limits, and
 // Compute its rateLimitExceeded, with 403.
-func isDenied(s string) bool { return deniedRE.MatchString(s) && !snapshot.Throttled(s) }
+//
+// Nor is a spent quota: Compute answers a daily one with 403
+// dailyLimitExceeded, and calling it a denial sent the reader to widen a
+// grant no grant can fix (review of #38).
+func isDenied(s string) bool {
+	return deniedRE.MatchString(s) && !snapshot.Throttled(s) && !quotaRE.MatchString(s)
+}
+
+var quotaRE = regexp.MustCompile(`\b(?:dailyLimitExceeded|quotaExceeded|RESOURCE_EXHAUSTED)\b`)
 
 // maybeDeniedRE finds reasons an adapter recorded as "by design" that a
 // missing permission can also produce: GitHub answers 404 both for an

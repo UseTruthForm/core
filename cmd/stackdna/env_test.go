@@ -190,6 +190,31 @@ func TestReport(t *testing.T) {
 	}
 }
 
+// A throttled gap is set apart with what to do about it, after the gaps a
+// later capture would not close.
+func TestReportSaysWhatWasThrottled(t *testing.T) {
+	s := snapshot.Snapshot{Platform: "azure", Policy: "default",
+		Coverage: []snapshot.Coverage{{Resource: "Microsoft.Web/sites", Kind: "Microsoft.Web/sites", NotCaptured: "list failed: 500 Internal Server Error"}},
+		Skips: []snapshot.Skip{{Resource: "Microsoft.ServiceBus/namespaces/queues", Name: "/x/queues",
+			Reason: "listed but could not be read: GET /x: 429 Too Many Requests: GetEntityAsync failed"},
+			// Throttling in a name is not throttling (review of #35).
+			{Resource: "Microsoft.Web/sites", Name: "/rg-throttling/sites", Reason: "listed but could not be read: GET /x: 403 Forbidden AuthorizationFailed"}},
+	}
+	dir := t.TempDir()
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeReport(dir, s, "test"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "REPORT.md"))
+	txt := string(b)
+	failed, denied, thr, queue := strings.Index(txt, "Microsoft.Web/sites: list failed"), strings.Index(txt, "rg-throttling"), strings.Index(txt, "**Throttled: 1.**"), strings.Index(txt, "429 Too Many Requests")
+	if failed < 0 || denied < 0 || thr < 0 || queue < 0 || !(failed < thr && denied < thr && thr < queue) || !strings.Contains(txt, "lower `--parallel`") {
+		t.Errorf("report:\n%s", txt)
+	}
+}
+
 // Failures from the review of #11, 2026-10-22.
 func TestLoadEnvironmentRefusesWhatWouldMisfire(t *testing.T) {
 	dir := t.TempDir()

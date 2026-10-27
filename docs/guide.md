@@ -40,8 +40,11 @@ the platform's own tool and prints every command to deploy, verify and
 remove it, with your values filled in; it grants nothing itself.
 `stackdna check` then says who StackDNA runs as, what that identity holds
 beyond what it needs, and what it can read, type by type: a type refused
-for want of permission shows as **denied**, never as empty. It exits 3
-when anything is denied or failed.
+for want of permission shows as **denied**, never as empty. A type the
+platform throttled until the retries ran out shows as **throttled**: that
+is not a permission, and the same capture run later, or with a lower
+`--parallel`, reads it. It exits 3 when anything is denied, throttled or
+failed.
 
 ## Capture
 
@@ -142,7 +145,8 @@ Add `--json` to `capture`, `diff`, `restore` or `compare` (an environment
 `--config` too). Stdout is then one JSON document, named by its `schema`
 field (`stackdna.org/output/v1`), and everything meant for a person goes
 to stderr. The exit code is the same as without it. A capture's document
-says whether it is `complete` and lists its `gaps`; a diff's lists each
+says whether it is `complete` and lists its `gaps`, and under `throttled`
+the gaps a later capture can close as it is; a diff's lists each
 change with its `kind` (missing, extra, changed) and `fields`; a
 restore's lists each resource with `ok` and `detail`.
 

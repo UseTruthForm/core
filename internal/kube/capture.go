@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -132,6 +133,7 @@ func Capture(ctx context.Context, c *Clients, p Policy) (snapshot.Snapshot, erro
 
 func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVersionResource, kind string, cov *snapshot.Coverage, snap *snapshot.Snapshot) error {
 	cont := ""
+	releases := map[string]bool{} // reason, namespace and release of Helm history already listed
 	for {
 		ul, err := c.Dynamic.Resource(gvr).List(ctx, metav1.ListOptions{Limit: 500, Continue: cont})
 		if err != nil {
@@ -144,13 +146,28 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 			obj["apiVersion"], obj["kind"] = gvr.GroupVersion().String(), kind
 			if reason := p.skipReason(gvr.Group, gvr.Resource, obj); reason != "" {
 				md, _ := obj["metadata"].(map[string]any)
-				snap.Skips = append(snap.Skips, snapshot.Skip{
-					Resource: resourceID(gvr), Namespace: strOf(md["namespace"]), Name: strOf(md["name"]), Reason: reason,
-				})
 				if cov.Skipped == nil {
 					cov.Skipped = map[string]int{}
 				}
 				cov.Skipped[reason]++
+				name := strOf(md["name"])
+				// Helm history is listed once per release, not per
+				// revision: a managed add-on on AKS moves to a new revision
+				// every few seconds while keeping the same number of them,
+				// and listed by revision the coverage of an unchanged
+				// cluster differed between two captures. The count above
+				// is still per object.
+				if rel, ok := helmRelease(gvr, obj); ok {
+					key := reason + "\x00" + strOf(md["namespace"]) + "\x00" + rel
+					if releases[key] {
+						continue
+					}
+					releases[key] = true
+					name = helmReleasePrefix + rel
+				}
+				snap.Skips = append(snap.Skips, snapshot.Skip{
+					Resource: resourceID(gvr), Namespace: strOf(md["namespace"]), Name: name, Reason: reason,
+				})
 				continue
 			}
 			normalize(gvr.Group, gvr.Resource, obj)
@@ -176,6 +193,30 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 			return nil
 		}
 	}
+}
+
+const helmReleasePrefix = "sh.helm.release.v1."
+
+var helmHistoryRE = regexp.MustCompile(`^sh\.helm\.release\.v1\.(.+)\.v\d+$`)
+
+// helmRelease names the release a Helm history Secret belongs to, from the
+// name Helm gives it (sh.helm.release.v1.web.v12 is release web). A Secret
+// of Helm's type named otherwise, or whose "name" label says another
+// release, is not Helm's own and is listed by its name (review of #33).
+func helmRelease(gvr schema.GroupVersionResource, obj map[string]any) (string, bool) {
+	if gvr.Group != "" || gvr.Resource != "secrets" || strOf(obj["type"]) != "helm.sh/release.v1" {
+		return "", false
+	}
+	md, _ := obj["metadata"].(map[string]any)
+	m := helmHistoryRE.FindStringSubmatch(strOf(md["name"]))
+	if m == nil {
+		return "", false
+	}
+	labels, _ := md["labels"].(map[string]any)
+	if l := strOf(labels["name"]); l != "" && l != m[1] {
+		return "", false
+	}
+	return m[1], true
 }
 
 func resourceID(gvr schema.GroupVersionResource) string {

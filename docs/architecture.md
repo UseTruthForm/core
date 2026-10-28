@@ -348,10 +348,12 @@ whose read handlers fail.
 
 - restore beyond the 17 types the drill uses (the full capture proves
   reading, not recreating);
-- IAM (the sandbox user can list roles but not read them);
+- IAM beyond a role and a customer managed policy (the drill restores
+  those since 2026-10-24);
 - cross-account restore;
-- the Lambda and Secrets Manager write-only paths, which are proven only in
-  the fake.
+- the Secrets Manager write-only path, which is proven only in the fake
+  (Lambda's, the function's code given with `--values`, passed the real
+  drill on 2026-10-26).
 
 **Restoring into another region.** A snapshot records its region
 (`serverVersion: cloudcontrol/us-east-2`). Restored or diffed in another

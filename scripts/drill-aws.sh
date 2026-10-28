@@ -216,7 +216,8 @@ seed() {
     printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}' > "$OUT/fn-trust.json"
     fnrole=$(aws iam create-role --role-name "$N-fn" --assume-role-policy-document "file://$OUT/fn-trust.json" --description "StackDNA drill" --query Role.Arn --output text)
     jobs_url=$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)
-    python - "$OUT/fn.zip" <<'PY'
+    # python3 first: Linux and macOS often have no "python".
+    "$(command -v python3 || command -v python)" - "$OUT/fn.zip" <<'PY'
 import sys, zipfile
 with zipfile.ZipFile(sys.argv[1], "w") as z:
     z.writestr("index.py", "def handler(event, context):\n    return {'ok': True}\n")

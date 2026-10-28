@@ -32,11 +32,11 @@ jobs:
     env:
       STACKDNA_REQUIRE_KUBE_ASSETS: "1" # a missing API server fails CI instead of skipping
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/stackdna/envtest
           key: envtest-1.37.0
@@ -64,8 +64,8 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - uses: helm/kind-action@v1

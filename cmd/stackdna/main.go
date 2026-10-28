@@ -19,6 +19,9 @@ import (
 	"sort"
 	"strings"
 
+	"sigs.k8s.io/yaml"
+
+	"github.com/stackdna/core/internal/azarm"
 	"github.com/stackdna/core/internal/kube"
 	"github.com/stackdna/core/internal/snapshot"
 )
@@ -231,6 +234,7 @@ func restore(ctx context.Context, args []string) int {
 	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
 	update := fs.Bool("update", false, "aws, azure, gcp, github, cloudflare: also bring existing resources that differ in line with the snapshot (never replaces one); without it, restore only creates what is missing. Kubernetes restore always applies (server-side apply)")
 	values := fs.String("values", "", "aws, azure: YAML file of values the cloud never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the cloud, never written")
+	rename := fs.String("rename", "", renameHelp)
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
@@ -256,12 +260,16 @@ func restore(ctx context.Context, args []string) int {
 	if err := samePlatform(snap, *platform); err != nil {
 		return fail(err)
 	}
+	names, snap, err := renamed(*rename, *platform, snap)
+	if err != nil {
+		return fail(err)
+	}
 	switch *platform {
 	case "aws":
 		return restoreAWS(ctx, &aws, snap, *values, *update)
 	case "azure":
 		az.from(&aws, "")
-		return restoreAzure(ctx, &az, snap, *values, *update)
+		return restoreAzure(ctx, &az, snap, *values, *update, names)
 	case "gcp":
 		g.from(&aws, "")
 		return restoreGCP(ctx, &g, snap, *update)
@@ -305,6 +313,7 @@ func diff(ctx context.Context, args []string) int {
 	baseline := fs.String("baseline", "", "the baseline the snapshot was captured with, if any")
 	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
 	config := fs.String("config", "", "environment file; diffs every target against --from/<target>")
+	rename := fs.String("rename", "", renameHelp)
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
@@ -320,6 +329,9 @@ func diff(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	if *config != "" && *from != "" {
+		if *rename != "" {
+			return fail(fmt.Errorf("diff: --rename is for a diff against one target, not --config"))
+		}
 		return diffEnvironment(ctx, *config, *from)
 	}
 	if *from == "" || (*kctx == "" && *platform == "kubernetes") {
@@ -331,6 +343,10 @@ func diff(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	if err := samePlatform(want, *platform); err != nil {
+		return fail(err)
+	}
+	_, want, err = renamed(*rename, *platform, want)
+	if err != nil {
 		return fail(err)
 	}
 	switch *platform {
@@ -533,4 +549,33 @@ func fail(err error) int {
 func parseFlags(fs *flag.FlagSet, args []string) error {
 	fs.SetOutput(os.Stderr)
 	return fs.Parse(args)
+}
+
+const renameHelp = "azure: YAML file of new names for resources whose names are unique across Azure (storage accounts, key vaults, registries), 'Type/name: newname'; renames each one in every group that has it, its children and every reference to it, for a restore into another subscription while the source exists (give diff the same file)"
+
+// renamed applies --rename to a snapshot. Only Azure has it; elsewhere it
+// is refused, never ignored.
+func renamed(file, platform string, s snapshot.Snapshot) (map[string]string, snapshot.Snapshot, error) {
+	if file == "" {
+		return nil, s, nil
+	}
+	if platform != "azure" {
+		return nil, s, fmt.Errorf("--rename is for --platform azure only")
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return nil, s, err
+	}
+	var names map[string]string
+	if err := yaml.Unmarshal(b, &names); err != nil {
+		return nil, s, fmt.Errorf("%s: %w", file, err)
+	}
+	out, warnings, err := azarm.Rename(s, names)
+	if err != nil {
+		return nil, s, fmt.Errorf("%s: %w", file, err)
+	}
+	for _, w := range warnings {
+		fmt.Fprintln(os.Stderr, "rename:", w)
+	}
+	return names, out, nil
 }

@@ -325,3 +325,23 @@ func TestReportListsPlainCredentials(t *testing.T) {
 		t.Errorf("report:\n%s", txt)
 	}
 }
+
+// --rename is Azure's: on another platform it is refused, not ignored.
+func TestRenameIsAzureOnly(t *testing.T) {
+	f := writeFile(t, t.TempDir(), "names.yaml", "Microsoft.Storage/storageAccounts/a: b\n")
+	if _, _, err := renamed(f, "aws", snapshot.Snapshot{}); err == nil || !strings.Contains(err.Error(), "azure only") {
+		t.Errorf("aws: %v", err)
+	}
+	if _, _, err := renamed(f, "azure", snapshot.Snapshot{}); err == nil || !strings.Contains(err.Error(), "not in the snapshot") {
+		t.Errorf("azure with a name not in the snapshot: %v", err)
+	}
+	r, w, _ := os.Pipe()
+	stderr := os.Stderr
+	os.Stderr = w
+	code := diff(context.Background(), []string{"--config", "env.yaml", "--from", "snap", "--rename", f})
+	os.Stderr = stderr
+	w.Close()
+	if out, _ := io.ReadAll(r); code == 0 || !strings.Contains(string(out), "not --config") {
+		t.Errorf("diff --config with --rename: %d %s", code, out)
+	}
+}

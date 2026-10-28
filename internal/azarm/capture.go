@@ -137,6 +137,19 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 	}
 
 	v := versions{api: api, reg: reg, ctx: ctx, cache: map[string]map[string][]string{}}
+	// A resource group another resource manages (an AKS cluster's node
+	// group) is skipped, and so is everything in it. Only the group carries
+	// managedBy: in a real subscription the cluster's node scale set and
+	// each node VM in it were captured, and restoring them would fight the
+	// cluster that creates and replaces them.
+	managedGroups := map[string]string{}
+	for _, g := range groups {
+		if g.ManagedBy != "" {
+			if rid, err := ParseID(g.ID); err == nil {
+				managedGroups[strings.ToLower(rid.Name)] = g.ManagedBy
+			}
+		}
+	}
 	var todo []Ref
 	for _, r := range append(groups, resources...) {
 		rid, err := ParseID(r.ID)
@@ -149,6 +162,10 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 		if r.ManagedBy != "" && !p.CaptureManaged {
 			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, "managed by "+r.ManagedBy+", which recreates it")
+			continue
+		}
+		if by := managedGroups[strings.ToLower(rid.ResourceGroup)]; by != "" && !strings.EqualFold(rid.Type, groupType) && !p.CaptureManaged {
+			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, "in a resource group managed by "+by+", which recreates it")
 			continue
 		}
 		todo = append(todo, r)
@@ -205,6 +222,13 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			c.Skipped[f.reason]++
 		case f.reason != "":
 			skip(f.typ, f.name, f.reason)
+		// An extension on a resource in a managed group (a lock on one of an
+		// AKS cluster's public IPs) goes with that resource: the manager
+		// creates its own, under new names. One on the group itself (a role
+		// assignment someone granted there) is kept: the group is recreated
+		// under the same name.
+		case f.c.rid.Scope != "" && managedGroups[strings.ToLower(f.c.rid.ResourceGroup)] != "" && !p.CaptureManaged:
+			skip(f.typ, f.name, "on a resource in a resource group managed by "+managedGroups[strings.ToLower(f.c.rid.ResourceGroup)]+", which recreates it")
 		default:
 			caps = append(caps, f.c)
 		}

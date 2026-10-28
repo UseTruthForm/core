@@ -151,6 +151,13 @@ func seedShop(t *testing.T, f *Fake) {
 	// A group another resource manages (an AKS node group): skipped.
 	mc := put(t, f, "", groupType, "MC_shop_aks_eastus", map[string]any{"location": "eastus"})
 	f.ManagedBy[strings.ToLower(mc)] = "/subscriptions/" + f.sub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks"
+	// ...and what is in it, though only the group carries managedBy, as on
+	// AKS: its node scale sets and their VMs were captured from a real
+	// subscription.
+	nodeNSG := put(t, f, "MC_shop_aks_eastus", "Microsoft.Network/networkSecurityGroups", "aks-agentpool-nsg", map[string]any{"location": "eastus"})
+	// A lock on a resource in it goes with that resource.
+	rawPut(t, f, nodeNSG+"/providers/Microsoft.Authorization/locks/nsg-lock", "Microsoft.Authorization/locks", map[string]any{
+		"properties": map[string]any{"level": "CanNotDelete"}})
 }
 
 var shopKeys = []string{
@@ -279,6 +286,8 @@ func TestSnapshotOnDisk(t *testing.T) {
 	}
 	for _, want := range []string{
 		"MC_shop_aks_eastus/MC_shop_aks_eastus: managed by /subscriptions/" + srcSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks",
+		"MC_shop_aks_eastus/aks-agentpool-nsg: in a resource group managed by /subscriptions/" + srcSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks",
+		"providers/Microsoft.Network/networkSecurityGroups/aks-agentpool-nsg/providers/Microsoft.Authorization/locks/nsg-lock: on a resource in a resource group managed by /subscriptions/" + srcSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks",
 		"NetworkWatcherRG/NetworkWatcherRG: identical to the baseline snapshot (already there",
 	} {
 		if !reasons[want] {

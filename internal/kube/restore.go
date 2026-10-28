@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery/cached/memory"
@@ -92,6 +93,15 @@ func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapsho
 		}
 	}
 
+	// A credential set as a plain env value is withheld like a Secret's: a
+	// workload restored with it empty would look restored and fail at run
+	// time, so it is refused without a source to read the value from.
+	envNames := withheldEnv(body)
+	if len(envNames) > 0 && opt.SecretSource == nil {
+		res.Detail = "credentials set as plain env values were withheld from the snapshot (" + strings.Join(envNames, ", ") + "); supply them with --secrets-from-context, or move them into a Secret; nothing was applied"
+		return res
+	}
+
 	gv, err := schema.ParseGroupVersion(o.APIVersion())
 	if err != nil {
 		res.Detail = err.Error()
@@ -101,6 +111,12 @@ func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapsho
 	if err != nil {
 		res.Detail = "the target cluster does not serve " + o.APIVersion() + " " + o.Kind() + ": " + err.Error()
 		return res
+	}
+	if len(envNames) > 0 {
+		if err := fillEnv(ctx, opt.SecretSource, mapping, body, envNames); err != nil {
+			res.Detail = "could not read withheld env values from the source cluster: " + err.Error()
+			return res
+		}
 	}
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -138,6 +154,56 @@ func withheldKeys(body map[string]any) []string {
 		delete(md, "annotations")
 	}
 	return strings.Split(v, ",")
+}
+
+func withheldEnv(body map[string]any) []string {
+	md, _ := body["metadata"].(map[string]any)
+	ann, _ := md["annotations"].(map[string]any)
+	v := strOf(ann[WithheldEnvAnnotation])
+	if v == "" {
+		return nil
+	}
+	delete(ann, WithheldEnvAnnotation)
+	if len(ann) == 0 {
+		delete(md, "annotations")
+	}
+	return strings.Split(v, ",")
+}
+
+// fillEnv copies each withheld env value from the same object in the source
+// cluster. The values go from one API to the other and are never written.
+func fillEnv(ctx context.Context, src *Clients, mapping *meta.RESTMapping, body map[string]any, names []string) error {
+	md, _ := body["metadata"].(map[string]any)
+	ri := src.Dynamic.Resource(mapping.Resource)
+	var live *unstructured.Unstructured
+	var err error
+	if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+		live, err = ri.Namespace(strOf(md["namespace"])).Get(ctx, strOf(md["name"]), metav1.GetOptions{})
+	} else {
+		live, err = ri.Get(ctx, strOf(md["name"]), metav1.GetOptions{})
+	}
+	if err != nil {
+		return err
+	}
+	values := map[string]string{}
+	eachEnv(live.Object, func(container string, e map[string]any) {
+		if v, ok := e["value"].(string); ok {
+			values[container+"/"+strOf(e["name"])] = v
+		}
+	})
+	want := map[string]bool{}
+	for _, n := range names {
+		if _, ok := values[n]; !ok {
+			return fmt.Errorf("the source has no value for %s", n)
+		}
+		want[n] = true
+	}
+	eachEnv(body, func(container string, e map[string]any) {
+		if k := container + "/" + strOf(e["name"]); want[k] {
+			e["value"] = values[k]
+		}
+	})
+	return nil
 }
 
 func fillSecret(ctx context.Context, src *Clients, body map[string]any, keys []string) error {

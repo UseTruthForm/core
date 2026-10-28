@@ -239,3 +239,65 @@ func TestPlatformManagerOnWindowsAndDerivedAPIObjects(t *testing.T) {
 		t.Fatal("IPAddress records must be excluded as derived from Services")
 	}
 }
+
+// A credential written as a literal env value is withheld like a Secret's
+// value, wherever the pod template is; a name that only mentions one (an
+// ID, a URL, a setting), a secretKeyRef and a reference to another
+// variable are left as they are.
+func TestCredentialEnvIsWithheld(t *testing.T) {
+	env := func(pairs ...string) []any {
+		var out []any
+		for i := 0; i+1 < len(pairs); i += 2 {
+			out = append(out, map[string]any{"name": pairs[i], "value": pairs[i+1]})
+		}
+		return out
+	}
+	dep := k8sObj("Deployment", "shop", "api", nil, map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+		"containers": []any{map[string]any{"name": "api", "env": append(env(
+			"PAYMENT_API_KEY", "k-1", "DB_PASSWORD", "p-1", "GITHUB_TOKEN", "t-1", "CLIENT_SECRET", "s-1", "AUTH_KEY", "a-1",
+			"VAULT_SECRET_ID", "item-1", "VAULT_SECRET_ID_2", "item-2", "PARTNER_API_KEY_2", "k-2", "TOKEN_URL", "https://x", "API_KEY_NAME", "n", "LOG_LEVEL", "info", "KEYS_ENABLED", "true",
+			"SIGNING_KEY", "$(OTHER)", "EMPTY_SECRET", ""),
+			map[string]any{"name": "REF_PASSWORD", "valueFrom": map[string]any{"secretKeyRef": map[string]any{"name": "db", "key": "password"}}})}},
+		"initContainers": []any{map[string]any{"name": "migrate", "env": env("DB_PASSWORD", "p-2")}},
+	}}}})
+	normalize("apps", "deployments", dep)
+	ann := dep["metadata"].(map[string]any)["annotations"].(map[string]any)
+	want := "api/AUTH_KEY,api/CLIENT_SECRET,api/DB_PASSWORD,api/GITHUB_TOKEN,api/PARTNER_API_KEY_2,api/PAYMENT_API_KEY,migrate/DB_PASSWORD"
+	if ann[WithheldEnvAnnotation] != want {
+		t.Errorf("withheld %v\nwant     %v", ann[WithheldEnvAnnotation], want)
+	}
+	kept := map[string]string{"VAULT_SECRET_ID": "item-1", "VAULT_SECRET_ID_2": "item-2", "TOKEN_URL": "https://x", "API_KEY_NAME": "n", "LOG_LEVEL": "info", "KEYS_ENABLED": "true", "SIGNING_KEY": "$(OTHER)"}
+	for _, e := range dep["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)["env"].([]any) {
+		m := e.(map[string]any)
+		n, v := m["name"].(string), m["value"]
+		switch {
+		case kept[n] != "" && v != kept[n]:
+			t.Errorf("%s changed to %v", n, v)
+		case strings.HasSuffix(want, "api/"+n) || strings.Contains(want, "api/"+n+","):
+			if v != "" {
+				t.Errorf("%s survived", n)
+			}
+		case n == "REF_PASSWORD" && m["valueFrom"] == nil:
+			t.Error("a secretKeyRef was dropped")
+		}
+	}
+	// A CronJob's pod template is two levels further down.
+	cj := k8sObj("CronJob", "shop", "nightly", nil, map[string]any{"spec": map[string]any{"jobTemplate": map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+		"containers": []any{map[string]any{"name": "job", "env": env("SFTP_PASSWORD", "p-3")}}}}}}}})
+	normalize("batch", "cronjobs", cj)
+	if got := cj["metadata"].(map[string]any)["annotations"].(map[string]any)[WithheldEnvAnnotation]; got != "job/SFTP_PASSWORD" {
+		t.Errorf("cronjob withheld %v", got)
+	}
+}
+
+// Restoring a workload whose credentials were withheld, with no source to
+// read them from, is refused: restored empty it would look done and fail
+// at run time.
+func TestRestoreRefusesWithheldEnvWithoutSource(t *testing.T) {
+	dep := k8sObj("Deployment", "shop", "api", map[string]any{"annotations": map[string]any{WithheldEnvAnnotation: "api/PAYMENT_API_KEY"}}, nil)
+	dep["apiVersion"] = "apps/v1"
+	res := applyOne(context.Background(), nil, nil, snapshot.Object{Body: dep}, RestoreOptions{})
+	if res.OK || !strings.Contains(res.Detail, "api/PAYMENT_API_KEY") || !strings.Contains(res.Detail, "--secrets-from-context") {
+		t.Fatalf("want a refusal naming the withheld variable, got %+v", res)
+	}
+}

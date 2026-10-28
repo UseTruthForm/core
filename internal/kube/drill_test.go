@@ -3,6 +3,7 @@ package kube_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -73,6 +74,31 @@ func TestDrillOnAPIServer(t *testing.T) {
 			"v1|ServiceAccount|shop|shop-api",
 		},
 	})
+
+	// The credential the workload sets as a plain env value was withheld
+	// from the snapshot and must have arrived from the source, not empty:
+	// a diff cannot show it, since both sides of a diff withhold it.
+	for _, o := range snap.Objects {
+		if o.Kind() == "Deployment" && strings.Contains(fmtJSON(o.Body), "drill-literal-key-0001") {
+			t.Fatal("the credential's value is in the snapshot")
+		}
+	}
+	got, err := dstC.Dynamic.Resource(schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}).Namespace("shop").Get(context.Background(), "shop-api", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	envs, _, _ := unstructured.NestedSlice(got.Object, "spec", "template", "spec", "containers")
+	var key string
+	for _, c := range envs {
+		for _, e := range c.(map[string]any)["env"].([]any) {
+			if m := e.(map[string]any); m["name"] == "PAYMENT_API_KEY" {
+				key, _ = m["value"].(string)
+			}
+		}
+	}
+	if key != "drill-literal-key-0001" {
+		t.Errorf("restored PAYMENT_API_KEY is %q, want the source's value", key)
+	}
 
 	// The guard: a read-only client restoring into the target must have
 	// every write refused before it is sent, and change nothing.
@@ -171,4 +197,9 @@ func stripComments(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func fmtJSON(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }

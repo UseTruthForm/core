@@ -70,7 +70,12 @@ What a snapshot does not hold, by design:
 - **secret values**: passwords, keys, a webhook's secret, and a webhook
   URL that is itself a credential (Slack, Discord, Teams, a `?token=` or
   `user:pass@` URL; such a hook is named by its host and a hash). They are
-  named in the snapshot and given at restore with `--values`;
+  named in the snapshot and given at restore with `--values`. A
+  credential written straight into a Kubernetes workload, an environment
+  variable named like one (`*_PASSWORD`, `*_TOKEN`, `*_SECRET`, `API_KEY`,
+  `*_KEY`) with a literal value, is withheld the same way, named in the
+  snapshot, and listed in REPORT.md as a finding: move it into a Secret.
+  A restore reads it from the source with `--secrets-from-context`;
 - **what the platform made itself**: default VPCs and their subnets,
   built-in roles, AWS-managed policies. Use `--baseline` with a capture of
   a fresh account to skip anything identical to it.

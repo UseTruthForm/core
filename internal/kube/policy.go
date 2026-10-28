@@ -3,6 +3,8 @@ package kube
 import (
 	"encoding/json"
 	"reflect"
+	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -14,6 +16,39 @@ import (
 // freely than a cluster, so secret values never go into it; restore has to be
 // given them from somewhere else (a vault, or the live source cluster).
 const WithheldAnnotation = "stackdna.org/withheld-keys"
+
+// WithheldEnvAnnotation lists, as container/NAME, the environment variables
+// of a workload whose literal values StackDNA did not write to the snapshot
+// because their names say they are credentials. A key written straight into
+// a Deployment is not a Secret, so it was captured as plain configuration
+// (a real cluster had an API key in a Deployment's env, from its Helm
+// values); it is withheld like a Secret's value, and named so the report can
+// say where to move it.
+const WithheldEnvAnnotation = "stackdna.org/withheld-env"
+
+// credentialEnvRE matches environment variable names that say the value is
+// a credential: PASSWORD, *_SECRET, *_TOKEN, API_KEY, AUTH_KEY, *_KEY,
+// CONNECTION_STRING and the like.
+var credentialEnvRE = regexp.MustCompile(`(?i)(^|_)(pass(word|wd)?|pwd|secret|token|api_?key|auth_?key|access_?key|private_?key|client_?secret|key|credentials?|conn(ection)?_?str(ing)?|sas)(_|$)`)
+
+// notCredentialEnvRE are names that mention a credential without holding
+// one: where it is (*_URL, *_PATH, *_FILE), what it is called (*_NAME,
+// *_ID: a vault item's ID is how a workload asks for a secret, not the
+// secret), or a setting about it (*_ENABLED, *_TTL).
+var notCredentialEnvRE = regexp.MustCompile(`(?i)_(id|ids|name|names|url|uri|endpoint|host|port|path|file|dir|ref|type|enabled|disabled|ttl|expiry|expires|header|issuer|audience|scope|scopes|version)$`)
+
+// envRefRE is a value that is only a reference to another variable.
+var envRefRE = regexp.MustCompile(`^\$\([A-Za-z_][A-Za-z0-9_]*\)$`)
+
+// numberedRE is a trailing index: SECRET_ID_1 is read as SECRET_ID. In a
+// real cluster, two vault item IDs named *_SECRET_ID_1 and _2 were
+// withheld as if they were secrets.
+var numberedRE = regexp.MustCompile(`_\d+$`)
+
+func credentialEnv(name, value string) bool {
+	base := numberedRE.ReplaceAllString(name, "")
+	return value != "" && credentialEnvRE.MatchString(base) && !notCredentialEnvRE.MatchString(base) && !envRefRE.MatchString(value)
+}
 
 // excludedTypes are resource types a recreation never needs. Each one is
 // either derived from other objects, describes the machine or the moment
@@ -284,7 +319,63 @@ func normalize(group, resource string, obj map[string]any) []string {
 	case "/secrets":
 		return withhold(obj)
 	}
+	withholdEnv(obj)
 	return nil
+}
+
+// withholdEnv replaces the literal value of every credential-named
+// environment variable, in every container of every pod template in obj
+// (a Deployment, a CronJob's job template, a KEDA ScaledJob), with "", and
+// records container/NAME in WithheldEnvAnnotation.
+func withholdEnv(obj map[string]any) []string {
+	var names []string
+	eachEnv(obj, func(container string, e map[string]any) {
+		v, ok := e["value"].(string)
+		if !ok || !credentialEnv(strOf(e["name"]), v) {
+			return
+		}
+		e["value"] = ""
+		names = append(names, container+"/"+strOf(e["name"]))
+	})
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+	names = slices.Compact(names)
+	md, _ := obj["metadata"].(map[string]any)
+	ann, _ := md["annotations"].(map[string]any)
+	if ann == nil {
+		ann = map[string]any{}
+		md["annotations"] = ann
+	}
+	ann[WithheldEnvAnnotation] = strings.Join(names, ",")
+	return names
+}
+
+// eachEnv calls fn for every env entry of every container (and init and
+// ephemeral container) anywhere in v.
+func eachEnv(v any, fn func(container string, e map[string]any)) {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, c := range x {
+			if k == "containers" || k == "initContainers" || k == "ephemeralContainers" {
+				for _, item := range list(c) {
+					ct, _ := item.(map[string]any)
+					for _, ev := range list(ct["env"]) {
+						if e, ok := ev.(map[string]any); ok {
+							fn(strOf(ct["name"]), e)
+						}
+					}
+				}
+				continue
+			}
+			eachEnv(c, fn)
+		}
+	case []any:
+		for _, c := range x {
+			eachEnv(c, fn)
+		}
+	}
 }
 
 // withhold replaces every secret value with "" and records the key names.

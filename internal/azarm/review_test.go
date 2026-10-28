@@ -433,3 +433,33 @@ func TestExtensionOnAManagedGroupWaitsForItsManager(t *testing.T) {
 		t.Errorf("deps %v: want %s", d, want)
 	}
 }
+
+// Who created or changed a resource is not something a reference can
+// point at. A role assignment for a person kept their object ID, where it
+// was rewritten as the createdBy of another assignment someone (that same
+// person) had made: restored, it would have gone to whoever ran the
+// restore.
+func TestAuditFieldsOwnNoPrincipal(t *testing.T) {
+	reg := fixtures(t)
+	s := schema(t, reg, "Microsoft.Authorization/roleAssignments")
+	api := NewWorld(reg).Subscription("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-0000000000aa")
+	person := "22223333-4444-4555-8666-777788889999"
+	mk := func(name, principal string) *captured {
+		id := "/subscriptions/00000000-0000-0000-0000-000000000001/providers/Microsoft.Authorization/roleAssignments/" + name
+		rid, _ := ParseID(id)
+		return process(api, "00000000-0000-0000-0000-0000000000aa", rid, s.Version, s, map[string]any{"id": id, "name": name,
+			"properties": map[string]any{"principalId": principal, "principalType": "User", "roleDefinitionId": "/providers/Microsoft.Authorization/roleDefinitions/r",
+				"createdBy": person, "updatedBy": person, "createdOn": "2026-10-21T08:15:00Z"}})
+	}
+	made := mk("a1", "7a2d3c4b-5e6f-4a1b-8c9d-0e1f2a3b4c5d")
+	mine := mk("a2", person)
+	for _, k := range []string{"properties.createdBy", "properties.updatedBy"} {
+		if _, ok := made.status[k]; ok {
+			t.Errorf("status kept %s", k)
+		}
+	}
+	principalRefs([]*captured{made, mine})
+	if got := mine.spec["properties"].(map[string]any)["principalId"]; got != person {
+		t.Errorf("a person's principalId became %v", got)
+	}
+}

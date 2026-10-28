@@ -400,7 +400,7 @@ func process(api ARM, tenant string, rid ResourceID, ver string, s *Schema, body
 	spec = tokenize(spec, api.Subscription(), tenant)
 	status := map[string]any{"id": tokenizeString(rid.String(), api.Subscription(), tenant)}
 	for k, x := range sp.readOnly {
-		if observed(x) {
+		if observed(x) || audit(k) {
 			continue
 		}
 		if str, ok := x.(string); ok {

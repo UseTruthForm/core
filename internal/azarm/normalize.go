@@ -193,6 +193,16 @@ func (s *Schema) settings(m map[string]any, t int) int {
 	return n
 }
 
+// auditRE names who created or last changed a resource (a role
+// assignment's createdBy and updatedBy). That is an observation, like when,
+// not something a reference can point at: kept in status, it owned the
+// object IDs of the people it names, so a role assignment for one of them
+// was rewritten as "whoever created that other assignment", which on a
+// restore is whoever runs the restore.
+var auditRE = regexp.MustCompile(`(?i)(^|\.)(createdBy|updatedBy|lastModifiedBy|modifiedBy|createdByType|lastModifiedByType|updatedByType)$`)
+
+func audit(path string) bool { return auditRE.MatchString(path) }
+
 func isEmptyObject(v any) bool {
 	m, ok := v.(map[string]any)
 	return ok && len(m) == 0

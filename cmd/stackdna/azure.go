@@ -133,7 +133,7 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 
 // restoreAzure reads secrets from a file the operator controls; they go to
 // Azure and nowhere else.
-func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, valuesFile string, update bool) int {
+func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, valuesFile string, update bool, names map[string]string) int {
 	ad, err := a.connect(captureOnly)
 	if err != nil {
 		return fail(err)
@@ -148,6 +148,8 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 			return fail(fmt.Errorf("%s: %w", valuesFile, err))
 		}
 	}
+	// The values file is written with the snapshot's names.
+	ad.Options.Values = azarm.RenameValues(ad.Options.Values, names)
 	results := ad.Restore(ctx, snap)
 	if jsonOut {
 		defer emitRestore(results, "azure "+a.subscription)

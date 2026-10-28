@@ -47,6 +47,11 @@ var ErrNotApplicable = errors.New("not applicable to this resource")
 // preview versions work there (sandbox, 2026-10-22).
 var ErrAPIVersion = errors.New("API version not accepted here")
 
+// ErrNeedsKind means a collection is listed only one kind at a time: a Log
+// Analytics workspace's data sources answer 400 KindNotSpecified to a list
+// without $filter=kind eq '…'.
+var ErrNeedsKind = errors.New("listed only by kind")
+
 // ResourceID is a parsed ARM resource ID.
 type ResourceID struct {
 	// ResourceGroup is "" for a resource at subscription scope (a role

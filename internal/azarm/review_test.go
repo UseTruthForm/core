@@ -3,9 +3,18 @@ package azarm
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 
 	"github.com/stackdna/core/internal/snapshot"
 )
@@ -100,6 +109,11 @@ func TestClassifyARM(t *testing.T) {
 		want   error
 	}{
 		{http.StatusBadRequest, "ResourceTypeNotSupported", ErrNotApplicable},
+		{http.StatusBadRequest, "FeatureDisabledOnSelectedEdition", ErrNotApplicable},
+		{http.StatusBadRequest, "BMSUserErrorFeatureNotAvailable", ErrNotApplicable},
+		{http.StatusBadRequest, "KindNotSpecified", nil},
+		{http.StatusNotImplemented, "DataSourceNotImplemented", ErrNotApplicable},
+		{http.StatusNotImplemented, "", nil},
 		{http.StatusMethodNotAllowed, "", ErrNotApplicable},
 		{http.StatusNotFound, "ResourceNotFound", ErrNotFound},
 		{http.StatusNotFound, "", ErrNotFound},
@@ -112,6 +126,185 @@ func TestClassifyARM(t *testing.T) {
 		}
 	}
 }
+
+// A refusal is one line, with no per-request ID in it: it is written into
+// coverage, and an ID made two captures of an unchanged subscription
+// differ. The SDK's error stays reachable underneath.
+func TestARMErrorIsOneStableLine(t *testing.T) {
+	msg := func(m string) string { return `{"error":{"code":"SomeCode","message":` + strconv.Quote(m) + `}}` }
+	for _, c := range []struct{ body, code, want string }{
+		{msg("Must specify a valid kind filter. Operation Id: 'a93efd0df1b36819d71b12b24e5b56b4'"), "SomeCode", "400 Bad Request SomeCode: Must specify a valid kind filter."},
+		{msg("The feature is not available here. (Request ID: 0f8fad5b-d9cb-469f-a165-70867728950e)"), "SomeCode", "400 Bad Request SomeCode: The feature is not available here."},
+		{msg("Something failed. Tracking ID: 6d1f9a0e-1b2c-4d5e-8f90-123456789abc Timestamp: 2026-10-21T08:15:00Z"), "SomeCode", "400 Bad Request SomeCode: Something failed."},
+		// Azure also writes the time with a space, and a Trace ID (review of #32).
+		{msg("Failed. Correlation ID: 6d1f9a0e-1b2c-4d5e-8f90-123456789abc Trace ID: 0f8fad5b-d9cb-469f-a165-70867728950e Timestamp: 2026-10-27 10:00:00Z"), "SomeCode", "400 Bad Request SomeCode: Failed."},
+		// Words that only look like a label keep their content.
+		{msg("Workload group 'request id deadbeefcafe' not supported"), "SomeCode", "400 Bad Request SomeCode: Workload group 'request id deadbeefcafe' not supported"},
+		{msg("The request id abcdef12 is used."), "SomeCode", "400 Bad Request SomeCode: The request id abcdef12 is used."},
+		// One line, whatever the message holds; a page that is not JSON
+		// keeps its start; no code, no stray space.
+		{msg("First line.\n  Second line."), "SomeCode", "400 Bad Request SomeCode: First line. Second line."},
+		{"<html><body>Bad gateway</body></html>", "", "400 Bad Request: <html><body>Bad gateway</body></html>"},
+	} {
+		resp := &http.Response{StatusCode: http.StatusBadRequest, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(c.body)), Request: httptest.NewRequest(http.MethodGet, "https://management.example/x?api-version=1", nil)}
+		sdkErr := runtime.NewResponseError(resp)
+		e := &armError{url: "https://management.example/x?api-version=1", status: resp.StatusCode, code: c.code, msg: armMessage(resp), err: sdkErr}
+		if want := "GET https://management.example/x?api-version=1: " + c.want; e.Error() != want {
+			t.Errorf("got  %q\nwant %q", e.Error(), want)
+		}
+		var re *azcore.ResponseError
+		if !errors.As(fmt.Errorf("wrapped: %w", e), &re) {
+			t.Errorf("SDK error not reachable under %q", e)
+		}
+	}
+}
+
+// A resource that is both a root and another root's child has its children
+// listed once: listed twice, each failure among them was reported twice.
+func TestChildrenOfARootAreListedOnce(t *testing.T) {
+	e := newEnv(t)
+	e.src.AlsoTracked = map[string]bool{"Microsoft.Storage/storageAccounts/blobServices": true}
+	e.src.RefuseVersion = func(path, _ string) bool { return strings.HasSuffix(strings.ToLower(path), "/containers") }
+	snap, err := e.adapter(e.src).Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, s := range snap.Skips {
+		if strings.HasSuffix(s.Resource, "/containers") && strings.HasPrefix(s.Reason, Unreadable) {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("the refused container list was reported %d times, want 1: %+v", n, snap.Skips)
+	}
+}
+
+// A workspace's data sources answer only a list filtered by kind. Each kind
+// the definition names is listed, so they are captured, not reported as a
+// failed collection.
+func TestDataSourcesAreListedByKind(t *testing.T) {
+	ds := schema(t, fixtures(t), "Microsoft.OperationalInsights/workspaces/dataSources")
+	kinds := ds.kinds()
+	if !contains(kinds, "WindowsEvent") || !contains(kinds, "LinuxSyslog") || contains(kinds, "") {
+		t.Fatalf("kinds %v", kinds)
+	}
+	e := newEnv(t)
+	e.src.ByKind = map[string]bool{"datasources": true}
+	put(t, e.src, "shop-rg", "Microsoft.OperationalInsights/workspaces", "shop-logs", map[string]any{"location": "eastus", "properties": map[string]any{"retentionInDays": 30.0}})
+	ws := id(srcSub, "shop-rg", "Microsoft.OperationalInsights/workspaces", "shop-logs")
+	for name, body := range map[string]map[string]any{
+		"app-events": {"kind": "WindowsEvent", "properties": map[string]any{"eventLogName": "Application"}},
+		"syslog":     {"kind": "LinuxSyslog", "properties": map[string]any{"syslogName": "auth"}},
+	} {
+		if _, err := e.src.Put(context.Background(), ws+"/dataSources/"+name, stable(e.reg, "Microsoft.OperationalInsights/workspaces/dataSources"), body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snap, err := e.adapter(e.src).Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, o := range snap.Objects {
+		if strings.EqualFold(o.Kind(), "Microsoft.OperationalInsights/workspaces/dataSources") {
+			got = append(got, o.Name())
+		}
+	}
+	sort.Strings(got)
+	if want := []string{"shop-logs/app-events", "shop-logs/syslog"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("data sources captured %v, want %v", got, want)
+	}
+	for _, s := range snap.Skips {
+		if strings.HasPrefix(s.Reason, Unreadable) {
+			t.Errorf("failed: %s %s: %s", s.Resource, s.Name, s.Reason)
+		}
+	}
+}
+
+// byKindARM answers a list by kind as a real workspace does: some named
+// kinds are refused, one filter returns another kind's items, and one
+// kind's items get a new name on every read.
+type byKindARM struct {
+	ARM
+	items   map[string][]map[string]any
+	refuse  map[string]error
+	fresh   map[string]int    // filter -> how many items it makes up per read
+	freshAs map[string]string // filter -> the kind those items carry (another kind's, when aliased)
+	lagged  map[string]int    // filter -> the read (1-based) that leaves its first item out
+	reads   map[string]int
+}
+
+func (b byKindARM) List(_ context.Context, path, _ string) ([]map[string]any, error) {
+	_, query, _ := strings.Cut(path, "?")
+	q, _ := url.ParseQuery(query)
+	m := kindFilterRE.FindStringSubmatch(q.Get("$filter"))
+	if m == nil {
+		return nil, ErrNeedsKind
+	}
+	k := m[1]
+	if err := b.refuse[k]; err != nil {
+		return nil, err
+	}
+	b.reads[k]++
+	out := b.items[k]
+	if n := b.lagged[k]; n == b.reads[k] && len(out) > 0 {
+		out = out[1:]
+	}
+	as := k
+	if b.freshAs[k] != "" {
+		as = b.freshAs[k]
+	}
+	for i := range b.fresh[k] {
+		out = append(out, item(fmt.Sprintf("/x/dataSources/DataSource_%s_%d_%d", k, b.reads[k], i), as))
+	}
+	return out, nil
+}
+
+func TestListByKindKeepsOnlyWhatIsThereEveryRead(t *testing.T) {
+	reg := item("/x/dataSources/reg1", "ChangeTrackingDefaultRegistry")
+	api := byKindARM{
+		items: map[string][]map[string]any{
+			"ChangeTrackingDefaultRegistry": {reg},
+			"ChangeTrackingRegistry":        {reg}, // another kind's items
+			"WindowsEvent":                  {item("/x/dataSources/ev1", "WindowsEvent")},
+		},
+		refuse: map[string]error{
+			"ApplicationInsights": fmt.Errorf("x: %w", ErrNotApplicable), // 501 DataSourceNotImplemented
+			"Office365":           fmt.Errorf("x: %w", ErrNeedsKind),     // the filter itself refused
+		},
+		// The made-up items come back under the aliased filter too, still
+		// carrying their own kind: counted once, not twice (review of #34).
+		fresh:   map[string]int{"ChangeTrackingDefaultRegistry": 3, "ChangeTrackingRegistry": 3},
+		freshAs: map[string]string{"ChangeTrackingRegistry": "ChangeTrackingDefaultRegistry"},
+		// A real item a lagging second read leaves out is kept (review of #34).
+		lagged: map[string]int{"WindowsEvent": 2},
+		reads:  map[string]int{},
+	}
+	kinds := []string{"ApplicationInsights", "ChangeTrackingDefaultRegistry", "ChangeTrackingRegistry", "Office365", "WindowsEvent"}
+	got, generated, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || generated != 3 {
+		t.Errorf("items %v and %d generated, want reg1 and ev1 once each, and 3 generated", got, generated)
+	}
+	if api.reads["WindowsEvent"] != 3 || api.reads["ChangeTrackingDefaultRegistry"] != 3 {
+		t.Errorf("reads %v: a kind with anything missing is read three times", api.reads)
+	}
+	api.reads = map[string]int{}
+	api.lagged = nil
+	api.refuse["WindowsEvent"] = errors.New("500 InternalServerError")
+	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds); err == nil || !strings.Contains(err.Error(), "kind WindowsEvent") {
+		t.Errorf("a kind that fails must fail the collection, naming the kind: %v", err)
+	}
+	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", nil); !errors.Is(err, ErrNeedsKind) {
+		t.Errorf("no kinds named: %v", err)
+	}
+}
+
+func item(id, kind string) map[string]any { return map[string]any{"id": id, "kind": kind} }
 
 // A secret inside an array counts when the array is there.
 func TestSecretsInArrays(t *testing.T) {

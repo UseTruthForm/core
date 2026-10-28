@@ -39,6 +39,12 @@
   "Microsoft.Network/virtualNetworks@2025-07-01": {
    "$ref": "network/microsoft.network/2025-07-01/types.json#/613"
   },
+  "Microsoft.OperationalInsights/workspaces/dataSources@2025-07-01": {
+   "$ref": "operationalinsights/microsoft.operationalinsights/2025-07-01/types.json#/123"
+  },
+  "Microsoft.OperationalInsights/workspaces@2025-07-01": {
+   "$ref": "operationalinsights/microsoft.operationalinsights/2025-07-01/types.json#/84"
+  },
   "Microsoft.Resources/resourceGroups@2024-11-01": {
    "$ref": "resources_11/microsoft.resources/2024-11-01/types.json#/7"
   },

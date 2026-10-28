@@ -60,6 +60,7 @@ type entry struct {
 	BaseProperties       map[string]prop `json:"baseProperties"`
 	Elements             json.RawMessage `json:"elements"`
 	Sensitive            bool            `json:"sensitive"`
+	Value                string          `json:"value"` // a StringLiteralType's value
 }
 
 // Registry resolves "Microsoft.Network/virtualNetworks" at an API version to
@@ -225,6 +226,36 @@ func (s *Schema) object(i int, v map[string]any) (map[string]prop, *ref, bool) {
 		}
 	}
 	return nil, nil, false
+}
+
+// kinds lists the values the definition names for a resource's kind, for
+// a collection Azure lists one kind at a time. A union that also allows
+// any string means Azure may hold kinds not named here; those cannot be
+// listed.
+func (s *Schema) kinds() []string {
+	props, _, ok := s.object(s.body, nil)
+	if !ok {
+		return nil
+	}
+	p, ok := props["kind"]
+	if !ok {
+		return nil
+	}
+	var out []string
+	switch e := s.file[p.Type.index()]; e.Kind {
+	case "StringLiteralType":
+		out = append(out, e.Value)
+	case "UnionType":
+		var elems []ref
+		_ = json.Unmarshal(e.Elements, &elems)
+		for _, el := range elems {
+			if x := s.file[el.index()]; x.Kind == "StringLiteralType" {
+				out = append(out, x.Value)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // secret reports a property whose value Azure never returns: flagged

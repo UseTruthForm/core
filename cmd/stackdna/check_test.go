@@ -72,6 +72,29 @@ func TestCheckCountsEachSkipOnceAndRefusedItemsAsRefused(t *testing.T) {
 	}
 }
 
+// A throttled read is its own result: not denied, so no grant is widened
+// for it, and not failed, since running the capture again reads it.
+func TestCheckThrottledIsNeitherDeniedNorFailed(t *testing.T) {
+	rc := classify(snapshot.Snapshot{
+		Coverage: []snapshot.Coverage{
+			{Resource: "github/org/teams", NotCaptured: "list failed: HTTP 403: You have exceeded a secondary rate limit"},
+			{Resource: "compute.googleapis.com/Instance", NotCaptured: "list failed: HTTP 403: rateLimitExceeded"},
+			{Resource: "AWS::SQS::Queue", NotCaptured: "list failed: AccessDenied: not authorized to perform cloudformation:ListResources"},
+			{Resource: "Microsoft.ServiceBus/namespaces/queues", Skipped: map[string]int{unreadable: 1}},
+			{Resource: "Microsoft.Web/sites", Skipped: map[string]int{unreadable: 1}},
+		},
+		Skips: []snapshot.Skip{
+			{Resource: "Microsoft.ServiceBus/namespaces/queues", Name: "/x/queues", Reason: unreadable + ": GET /x: 429 Too Many Requests: GetEntityAsync failed"},
+			{Resource: "Microsoft.Web/sites", Name: "/x/sites", Reason: unreadable + ": GET /x: 500 Internal Server Error"},
+			// A name that says "throttling" does not make a denial one (review of #35).
+			{Resource: "Microsoft.Web/sites", Name: "/rg-throttling/sites", Reason: unreadable + ": GET https://management.azure.com/subscriptions/s/resourceGroups/rg-throttling/providers/Microsoft.Web/sites?api-version=1: 403 Forbidden AuthorizationFailed"},
+		},
+	})
+	if len(rc.Throttled) != 3 || len(rc.Denied) != 2 || len(rc.Failed) != 1 {
+		t.Errorf("throttled %v\ndenied %v\nfailed %v", rc.Throttled, rc.Denied, rc.Failed)
+	}
+}
+
 // A 401 is a credential that expired or is wrong, and GitHub's rate limit
 // is a 403: neither is a permission to grant (review of #23). A "not
 // found" or "not set up" a missing permission can also produce is listed
@@ -83,6 +106,15 @@ func TestCheckDeniedIsOnlyPermission(t *testing.T) {
 		"list failed: HTTP 401: Bad credentials":                        false,
 		"list failed: HTTP 403: API rate limit exceeded for user":       false,
 		"list failed: HTTP 4030 weird":                                  false,
+		// Azure's one-line refusal (azarm.armError) with a code the
+		// pattern does not know: the status text still says it (review
+		// of #32).
+		"listed but could not be read: GET https://management.azure.com/x?api-version=1: 403 Forbidden InsufficientPermissions": true,
+		"listed but could not be read: GET https://management.azure.com/x?api-version=1: 404 Not Found ResourceNotFound":        false,
+		// Compute answers its rate limit with 403 too: not a permission.
+		"list failed: HTTP 403: userRateLimitExceeded": false,
+		// A spent quota is not a permission either (review of #38).
+		"list failed: GET https://compute.googleapis.com/x: HTTP 403: Daily Limit Exceeded (dailyLimitExceeded)": false,
 	} {
 		if got := isDenied(msg); got != want {
 			t.Errorf("%q: denied=%v, want %v", msg, got, want)

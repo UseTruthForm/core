@@ -1,0 +1,1321 @@
+[
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "BooleanType"
+ },
+ {
+  "$type": "IntegerType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SystemData",
+  "properties": {
+   "createdAt": {
+    "description": "The timestamp of resource creation (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createdBy": {
+    "description": "The identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createdByType": {
+    "description": "The type of identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/8"
+    }
+   },
+   "lastModifiedAt": {
+    "description": "The timestamp of resource last modification (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "lastModifiedBy": {
+    "description": "The identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "lastModifiedByType": {
+    "description": "The type of identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/13"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/4"
+   },
+   {
+    "$ref": "#/5"
+   },
+   {
+    "$ref": "#/6"
+   },
+   {
+    "$ref": "#/7"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/9"
+   },
+   {
+    "$ref": "#/10"
+   },
+   {
+    "$ref": "#/11"
+   },
+   {
+    "$ref": "#/12"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringType",
+  "maxLength": 63,
+  "minLength": 4,
+  "pattern": "^[A-Za-z0-9][A-Za-z0-9-]+[A-Za-z0-9]$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.OperationalInsights/workspaces"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-07-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.OperationalInsights/workspaces",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/16"
+    }
+   },
+   "etag": {
+    "description": "The etag of the workspace.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "identity": {
+    "description": "The identity of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/76"
+    }
+   },
+   "location": {
+    "description": "The geo-location where the resource lives",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "properties": {
+    "description": "Workspace properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/18"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/83"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/15"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "WorkspaceProperties",
+  "properties": {
+   "createdDate": {
+    "description": "Workspace creation date.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "customerId": {
+    "description": "This is a read-only property. Represents the ID associated with the workspace.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "defaultDataCollectionRuleResourceId": {
+    "description": "The resource ID of the default Data Collection Rule to use for this workspace. Expected format is - /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Insights/dataCollectionRules/{dcrName}.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "failover": {
+    "description": "workspace failover properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/69"
+    }
+   },
+   "features": {
+    "description": "Workspace features.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/56"
+    }
+   },
+   "forceCmkForQuery": {
+    "description": "Indicates whether customer managed storage is mandatory for query management.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "modifiedDate": {
+    "description": "Workspace modification date.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "privateLinkScopedResources": {
+    "description": "List of linked private link scope resources.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/54"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the workspace.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/26"
+    }
+   },
+   "publicNetworkAccessForIngestion": {
+    "description": "The network access type for accessing Log Analytics ingestion.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/48"
+    }
+   },
+   "publicNetworkAccessForQuery": {
+    "description": "The network access type for accessing Log Analytics query.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/52"
+    }
+   },
+   "replication": {
+    "description": "workspace replication properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/58"
+    }
+   },
+   "retentionInDays": {
+    "description": "The workspace data retention in days. Allowed values are per pricing plan. See pricing tiers documentation for details.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "sku": {
+    "description": "The SKU of the workspace.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/27"
+    }
+   },
+   "workspaceCapping": {
+    "description": "The daily volume cap for ingestion.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/37"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ProvisioningAccount"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/19"
+   },
+   {
+    "$ref": "#/20"
+   },
+   {
+    "$ref": "#/21"
+   },
+   {
+    "$ref": "#/22"
+   },
+   {
+    "$ref": "#/23"
+   },
+   {
+    "$ref": "#/24"
+   },
+   {
+    "$ref": "#/25"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "WorkspaceSku",
+  "properties": {
+   "capacityReservationLevel": {
+    "description": "The capacity reservation level in GB for this workspace, when CapacityReservation sku is selected.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "lastSkuUpdate": {
+    "description": "The last time when the sku was updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The name of the SKU.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/36"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Free"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Premium"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PerNode"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PerGB2018"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standalone"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "CapacityReservation"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "LACluster"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/28"
+   },
+   {
+    "$ref": "#/29"
+   },
+   {
+    "$ref": "#/30"
+   },
+   {
+    "$ref": "#/31"
+   },
+   {
+    "$ref": "#/32"
+   },
+   {
+    "$ref": "#/33"
+   },
+   {
+    "$ref": "#/34"
+   },
+   {
+    "$ref": "#/35"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "WorkspaceCapping",
+  "properties": {
+   "dailyQuotaGb": {
+    "description": "The workspace daily quota for ingestion.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "dataIngestionStatus": {
+    "description": "The status of data ingestion for this workspace.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/44"
+    }
+   },
+   "quotaNextResetTime": {
+    "description": "The time when the quota will be rest.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RespectQuota"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ForceOn"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ForceOff"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "OverQuota"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SubscriptionSuspended"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ApproachingQuota"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/38"
+   },
+   {
+    "$ref": "#/39"
+   },
+   {
+    "$ref": "#/40"
+   },
+   {
+    "$ref": "#/41"
+   },
+   {
+    "$ref": "#/42"
+   },
+   {
+    "$ref": "#/43"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SecuredByPerimeter"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/45"
+   },
+   {
+    "$ref": "#/46"
+   },
+   {
+    "$ref": "#/47"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SecuredByPerimeter"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/49"
+   },
+   {
+    "$ref": "#/50"
+   },
+   {
+    "$ref": "#/51"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkScopedResource",
+  "properties": {
+   "resourceId": {
+    "description": "The full resource Id of the private link scope resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "scopeId": {
+    "description": "The private link scope unique Identifier.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/53"
+  }
+ },
+ {
+  "$type": "AnyType"
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/55"
+  },
+  "name": "WorkspaceFeatures",
+  "properties": {
+   "associations": {
+    "description": "List of associations for the workspace. Indicates if the workspace is associated with any of the following experiences: MDC, Sentinel, SentinelGraph, etc.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/57"
+    }
+   },
+   "clusterResourceId": {
+    "description": "Dedicated LA cluster resourceId that is linked to the workspaces.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "disableLocalAuth": {
+    "description": "Disable Non-AAD based Auth.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "enableDataExport": {
+    "description": "Flag that indicate if data should be exported.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "enableLogAccessUsingOnlyResourcePermissions": {
+    "description": "Flag that indicate which permission to use - resource or workspace or both.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "immediatePurgeDataOn30Days": {
+    "description": "Flag that describes if we want to remove the data after 30 days.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "unifiedSentinelBillingOnly": {
+    "description": "An indication if the specify workspace is limited to sentinel's unified billing model only.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "WorkspaceReplicationProperties",
+  "properties": {
+   "createdDate": {
+    "description": "The last time when the replication was enabled.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "enabled": {
+    "description": "Specifies whether the replication is enabled or not. When true, workspace configuration and data is replicated to the specified location. If replication is been enabled, location must be provided.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "lastModifiedDate": {
+    "description": "The last time when the replication was updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "The location of the replication.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the replication.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/68"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "EnableRequested"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabling"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "DisableRequested"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabling"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RollbackRequested"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RollingBack"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/59"
+   },
+   {
+    "$ref": "#/60"
+   },
+   {
+    "$ref": "#/61"
+   },
+   {
+    "$ref": "#/62"
+   },
+   {
+    "$ref": "#/63"
+   },
+   {
+    "$ref": "#/64"
+   },
+   {
+    "$ref": "#/65"
+   },
+   {
+    "$ref": "#/66"
+   },
+   {
+    "$ref": "#/67"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "WorkspaceFailoverProperties",
+  "properties": {
+   "lastModifiedDate": {
+    "description": "The last time when the failover state was updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "state": {
+    "description": "The failover state of the replication.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/75"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Inactive"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Activating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Active"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deactivating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/70"
+   },
+   {
+    "$ref": "#/71"
+   },
+   {
+    "$ref": "#/72"
+   },
+   {
+    "$ref": "#/73"
+   },
+   {
+    "$ref": "#/74"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Identity",
+  "properties": {
+   "principalId": {
+    "description": "The principal ID of resource identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "tenantId": {
+    "description": "The tenant ID of resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "type": {
+    "description": "Type of managed service identity.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/80"
+    }
+   },
+   "userAssignedIdentities": {
+    "description": "The list of user identities associated with the resource. The user identity dictionary key references will be ARM resource ids in the form: '/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identityName}'.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/82"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SystemAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "UserAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/77"
+   },
+   {
+    "$ref": "#/78"
+   },
+   {
+    "$ref": "#/79"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "UserIdentityProperties",
+  "properties": {
+   "clientId": {
+    "description": "The client id of user assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "principalId": {
+    "description": "The principal id of user assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/81"
+  },
+  "name": "IdentityUserAssignedIdentities",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "TrackedResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/17"
+  },
+  "name": "Microsoft.OperationalInsights/workspaces@2025-07-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.OperationalInsights/workspaces/dataSources"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-07-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.OperationalInsights/workspaces/dataSources",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/86"
+    }
+   },
+   "etag": {
+    "description": "The ETag of the data source.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "kind": {
+    "description": "The kind of the DataSource.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/121"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The data source properties in raw json format, each kind of data source have it's own schema.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/55"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/122"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/85"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "WindowsEvent"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "WindowsPerformanceCounter"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IISLogs"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "LinuxSyslog"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "LinuxSyslogCollection"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "LinuxPerformanceObject"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "LinuxPerformanceCollection"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "CustomLog"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "CustomLogCollection"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AzureAuditLog"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AzureActivityLog"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "GenericDataSource"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ChangeTrackingCustomPath"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ChangeTrackingPath"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ChangeTrackingServices"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ChangeTrackingDataTypeConfiguration"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ChangeTrackingDefaultRegistry"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ChangeTrackingRegistry"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ChangeTrackingLinuxPath"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "LinuxChangeTrackingPath"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ChangeTrackingContentLocation"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "WindowsTelemetry"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Office365"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SecurityWindowsBaselineConfiguration"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SecurityCenterSecurityWindowsBaselineConfiguration"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SecurityEventCollectionConfiguration"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SecurityInsightsSecurityEventCollectionConfiguration"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ImportComputerGroup"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "NetworkMonitoring"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Itsm"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "DnsAnalytics"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ApplicationInsights"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SqlDataClassification"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/88"
+   },
+   {
+    "$ref": "#/89"
+   },
+   {
+    "$ref": "#/90"
+   },
+   {
+    "$ref": "#/91"
+   },
+   {
+    "$ref": "#/92"
+   },
+   {
+    "$ref": "#/93"
+   },
+   {
+    "$ref": "#/94"
+   },
+   {
+    "$ref": "#/95"
+   },
+   {
+    "$ref": "#/96"
+   },
+   {
+    "$ref": "#/97"
+   },
+   {
+    "$ref": "#/98"
+   },
+   {
+    "$ref": "#/99"
+   },
+   {
+    "$ref": "#/100"
+   },
+   {
+    "$ref": "#/101"
+   },
+   {
+    "$ref": "#/102"
+   },
+   {
+    "$ref": "#/103"
+   },
+   {
+    "$ref": "#/104"
+   },
+   {
+    "$ref": "#/105"
+   },
+   {
+    "$ref": "#/106"
+   },
+   {
+    "$ref": "#/107"
+   },
+   {
+    "$ref": "#/108"
+   },
+   {
+    "$ref": "#/109"
+   },
+   {
+    "$ref": "#/110"
+   },
+   {
+    "$ref": "#/111"
+   },
+   {
+    "$ref": "#/112"
+   },
+   {
+    "$ref": "#/113"
+   },
+   {
+    "$ref": "#/114"
+   },
+   {
+    "$ref": "#/115"
+   },
+   {
+    "$ref": "#/116"
+   },
+   {
+    "$ref": "#/117"
+   },
+   {
+    "$ref": "#/118"
+   },
+   {
+    "$ref": "#/119"
+   },
+   {
+    "$ref": "#/120"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "DataSourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/87"
+  },
+  "name": "Microsoft.OperationalInsights/workspaces/dataSources@2025-07-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ }
+]

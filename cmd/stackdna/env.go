@@ -54,6 +54,17 @@ type Target struct {
 	// any cloud
 	Types    []string `json:"types,omitempty"`
 	Baseline string   `json:"baseline,omitempty"`
+	// Parallel is the API calls in flight at once (default 8); lower it
+	// for a target the platform throttles.
+	Parallel int `json:"parallel,omitempty"`
+}
+
+// parallel is the target's calls in flight at once.
+func (t Target) parallel() int {
+	if t.Parallel > 0 {
+		return t.Parallel
+	}
+	return 8
 }
 
 // loadEnvironment reads and checks a config. Unknown keys and missing
@@ -97,6 +108,9 @@ func loadEnvironment(path string) (*Environment, error) {
 		// Relative baselines are relative to the config file, not to
 		// wherever the command happens to run; each of a comma-separated
 		// list (one per region), not only the first.
+		if t.Parallel < 0 {
+			return nil, fmt.Errorf("%s: target %s: parallel must be 1 or more", path, t.Name)
+		}
 		if t.Baseline != "" {
 			parts := strings.Split(t.Baseline, ",")
 			for j, b := range parts {
@@ -118,12 +132,12 @@ func inapplicable(t Target) string {
 	set := map[string]bool{"context": t.Context != "", "kubeconfig": t.Kubeconfig != "", "includeSystem": t.IncludeSystem,
 		"captureRendered": t.CaptureRender, "captureManaged": t.CaptureManaged, "region": t.Region != "", "profile": t.Profile != "",
 		"subscription": t.Subscription != "", "project": t.Project != "", "account": t.Account != "", "types": len(t.Types) > 0,
-		"baseline": t.Baseline != ""}
+		"baseline": t.Baseline != "", "parallel": t.Parallel != 0}
 	applies := map[string][]string{
 		"kubernetes": {"context", "kubeconfig", "includeSystem", "captureRendered", "baseline"},
-		"aws":        {"region", "profile", "types", "baseline", "captureManaged"},
-		"azure":      {"subscription", "types", "baseline", "captureManaged"},
-		"gcp":        {"project", "types", "baseline"},
+		"aws":        {"region", "profile", "types", "baseline", "captureManaged", "parallel"},
+		"azure":      {"subscription", "types", "baseline", "captureManaged", "parallel"},
+		"gcp":        {"project", "types", "baseline", "parallel"},
 		"github":     {"account"},
 		"cloudflare": {"account"},
 	}
@@ -153,6 +167,8 @@ type TargetResult struct {
 	Digest   string   `json:"digest,omitempty"`
 	Error    string   `json:"error,omitempty"`
 	Gaps     []string `json:"gaps,omitempty"`
+	// Throttled are the gaps a later capture can close as it is.
+	Throttled []string `json:"throttled,omitempty"`
 }
 
 // captureTarget captures one target with the same code the single-target
@@ -172,21 +188,21 @@ func captureTarget(ctx context.Context, t Target) (snapshot.Snapshot, error) {
 		}
 		return kube.Capture(ctx, c, pol)
 	case "aws":
-		a := awsFlags{region: t.Region, profile: t.Profile, types: strings.Join(t.Types, ","), baseline: t.Baseline, managed: t.CaptureManaged, parallel: 8}
+		a := awsFlags{region: t.Region, profile: t.Profile, types: strings.Join(t.Types, ","), baseline: t.Baseline, managed: t.CaptureManaged, parallel: t.parallel()}
 		ad, err := a.connect(ctx, true)
 		if err != nil {
 			return snapshot.Snapshot{}, err
 		}
 		return ad.Capture(ctx)
 	case "azure":
-		a := azureFlags{subscription: t.Subscription, types: strings.Join(t.Types, ","), baseline: t.Baseline, managed: t.CaptureManaged, parallel: 8}
+		a := azureFlags{subscription: t.Subscription, types: strings.Join(t.Types, ","), baseline: t.Baseline, managed: t.CaptureManaged, parallel: t.parallel()}
 		ad, err := a.connect(true)
 		if err != nil {
 			return snapshot.Snapshot{}, err
 		}
 		return ad.Capture(ctx)
 	case "gcp":
-		g := gcpFlags{project: t.Project, types: strings.Join(t.Types, ","), baseline: t.Baseline, parallel: 8}
+		g := gcpFlags{project: t.Project, types: strings.Join(t.Types, ","), baseline: t.Baseline, parallel: t.parallel()}
 		ad, err := g.connect(ctx, true)
 		if err != nil {
 			return snapshot.Snapshot{}, err
@@ -220,6 +236,27 @@ func gaps(s snapshot.Snapshot) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// throttledGaps are the gaps that throttling caused, each judged by its
+// failure's own text, never by the name of the type or resource it is
+// about: a denial on "ns/throttle-config" is still a denial (review of
+// #35).
+func throttledGaps(s snapshot.Snapshot) map[string]bool {
+	out := map[string]bool{}
+	for _, c := range s.Coverage {
+		if strings.HasPrefix(c.NotCaptured, "list failed") || strings.HasPrefix(c.NotCaptured, "API group discovery failed") {
+			if snapshot.Throttled(c.NotCaptured) {
+				out[c.Resource+": "+c.NotCaptured] = true
+			}
+		}
+	}
+	for _, sk := range s.Skips {
+		if strings.HasPrefix(sk.Reason, "listed but could not be read") && snapshot.Throttled(sk.Reason) {
+			out[sk.Resource+" "+sk.Name+": "+sk.Reason] = true
+		}
+	}
 	return out
 }
 
@@ -260,6 +297,12 @@ func captureEnvironment(ctx context.Context, configPath, out string) int {
 				return
 			}
 			r.Gaps = gaps(snap)
+			th := throttledGaps(snap)
+			for _, g := range r.Gaps {
+				if th[g] {
+					r.Throttled = append(r.Throttled, g)
+				}
+			}
 			r.Status = "complete"
 			if len(r.Gaps) > 0 {
 				r.Status = "incomplete"
@@ -280,8 +323,16 @@ func captureEnvironment(ctx context.Context, configPath, out string) int {
 	code := 0
 	for _, r := range results {
 		fmt.Printf("%-10s %-11s %-10s %5d objects  %s%s\n", r.Status, r.Platform, r.Name, r.Objects, r.Digest, errSuffix(r.Error))
+		th := map[string]bool{}
+		for _, g := range r.Throttled {
+			th[g] = true
+		}
 		for _, g := range r.Gaps {
-			fmt.Println("    gap:", g)
+			if th[g] {
+				fmt.Println("    gap (throttled; capture again later):", g)
+			} else {
+				fmt.Println("    gap:", g)
+			}
 		}
 		switch {
 		case r.Status == "failed":

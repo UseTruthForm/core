@@ -10,8 +10,15 @@ name: ci
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
-    paths: ["**.go", "go.mod", "go.sum", "testdata/**", "scripts/**", ".github/workflows/**"]
+    # templates: the AWS read add-on is generated JSON, and a pull request
+    # changing only it must still be tested (review of #24).
+    paths: ["**.go", "go.mod", "go.sum", "testdata/**", "scripts/**", ".github/workflows/**", "internal/onboard/templates/**"]
   workflow_dispatch:
+    inputs:
+      full-drill:
+        description: "Also run the kind drill"
+        type: boolean
+        default: true
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -53,7 +60,7 @@ jobs:
       # gathering) must refuse restore; it is a separate build, so test it.
       - run: go test -tags captureonly -count=1 ./cmd/stackdna/
   drill-kind:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-drill')
+    if: (github.event_name == 'workflow_dispatch' && inputs.full-drill) || contains(github.event.pull_request.labels.*.name, 'full-drill')
     needs: test
     runs-on: ubuntu-latest
     steps:

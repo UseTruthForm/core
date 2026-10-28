@@ -68,9 +68,44 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 	}
 
 	order, cyclic := restoreOrder(s.Objects)
+	var defs []deferral
+	// full holds, for a deferred member already in the target, its whole
+	// snapshot object: it is compared whole when it runs. The order and
+	// the dependency graph stay those of the stripped copy.
+	full := map[string]snapshot.Object{}
+	if len(cyclic) > 0 {
+		var stripped []snapshot.Object
+		stripped, defs, _ = breakCycles(reg, order, cyclic)
+		// Ordered again even when some cycle stays unbroken: the cycles
+		// that were broken are still restored, and only what is left in
+		// (or depends on) an unbroken one is reported and not sent. The
+		// first version ordered nothing new then, and the broken cycles'
+		// members got no result at all (review of #26).
+		order, cyclic = restoreOrder(append(order, stripped...))
+		stuck := map[string]bool{}
+		for _, o := range cyclic {
+			stuck[o.Key()] = true
+		}
+		// A cycle only constrains what has to be created. One already in
+		// the target is compared with its full snapshot, not the stripped
+		// copy: compared stripped, a policy present with its Roles was
+		// reported as differing (real IAM drill's second restore,
+		// 2026-10-24).
+		kept := defs[:0:0]
+		for _, d := range defs {
+			switch {
+			case stuck[d.full.Key()]:
+			case existing[d.full.Key()] != nil:
+				full[d.full.Key()] = d.full
+			default:
+				kept = append(kept, d)
+			}
+		}
+		defs = kept
+	}
 	results := make([]snapshot.Result, 0, len(s.Objects))
 	for _, o := range cyclic {
-		results = append(results, snapshot.Result{Key: o.Key(), Detail: "its references form a cycle; no creation order exists"})
+		results = append(results, snapshot.Result{Key: o.Key(), Detail: "its references form a cycle that cannot be broken (a property naming the others is required or create-only); no creation order exists"})
 	}
 	// A create can make others as a side effect: a security group's inline
 	// rules are also listed as AWS::EC2::SecurityGroupIngress resources,
@@ -114,10 +149,74 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 		workers = 8
 	}
 	schedule.Run(len(order), deps, workers, func(i int) {
-		res := snapshot.Result{Key: order[i].Key()}
-		res.OK, res.Detail = restoreOne(ctx, api, reg, in, order[i], existing, resolved, inSnap, opt, reread)
+		o := order[i]
+		if f, ok := full[o.Key()]; ok {
+			o = f
+		}
+		res := snapshot.Result{Key: o.Key()}
+		res.OK, res.Detail = restoreOne(ctx, api, reg, in, o, existing, resolved, inSnap, opt, reread)
 		done[i] = res
 	})
+	// The deferred properties, now that everything they name exists: the
+	// object is read back and brought in line with its full snapshot, as
+	// --update would. One reread for all of them, of only their types and
+	// the types they name (the same set the first inventory used for
+	// them), rather than a full reread per deferred object.
+	var again map[string]*resource
+	var rereadErr error
+	rereadFailed := map[string]string{} // type -> why it was not read again
+	if len(defs) > 0 {
+		want := map[string]bool{}
+		for _, d := range defs {
+			want[d.full.Kind()] = true
+			for _, m := range tokenRE.FindAllStringSubmatch(canon(d.full.Body["spec"]), -1) {
+				want[m[1]] = true
+			}
+		}
+		again = map[string]*resource{}
+		in2, err := inventory(ctx, api, reg, func(n string) bool { return want[n] }, tun)
+		rereadErr = err
+		if err == nil {
+			for _, r := range in2.named() {
+				again[r.key()] = r
+			}
+			for n, c := range in2.cov {
+				if c != nil && c.NotCaptured != "" {
+					rereadFailed[n] = c.NotCaptured
+				}
+			}
+		}
+	}
+	for _, d := range defs {
+		for i := range done {
+			if done[i].Key != d.full.Key() || !done[i].OK {
+				continue
+			}
+			ex := again[d.full.Key()]
+			if ex == nil {
+				// Said as it is: "not found" would hide a throttled or
+				// refused read (review of #26).
+				why := "not found again"
+				switch {
+				case rereadErr != nil:
+					why = "the target could not be read again (" + rereadErr.Error() + ")"
+				case rereadFailed[d.full.Kind()] != "":
+					why = "the target could not be read again (" + rereadFailed[d.full.Kind()] + ")"
+				}
+				done[i].OK, done[i].Detail = false, done[i].Detail+"; then "+why+" to set "+strings.Join(d.props, ", ")
+				break
+			}
+			upd := opt
+			upd.Update = true
+			ok, detail := restoreOne(ctx, api, reg, in, d.full, map[string]*resource{d.full.Key(): ex}, resolved, inSnap, upd, reread)
+			if !ok {
+				done[i].OK, done[i].Detail = false, done[i].Detail+"; then setting "+strings.Join(d.props, ", ")+" failed: "+detail
+			} else {
+				done[i].Detail += deferredNote(d.props)
+			}
+			break
+		}
+	}
 	return append(results, done...)
 }
 

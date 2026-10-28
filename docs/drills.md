@@ -13,7 +13,7 @@ the owner's go-ahead first.
 
 | Account | Used for | Identity |
 |---|---|---|
-| Main sandbox (the organisation's management account) | every AWS drill | IAM user `tf-pilot-automation`: `ReadOnlyAccess` and `PowerUserAccess`, plus the inline policies below |
+| Main sandbox (the organisation's management account) | every AWS drill, IAM included (a role and a managed policy, since 2026-10-24) | IAM user `tf-pilot-automation`: `ReadOnlyAccess` and `PowerUserAccess`, plus the inline policies below |
 | `stackdna-drill-b` (a member account, created 2026-10-23; its services were still not activated after 40 minutes: CloudFormation answers OptInRequired, S3 NotSignedUp) | cross-account restores; proving the `stackdna permissions` role | profile `stackdna-drill-b`, which assumes `OrganizationAccountAccessRole` from `tf-pilot-automation` |
 
 `PowerUserAccess` covers every service except IAM and Organizations, so

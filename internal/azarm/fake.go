@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -56,6 +58,10 @@ type Fake struct {
 	// AlsoTracked lists child types ARM's resource list returns as well
 	// (a SQL server's databases are both), so capture meets them twice.
 	AlsoTracked map[string]bool
+	// ByKind lists collections, by their last path segment in lower case
+	// ("datasources"), that answer only a list filtered by kind, as ARM
+	// answers a Log Analytics workspace's data sources.
+	ByKind map[string]bool
 }
 
 type stored struct {
@@ -317,8 +323,18 @@ func tracked(rid ResourceID) bool {
 // List serves the collections capture reads: an extension type across the
 // subscription, a resource's diagnostic settings, or a child collection.
 func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any, error) {
+	path, query, _ := strings.Cut(path, "?")
 	if f.RefuseVersion != nil && f.RefuseVersion(path, version) {
 		return nil, fmt.Errorf("%s: %w: Invalid api-version query string value", path, ErrAPIVersion)
+	}
+	kind := ""
+	if q, err := url.ParseQuery(query); err == nil {
+		if m := kindFilterRE.FindStringSubmatch(q.Get("$filter")); m != nil {
+			kind = m[1]
+		}
+	}
+	if f.ByKind[strings.ToLower(lastName(strings.TrimRight(path, "/")))] && kind == "" {
+		return nil, fmt.Errorf("%s: %w: Must specify a valid kind filter", path, ErrNeedsKind)
 	}
 	lower := strings.ToLower(strings.TrimRight(path, "/"))
 	subProviders := "/subscriptions/" + strings.ToLower(f.sub) + "/providers/"
@@ -347,10 +363,15 @@ func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any
 		if err != nil {
 			return nil, err
 		}
+		if bk, _ := b["kind"].(string); kind != "" && !strings.EqualFold(bk, kind) {
+			continue
+		}
 		out = append(out, b)
 	}
 	return out, nil
 }
+
+var kindFilterRE = regexp.MustCompile(`(?i)^kind eq '([^']+)'$`)
 
 // SeedAzure stores what Azure itself creates, bypassing validation (an
 // NSG's default rules, which no caller can PUT).

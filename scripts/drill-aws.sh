@@ -13,14 +13,21 @@
 # dead-letter queue), SSM Standard parameter, API Gateway REST API and
 # resource, SNS topic, an EventBridge rule targeting the topic (DISABLED, so
 # it never fires), a CloudWatch log group, an ECR repository and an S3
-# bucket. Cloud Control calls are free. Not used: Secrets Manager (charged
-# monthly per secret), KMS, NAT gateways, Elastic IPs, IAM (the sandbox
-# user's PowerUserAccess has no IAM writes).
+# bucket, and in IAM (global) a role and a customer managed policy attached
+# to it. Cloud Control calls are free. Not used: Secrets Manager (charged
+# monthly per secret), KMS, NAT gateways, Elastic IPs.
+#
+# IAM needs writes PowerUserAccess does not give: the sandbox user holds an
+# extra policy allowing them only on roles and policies named
+# stackdna-drill* (docs/drills.md). IAM=0 leaves IAM out, for an account
+# without it.
 #
 # The references are the point: the rule names the topic by ARN, the queue's
 # RedrivePolicy names the dead-letter queue's ARN inside a JSON string, and
-# the security group names the VPC. The group's ingress rule is also listed
-# as a resource of its own, so it must not be restored twice. A restore must remap every one.
+# the security group names the VPC, and the IAM policy names the queue by ARN
+# and is attached to the role by name. The group's ingress rule is also
+# listed as a resource of its own, so it must not be restored twice. A
+# restore must remap every one.
 #
 # Everything is named stackdna-drill*. Cleanup finds resources by those names,
 # not by remembered IDs, so it also removes what a restore created, and it
@@ -49,6 +56,8 @@ N=stackdna-drill
 # us-east-2 to us-east-1, 2026-10-22). In a real region loss the name stays
 # taken, so a bucket restored elsewhere needs another name.
 if $XREGION; then TYPES="${TYPES/,AWS::S3::Bucket/}"; fi
+IAM="${IAM:-1}"
+if [ "$IAM" = 1 ]; then TYPES="$TYPES,AWS::IAM::Role,AWS::IAM::ManagedPolicy"; fi
 
 # Git Bash on Windows rewrites arguments that look like paths, which turns
 # the parameter name /stackdna-drill/env into C:/Program Files/Git/...
@@ -86,6 +95,7 @@ cleanup() {
   aws logs delete-log-group --log-group-name "/$N/app" 2>/dev/null && echo "deleted log group /$N/app" || true
   aws ecr delete-repository --repository-name "$N" --force >/dev/null 2>&1 && echo "deleted ecr repository $N" || true
   aws s3api delete-bucket --bucket "$BUCKET" 2>/dev/null && echo "deleted bucket $BUCKET" || true
+  if [ "$IAM" = 1 ]; then cleanup_iam; fi
   for vpc in $(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=$N" --query 'Vpcs[].VpcId' --output text); do
     for sg in $(aws ec2 describe-security-groups --filters "Name=vpc-id,Values=$vpc" --query "SecurityGroups[?GroupName!='default'].GroupId" --output text); do
       aws ec2 delete-security-group --group-id "$sg"; echo "deleted security group $sg"
@@ -95,6 +105,31 @@ cleanup() {
     done
     aws ec2 delete-vpc --vpc-id "$vpc"; echo "deleted vpc $vpc"
   done
+}
+
+# IAM is global: a cross-region drill cleans it twice, harmlessly. By name,
+# like everything else; a policy must be detached and its old versions
+# deleted before IAM lets it go.
+cleanup_iam() {
+  local arn="arn:aws:iam::$ACCOUNT:policy/$N-read"
+  if aws iam get-policy --policy-arn "$arn" >/dev/null 2>&1; then
+    for r in $(aws iam list-entities-for-policy --policy-arn "$arn" --query 'PolicyRoles[].RoleName' --output text); do
+      aws iam detach-role-policy --role-name "$r" --policy-arn "$arn"
+    done
+    for v in $(aws iam list-policy-versions --policy-arn "$arn" --query 'Versions[?!IsDefaultVersion].VersionId' --output text); do
+      aws iam delete-policy-version --policy-arn "$arn" --version-id "$v"
+    done
+    aws iam delete-policy --policy-arn "$arn"; echo "deleted policy $arn"
+  fi
+  if aws iam get-role --role-name "$N-app" >/dev/null 2>&1; then
+    for a in $(aws iam list-attached-role-policies --role-name "$N-app" --query 'AttachedPolicies[].PolicyArn' --output text); do
+      aws iam detach-role-policy --role-name "$N-app" --policy-arn "$a"
+    done
+    for ip in $(aws iam list-role-policies --role-name "$N-app" --query 'PolicyNames[]' --output text); do
+      aws iam delete-role-policy --role-name "$N-app" --policy-name "$ip"
+    done
+    aws iam delete-role --role-name "$N-app"; echo "deleted role $N-app"
+  fi
 }
 
 # AWS list APIs are eventually consistent: a capture taken seconds after a
@@ -121,6 +156,10 @@ wait_all() {
   wait_listed AWS::ECR::Repository "$N"
   # The seed always makes the bucket; a cross-region restore does not.
   $XREGION || wait_listed AWS::S3::Bucket "$BUCKET"
+  if [ "$IAM" = 1 ]; then
+    wait_listed AWS::IAM::Role "$N-app"
+    wait_listed AWS::IAM::ManagedPolicy "policy/$N-read"
+  fi
   echo "all listed by Cloud Control"
 }
 
@@ -154,6 +193,14 @@ seed() {
   aws ecr create-repository --repository-name "$N" --image-tag-mutability IMMUTABLE >/dev/null
   aws s3api create-bucket --bucket "$BUCKET" --create-bucket-configuration "LocationConstraint=$REGION" >/dev/null
   aws ssm put-parameter --name "/$N/env" --type String --value prod --tags Key=team,Value=shop --output text
+  if [ "$IAM" = 1 ]; then
+    printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}' > "$OUT/trust.json"
+    aws iam create-role --role-name "$N-app" --assume-role-policy-document "file://$OUT/trust.json"       --description "StackDNA drill" --tags Key=team,Value=shop --query Role.Arn --output text
+    jobs_arn=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text)
+    printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["sqs:ReceiveMessage","sqs:DeleteMessage"],"Resource":"%s"}]}' "$jobs_arn" > "$OUT/policy.json"
+    pol=$(aws iam create-policy --policy-name "$N-read" --policy-document "file://$OUT/policy.json" --description "StackDNA drill" --query Policy.Arn --output text)
+    aws iam attach-role-policy --role-name "$N-app" --policy-arn "$pol"
+  fi
   api=$(aws apigateway create-rest-api --name "$N" --query id --output text)
   root=$(aws apigateway get-resources --rest-api-id "$api" --query "items[?path=='/'].id" --output text)
   aws apigateway create-resource --rest-api-id "$api" --parent-id "$root" --path-part orders --query id --output text
@@ -163,7 +210,8 @@ seed() {
 
 [ -x "$BIN" ] || [ -x "$BIN.exe" ] || { echo "build first: go build -o $BIN ./cmd/stackdna" >&2; exit 1; }
 # Bucket names are global across AWS: the account ID keeps this one ours.
-BUCKET="$N-$(aws sts get-caller-identity --query Account --output text)-$REGION"
+ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+BUCKET="$N-$ACCOUNT-$REGION"
 [ -x "$BIN" ] || BIN="$BIN.exe"
 rm -rf "$OUT"; mkdir -p "$OUT"
 aws sts get-caller-identity --query Arn --output text

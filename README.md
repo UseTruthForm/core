@@ -14,8 +14,9 @@ against a schema-driven fake. It also passed the disaster drill against a
 real account (`scripts/drill-aws.sh`: 17 resources across 14 types, all
 free while empty, deleted and restored with no diff), but most types haven't met real AWS yet. Azure (every
 type with a published definition) passes its drill against a fake, and the
-disaster drill against a real subscription (`scripts/drill-azure.sh`: 4
-free resources deleted and restored with no diff). GCP (Cloud Asset Inventory
+disaster drill against a real subscription (`scripts/drill-azure.sh`: 7
+free resources, from the resource group to role assignments and a lock,
+deleted and restored with no diff). GCP (Cloud Asset Inventory
 plus Discovery documents) passes its drill against a fake, and the disaster
 drill against a real project (`scripts/drill-gcp.sh`). SaaS providers run on
 one OpenAPI-driven engine: GitHub (a real read-only capture works) and
@@ -182,7 +183,9 @@ a CRD and a custom resource) into the source, then:
 3. restores into the fresh destination and requires `diff` to find nothing;
 4. checks the secret values arrived intact, comparing them by hash.
 
-CI runs the same drill on every pull request.
+CI runs it on pull requests labelled `full-drill`, or when started by
+hand. Every pull request runs the same capture, restore and diff against
+two real API servers instead (`TestDrillOnAPIServer`, no Docker, seconds).
 
 ## Local dev loop
 

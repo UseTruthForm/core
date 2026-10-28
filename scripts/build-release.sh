@@ -43,7 +43,12 @@ for target in $TARGETS; do
     CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath ${tags[@]+"${tags[@]}"} \
       -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.built=$BUILT" \
       -o "$OUT/$name/$exe" ./cmd/stackdna
-    cp README.md "$OUT/$name/"
+    # The customer's README and guides, not the repository's README: that
+    # one is for StackDNA's developers (the dev loop, Tilt ports, internal
+    # drills), and a customer cannot reach the private repository's docs.
+    cp packaging/README.md "$OUT/$name/README.md"
+    mkdir -p "$OUT/$name/docs"
+    cp docs/guide.md docs/permissions.md docs/agents.md "$OUT/$name/docs/"
     [ -n "${NO_ARCHIVE:-}" ] && continue
     if [ "$os" = windows ]; then
       # zip is not on every machine (Git Bash on Windows lacks it).

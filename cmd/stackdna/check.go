@@ -34,17 +34,21 @@ func checkCmd(ctx context.Context, args []string) int {
 	account := fs.String("account", "", "github: the organisation; cloudflare: the account ID")
 	types := fs.String("types", "", "type patterns to limit the trial capture to (default: every type)")
 	accessFor := fs.String("access", "capture", "what the identity is for: capture (any write is more than needed) or restore")
+	parallel := fs.Int("parallel", 0, "aws, azure, gcp: API calls in flight at once (default 8); lower it if the trial capture is throttled")
 	if err := parseFlags(fs, args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
 		}
 		return fail(err)
 	}
+	if *parallel < 0 {
+		return fail(fmt.Errorf("--parallel must be 1 or more"))
+	}
 	if *accessFor != "capture" && *accessFor != "restore" {
 		return fail(fmt.Errorf("--access is capture or restore, not %q", *accessFor))
 	}
 	t := Target{Name: "check", Platform: *platform, Context: *kctx, Kubeconfig: *kubeconfig, Region: *region, Profile: *profile,
-		Subscription: *subscription, Project: *project, Account: *account}
+		Subscription: *subscription, Project: *project, Account: *account, Parallel: *parallel}
 	for _, p := range strings.Split(*types, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			t.Types = append(t.Types, p)
@@ -75,6 +79,11 @@ func checkCmd(ctx context.Context, args []string) int {
 	printIdentity(id)
 	if capErr != nil {
 		fmt.Println("\nREADS")
+		if snapshot.Throttled(capErr.Error()) {
+			fmt.Println("  THROTTLED: the capture could not start:", capErr)
+			fmt.Println("\nRESULT: not known yet: the platform asked for fewer calls. Run it again later.")
+			return 3
+		}
 		if isDenied(capErr.Error()) {
 			fmt.Println("  DENIED: the capture could not start:", capErr)
 			fmt.Println("\nRESULT: this identity cannot capture", *platform, "(see stackdna permissions)")
@@ -88,7 +97,10 @@ func checkCmd(ctx context.Context, args []string) int {
 	printReads(rc)
 	switch {
 	case len(rc.Denied) > 0 || len(rc.Failed) > 0:
-		fmt.Printf("\nRESULT: incomplete: %d types refused for want of permission, %d failed otherwise. A capture now would not hold them.\n", len(rc.Denied), len(rc.Failed))
+		fmt.Printf("\nRESULT: incomplete: %d types refused for want of permission, %d throttled, %d failed otherwise. A capture now would not hold them.\n", len(rc.Denied), len(rc.Throttled), len(rc.Failed))
+		return 3
+	case len(rc.Throttled) > 0:
+		fmt.Printf("\nRESULT: incomplete only because %d types were throttled: nothing was refused. Run it again later, or with a lower --parallel.\n", len(rc.Throttled))
 		return 3
 	case len(id.Warnings) > 0:
 		fmt.Printf("\nRESULT: can read every type it was asked to; %d warnings above.\n", len(id.Warnings))
@@ -121,11 +133,17 @@ func identify(ctx context.Context, t Target, accessFor string) (access.Report, e
 // a missing permission sent the reader to widen a grant (review of #23).
 var deniedRE = regexp.MustCompile(`(?i)not authorized to perform|accessdenied|access denied|authorizationfailed|permission_denied|permission denied|\bforbidden\b|HTTP 403\b|must be an org admin|must have admin|resource not accessible|insufficient permission|does not have authorization`)
 
-// rateRE is a 403 that is not about permission: GitHub answers its rate
-// limits with 403.
-var rateRE = regexp.MustCompile(`(?i)rate limit`)
+// A throttled read is never a denial: GitHub answers its rate limits, and
+// Compute its rateLimitExceeded, with 403.
+//
+// Nor is a spent quota: Compute answers a daily one with 403
+// dailyLimitExceeded, and calling it a denial sent the reader to widen a
+// grant no grant can fix (review of #38).
+func isDenied(s string) bool {
+	return deniedRE.MatchString(s) && !snapshot.Throttled(s) && !quotaRE.MatchString(s)
+}
 
-func isDenied(s string) bool { return deniedRE.MatchString(s) && !rateRE.MatchString(s) }
+var quotaRE = regexp.MustCompile(`\b(?:dailyLimitExceeded|quotaExceeded|RESOURCE_EXHAUSTED)\b`)
 
 // maybeDeniedRE finds reasons an adapter recorded as "by design" that a
 // missing permission can also produce: GitHub answers 404 both for an
@@ -140,6 +158,7 @@ type readCheck struct {
 	Skipped     int            `json:"resourcesSkippedOnPurpose"`
 	Empty       int            `json:"typesReadEmpty"`
 	Denied      []string       `json:"denied"`
+	Throttled   []string       `json:"throttled"`
 	Failed      []string       `json:"failed"`
 	Unsure      []string       `json:"unsure"`
 	ByDesign    map[string]int `json:"notReadByDesign"`
@@ -159,9 +178,12 @@ func classify(s snapshot.Snapshot) readCheck {
 		if strings.HasPrefix(sk.Reason, unreadable) {
 			refused[sk.Resource]++
 			x := sk.Resource + " " + sk.Name + ": " + sk.Reason
-			if isDenied(sk.Reason) {
+			switch {
+			case snapshot.Throttled(sk.Reason):
+				rc.Throttled = append(rc.Throttled, x)
+			case isDenied(sk.Reason):
 				rc.Denied = append(rc.Denied, x)
-			} else {
+			default:
 				rc.Failed = append(rc.Failed, x)
 			}
 			continue
@@ -189,10 +211,13 @@ func classify(s snapshot.Snapshot) readCheck {
 		// rulesets on a private repository on Free) was counted as one, and
 		// a grant would have been widened for a feature no grant can give.
 		case strings.HasPrefix(c.NotCaptured, "list failed") || strings.HasPrefix(c.NotCaptured, "API group discovery failed"):
-			if isDenied(c.NotCaptured) {
-				rc.Denied = append(rc.Denied, c.Resource+": "+c.NotCaptured)
-			} else {
-				rc.Failed = append(rc.Failed, c.Resource+": "+c.NotCaptured)
+			switch x := c.Resource + ": " + c.NotCaptured; {
+			case snapshot.Throttled(c.NotCaptured):
+				rc.Throttled = append(rc.Throttled, x)
+			case isDenied(c.NotCaptured):
+				rc.Denied = append(rc.Denied, x)
+			default:
+				rc.Failed = append(rc.Failed, x)
 			}
 		case maybeDeniedRE.MatchString(c.NotCaptured):
 			rc.Unsure = append(rc.Unsure, c.Resource+": "+c.NotCaptured)
@@ -201,6 +226,7 @@ func classify(s snapshot.Snapshot) readCheck {
 		}
 	}
 	sort.Strings(rc.Denied)
+	sort.Strings(rc.Throttled)
 	sort.Strings(rc.Failed)
 	sort.Strings(rc.Unsure)
 	return rc
@@ -265,6 +291,10 @@ func printReads(rc readCheck) {
 		}
 	}
 	list("DENIED", rc.Denied)
+	if len(rc.Throttled) > 0 {
+		fmt.Println("  THROTTLED: the platform asked for fewer calls and the retries ran out. Not a permission; run it again later, or with a lower --parallel:")
+		list("throttled", rc.Throttled)
+	}
 	list("FAILED", rc.Failed)
 	if len(rc.Unsure) > 0 {
 		fmt.Println("  UNSURE: recorded as not there or not set up, which a missing permission can look like too:")
@@ -293,7 +323,10 @@ func emitCheck(id access.Report, rc readCheck, capErr error) {
 	doc := map[string]any{"schema": jsonSchema, "command": "check",
 		"identity": map[string]any{"platform": id.Platform, "who": id.Who, "kind": id.Kind, "facts": nonNil(id.Facts),
 			"warnings": nonNil(id.Warnings), "unchecked": nonNil(id.Unchecked)},
-		"reads": rc}
+		"reads": rc,
+		// Complete is the one answer a script needs: throttled reads moved
+		// out of "failed" into their own list (review of #35).
+		"complete": capErr == nil && len(rc.Denied)+len(rc.Throttled)+len(rc.Failed) == 0}
 	if capErr != nil {
 		doc["error"] = capErr.Error()
 	}

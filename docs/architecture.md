@@ -465,7 +465,15 @@ The first runs found three things the fake had not shown:
   `2026-03-01` definition doesn't declare, so a restored VNet showed it as
   drift. `provisioningState` and `resourceGuid` are set by the server under
   ARM's resource-provider contract, so they're treated as read-only even
-  when undeclared. Every other undeclared field is still kept.
+  when undeclared. Every other undeclared field is still kept, except an
+  empty object: it holds no settings, and Azure returns some only
+  sometimes (a Service Bus rule's `sqlFilter.parameters`), which made two
+  captures of an unchanged subscription differ.
+- **Observations are not status.** `status` keeps the read-only values a
+  reference can point at: IDs, GUIDs, host names. Times, counters and
+  flags (`accessedAt`, `earliestRestoreDate`, message counts) change on
+  their own, so they are left out, and an unchanged subscription captures
+  to the same digest.
 
 A web app was meant to test, against real Azure, a map keyed by resource
 ID (`identity.userAssignedIdentities`). The subscription's Free (F1) App
@@ -792,8 +800,8 @@ A client runs it like any stdio server:
 
 | Step | What |
 |---|---|
-| Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so); `--json` output |
-| AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; parallel creates of independent resources; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
+| Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so) |
+| AWS | The drill extended to IAM and Lambda (the sandbox user may now write roles named `stackdna-drill*`); a restore into a second account, and the onboarding role trusted from another account, once that account is activated; replay fixtures recorded from real responses; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
 | Azure | Mapping principals across tenants; data-plane configuration (Key Vault secrets' metadata, storage CORS) where ARM exposes it |
 | GCP | A real Compute drill (needs billing); project IDs in free text; `undelete` for soft-deleted resources (custom roles) |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |

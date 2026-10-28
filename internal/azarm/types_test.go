@@ -103,6 +103,67 @@ func TestNormalize(t *testing.T) {
 	}
 }
 
+// Two captures of an unchanged subscription must be identical. Read-only
+// times and counters change on their own, so status keeps only what a
+// reference can point at; an undeclared empty object Azure returns only
+// sometimes is dropped.
+func TestCaptureLeavesOutObservations(t *testing.T) {
+	reg := fixtures(t)
+	vm := schema(t, reg, "Microsoft.Compute/virtualMachines")
+	api := NewWorld(reg).Subscription("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-0000000000aa")
+	id := "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1"
+	rid, err := ParseID(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := process(api, "00000000-0000-0000-0000-0000000000aa", rid, vm.Version, vm, map[string]any{
+		"id": id, "name": "vm1", "location": "eastus",
+		"properties": map[string]any{
+			"provisioningState": "Succeeded", "vmId": "22223333-4444-4555-8666-777788889999",
+			"timeCreated": "2026-10-21T08:15:00.1234567+00:00",
+			"instanceView": map[string]any{"platformFaultDomain": 1.0, "isVMInStandbyPool": false, "hyperVGeneration": "V2",
+				"lastBoot": "2026-10-21", "statusTime": "10/21/2026 8:15:00 AM", "spaced": "2026-10-21 08:15:00"},
+			"hardwareProfile": map[string]any{},
+			"osProfile":       map[string]any{"futureEmpty": map[string]any{}},
+			"networkProfile": map[string]any{"networkInterfaces": []any{map[string]any{
+				"id": "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg/providers/Microsoft.Network/networkInterfaces/nic1", "futureEmpty": map[string]any{}}}},
+			"futureEmpty":   map[string]any{},
+			"futureSetting": map[string]any{"mode": "on"},
+		},
+	})
+	for _, k := range []string{"properties.vmId", "properties.provisioningState", "properties.instanceView.hyperVGeneration"} {
+		if _, ok := c.status[k]; !ok {
+			t.Errorf("status lost %s: %v", k, c.status)
+		}
+	}
+	for _, k := range []string{"properties.timeCreated", "properties.instanceView.platformFaultDomain", "properties.instanceView.isVMInStandbyPool",
+		"properties.instanceView.lastBoot", "properties.instanceView.statusTime", "properties.instanceView.spaced"} {
+		if _, ok := c.status[k]; ok {
+			t.Errorf("status kept the observation %s", k)
+		}
+	}
+	props := c.spec["properties"].(map[string]any)
+	if _, ok := props["futureEmpty"]; ok {
+		t.Error("undeclared empty object kept")
+	}
+	if _, ok := props["futureSetting"]; !ok {
+		t.Error("undeclared setting dropped")
+	}
+	// A declared object that arrived empty is kept as it was, and so is
+	// one that held only an undeclared empty object (review of #31): it
+	// must read the same as when Azure leaves the inner object out.
+	if _, ok := props["hardwareProfile"]; !ok {
+		t.Error("declared empty object dropped")
+	}
+	if os, ok := props["osProfile"].(map[string]any); !ok || len(os) != 0 {
+		t.Errorf("osProfile after normalize: %v", props["osProfile"])
+	}
+	nic := props["networkProfile"].(map[string]any)["networkInterfaces"].([]any)[0].(map[string]any)
+	if _, ok := nic["futureEmpty"]; ok {
+		t.Error("undeclared empty object kept inside an array element")
+	}
+}
+
 func contains(s []string, v string) bool {
 	for _, x := range s {
 		if x == v {

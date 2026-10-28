@@ -75,9 +75,16 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 	full := map[string]snapshot.Object{}
 	if len(cyclic) > 0 {
 		var stripped []snapshot.Object
-		stripped, defs, cyclic = breakCycles(reg, order, cyclic)
-		if len(cyclic) == 0 {
-			order, _ = restoreOrder(append(order, stripped...))
+		stripped, defs, _ = breakCycles(reg, order, cyclic)
+		// Ordered again even when some cycle stays unbroken: the cycles
+		// that were broken are still restored, and only what is left in
+		// (or depends on) an unbroken one is reported and not sent. The
+		// first version ordered nothing new then, and the broken cycles'
+		// members got no result at all (review of #26).
+		order, cyclic = restoreOrder(append(order, stripped...))
+		stuck := map[string]bool{}
+		for _, o := range cyclic {
+			stuck[o.Key()] = true
 		}
 		// A cycle only constrains what has to be created. One already in
 		// the target is compared with its full snapshot, not the stripped
@@ -86,31 +93,19 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 		// 2026-10-24).
 		kept := defs[:0:0]
 		for _, d := range defs {
-			if existing[d.full.Key()] != nil {
+			switch {
+			case stuck[d.full.Key()]:
+			case existing[d.full.Key()] != nil:
 				full[d.full.Key()] = d.full
-				continue
+			default:
+				kept = append(kept, d)
 			}
-			kept = append(kept, d)
 		}
 		defs = kept
 	}
 	results := make([]snapshot.Result, 0, len(s.Objects))
 	for _, o := range cyclic {
 		results = append(results, snapshot.Result{Key: o.Key(), Detail: "its references form a cycle that cannot be broken (a property naming the others is required or create-only); no creation order exists"})
-	}
-	if len(cyclic) > 0 {
-		// Unbroken: none of the cycle is created, as before.
-		drop := map[string]bool{}
-		for _, o := range cyclic {
-			drop[o.Key()] = true
-		}
-		kept := order[:0:0]
-		for _, o := range order {
-			if !drop[o.Key()] {
-				kept = append(kept, o)
-			}
-		}
-		order, defs = kept, nil
 	}
 	// A create can make others as a side effect: a security group's inline
 	// rules are also listed as AWS::EC2::SecurityGroupIngress resources,
@@ -168,6 +163,8 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 	// the types they name (the same set the first inventory used for
 	// them), rather than a full reread per deferred object.
 	var again map[string]*resource
+	var rereadErr error
+	rereadFailed := map[string]string{} // type -> why it was not read again
 	if len(defs) > 0 {
 		want := map[string]bool{}
 		for _, d := range defs {
@@ -177,9 +174,16 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 			}
 		}
 		again = map[string]*resource{}
-		if in2, err := inventory(ctx, api, reg, func(n string) bool { return want[n] }, tun); err == nil {
+		in2, err := inventory(ctx, api, reg, func(n string) bool { return want[n] }, tun)
+		rereadErr = err
+		if err == nil {
 			for _, r := range in2.named() {
 				again[r.key()] = r
+			}
+			for n, c := range in2.cov {
+				if c != nil && c.NotCaptured != "" {
+					rereadFailed[n] = c.NotCaptured
+				}
 			}
 		}
 	}
@@ -190,7 +194,16 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 			}
 			ex := again[d.full.Key()]
 			if ex == nil {
-				done[i].OK, done[i].Detail = false, done[i].Detail+"; then not found again to set "+strings.Join(d.props, ", ")
+				// Said as it is: "not found" would hide a throttled or
+				// refused read (review of #26).
+				why := "not found again"
+				switch {
+				case rereadErr != nil:
+					why = "the target could not be read again (" + rereadErr.Error() + ")"
+				case rereadFailed[d.full.Kind()] != "":
+					why = "the target could not be read again (" + rereadFailed[d.full.Kind()] + ")"
+				}
+				done[i].OK, done[i].Detail = false, done[i].Detail+"; then "+why+" to set "+strings.Join(d.props, ", ")
 				break
 			}
 			upd := opt

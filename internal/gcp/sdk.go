@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -217,8 +220,11 @@ func (s *SDK) do(ctx context.Context, method, u string, body, out any) error {
 		switch {
 		case resp.StatusCode == http.StatusNotFound:
 			return fmt.Errorf("%s %s: %w", method, u, ErrNotFound)
-		case (resp.StatusCode == 429 || resp.StatusCode == 503) && attempt < 8:
-			time.Sleep(time.Duration(1<<attempt) * time.Second)
+		case retryable(method, resp.StatusCode, b) && attempt < maxAttempts-1:
+			if err := sleepCtx(ctx, backoff(attempt, resp)); err != nil {
+				// Cancelled: said as such, not as the throttling (review of #38).
+				return fmt.Errorf("%s %s: HTTP %d: %s: %w", method, u, resp.StatusCode, apiError(b), err)
+			}
 			continue
 		case resp.StatusCode >= 300:
 			msg := apiError(b)
@@ -234,6 +240,68 @@ func (s *SDK) do(ctx context.Context, method, u string, body, out any) error {
 	}
 }
 
+// How Google says "slow down", as it documents it: 429 RESOURCE_EXHAUSTED
+// on most APIs (ErrorInfo reason RATE_LIMIT_EXCEEDED), and on Compute 403
+// with reason rateLimitExceeded or userRateLimitExceeded, which refills at
+// the next minute. Google asks for truncated exponential backoff with
+// jitter, up to 32 or 64 seconds a wait (IAM's retry strategy), and says a
+// quota that is exhausted for the day should not be retried (AIP-194).
+const (
+	maxAttempts = 8
+	maxBackoff  = 64 * time.Second
+)
+
+var (
+	sleepCtx = func(ctx context.Context, d time.Duration) error {
+		t := time.NewTimer(d)
+		defer t.Stop()
+		select {
+		case <-t.C:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	jitter = func() time.Duration { return time.Duration(rand.Int64N(int64(time.Second))) }
+	rateRE = regexp.MustCompile(`\b(?:user)?[Rr]ateLimitExceeded\b|\bRATE_LIMIT_EXCEEDED\b`)
+	// A quota by its name ("limit 'Queries per day'", QueriesPerDay,
+	// dailyLimitExceeded), never a bare "daily": a bucket named
+	// daily-backups is not a daily quota (review of #38).
+	perDayRE = regexp.MustCompile(`(?i)\bper ?day\b|PerDay|dailyLimitExceeded`)
+)
+
+// retryable reports a refusal Google documents as one to send again. A
+// server error (500, 502, 503, 504) is retried only for a read: a write Google may have started can
+// collide with itself. A 429 or a rate limit was refused before anything
+// was done, so a write is sent again too. A quota spent for the day is not.
+func retryable(method string, status int, body []byte) bool {
+	if perDayRE.Match(body) {
+		return false
+	}
+	switch {
+	case status == http.StatusTooManyRequests:
+		return true
+	case status == http.StatusForbidden:
+		return rateRE.Match(body)
+	case status == http.StatusInternalServerError, status == http.StatusBadGateway,
+		status == http.StatusServiceUnavailable, status == http.StatusGatewayTimeout:
+		// Google retries these for idempotent calls; a write Google may
+		// have started could collide with itself (review of #38).
+		return method == http.MethodGet
+	}
+	return false
+}
+
+// backoff is 2^attempt seconds plus up to a second of jitter, at most
+// maxBackoff; a Retry-After, which Google does not document but a front
+// end may send, is honoured up to the same bound.
+func backoff(attempt int, resp *http.Response) time.Duration {
+	if s, err := strconv.Atoi(strings.TrimSpace(resp.Header.Get("Retry-After"))); err == nil && s > 0 {
+		return min(time.Duration(s)*time.Second, maxBackoff)
+	}
+	return min(time.Duration(1<<attempt)*time.Second+jitter(), maxBackoff)
+}
+
 func apiError(b []byte) string {
 	var e struct {
 		Error struct {
@@ -242,13 +310,27 @@ func apiError(b []byte) string {
 			Details []struct {
 				Reason string `json:"reason"`
 			} `json:"details"`
+			// Compute's older envelope names the reason here.
+			Errors []struct {
+				Reason string `json:"reason"`
+			} `json:"errors"`
 		} `json:"error"`
 	}
 	if json.Unmarshal(b, &e) != nil || e.Error.Message == "" {
 		return strings.TrimSpace(string(b))
 	}
-	msg := e.Error.Status + ": " + e.Error.Message
+	msg := e.Error.Message
+	if e.Error.Status != "" { // Compute's envelope has none
+		msg = e.Error.Status + ": " + msg
+	}
 	for _, d := range e.Error.Details {
+		if d.Reason != "" {
+			msg += " (" + d.Reason + ")"
+		}
+	}
+	// Named, so the reason says "rate limit" to check and the report,
+	// not just "403" (which reads as a denial).
+	for _, d := range e.Error.Errors {
 		if d.Reason != "" {
 			msg += " (" + d.Reason + ")"
 		}

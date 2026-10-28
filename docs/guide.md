@@ -40,8 +40,11 @@ the platform's own tool and prints every command to deploy, verify and
 remove it, with your values filled in; it grants nothing itself.
 `stackdna check` then says who StackDNA runs as, what that identity holds
 beyond what it needs, and what it can read, type by type: a type refused
-for want of permission shows as **denied**, never as empty. It exits 3
-when anything is denied or failed.
+for want of permission shows as **denied**, never as empty. A type the
+platform throttled until the retries ran out shows as **throttled**: that
+is not a permission, and the same capture run later, or with a lower
+`--parallel`, reads it. It exits 3 when anything is denied, throttled or
+failed.
 
 ## Capture
 
@@ -125,7 +128,33 @@ stackdna diff    --config prod.yaml --from snap/
 ```
 
 One target that cannot be reached is recorded as failed without stopping
-the others. Restore stays per target, on purpose.
+the others. Restore stays per target, on purpose. An AWS, Azure or Google
+Cloud target the platform throttles can take `parallel: 4` (calls in
+flight at once; 8 by default), as `--parallel` does for one target.
+
+## Throttling
+
+Every platform limits how fast it is read, and StackDNA waits as each one
+asks. A read that stays throttled is reported as **throttled**, never as
+empty or denied: capture again later.
+
+- **Azure:** the SDK honours a `Retry-After` of up to 2 minutes, and a
+  read still throttled after that is read again after at least 1 and then
+  2 minutes, or the longer `Retry-After` Azure gave (up to 5). A lower
+  `--parallel` (which `check` takes too) eases a throttled subscription.
+- **Google Cloud:** a 429, and Compute's 403 `rateLimitExceeded`, are
+  sent again after 1, 2, 4… seconds plus up to a second of jitter, at most
+  64 seconds a wait and 8 tries in all, as Google asks. A 503 is sent
+  again only for a read. A quota spent for the day is not retried: it is
+  reported as a failure, since running again soon will not help.
+- **GitHub and Cloudflare:** read one request at a time. A rate-limited
+  read waits for `retry-after`, or for the reset the limit headers give,
+  or at least a minute, and is sent again. Once a response says the
+  budget is spent, nothing more is sent until it refills, so Cloudflare
+  never locks the account out for its 5 minutes. A wait past 15 minutes
+  (GitHub's hourly limit, shared with every other tool using the token)
+  is not sat out: the read is reported as throttled, with when the limit
+  resets.
 
 ## Exit codes
 
@@ -142,7 +171,8 @@ Add `--json` to `capture`, `diff`, `restore` or `compare` (an environment
 `--config` too). Stdout is then one JSON document, named by its `schema`
 field (`stackdna.org/output/v1`), and everything meant for a person goes
 to stderr. The exit code is the same as without it. A capture's document
-says whether it is `complete` and lists its `gaps`; a diff's lists each
+says whether it is `complete` and lists its `gaps`, and under `throttled`
+the gaps a later capture can close as it is; a diff's lists each
 change with its `kind` (missing, extra, changed) and `fields`; a
 restore's lists each resource with `ok` and `detail`.
 
@@ -167,6 +197,11 @@ anything. An agent setting up someone's access should follow
 
 ## Known limits
 
+- A Log Analytics workspace's data sources can only be listed one kind at
+  a time. StackDNA lists every kind Azure's definition names; a data
+  source of a kind it does not name is not found. The change-tracking
+  default registry keys Azure makes up on every read are counted in
+  coverage, not captured.
 - S3 bucket names are global: a bucket cannot be restored under the same
   name while the original exists, or in another region shortly after it
   was deleted.

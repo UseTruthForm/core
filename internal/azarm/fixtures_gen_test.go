@@ -40,6 +40,9 @@ var fixtureTypes = []string{
 	// Azure creates these with every NSG and no one can PUT them
 	// (writableScopes 0): capture must leave them out.
 	"Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2025-07-01",
+	// A workspace's data sources are listed only one kind at a time.
+	"Microsoft.OperationalInsights/workspaces@2025-07-01",
+	"Microsoft.OperationalInsights/workspaces/dataSources@2025-07-01",
 }
 
 const fixtureDir = "../../testdata/azure/types"

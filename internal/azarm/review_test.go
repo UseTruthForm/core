@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -380,5 +381,55 @@ func TestListFallsBackThroughVersions(t *testing.T) {
 	}
 	for _, c := range snapshot.Compare(snap, got) {
 		t.Errorf("target differs: %+v", c)
+	}
+}
+
+// The part of a resource that names something the manager of a group made
+// (an AKS cluster's kubelet identity, in its node group) is not sent on a
+// restore, and still owns that identity's object ID: a role assignment for
+// it resolves to the restored cluster's kubelet identity, not the source's
+// (review of #43).
+func TestManagedPartMovesToStatusAndOwnsItsPrincipal(t *testing.T) {
+	sub := "/subscriptions/" + tokSub
+	kubelet := "22223333-4444-4555-8666-777788889999"
+	clusterRID, _ := ParseID(sub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks")
+	cluster := &captured{rid: clusterRID, status: map[string]any{"id": clusterRID.String()}, spec: map[string]any{"properties": map[string]any{
+		"dnsPrefix": "aks",
+		"identityProfile": map[string]any{"kubeletidentity": map[string]any{
+			"resourceId": sub + "/resourceGroups/MC_shop_aks_eastus/providers/Microsoft.ManagedIdentity/userAssignedIdentities/aks-agentpool",
+			"objectId":   kubelet, "clientId": "11111111-2222-3333-4444-555555555555"}},
+		// A part naming a resource outside a managed group stays.
+		"diagnostics": map[string]any{"resourceId": sub + "/resourceGroups/shop-rg/providers/Microsoft.Storage/storageAccounts/logs"},
+	}}}
+	assignRID, _ := ParseID(sub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerRegistry/registries/shop/providers/Microsoft.Authorization/roleAssignments/a1")
+	assign := &captured{rid: assignRID, status: map[string]any{"id": assignRID.String()}, spec: map[string]any{"properties": map[string]any{"principalId": kubelet, "principalType": "ServicePrincipal"}}}
+	managed := map[string]string{"mc_shop_aks_eastus": clusterRID.String()}
+	cluster.spec = withoutManaged(cluster, managed)
+	props := cluster.spec["properties"].(map[string]any)
+	if _, ok := props["identityProfile"]; ok {
+		t.Errorf("the kubelet identity is still in the spec: %v", props)
+	}
+	if _, ok := props["diagnostics"]; !ok {
+		t.Error("a part naming an ordinary resource was moved")
+	}
+	if cluster.status["properties.identityProfile.kubeletidentity.objectId"] != kubelet {
+		t.Errorf("status %v", cluster.status)
+	}
+	principalRefs([]*captured{cluster, assign})
+	want := refPrefix + "Microsoft.ContainerService/managedClusters|shop-rg|aks|properties.identityProfile.kubeletidentity.objectId}}"
+	if got := assign.spec["properties"].(map[string]any)["principalId"]; got != want {
+		t.Errorf("principalId %v\nwant %s", got, want)
+	}
+}
+
+// An extension kept on a managed group is restored after the group's
+// manager, which creates the group (review of #43).
+func TestExtensionOnAManagedGroupWaitsForItsManager(t *testing.T) {
+	sub := "/subscriptions/" + tokSub
+	o := obj("Microsoft.Authorization/roleAssignments", "MC_shop_aks_eastus", "a2", sub+"/resourceGroups/MC_shop_aks_eastus/providers/Microsoft.Authorization/roleAssignments/a2", map[string]any{})
+	o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)[annAfter] = sub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks"
+	want := strings.ToLower(APIVersion + "|Microsoft.ContainerService/managedClusters|shop-rg|aks")
+	if d := deps(o); !slices.Contains(d, want) {
+		t.Errorf("deps %v: want %s", d, want)
 	}
 }

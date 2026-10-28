@@ -23,9 +23,13 @@ const (
 	annAPIVersion = "stackdna.org/api-version"
 	annSecrets    = "stackdna.org/secrets"
 	annID         = "stackdna.org/id"
-	tokSub        = "{{stackdna|subscription}}"
-	tokTenant     = "{{stackdna|tenant}}"
-	groupType     = "Microsoft.Resources/resourceGroups"
+	// annAfter names a resource a restore applies first, though nothing in
+	// the spec refers to it: the manager of the group an extension sits on,
+	// which creates that group (review of #43).
+	annAfter  = "stackdna.org/after"
+	tokSub    = "{{stackdna|subscription}}"
+	tokTenant = "{{stackdna|tenant}}"
+	groupType = "Microsoft.Resources/resourceGroups"
 )
 
 // Policy is the set of capture rules, recorded in the snapshot by Name.
@@ -102,6 +106,7 @@ type captured struct {
 	spec    map[string]any
 	status  map[string]any
 	secrets []string
+	after   string // see annAfter
 }
 
 // Capture reads every selected resource in the subscription.
@@ -165,7 +170,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			continue
 		}
 		if by := managedGroups[strings.ToLower(rid.ResourceGroup)]; by != "" && !strings.EqualFold(rid.Type, groupType) && !p.CaptureManaged {
-			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, "in a resource group managed by "+by+", which recreates it")
+			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, "in a resource group managed by "+by+", which recreates it; its children and diagnostic settings are not read")
 			continue
 		}
 		todo = append(todo, r)
@@ -230,6 +235,9 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		case f.c.rid.Scope != "" && managedGroups[strings.ToLower(f.c.rid.ResourceGroup)] != "" && !p.CaptureManaged:
 			skip(f.typ, f.name, "on a resource in a resource group managed by "+managedGroups[strings.ToLower(f.c.rid.ResourceGroup)]+", which recreates it")
 		default:
+			if by := managedGroups[strings.ToLower(f.c.rid.ResourceGroup)]; by != "" && !p.CaptureManaged {
+				f.c.after = tokenizeString(by, api.Subscription(), tenant)
+			}
 			caps = append(caps, f.c)
 		}
 	}
@@ -245,6 +253,11 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 	}
 	caps = unique
+	if !p.CaptureManaged {
+		for _, c := range caps {
+			c.spec = withoutManaged(c, managedGroups)
+		}
+	}
 	principalRefs(caps)
 
 	for _, c := range caps {
@@ -437,6 +450,9 @@ func toObject(c *captured) map[string]any {
 	if len(c.secrets) > 0 {
 		ann[annSecrets] = strings.Join(c.secrets, ",")
 	}
+	if c.after != "" {
+		ann[annAfter] = c.after
+	}
 	meta := map[string]any{"name": c.rid.LocalName(), "annotations": ann}
 	if !strings.EqualFold(c.rid.Type, groupType) && c.rid.ResourceGroup != "" {
 		meta["namespace"] = c.rid.ResourceGroup
@@ -478,4 +494,59 @@ func sameSpec(obj, base map[string]any) bool {
 		return v
 	}
 	return reflect.DeepEqual(norm(obj), norm(base))
+}
+
+// withoutManaged moves out of c's spec every object that names, by its
+// resourceId, a resource in a managed group (an AKS cluster's
+// identityProfile.kubeletidentity: the identity the cluster made in its node
+// group). That part describes what the manager makes, so it goes to status:
+// a restore does not send it, and the manager makes a new one, and its
+// object ID still owns references to it, so a role assignment for the
+// kubelet identity resolves to the restored cluster's (review of #43).
+func withoutManaged(c *captured, managedGroups map[string]string) map[string]any {
+	if len(managedGroups) == 0 {
+		return c.spec
+	}
+	var walk func(v any, path string) bool
+	walk = func(v any, path string) bool {
+		m, ok := v.(map[string]any)
+		if !ok {
+			if l, ok := v.([]any); ok {
+				for _, x := range l {
+					walk(x, path+"[]")
+				}
+			}
+			return false
+		}
+		for k, x := range m {
+			if strings.EqualFold(k, "resourceId") {
+				if s, ok := x.(string); ok {
+					if rid, err := ParseID(s); err == nil && managedGroups[strings.ToLower(rid.ResourceGroup)] != "" {
+						return true
+					}
+				}
+			}
+		}
+		for _, k := range sortedKeys(m) {
+			child, isMap := m[k].(map[string]any)
+			before := len(child)
+			if walk(m[k], join(path, k)) {
+				for _, sk := range sortedKeys(child) {
+					if v, ok := child[sk].(string); ok {
+						c.status[join(join(path, k), sk)] = v
+					}
+				}
+				delete(m, k)
+				continue
+			}
+			// A parent emptied by the move goes too: a restore would send
+			// an empty object Azure never received.
+			if isMap && before > 0 && len(child) == 0 {
+				delete(m, k)
+			}
+		}
+		return false
+	}
+	walk(c.spec, "")
+	return c.spec
 }

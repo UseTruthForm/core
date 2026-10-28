@@ -253,6 +253,11 @@ func deps(o snapshot.Object) []string {
 				}
 			}
 		}
+		if after, _ := ann[annAfter].(string); after != "" {
+			if rid, err := ParseID(after); err == nil {
+				add(rid)
+			}
+		}
 	}
 	if !strings.EqualFold(o.Kind(), groupType) && o.Namespace() != "" {
 		add(ResourceID{ResourceGroup: o.Namespace(), Type: groupType, Name: o.Namespace()})

@@ -20,9 +20,9 @@ import (
 // Environment is a config file naming every system that makes up one
 // environment, so one command captures (or diffs) all of it:
 //
-//	name: example
+//	name: shop
 //	targets:
-//	  - {name: prod, platform: kubernetes, context: example, baseline: base/aks}
+//	  - {name: prod, platform: kubernetes, context: prod, baseline: base/aks}
 //	  - {name: azure, platform: azure, subscription: <id>}
 //
 // Restore is deliberately not driven by it: recreating a whole environment

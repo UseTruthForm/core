@@ -98,7 +98,7 @@ func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapsho
 	// time, so it is refused without a source to read the value from.
 	envNames := withheldEnv(body)
 	if len(envNames) > 0 && opt.SecretSource == nil {
-		res.Detail = "credentials set as plain env values were withheld from the snapshot (" + strings.Join(envNames, ", ") + "); supply them with --secrets-from-context, or move them into a Secret; nothing was applied"
+		res.Detail = "credentials set as plain configuration were withheld from the snapshot (" + strings.Join(displays(envNames), ", ") + "); supply them with --secrets-from-context, or move them into a Secret; nothing was applied"
 		return res
 	}
 
@@ -156,6 +156,14 @@ func withheldKeys(body map[string]any) []string {
 	return strings.Split(v, ",")
 }
 
+func displays(paths []string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = WithheldDisplay(p)
+	}
+	return out
+}
+
 func withheldEnv(body map[string]any) []string {
 	md, _ := body["metadata"].(map[string]any)
 	ann, _ := md["annotations"].(map[string]any)
@@ -170,9 +178,10 @@ func withheldEnv(body map[string]any) []string {
 	return strings.Split(v, ",")
 }
 
-// fillEnv copies each withheld env value from the same object in the source
-// cluster. The values go from one API to the other and are never written.
-func fillEnv(ctx context.Context, src *Clients, mapping *meta.RESTMapping, body map[string]any, names []string) error {
+// fillEnv copies each withheld value from the same slot of the same object
+// in the source cluster. The values go from one API to the other and are
+// never written. A slot the source does not have fails the restore.
+func fillEnv(ctx context.Context, src *Clients, mapping *meta.RESTMapping, body map[string]any, paths []string) error {
 	md, _ := body["metadata"].(map[string]any)
 	ri := src.Dynamic.Resource(mapping.Resource)
 	var live *unstructured.Unstructured
@@ -186,23 +195,24 @@ func fillEnv(ctx context.Context, src *Clients, mapping *meta.RESTMapping, body 
 		return err
 	}
 	values := map[string]string{}
-	eachEnv(live.Object, func(container string, e map[string]any) {
-		if v, ok := e["value"].(string); ok {
-			values[container+"/"+strOf(e["name"])] = v
-		}
-	})
-	want := map[string]bool{}
-	for _, n := range names {
-		if _, ok := values[n]; !ok {
-			return fmt.Errorf("the source has no value for %s", n)
-		}
-		want[n] = true
+	for _, sl := range slots(live.Object) {
+		values[sl.path] = sl.value
 	}
-	eachEnv(body, func(container string, e map[string]any) {
-		if k := container + "/" + strOf(e["name"]); want[k] {
-			e["value"] = values[k]
+	targets := map[string]slot{}
+	for _, sl := range slots(body) {
+		targets[sl.path] = sl
+	}
+	for _, p := range paths {
+		v, ok := values[p]
+		if !ok {
+			return fmt.Errorf("the source has no value for %s", p)
 		}
-	})
+		t, ok := targets[p]
+		if !ok {
+			return fmt.Errorf("the snapshot has no slot %s", p)
+		}
+		t.set(v)
+	}
 	return nil
 }
 

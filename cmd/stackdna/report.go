@@ -66,11 +66,11 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 	w("\n")
 
 	if rows := plainCredentials(s); len(rows) > 0 {
-		w("## Credentials in plain configuration: %d workloads\n\n", len(rows))
-		w("These environment variables are named like credentials and hold a literal value in the workload itself, not in a Secret. ")
+		w("## Credentials in plain configuration: %d objects\n\n", len(rows))
+		w("These values are named like credentials, or are URLs with a password in them, and are set as plain configuration (a workload's environment, a ConfigMap) rather than in a Secret. ")
 		w("Their values were withheld from this snapshot, but anyone who can read the workload can read them, and they are usually in its source too (Helm values, manifests). ")
 		w("Move each into a Secret and reference it with `valueFrom.secretKeyRef`. A restore needs them supplied (`--secrets-from-context`).\n\n")
-		w("| Workload | Variables (container/name) |\n|---|---|\n")
+		w("| Object | Values (container/variable, or data/key) |\n|---|---|\n")
 		for _, r := range rows {
 			w("| %s | %s |\n", md(r[0]), md(r[1]))
 		}
@@ -141,14 +141,18 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 func plainCredentials(s snapshot.Snapshot) [][2]string {
 	var rows [][2]string
 	for _, o := range s.Objects {
-		md, _ := o.Body["metadata"].(map[string]any)
-		ann, _ := md["annotations"].(map[string]any)
+		meta, _ := o.Body["metadata"].(map[string]any)
+		ann, _ := meta["annotations"].(map[string]any)
 		if v, _ := ann[kube.WithheldEnvAnnotation].(string); v != "" {
 			who := o.Kind() + " " + o.Name()
 			if ns := o.Namespace(); ns != "" {
 				who = o.Kind() + " " + ns + "/" + o.Name()
 			}
-			rows = append(rows, [2]string{who, strings.ReplaceAll(v, ",", ", ")})
+			var names []string
+			for _, p := range strings.Split(v, ",") {
+				names = append(names, kube.WithheldDisplay(p))
+			}
+			rows = append(rows, [2]string{who, strings.Join(names, ", ")})
 		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i][0] < rows[j][0] })

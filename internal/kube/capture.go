@@ -172,8 +172,12 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 			}
 			normalize(gvr.Group, gvr.Resource, obj)
 			// Compared after normalising, so allocated values (IPs, UIDs)
-			// that always differ between clusters don't hide a match.
-			if p.matchesBaseline(obj) {
+			// that always differ between clusters don't hide a match. An
+			// object with withheld credentials never matches: withheld on
+			// both sides, a credential someone changed would compare equal,
+			// be skipped as the distribution's, and be lost on restore
+			// (review of #41).
+			if !hasWithheld(obj) && p.matchesBaseline(obj) {
 				md, _ := obj["metadata"].(map[string]any)
 				reason := "identical to the distribution baseline; a new cluster provides it"
 				snap.Skips = append(snap.Skips, snapshot.Skip{

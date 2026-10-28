@@ -127,8 +127,10 @@ stackdna capture --config prod.yaml --out snap/
 stackdna diff    --config prod.yaml --from snap/
 ```
 
-One target that cannot be reached is recorded as failed without stopping
-the others. Restore stays per target, on purpose. An AWS, Azure or Google
+A relative path in the file (`baseline`, a Kubernetes target's
+`kubeconfig`) is relative to the file itself, so the command works from any
+folder. One target that cannot be reached is recorded as failed without
+stopping the others. Restore stays per target, on purpose. An AWS, Azure or Google
 Cloud target the platform throttles can take `parallel: 4` (calls in
 flight at once; 8 by default), as `--parallel` does for one target.
 

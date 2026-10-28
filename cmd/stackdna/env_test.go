@@ -247,6 +247,31 @@ func TestLoadEnvironmentRefusesWhatWouldMisfire(t *testing.T) {
 	}
 }
 
+// A relative kubeconfig is relative to the config file, as a baseline is:
+// a config in environments/ naming ../kube/dev.kubeconfig works from any
+// folder. An absolute path, and a ~ path, are left as written.
+func TestKubeconfigIsRelativeToTheConfig(t *testing.T) {
+	dir := t.TempDir()
+	envs := filepath.Join(dir, "environments")
+	if err := os.MkdirAll(envs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	abs := filepath.Join(dir, "elsewhere", "k.kubeconfig")
+	e, err := loadEnvironment(writeFile(t, envs, "dev.yaml", "name: dev\ntargets:\n"+
+		"  - {name: a, platform: kubernetes, context: c, kubeconfig: ../kube/dev.kubeconfig}\n"+
+		"  - {name: b, platform: kubernetes, context: c, kubeconfig: '"+abs+"'}\n"+
+		"  - {name: c, platform: kubernetes, context: c, kubeconfig: ~/.kube/config}\n"+
+		"  - {name: d, platform: kubernetes, context: c}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{filepath.Join(dir, "kube", "dev.kubeconfig"), abs, "~/.kube/config", ""} {
+		if got := e.Targets[i].Kubeconfig; got != want {
+			t.Errorf("target %s: kubeconfig %q, want %q", e.Targets[i].Name, got, want)
+		}
+	}
+}
+
 // A target whose last capture failed is not diffed against the older
 // snapshot it left behind.
 func TestDiffSkipsATargetWhoseCaptureFailed(t *testing.T) {

@@ -121,9 +121,13 @@ stackdna restore --platform aws --region us-east-2 --from snap/aws --values secr
   the restore would fail on them. `--rename names.yaml` gives them new
   names, one `Type/name: newname` per line
   (`Microsoft.Storage/storageAccounts/shopassets01: shopassets02`). A
-  child follows its parent, and every reference to a renamed resource
-  follows too: other resources' IDs, a role assignment or lock on it, a
-  diagnostic setting that writes to it. Text that only mentions the old
+  child follows its parent, or is renamed on its own by its full name
+  (`Microsoft.Sql/servers/databases/srv/db: db2`); an entry applies in
+  every resource group that has the resource. Every reference to a
+  renamed resource follows: other resources' IDs, a role assignment or
+  lock on it, a diagnostic setting that writes to it. Resource groups and
+  extension resources cannot be renamed, and two resources given one name
+  are refused. Text that only mentions the old
   name (a host name in an app setting) is not changed; each object holding
   some is listed so it can be checked. Write `--values` with the
   snapshot's names, and give `diff` the same file.

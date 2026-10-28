@@ -335,4 +335,13 @@ func TestRenameIsAzureOnly(t *testing.T) {
 	if _, _, err := renamed(f, "azure", snapshot.Snapshot{}); err == nil || !strings.Contains(err.Error(), "not in the snapshot") {
 		t.Errorf("azure with a name not in the snapshot: %v", err)
 	}
+	r, w, _ := os.Pipe()
+	stderr := os.Stderr
+	os.Stderr = w
+	code := diff(context.Background(), []string{"--config", "env.yaml", "--from", "snap", "--rename", f})
+	os.Stderr = stderr
+	w.Close()
+	if out, _ := io.ReadAll(r); code == 0 || !strings.Contains(string(out), "not --config") {
+		t.Errorf("diff --config with --rename: %d %s", code, out)
+	}
 }

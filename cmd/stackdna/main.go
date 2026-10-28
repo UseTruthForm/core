@@ -329,6 +329,9 @@ func diff(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	if *config != "" && *from != "" {
+		if *rename != "" {
+			return fail(fmt.Errorf("diff: --rename is for a diff against one target, not --config"))
+		}
 		return diffEnvironment(ctx, *config, *from)
 	}
 	if *from == "" || (*kctx == "" && *platform == "kubernetes") {
@@ -548,7 +551,7 @@ func parseFlags(fs *flag.FlagSet, args []string) error {
 	return fs.Parse(args)
 }
 
-const renameHelp = "azure: YAML file of new names for resources whose names are unique across Azure (storage accounts, key vaults, registries), 'Type/name: newname'; renames each one, its children and every reference to it, for a restore into another subscription while the source exists (give diff the same file)"
+const renameHelp = "azure: YAML file of new names for resources whose names are unique across Azure (storage accounts, key vaults, registries), 'Type/name: newname'; renames each one in every group that has it, its children and every reference to it, for a restore into another subscription while the source exists (give diff the same file)"
 
 // renamed applies --rename to a snapshot. Only Azure has it; elsewhere it
 // is refused, never ignored.

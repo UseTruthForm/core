@@ -49,7 +49,7 @@ func TestRenamedRestoreMatchesTheRenamedSnapshot(t *testing.T) {
 }
 
 // Renaming refuses what it cannot do, before anything is sent: a resource
-// not in the snapshot, a malformed entry, a new name already taken.
+// not in the snapshot, a malformed entry, a resource group, an extension.
 func TestRenameRefuses(t *testing.T) {
 	e := newEnv(t)
 	snap, err := e.adapter(e.src).Capture(context.Background())
@@ -59,13 +59,76 @@ func TestRenameRefuses(t *testing.T) {
 	for m, want := range map[string]string{
 		"Microsoft.Storage/storageAccounts/nosuch=x": "not in the snapshot",
 		"shopassets01=x": "want Type/name",
-		"Microsoft.Storage/storageAccounts/shopassets01=a/b":    "without a /",
-		"Microsoft.Network/virtualNetworks/shop-vnet=shop-vnet": "already has",
+		"Microsoft.Storage/storageAccounts/shopassets01=a/b":                                      "without a /",
+		"Microsoft.Resources/resourceGroups/shop-rg=other":                                        "cannot be renamed",
+		"Microsoft.Authorization/roleAssignments/6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b=x":          "not a resource that can be renamed",
+		"Microsoft.Storage/storageAccounts/blobServices/containers/shopassets01/default/nosuch=x": "not in the snapshot",
 	} {
 		k, v, _ := strings.Cut(m, "=")
 		if _, _, err := Rename(snap, map[string]string{k: v}); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v, want %q", m, err, want)
 		}
+	}
+}
+
+// No two resources may end up with one name; a swap is fine, and a new
+// name another group has is warned about.
+func TestRenameCollisions(t *testing.T) {
+	sub := "/subscriptions/" + tokSub
+	acct := func(rg, name string) snapshot.Object {
+		return obj("Microsoft.Storage/storageAccounts", rg, name, sub+"/resourceGroups/"+rg+"/providers/Microsoft.Storage/storageAccounts/"+name, map[string]any{})
+	}
+	snap := snapshot.Snapshot{Objects: []snapshot.Object{acct("rg", "a1"), acct("rg", "a2"), acct("rg2", "a3")}}
+	const typ = "Microsoft.Storage/storageAccounts/"
+	for _, m := range []map[string]string{{typ + "a1": "x", typ + "a2": "x"}, {typ + "a1": "a2"}} {
+		if _, _, err := Rename(snap, m); err == nil || !strings.Contains(err.Error(), "would both be") {
+			t.Errorf("%v: %v, want a collision", m, err)
+		}
+	}
+	got, _, err := Rename(snap, map[string]string{typ + "a1": "a2", typ + "a2": "a1"})
+	if err != nil {
+		t.Fatalf("swap: %v", err)
+	}
+	if got.Objects[0].Name() != "a2" || got.Objects[1].Name() != "a1" {
+		t.Errorf("swap: %s %s", got.Objects[0].Name(), got.Objects[1].Name())
+	}
+	_, warnings, err := Rename(snap, map[string]string{typ + "a1": "a3"})
+	if err != nil || len(warnings) != 1 || !strings.Contains(warnings[0], "more than one group (rg, rg2)") {
+		t.Errorf("a name another group has: %v %v", warnings, err)
+	}
+}
+
+// A rename reaches a child renamed on its own, IDs used as map keys (a
+// site's user-assigned identities), IDs in any case or joined in one
+// string, and the restore order an object waits for.
+func TestRenameReachesEveryReference(t *testing.T) {
+	sub := "/subscriptions/" + tokSub
+	idOf := func(n string) string {
+		return sub + "/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/" + n
+	}
+	srv := obj("Microsoft.Sql/servers", "rg", "srv", sub+"/resourceGroups/rg/providers/Microsoft.Sql/servers/srv", map[string]any{})
+	db := obj("Microsoft.Sql/servers/databases", "rg", "srv/db", sub+"/resourceGroups/rg/providers/Microsoft.Sql/servers/srv/databases/db", map[string]any{})
+	id := obj("Microsoft.ManagedIdentity/userAssignedIdentities", "rg", "id1", idOf("id1"), map[string]any{})
+	site := obj("Microsoft.Web/sites", "rg", "web", sub+"/resourceGroups/rg/providers/Microsoft.Web/sites/web", map[string]any{
+		"identity":   map[string]any{"userAssignedIdentities": map[string]any{idOf("id1"): map[string]any{}}},
+		"properties": map[string]any{"both": idOf("id1") + "," + idOf("id1"), "lower": strings.ToLower(idOf("id1"))},
+	})
+	site.Body["metadata"].(map[string]any)["annotations"].(map[string]any)[annAfter] = idOf("id1")
+	got, warnings, err := Rename(snapshot.Snapshot{Objects: []snapshot.Object{srv, db, id, site}}, map[string]string{
+		"Microsoft.Sql/servers/databases/srv/db":               "db2",
+		"Microsoft.ManagedIdentity/userAssignedIdentities/id1": "id9",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := got.Objects[1].Name(); n != "srv/db2" {
+		t.Errorf("child: %s", n)
+	}
+	if b := canon(map[string]any{"m": got.Objects[3].Body["metadata"], "s": got.Objects[3].Body["spec"]}); strings.Contains(strings.ToLower(b), "id1") {
+		t.Errorf("site still names id1: %s", b)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings %v", warnings)
 	}
 }
 
@@ -89,11 +152,12 @@ func TestRenameID(t *testing.T) {
 func TestRenameValues(t *testing.T) {
 	m := map[string]string{"Microsoft.Sql/servers/old": "new"}
 	got := RenameValues(map[string]map[string]any{
-		"Microsoft.Sql/servers/rg/old":              {"a": 1},
-		"Microsoft.Sql/servers/databases/rg/old/db": {"b": 1},
-		"Microsoft.Compute/virtualMachines/rg/vm":   {"c": 1},
+		"Microsoft.Sql/servers/rg/old":                                   {"a": 1},
+		"Microsoft.Sql/servers/databases/rg/old/db":                      {"b": 1},
+		"Microsoft.Compute/virtualMachines/rg/vm":                        {"c": 1},
+		"X.Y/z/rg/providers/Microsoft.Sql/servers/old/providers/X.Y/z/q": {"d": 1},
 	}, m)
-	for _, k := range []string{"Microsoft.Sql/servers/rg/new", "Microsoft.Sql/servers/databases/rg/new/db", "Microsoft.Compute/virtualMachines/rg/vm"} {
+	for _, k := range []string{"Microsoft.Sql/servers/rg/new", "Microsoft.Sql/servers/databases/rg/new/db", "Microsoft.Compute/virtualMachines/rg/vm", "X.Y/z/rg/providers/Microsoft.Sql/servers/new/providers/X.Y/z/q"} {
 		if _, ok := got[k]; !ok {
 			t.Errorf("no key %s in %v", k, got)
 		}

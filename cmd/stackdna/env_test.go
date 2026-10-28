@@ -304,3 +304,24 @@ func TestTargetParallel(t *testing.T) {
 		t.Errorf("default gave %d", got)
 	}
 }
+
+// Credentials set as plain env values are a finding of their own in the
+// report: each workload with the variables' names, never their values.
+func TestReportListsPlainCredentials(t *testing.T) {
+	dep := snapshot.Object{Body: map[string]any{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": map[string]any{
+		"name": "api", "namespace": "shop", "annotations": map[string]any{kube.WithheldEnvAnnotation: "spec.template.spec.containers[api].env[DB_PASSWORD],spec.template.spec.containers[api].env[PAYMENT_API_KEY]"}}}}
+	s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Objects: []snapshot.Object{dep},
+		Coverage: []snapshot.Coverage{{Resource: "apps/v1/deployments", Kind: "Deployment", Captured: 1}}}
+	dir := t.TempDir()
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeReport(dir, s, "test"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "REPORT.md"))
+	txt := string(b)
+	if !strings.Contains(txt, "## Credentials in plain configuration: 1 objects") || !strings.Contains(txt, "| Deployment shop/api | api/DB_PASSWORD, api/PAYMENT_API_KEY |") || !strings.Contains(txt, "secretKeyRef") {
+		t.Errorf("report:\n%s", txt)
+	}
+}

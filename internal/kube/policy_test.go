@@ -2,8 +2,15 @@ package kube
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 
 	"github.com/stackdna/core/internal/snapshot"
 )
@@ -237,5 +244,184 @@ func TestPlatformManagerOnWindowsAndDerivedAPIObjects(t *testing.T) {
 	}
 	if got := (Policy{}).typeExcluded("networking.k8s.io", "ipaddresses"); got == "" {
 		t.Fatal("IPAddress records must be excluded as derived from Services")
+	}
+}
+
+func withheldDisplays(obj map[string]any) []string {
+	md, _ := obj["metadata"].(map[string]any)
+	ann, _ := md["annotations"].(map[string]any)
+	v, _ := ann[WithheldEnvAnnotation].(string)
+	if v == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		out = append(out, WithheldDisplay(p))
+	}
+	sort.Strings(out)
+	return out
+}
+
+func envList(pairs ...string) []any {
+	var out []any
+	for i := 0; i+1 < len(pairs); i += 2 {
+		out = append(out, map[string]any{"name": pairs[i], "value": pairs[i+1]})
+	}
+	return out
+}
+
+// A credential set as plain configuration is withheld like a Secret's
+// value; a name that only mentions one, and a value that is not one, are
+// kept (review of #41: names it missed, and names it took wrongly).
+func TestCredentialEnvIsWithheld(t *testing.T) {
+	withheld := []string{
+		"PAYMENT_API_KEY", "DB_PASSWORD", "GITHUB_TOKEN", "CLIENT_SECRET", "AUTH_KEY", "PARTNER_API_KEY_2",
+		"PGPASSWORD", "MYSQLPASSWORD", "SECRETKEY", "ADMINPASS", "GPG_PASSPHRASE", "SENTRY_DSN",
+		"AWS_SECRET_ACCESS_KEY", "AZURE_CLIENT_SECRET", "JWT_SECRET", "SIGNING_KEY",
+	}
+	kept := []string{
+		"VAULT_SECRET_ID", "VAULT_SECRET_ID_2", "TOKEN_URL", "API_KEY_NAME", "LOG_LEVEL", "KEYS_ENABLED",
+		"PUBLIC_KEY", "PASSWORD_MIN_LENGTH", "TOKEN_EXPIRY_SECONDS", "KAFKA_KEY_SERIALIZER", "AWS_ACCESS_KEY_ID",
+		"KEYCLOAK_URL", "MONKEY", "KEYBOARD_LAYOUT",
+	}
+	var pairs []string
+	for _, n := range withheld {
+		pairs = append(pairs, n, "v-"+n)
+	}
+	for _, n := range kept {
+		pairs = append(pairs, n, "v-"+n)
+	}
+	pairs = append(pairs,
+		"DATABASE_URL", "postgres://app:hunter2@db:5432/x", // a URL with a password, whatever its name
+		"CACHE_URL", "redis://cache:6379", // a URL without one
+		"GOOGLE_APPLICATION_CREDENTIALS", "/var/run/key.json", // a file path
+		"OTHER_TOKEN", "$(TOKEN)", // a reference
+		"EMPTY_SECRET", "")
+	env := append(envList(pairs...), map[string]any{"name": "REF_PASSWORD", "valueFrom": map[string]any{"secretKeyRef": map[string]any{"name": "db", "key": "password"}}})
+	dep := k8sObj("Deployment", "shop", "api", nil, map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+		"containers":     []any{map[string]any{"name": "api", "env": env}},
+		"initContainers": []any{map[string]any{"name": "migrate", "env": envList("DB_PASSWORD", "p-2")}},
+	}}}})
+	normalize("apps", "deployments", dep)
+	var want []string
+	for _, n := range append(withheld, "DATABASE_URL") {
+		want = append(want, "api/"+n)
+	}
+	want = append(want, "migrate/DB_PASSWORD")
+	sort.Strings(want)
+	if got := withheldDisplays(dep); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("withheld\n%v\nwant\n%v", got, want)
+	}
+	for _, sl := range slots(dep) {
+		if strings.Contains(sl.path, "api") && sl.value != "" && strings.HasPrefix(sl.value, "v-") {
+			for _, n := range withheld {
+				if sl.name == n {
+					t.Errorf("%s survived", n)
+				}
+			}
+		}
+	}
+	if ref := dep["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)["env"].([]any)[len(env)-1].(map[string]any); ref["valueFrom"] == nil {
+		t.Error("a secretKeyRef was dropped")
+	}
+}
+
+// Env lists are found wherever they are, not only under containers: a
+// CronJob's job template, Argo's container and script, Tekton's steps, a
+// HelmRelease's values; and a ConfigMap's keys (review of #41).
+func TestCredentialsAreFoundWhereverTheyAre(t *testing.T) {
+	for name, c := range map[string]struct {
+		obj  map[string]any
+		want string
+	}{
+		"cronjob": {k8sObj("CronJob", "shop", "nightly", nil, map[string]any{"spec": map[string]any{"jobTemplate": map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+			"containers": []any{map[string]any{"name": "job", "env": envList("SFTP_PASSWORD", "p")}}}}}}}}), "job/SFTP_PASSWORD"},
+		"argo container": {k8sObj("WorkflowTemplate", "ci", "build", nil, map[string]any{"spec": map[string]any{"templates": []any{map[string]any{"name": "build",
+			"container": map[string]any{"image": "x", "env": envList("REGISTRY_TOKEN", "t")}}}}}), "REGISTRY_TOKEN"},
+		"tekton steps":       {k8sObj("Task", "ci", "push", nil, map[string]any{"spec": map[string]any{"steps": []any{map[string]any{"name": "push", "env": envList("NPM_TOKEN", "t")}}}}), "push/NPM_TOKEN"},
+		"helmrelease values": {k8sObj("HelmRelease", "apps", "web", nil, map[string]any{"spec": map[string]any{"values": map[string]any{"env": envList("API_KEY", "k")}}}), "API_KEY"},
+		"configmap":          {k8sObj("ConfigMap", "shop", "cfg", nil, map[string]any{"data": map[string]any{"DB_PASSWORD": "p", "LOG_LEVEL": "info", "DATABASE_URL": "postgres://u:p@h/db"}}), "data/DATABASE_URL,data/DB_PASSWORD"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			normalize("", "x", c.obj)
+			if got := strings.Join(withheldDisplays(c.obj), ","); got != c.want {
+				t.Errorf("withheld %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// Two templates that each have a container "main" setting DB_PASSWORD are
+// two slots, and a restore puts each value back where it came from; the
+// reviewer saw either value written to both (review of #41).
+func TestSlotsAreUniqueAndRestoredInPlace(t *testing.T) {
+	mk := func(a, b string) map[string]any {
+		return k8sObj("WorkflowTemplate", "ci", "two", nil, map[string]any{"apiVersion": "argoproj.io/v1alpha1", "spec": map[string]any{"templates": []any{
+			map[string]any{"name": "one", "container": map[string]any{"name": "main", "env": envList("DB_PASSWORD", a)}},
+			map[string]any{"name": "two", "container": map[string]any{"name": "main", "env": envList("DB_PASSWORD", b)}},
+		}}})
+	}
+	live := mk("p-one", "p-two")
+	snap := mk("p-one", "p-two")
+	normalize("argoproj.io", "workflowtemplates", snap)
+	paths := withheldEnv(snap)
+	if len(paths) != 2 || paths[0] == paths[1] {
+		t.Fatalf("paths %v: want two distinct slots", paths)
+	}
+	gvr := schema.GroupVersionResource{Group: "argoproj.io", Version: "v1alpha1", Resource: "workflowtemplates"}
+	live["apiVersion"] = "argoproj.io/v1alpha1"
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{gvr: "WorkflowTemplateList"}, &unstructured.Unstructured{Object: live})
+	for i := 0; i < 20; i++ { // map order varies between runs; the result must not
+		body := deepCopy(snap)
+		if err := fillEnv(context.Background(), &Clients{Dynamic: dyn}, &meta.RESTMapping{Resource: gvr, Scope: meta.RESTScopeNamespace}, body, paths); err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, sl := range slots(body) {
+			got[sl.path] = sl.value
+		}
+		if got[paths[0]] == got[paths[1]] || got[paths[0]] == "" {
+			t.Fatalf("restored %v", got)
+		}
+	}
+}
+
+// An object with withheld credentials never matches the baseline: both
+// sides withheld, a credential someone changed would compare equal and be
+// skipped (review of #41).
+func TestWithheldNeverMatchesTheBaseline(t *testing.T) {
+	if !hasWithheld(func() map[string]any {
+		d := k8sObj("Deployment", "kube-system", "addon", nil, map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+			"containers": []any{map[string]any{"name": "a", "env": envList("API_TOKEN", "t")}}}}}})
+		normalize("apps", "deployments", d)
+		return d
+	}()) {
+		t.Fatal("hasWithheld must see the annotation")
+	}
+}
+
+// Restoring a workload whose credentials were withheld, with no source to
+// read them from, is refused: restored empty it would look done and fail
+// at run time.
+func TestRestoreRefusesWithheldEnvWithoutSource(t *testing.T) {
+	dep := k8sObj("Deployment", "shop", "api", map[string]any{"annotations": map[string]any{WithheldEnvAnnotation: "spec.template.spec.containers[api].env[PAYMENT_API_KEY]"}}, nil)
+	dep["apiVersion"] = "apps/v1"
+	res := applyOne(context.Background(), nil, nil, snapshot.Object{Body: dep}, RestoreOptions{})
+	if res.OK || !strings.Contains(res.Detail, "api/PAYMENT_API_KEY") || !strings.Contains(res.Detail, "--secrets-from-context") {
+		t.Fatalf("want a refusal naming the withheld variable, got %+v", res)
+	}
+}
+
+// Kubernetes allows the same variable twice in one env list; each is its
+// own slot, by index, and each value is restored to its own entry.
+func TestDuplicateEnvNamesAreTwoSlots(t *testing.T) {
+	dep := k8sObj("Deployment", "shop", "api", nil, map[string]any{"spec": map[string]any{"template": map[string]any{"spec": map[string]any{
+		"containers": []any{map[string]any{"name": "api", "env": envList("DB_PASSWORD", "first", "DB_PASSWORD", "second")}}}}}})
+	var paths []string
+	for _, sl := range slots(dep) {
+		paths = append(paths, sl.path)
+	}
+	if len(paths) != 2 || paths[0] == paths[1] {
+		t.Fatalf("paths %v: want two distinct slots", paths)
 	}
 }

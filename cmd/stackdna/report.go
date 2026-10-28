@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/stackdna/core/internal/kube"
 	"github.com/stackdna/core/internal/snapshot"
 )
 
@@ -63,6 +64,18 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 		w("- **%d objects** in this snapshot name values that were withheld or that the platform never returns; restore will say which it was not given.\n", n)
 	}
 	w("\n")
+
+	if rows := plainCredentials(s); len(rows) > 0 {
+		w("## Credentials in plain configuration: %d objects\n\n", len(rows))
+		w("These values are named like credentials, or are URLs with a password in them, and are set as plain configuration (a workload's environment, a ConfigMap) rather than in a Secret. ")
+		w("Their values were withheld from this snapshot, but anyone who can read the workload can read them, and they are usually in its source too (Helm values, manifests). ")
+		w("Move each into a Secret and reference it with `valueFrom.secretKeyRef`. A restore needs them supplied (`--secrets-from-context`).\n\n")
+		w("| Object | Values (container/variable, or data/key) |\n|---|---|\n")
+		for _, r := range rows {
+			w("| %s | %s |\n", md(r[0]), md(r[1]))
+		}
+		w("\n")
+	}
 
 	if len(s.Objects) > 0 {
 		w("## Captured, by type\n\n| Type | Resources |\n|---|---:|\n")
@@ -121,6 +134,29 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 		w("\n")
 	}
 	return os.WriteFile(filepath.Join(dir, "REPORT.md"), []byte(b.String()), 0o644)
+}
+
+// plainCredentials lists each workload whose credential-named env values
+// were withheld (kube.WithheldEnvAnnotation): kind namespace/name, names.
+func plainCredentials(s snapshot.Snapshot) [][2]string {
+	var rows [][2]string
+	for _, o := range s.Objects {
+		meta, _ := o.Body["metadata"].(map[string]any)
+		ann, _ := meta["annotations"].(map[string]any)
+		if v, _ := ann[kube.WithheldEnvAnnotation].(string); v != "" {
+			who := o.Kind() + " " + o.Name()
+			if ns := o.Namespace(); ns != "" {
+				who = o.Kind() + " " + ns + "/" + o.Name()
+			}
+			var names []string
+			for _, p := range strings.Split(v, ",") {
+				names = append(names, kube.WithheldDisplay(p))
+			}
+			rows = append(rows, [2]string{who, strings.Join(names, ", ")})
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i][0] < rows[j][0] })
+	return rows
 }
 
 // writeEnvReport writes the environment's REPORT.md: one row per target,

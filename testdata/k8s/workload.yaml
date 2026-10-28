@@ -86,6 +86,11 @@ spec:
         - name: api
           image: nginx:1.27-alpine
           ports: [{containerPort: 80}]
+          # A credential written straight into the workload: captured with
+          # its value withheld, and restored from the source cluster.
+          env:
+            - {name: PAYMENT_API_KEY, value: drill-literal-key-0001}
+            - {name: LOG_LEVEL, value: info}
           envFrom:
             - configMapRef: {name: shop-config}
             - secretRef: {name: shop-db}

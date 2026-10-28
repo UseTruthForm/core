@@ -3,7 +3,9 @@ package kube
 import (
 	"encoding/json"
 	"reflect"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/stackdna/core/internal/snapshot"
@@ -14,6 +16,57 @@ import (
 // freely than a cluster, so secret values never go into it; restore has to be
 // given them from somewhere else (a vault, or the live source cluster).
 const WithheldAnnotation = "stackdna.org/withheld-keys"
+
+// WithheldEnvAnnotation lists the values StackDNA did not write to the
+// snapshot because they are credentials set as plain configuration: an env
+// variable of a workload, or a ConfigMap key, named like one, or any such
+// value that is a URL with a password in it. A key written straight into a
+// Deployment is not a Secret, so it was captured as plain configuration (a
+// real cluster had an API key in a Deployment's env, from its Helm values);
+// it is withheld like a Secret's value, and named so the report can say
+// where to move it. Each entry is a slot path (see slots), comma-separated.
+const WithheldEnvAnnotation = "stackdna.org/withheld-env"
+
+// credentialNameRE matches names that say the value is a credential:
+// PASSWORD and PGPASSWORD, *_SECRET, SECRETKEY, *_TOKEN, API_KEY,
+// AUTH_KEY, *_KEY, *_PASSPHRASE, *_DSN, CONNECTION_STRING and the like.
+var credentialNameRE = regexp.MustCompile(`(?i)(^|_)(pass|pwd|secret|token|api_?key|auth_?key|access_?key|private_?key|client_?secret|key|credentials?|conn(ection)?_?str(ing)?|sas|dsn)(_|$)|password|passwd|passphrase|secretkey|(admin|root|user|db|app)pass$`)
+
+// notCredentialNameRE are names that mention a credential without holding
+// one: where it is (*_URL, *_PATH, *_FILE), what it is called (*_NAME,
+// *_ID: a vault item's ID is how a workload asks for a secret, not the
+// secret), a setting about it (*_ENABLED, *_TTL, *_LENGTH, *_SECONDS,
+// *_SERIALIZER), and a public key.
+var notCredentialNameRE = regexp.MustCompile(`(?i)_(id|ids|name|names|url|uri|endpoint|host|port|path|file|dir|ref|type|enabled|disabled|ttl|expiry|expires|header|issuer|audience|scope|scopes|version|length|seconds|minutes|hours|days|size|count|max|min|timeout|interval|format|algorithm|serializer|deserializer|prefix|suffix|mode|policy|level|rotation)$|public_?key`)
+
+// envRefRE is a value that is only a reference to another variable.
+var envRefRE = regexp.MustCompile(`^\$\([A-Za-z_][A-Za-z0-9_]*\)$`)
+
+// numberedRE is a trailing index: SECRET_ID_1 is read as SECRET_ID. In a
+// real cluster, two vault item IDs named *_SECRET_ID_1 and _2 were
+// withheld as if they were secrets.
+var numberedRE = regexp.MustCompile(`_\d+$`)
+
+// filePathRE is a value that names a file, not a credential
+// (GOOGLE_APPLICATION_CREDENTIALS=/var/run/key.json).
+var filePathRE = regexp.MustCompile(`^(/|[A-Za-z]:\\)\S*$`)
+
+// urlPasswordRE is a URL with a password in it (postgres://u:p@host,
+// redis://:p@host): a credential whatever the variable is called, even a
+// *_URL.
+var urlPasswordRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://[^/@:\s]*:[^@\s/]+@`)
+
+// credential reports a value to withhold, by its name and its value.
+func credential(name, value string) bool {
+	if value == "" || envRefRE.MatchString(value) {
+		return false
+	}
+	if urlPasswordRE.MatchString(value) {
+		return true
+	}
+	base := numberedRE.ReplaceAllString(name, "")
+	return credentialNameRE.MatchString(base) && !notCredentialNameRE.MatchString(base) && !filePathRE.MatchString(value)
+}
 
 // excludedTypes are resource types a recreation never needs. Each one is
 // either derived from other objects, describes the machine or the moment
@@ -284,6 +337,7 @@ func normalize(group, resource string, obj map[string]any) []string {
 	case "/secrets":
 		return withhold(obj)
 	}
+	withholdEnv(obj)
 	return nil
 }
 
@@ -317,6 +371,124 @@ func withhold(obj map[string]any) []string {
 	}
 	ann[WithheldAnnotation] = strings.Join(sorted, ",")
 	return sorted
+}
+
+// withholdEnv replaces every credential set as plain configuration in obj
+// with "" and records each slot's path in WithheldEnvAnnotation.
+func withholdEnv(obj map[string]any) []string {
+	var paths []string
+	for _, sl := range slots(obj) {
+		if credential(sl.name, sl.value) {
+			sl.set("")
+			paths = append(paths, sl.path)
+		}
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	sort.Strings(paths)
+	md, _ := obj["metadata"].(map[string]any)
+	ann, _ := md["annotations"].(map[string]any)
+	if ann == nil {
+		ann = map[string]any{}
+		md["annotations"] = ann
+	}
+	ann[WithheldEnvAnnotation] = strings.Join(paths, ",")
+	return paths
+}
+
+func hasWithheld(obj map[string]any) bool {
+	md, _ := obj["metadata"].(map[string]any)
+	ann, _ := md["annotations"].(map[string]any)
+	return strOf(ann[WithheldEnvAnnotation]) != ""
+}
+
+// slot is one value withholdEnv may withhold: an env entry, or a
+// ConfigMap key.
+type slot struct {
+	path, name, value string
+	set               func(string)
+}
+
+// slots finds every env entry with a literal value anywhere in obj (any
+// list under "env" whose items are {name, value}: pod templates, Argo's
+// container and script, Tekton's steps, a HelmRelease's values), and every
+// key of a ConfigMap's data. Each has a path unique within obj: a list
+// item is named by its "name" where that is unique in its list, and by its
+// index otherwise, so two templates that each have a container "main"
+// setting DB_PASSWORD are two slots (review of #41).
+func slots(obj map[string]any) []slot {
+	var out []slot
+	if strOf(obj["kind"]) == "ConfigMap" {
+		if d, ok := obj["data"].(map[string]any); ok {
+			for k, v := range d {
+				if s, ok := v.(string); ok {
+					out = append(out, slot{path: "data[" + k + "]", name: k, value: s, set: func(x string) { d[k] = x }})
+				}
+			}
+		}
+	}
+	var walk func(v any, path string)
+	walk = func(v any, path string) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, c := range x {
+				p := join(path, k)
+				if k == "env" {
+					for i, e := range list(c) {
+						m, ok := e.(map[string]any)
+						s, isStr := m["value"].(string)
+						if ok && isStr {
+							out = append(out, slot{path: p + "[" + item(list(c), i) + "]", name: strOf(m["name"]), value: s, set: func(v string) { m["value"] = v }})
+						}
+					}
+					continue
+				}
+				walk(c, p)
+			}
+		case []any:
+			for i, c := range x {
+				walk(c, path+"["+item(x, i)+"]")
+			}
+		}
+	}
+	walk(obj, "")
+	sort.Slice(out, func(i, j int) bool { return out[i].path < out[j].path })
+	return out
+}
+
+// item names list element i: by its "name" where no other element shares
+// it, else by its index.
+func item(l []any, i int) string {
+	m, _ := l[i].(map[string]any)
+	n := strOf(m["name"])
+	if n == "" {
+		return strconv.Itoa(i)
+	}
+	for j, o := range l {
+		if om, _ := o.(map[string]any); j != i && strOf(om["name"]) == n {
+			return strconv.Itoa(i)
+		}
+	}
+	return n
+}
+
+// WithheldDisplay shortens a withheld slot path for people: the container
+// and the variable (api/DB_PASSWORD), or the ConfigMap key (data/KEY).
+func WithheldDisplay(path string) string {
+	if strings.HasPrefix(path, "data[") {
+		return "data/" + strings.TrimSuffix(strings.TrimPrefix(path, "data["), "]")
+	}
+	i := strings.LastIndex(path, ".env[")
+	if i < 0 {
+		return path
+	}
+	name := strings.TrimSuffix(path[i+len(".env["):], "]")
+	owner := path[:i]
+	if j := strings.LastIndex(owner, "["); j >= 0 && strings.HasSuffix(owner, "]") {
+		return owner[j+1:len(owner)-1] + "/" + name
+	}
+	return name
 }
 
 func managers(md map[string]any) []string {

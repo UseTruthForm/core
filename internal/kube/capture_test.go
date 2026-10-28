@@ -87,3 +87,28 @@ func TestHelmHistoryIsListedPerRelease(t *testing.T) {
 		t.Errorf("history captured: %v", first.Objects)
 	}
 }
+
+// Through the capture itself: an add-on identical to the baseline except
+// for a withheld credential is captured, not skipped as the
+// distribution's (review of #41).
+func TestWithheldIsCapturedDespiteTheBaseline(t *testing.T) {
+	deps := schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
+	mk := func(token string) map[string]any {
+		return map[string]any{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": map[string]any{"name": "addon", "namespace": "addons"},
+			"spec": map[string]any{"template": map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"name": "a", "image": "x",
+				"env": []any{map[string]any{"name": "API_TOKEN", "value": token}}}}}}}}
+	}
+	base := mk("distribution-default")
+	normalize("apps", "deployments", base)
+	p := Policy{}.WithBaseline(snapshot.Snapshot{Objects: []snapshot.Object{{Body: base}}}, "sha256:b")
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{deps: "DeploymentList"},
+		&unstructured.Unstructured{Object: mk("changed-by-someone")})
+	var snap snapshot.Snapshot
+	cov := &snapshot.Coverage{}
+	if err := captureType(context.Background(), &Clients{Dynamic: dyn}, p, deps, "Deployment", cov, &snap); err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Objects) != 1 {
+		t.Fatalf("captured %d objects, skips %+v: the add-on must be captured", len(snap.Objects), snap.Skips)
+	}
+}

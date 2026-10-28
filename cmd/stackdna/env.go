@@ -105,12 +105,12 @@ func loadEnvironment(path string) (*Environment, error) {
 		if k := inapplicable(*t); k != "" {
 			return nil, fmt.Errorf("%s: target %s: %s does not apply to platform %s", path, t.Name, k, t.Platform)
 		}
-		// Relative baselines are relative to the config file, not to
-		// wherever the command happens to run; each of a comma-separated
-		// list (one per region), not only the first.
 		if t.Parallel < 0 {
 			return nil, fmt.Errorf("%s: target %s: parallel must be 1 or more", path, t.Name)
 		}
+		// Relative baselines are relative to the config file, not to
+		// wherever the command happens to run; each of a comma-separated
+		// list (one per region), not only the first.
 		if t.Baseline != "" {
 			parts := strings.Split(t.Baseline, ",")
 			for j, b := range parts {
@@ -119,6 +119,13 @@ func loadEnvironment(path string) (*Environment, error) {
 				}
 			}
 			t.Baseline = strings.Join(parts, ",")
+		}
+		// So is a relative kubeconfig. It was relative to wherever the
+		// command ran, unlike the baseline beside it, so a config naming
+		// kube/dev.kubeconfig worked from one folder only. A ~ path is left
+		// as written: it is not relative to anything here.
+		if t.Kubeconfig != "" && !filepath.IsAbs(t.Kubeconfig) && !strings.HasPrefix(t.Kubeconfig, "~") {
+			t.Kubeconfig = filepath.Join(base, t.Kubeconfig)
 		}
 	}
 	return &e, nil

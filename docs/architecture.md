@@ -800,8 +800,8 @@ A client runs it like any stdio server:
 
 | Step | What |
 |---|---|
-| Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so); `--json` output |
-| AWS | A full-registry read-only capture of the sandbox, to see which types fail to list and how throttling behaves; the drill extended to IAM and Lambda once the sandbox user can read roles; replay fixtures recorded from real responses; parallel creates of independent resources; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
+| Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so) |
+| AWS | The drill extended to IAM and Lambda (the sandbox user may now write roles named `stackdna-drill*`); a restore into a second account, and the onboarding role trusted from another account, once that account is activated; replay fixtures recorded from real responses; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
 | Azure | Mapping principals across tenants; data-plane configuration (Key Vault secrets' metadata, storage CORS) where ARM exposes it |
 | GCP | A real Compute drill (needs billing); project IDs in free text; `undelete` for soft-deleted resources (custom roles) |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |

@@ -14,7 +14,7 @@
 # resource, SNS topic, an EventBridge rule targeting the topic (DISABLED, so
 # it never fires), a CloudWatch log group, an ECR repository and an S3
 # bucket, and in IAM (global) a role and a customer managed policy attached
-# to it. Cloud Control calls are free. Not used: Secrets Manager (charged
+# to it, and a Lambda function with its own execution role. Cloud Control calls are free. Not used: Secrets Manager (charged
 # monthly per secret), KMS, NAT gateways, Elastic IPs.
 #
 # IAM needs writes PowerUserAccess does not give: the sandbox user holds an
@@ -57,7 +57,11 @@ N=stackdna-drill
 # taken, so a bucket restored elsewhere needs another name.
 if $XREGION; then TYPES="${TYPES/,AWS::S3::Bucket/}"; fi
 IAM="${IAM:-1}"
-if [ "$IAM" = 1 ]; then TYPES="$TYPES,AWS::IAM::Role,AWS::IAM::ManagedPolicy"; fi
+# Lambda needs an execution role, so it comes with IAM.
+if [ "$IAM" = 1 ]; then TYPES="$TYPES,AWS::IAM::Role,AWS::IAM::ManagedPolicy,AWS::Lambda::Function"; fi
+# A function's code is write-only: AWS never returns it, so a snapshot
+# cannot hold it and the restore is given it, as a customer would give it.
+VALUES=()
 
 # Git Bash on Windows rewrites arguments that look like paths, which turns
 # the parameter name /stackdna-drill/env into C:/Program Files/Git/...
@@ -121,6 +125,12 @@ cleanup_iam() {
     done
     aws iam delete-policy --policy-arn "$arn"; echo "deleted policy $arn"
   fi
+  # The function before its role: a role still in use can be deleted,
+  # and the function would be left pointing at nothing.
+  aws lambda delete-function --function-name "$N-fn" 2>/dev/null && echo "deleted function $N-fn" || true
+  if aws iam get-role --role-name "$N-fn" >/dev/null 2>&1; then
+    aws iam delete-role --role-name "$N-fn"; echo "deleted role $N-fn"
+  fi
   if aws iam get-role --role-name "$N-app" >/dev/null 2>&1; then
     for a in $(aws iam list-attached-role-policies --role-name "$N-app" --query 'AttachedPolicies[].PolicyArn' --output text); do
       aws iam detach-role-policy --role-name "$N-app" --policy-arn "$a"
@@ -159,6 +169,7 @@ wait_all() {
   if [ "$IAM" = 1 ]; then
     wait_listed AWS::IAM::Role "$N-app"
     wait_listed AWS::IAM::ManagedPolicy "policy/$N-read"
+    wait_listed AWS::Lambda::Function "$N-fn"
   fi
   echo "all listed by Cloud Control"
 }
@@ -200,6 +211,26 @@ seed() {
     printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["sqs:ReceiveMessage","sqs:DeleteMessage"],"Resource":"%s"}]}' "$jobs_arn" > "$OUT/policy.json"
     pol=$(aws iam create-policy --policy-name "$N-read" --policy-document "file://$OUT/policy.json" --description "StackDNA drill" --query Policy.Arn --output text)
     aws iam attach-role-policy --role-name "$N-app" --policy-arn "$pol"
+    # A function: its role is named by ARN, and its environment names the
+    # queue by URL, two more references to remap. Never invoked, so free.
+    printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}' > "$OUT/fn-trust.json"
+    fnrole=$(aws iam create-role --role-name "$N-fn" --assume-role-policy-document "file://$OUT/fn-trust.json" --description "StackDNA drill" --query Role.Arn --output text)
+    jobs_url=$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)
+    # python3 first: Linux and macOS often have no "python".
+    "$(command -v python3 || command -v python)" - "$OUT/fn.zip" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w") as z:
+    z.writestr("index.py", "def handler(event, context):\n    return {'ok': True}\n")
+PY
+    printf 'AWS::Lambda::Function/%s:\n  Code:\n    ZipFile: |\n      def handler(event, context):\n          return {"ok": True}\n' "$N-fn" > "$OUT/values.yaml"
+    # A new role is not assumable by Lambda for some seconds after IAM
+    # says it exists.
+    until aws lambda create-function --function-name "$N-fn" --runtime python3.12 --handler index.handler \
+        --role "$fnrole" --zip-file "fileb://$OUT/fn.zip" --environment "Variables={JOBS_QUEUE=$jobs_url}" \
+        --tags team=shop --query FunctionArn --output text 2>"$OUT/fn.err"; do
+      grep -q "cannot be assumed" "$OUT/fn.err" || { cat "$OUT/fn.err" >&2; return 1; }
+      echo "role not assumable by Lambda yet; retrying in 5s"; sleep 5
+    done
   fi
   api=$(aws apigateway create-rest-api --name "$N" --query id --output text)
   root=$(aws apigateway get-resources --rest-api-id "$api" --query "items[?path=='/'].id" --output text)
@@ -257,7 +288,8 @@ echo "waiting 65s for SQS to release the queue name"; sleep 65
 
 step "restore from the snapshot into $TARGET"
 t0=$(date +%s)
-on_region "$TARGET" sd restore --from "$OUT/snap"
+[ -f "$OUT/values.yaml" ] && VALUES=(--values "$OUT/values.yaml")
+on_region "$TARGET" sd restore --from "$OUT/snap" ${VALUES[@]+"${VALUES[@]}"}
 echo "restore took $(( $(date +%s) - t0 ))s"
 on_region "$TARGET" wait_all
 step "diff: $TARGET must match the snapshot"
@@ -270,11 +302,11 @@ update_phase() {
   step "update: drift two resources in $REGION, then restore --update"
   aws sqs set-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)" --attributes VisibilityTimeout=30
   aws logs put-retention-policy --log-group-name "/$N/app" --retention-in-days 14
-  code=0; sd restore --from "$OUT/snap" > "$OUT/restore-plain.txt" || code=$?
+  code=0; sd restore --from "$OUT/snap" ${VALUES[@]+"${VALUES[@]}"} > "$OUT/restore-plain.txt" || code=$?
   cat "$OUT/restore-plain.txt"
   [ "$code" = 3 ] || { echo "restore without --update exited $code on a drifted account, want 3" >&2; exit 1; }
   grep -q "not modified (--update modifies it)" "$OUT/restore-plain.txt" || { echo "restore did not report the drift" >&2; exit 1; }
-  sd restore --from "$OUT/snap" --update
+  sd restore --from "$OUT/snap" --update ${VALUES[@]+"${VALUES[@]}"}
   sd diff --baseline "$BASES" --from "$OUT/snap"
   echo "UPDATE PASSED"
 }

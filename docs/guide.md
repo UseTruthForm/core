@@ -209,7 +209,7 @@ anything. An agent setting up someone's access should follow
 - GitHub's environment wait timer and a few similar fields are accepted on
   write but never read back; a snapshot names them (`stackdna.org/unreadable`)
   and a restore says it could not carry them.
-- Proven against real systems so far: AWS (17 resources across 14 types,
-  restore, update, another region), Azure, Google Cloud, Kubernetes and
+- Proven against real systems so far: AWS (21 resources across 17 types,
+  IAM and Lambda included; restore, update, another region), Azure, Google Cloud, Kubernetes and
   GitHub capture. Cloudflare and Google Compute are proven against
   simulated APIs only.

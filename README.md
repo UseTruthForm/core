@@ -11,8 +11,9 @@ that you can review, commit and diff.
 **Status: early development.** Kubernetes works end to end. AWS (every
 Cloud Control type in the CloudFormation registry) passes its restore drill
 against a schema-driven fake. It also passed the disaster drill against a
-real account (`scripts/drill-aws.sh`: 17 resources across 14 types, all
-free while empty, deleted and restored with no diff), but most types haven't met real AWS yet. Azure (every
+real account (`scripts/drill-aws.sh`: 21 resources across 17 types, an
+IAM role, a managed policy and a Lambda function among them, all free
+while empty, deleted and restored with no diff), but most types haven't met real AWS yet. Azure (every
 type with a published definition) passes its drill against a fake, and the
 disaster drill against a real subscription (`scripts/drill-azure.sh`: 7
 free resources, from the resource group to role assignments and a lock,

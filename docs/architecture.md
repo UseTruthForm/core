@@ -471,6 +471,11 @@ The first runs found three things the fake had not shown:
   empty object: it holds no settings, and Azure returns some only
   sometimes (a Service Bus rule's `sqlFilter.parameters`), which made two
   captures of an unchanged subscription differ.
+- **"Never" has one spelling.** Azure returns .NET's maximum duration,
+  which it uses for "never" (a Service Bus entity's `autoDeleteOnIdle`),
+  rounded several ways; four spellings came back across one real
+  subscription. Any duration within a day of it is written as
+  `P10675199DT2H48M5.4775807S`, the default Azure documents.
 - **Observations are not status.** `status` keeps the read-only values a
   reference can point at: IDs, GUIDs, host names. Times, counters and
   flags (`accessedAt`, `earliestRestoreDate`, message counts) change on

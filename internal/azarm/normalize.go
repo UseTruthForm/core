@@ -40,8 +40,29 @@ func (s *Schema) normalize(body map[string]any) (map[string]any, split) {
 		delete(spec, k)
 	}
 	s.clean(spec, s.body, "", &sp)
+	spec = walkStrings(spec, canonicalNever).(map[string]any)
 	sort.Strings(sp.secrets)
 	return spec, sp
+}
+
+// neverRE is a duration within a day of .NET's TimeSpan.MaxValue
+// (10675199.02:48:05.4775807), which Azure uses for "never" (a Service Bus
+// entity's autoDeleteOnIdle, defaultMessageTimeToLive). Azure returns it
+// rounded in several ways: in a real subscription, four spellings across
+// 357 entities (P10675199DT2H48M5.4775807S, P10675199DT2H48M5.477S,
+// P10675198DT2H48M5.477S, P10675198DT2H48M5S), so an unchanged entity
+// could read as changed.
+var neverRE = regexp.MustCompile(`^P1067519[89]DT2H48M5(\.\d+)?S$`)
+
+// never is the spelling Azure documents as the default for "never", and
+// accepts back on a write.
+const never = "P10675199DT2H48M5.4775807S"
+
+func canonicalNever(v string) string {
+	if neverRE.MatchString(v) {
+		return never
+	}
+	return v
 }
 
 func (s *Schema) clean(v any, t int, path string, sp *split) {

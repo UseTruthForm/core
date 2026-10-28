@@ -172,3 +172,25 @@ func contains(s []string, v string) bool {
 	}
 	return false
 }
+
+// Azure returns "never" (TimeSpan.MaxValue) rounded several ways; each
+// spelling seen in a real subscription reads as the one Azure documents,
+// so an unchanged entity never reads as changed. Other durations are left
+// as they are.
+func TestNeverHasOneSpelling(t *testing.T) {
+	vm := schema(t, fixtures(t), "Microsoft.Compute/virtualMachines")
+	for in, want := range map[string]string{
+		"P10675199DT2H48M5.4775807S": never,
+		"P10675199DT2H48M5.477S":     never,
+		"P10675198DT2H48M5.477S":     never,
+		"P10675198DT2H48M5S":         never,
+		"P1D":                        "P1D",
+		"P10675199DT2H48M4S":         "P10675199DT2H48M4S",
+		"PT10675199S":                "PT10675199S",
+	} {
+		spec, _ := vm.normalize(map[string]any{"location": "eastus", "properties": map[string]any{"futureDuration": in}})
+		if got := spec["properties"].(map[string]any)["futureDuration"]; got != want {
+			t.Errorf("%s became %v, want %s", in, got, want)
+		}
+	}
+}

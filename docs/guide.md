@@ -210,6 +210,62 @@ restore's lists each resource with `ok` and `detail`.
 stackdna diff --platform aws --region us-east-2 --from snap/aws --json | jq '.differences'
 ```
 
+## As a graph (Azure)
+
+`stackdna graph --from <snapshot>` writes an Azure snapshot as resources
+and the relationships between them, as JSON, for a tool that maps an
+estate (an asset inventory, a security graph) rather than recreating it.
+It reads only the snapshot: no login, no request. Since the snapshot holds
+no secret values, neither does its graph.
+
+```sh
+stackdna graph --from snap/azure --out graph.json
+stackdna graph --from snap/azure --subscription <id> --tenant <id> --out graph.json
+```
+
+- **Nodes** are resources: `id` (the resource ID), `type`, `name`,
+  `group`, `location`, `tags`, and the `properties` the projection
+  chooses, keyed by their path (`properties.publicNetworkAccess`). A path
+  through a list (`properties.securityRules[]`) gives a list, with a null
+  for an element without the field, so two fields of one list line up. A
+  reference token in a property is replaced by the value it stands for (a
+  role assignment's `principalId` is the identity's GUID). A node that is
+  `external` is something the snapshot refers to but doesn't hold, such as
+  another subscription's network or a built-in role definition: only its
+  ID, type and name are known. The captured subscription itself is a node
+  (`Microsoft.Resources/subscriptions`, not external) when something is
+  attached to it.
+- **Edges** run from the resource holding a relationship to the one it
+  names. Each has a `kind`:
+  - `references`: a field names it; `path` says which. IDs are found in
+    any case, several joined in one string, inside a URL or template, as
+    map keys (`identity.userAssignedIdentities{}`) and in tag keys, at
+    tenant level too (a built-in role or policy definition). A reference
+    to who created or changed something is not a relationship.
+  - `child-of`: a child resource of its parent.
+  - `extension-of`: a role assignment, lock, policy assignment or
+    diagnostic setting on the resource, resource group or subscription it
+    is attached to.
+  - `depends-on`: a resource created by another, such as an AKS cluster's
+    managed group.
+
+  A reference to a part that ARM keeps inside a resource (a subnet, a
+  load balancer's backend pool, a security group's rule) goes to that
+  resource, and `subresource` names the part (`subnets/app`).
+- **The projection** (`--types`) chooses each type's properties. The
+  built-in `security` projection covers network exposure, identity and
+  access, encryption, public access, private endpoints and diagnostics,
+  and leaves out types with no security signal, such as Log Analytics
+  tables, Service Bus topics and scale-set instances. `none` gives every
+  resource without properties. A file in the same format as the built-in
+  one (`internal/azarm/graph_security.yaml`) gives your own.
+- **IDs** keep the `{{stackdna|subscription}}` placeholder unless
+  `--subscription` gives the real one, and `--tenant` does the same for the
+  tenant. Another subscription that a resource refers to (a peered network)
+  keeps its real ID either way, since the snapshot holds it as it is.
+
+The output is deterministic: the same snapshot gives the same graph.
+
 ## For AI agents (MCP)
 
 `stackdna mcp` serves StackDNA's knowledge over the Model Context

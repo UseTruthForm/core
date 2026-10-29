@@ -63,6 +63,10 @@ Access (what to grant, and what a grant can read):
   stackdna check --platform <p> <the target, as for capture> [--types <patterns>] [--access capture|restore]
       who StackDNA runs as, what it holds beyond what it needs, and what it can read, type by type
 
+As a graph (resources and their relationships, for an asset inventory or a security graph):
+  stackdna graph --from <dir> [--types security|none|<file>] [--subscription <id>] [--tenant <id>] [--out <file>]
+      Azure; JSON nodes and edges from the snapshot alone, no request made
+
 For agents (MCP on stdin/stdout; every tool read-only, no restore tool):
   stackdna mcp
 
@@ -120,6 +124,8 @@ func main() {
 		code = awsCoverage(args)
 	case "report":
 		code = reportCmd(args)
+	case "graph":
+		code = graphCmd(args)
 	case "mcp":
 		code = mcpCmd(ctx, args)
 	case "check":

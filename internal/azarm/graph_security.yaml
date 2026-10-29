@@ -1,0 +1,349 @@
+# The built-in projection of `stackdna graph` ("--types security"): what
+# a security view of an Azure estate needs from each resource. Network
+# exposure, identity and access, encryption, public access, private
+# endpoints and diagnostics.
+#
+# Every node keeps id, type, name, group, location and tags; `fields` adds
+# spec paths ([] = every element of a list). A type not listed is a node
+# with no properties, so relationships through it hold; `drop: true` leaves
+# it out, with every edge to or from it. Relationships come from every
+# reference, whatever the fields.
+version: 1
+types:
+  # --- identity / RBAC -----------------------------------------------------
+  Microsoft.Authorization/roleAssignments:
+    fields:
+      - properties.principalId
+      - properties.principalType
+      - properties.roleDefinitionId
+      - properties.delegatedManagedIdentityResourceId
+      - properties.condition
+  Microsoft.Authorization/roleDefinitions:
+    fields:
+      - properties.roleName
+      - properties.type
+      - properties.permissions[]
+      - properties.assignableScopes[]
+  Microsoft.Authorization/policyAssignments:
+    fields:
+      - properties.policyDefinitionId
+      - properties.enforcementMode
+      - properties.notScopes[]
+  Microsoft.Authorization/locks:
+    fields:
+      - properties.level
+  Microsoft.ManagedIdentity/userAssignedIdentities:
+    fields: []          # principal/client IDs come in via edges and status
+  Microsoft.ContainerService/managedClusters:
+    fields:
+      - identity.type
+      - properties.kubernetesVersion
+      - properties.enableRBAC
+      - properties.aadProfile.managed
+      - properties.aadProfile.enableAzureRBAC
+      - properties.aadProfile.adminGroupObjectIDs[]
+      - properties.disableLocalAccounts
+      - properties.apiServerAccessProfile
+      - properties.networkProfile.networkPlugin
+      - properties.networkProfile.networkPolicy
+      - properties.networkProfile.outboundType
+      - properties.oidcIssuerProfile.enabled
+      - properties.securityProfile
+      - properties.agentPoolProfiles[].name
+      - properties.agentPoolProfiles[].enableNodePublicIP
+      - properties.agentPoolProfiles[].osSKU
+      - properties.agentPoolProfiles[].securityProfile.sshAccess
+      - properties.addonProfiles.omsagent.enabled
+      - properties.azureMonitorProfile.containerInsights.enabled
+      - properties.autoUpgradeProfile
+      - properties.identityProfile.kubeletidentity.resourceId
+  Microsoft.Compute/virtualMachineScaleSets:
+    fields:
+      - identity.type
+      - properties.virtualMachineProfile.osProfile.adminUsername
+      - properties.virtualMachineProfile.osProfile.allowExtensionOperations
+      - properties.virtualMachineProfile.osProfile.linuxConfiguration.disablePasswordAuthentication
+      - properties.upgradePolicy.mode
+      - sku.name
+  Microsoft.Compute/virtualMachineScaleSets/virtualMachines:
+    drop: true          # per-instance; the scale set carries the security posture
+  Microsoft.Compute/virtualMachineScaleSets/virtualMachines/extensions:
+    drop: true
+
+  # --- network exposure ----------------------------------------------------
+  Microsoft.Network/networkSecurityGroups:
+    fields:  # whole rules: access, direction, prefixes, ports, priority, protocol
+      - properties.securityRules[]
+  Microsoft.Network/publicIPAddresses:
+    fields:
+      - properties.publicIPAllocationMethod
+      - properties.publicIPAddressVersion
+      - properties.ipAddress
+      - sku.name
+  Microsoft.Network/loadBalancers:
+    fields:
+      - sku.name
+      - properties.frontendIPConfigurations[].name
+      - properties.frontendIPConfigurations[].properties.privateIPAddress
+      - properties.loadBalancingRules[].properties.frontendPort
+      - properties.loadBalancingRules[].properties.protocol
+      - properties.outboundRules[].properties.protocol
+  Microsoft.Network/virtualNetworks:
+    fields:
+      - properties.addressSpace.addressPrefixes[]
+      - properties.subnets[].name
+      - properties.subnets[].properties.addressPrefix
+      - properties.subnets[].properties.privateEndpointNetworkPolicies
+      - properties.virtualNetworkPeerings[].properties.allowForwardedTraffic
+      - properties.virtualNetworkPeerings[].properties.allowGatewayTransit
+      - properties.virtualNetworkPeerings[].properties.useRemoteGateways
+      - properties.virtualNetworkPeerings[].properties.peeringState
+  Microsoft.Network/networkWatchers:
+    fields: []
+
+  # --- private endpoints / private DNS -------------------------------------
+  Microsoft.Network/privateEndpoints:
+    fields:
+      - properties.privateLinkServiceConnections[].properties.groupIds[]
+      - properties.privateLinkServiceConnections[].properties.privateLinkServiceConnectionState.status
+  Microsoft.ContainerRegistry/registries/privateEndpointConnections:
+    fields:
+      - properties.privateLinkServiceConnectionState.status
+  Microsoft.Network/privateDnsZones:
+    fields: []
+  Microsoft.Network/privateDnsZones/virtualNetworkLinks:
+    fields:
+      - properties.registrationEnabled
+  Microsoft.Network/privateDnsZones/A:
+    fields:
+      - properties.aRecords[]
+  Microsoft.Network/privateDnsZones/SOA:
+    drop: true
+
+  # --- data services: public access + auth + encryption --------------------
+  Microsoft.Storage/storageAccounts:
+    fields:
+      - sku.name
+      - properties.publicNetworkAccess
+      - properties.allowBlobPublicAccess
+      - properties.allowSharedKeyAccess
+      - properties.allowCrossTenantReplication
+      - properties.defaultToOAuthAuthentication
+      - properties.supportsHttpsTrafficOnly
+      - properties.minimumTlsVersion
+      - properties.networkAcls
+      - properties.encryption.keySource
+      - properties.encryption.requireInfrastructureEncryption
+  Microsoft.Storage/storageAccounts/blobServices:
+    fields:
+      - properties.deleteRetentionPolicy
+      - properties.containerDeleteRetentionPolicy
+      - properties.isVersioningEnabled
+      - properties.cors
+      - properties.staticWebsite.enabled
+  Microsoft.Storage/storageAccounts/fileServices:
+    fields:
+      - properties.shareDeleteRetentionPolicy
+  Microsoft.Storage/storageAccounts/queueServices:
+    fields: []
+  Microsoft.Storage/storageAccounts/tableServices:
+    fields: []
+  Microsoft.KeyVault/vaults:
+    fields:
+      - properties.sku.name
+      - properties.enableRbacAuthorization
+      - properties.enableSoftDelete
+      - properties.softDeleteRetentionInDays
+      - properties.enablePurgeProtection
+      - properties.publicNetworkAccess
+      - properties.networkAcls
+  Microsoft.ContainerRegistry/registries:
+    fields:
+      - sku.name
+      - properties.adminUserEnabled
+      - properties.anonymousPullEnabled
+      - properties.publicNetworkAccess
+      - properties.networkRuleSet
+      - properties.networkRuleBypassOptions
+      - properties.dataEndpointEnabled
+      - properties.encryption.status
+      - properties.policies
+      - properties.roleAssignmentMode
+  Microsoft.ContainerRegistry/registries/replications:
+    fields:
+      - properties.regionEndpointEnabled
+  Microsoft.ContainerRegistry/registries/scopeMaps:
+    fields:
+      - properties.actions[]
+  Microsoft.CognitiveServices/accounts:
+    fields:
+      - sku.name
+      - properties.publicNetworkAccess
+      - properties.networkAcls
+      - properties.disableLocalAuth
+  Microsoft.SignalRService/WebPubSub:
+    fields:
+      - sku.name
+      - properties.publicNetworkAccess
+      - properties.disableLocalAuth
+      - properties.disableAadAuth
+      - properties.networkACLs
+      - properties.tls.clientCertEnabled
+  Microsoft.ServiceBus/namespaces:
+    fields:
+      - sku.name
+      - properties.publicNetworkAccess
+      - properties.disableLocalAuth
+      - properties.minimumTlsVersion
+  Microsoft.ServiceBus/namespaces/networkrulesets:
+    fields:
+      - properties.defaultAction
+      - properties.publicNetworkAccess
+      - properties.trustedServiceAccessEnabled
+      - properties.ipRules[]
+      - properties.virtualNetworkRules[]
+  Microsoft.ServiceBus/namespaces/authorizationrules:
+    fields:  # SAS policies: who can Manage/Send/Listen
+      - properties.rights[]
+  Microsoft.ServiceBus/namespaces/queues:
+    drop: true
+  Microsoft.ServiceBus/namespaces/topics:
+    drop: true
+  Microsoft.ServiceBus/namespaces/topics/subscriptions:
+    drop: true
+  Microsoft.ServiceBus/namespaces/topics/subscriptions/rules:
+    drop: true
+
+  # --- SQL ---------------------------------------------------------------------
+  Microsoft.Sql/servers:
+    fields:
+      - properties.publicNetworkAccess
+      - properties.minimalTlsVersion
+      - properties.restrictOutboundNetworkAccess
+      - properties.administrators.azureADOnlyAuthentication
+      - properties.administrators.principalType
+  Microsoft.Sql/servers/administrators:
+    fields:
+      - properties.administratorType
+      - properties.principalType
+  Microsoft.Sql/servers/connectionPolicies:
+    fields:
+      - properties.connectionType
+  Microsoft.Sql/servers/encryptionProtector:
+    fields:
+      - properties.serverKeyType
+      - properties.autoRotationEnabled
+  Microsoft.Sql/servers/keys:
+    fields:
+      - properties.serverKeyType
+  Microsoft.Sql/servers/auditingSettings:
+    fields:
+      - properties.state
+      - properties.retentionDays
+      - properties.isAzureMonitorTargetEnabled
+  Microsoft.Sql/servers/extendedAuditingSettings:
+    fields:
+      - properties.state
+      - properties.retentionDays
+      - properties.isAzureMonitorTargetEnabled
+  Microsoft.Sql/servers/devOpsAuditingSettings:
+    fields:
+      - properties.state
+      - properties.isAzureMonitorTargetEnabled
+  Microsoft.Sql/servers/advancedThreatProtectionSettings:
+    fields:
+      - properties.state
+  Microsoft.Sql/servers/securityAlertPolicies:
+    fields:
+      - properties.state
+      - properties.disabledAlerts[]
+      - properties.retentionDays
+  Microsoft.Sql/servers/vulnerabilityAssessments:
+    fields:
+      - properties.recurringScans.isEnabled
+  Microsoft.Sql/servers/sqlVulnerabilityAssessments:
+    fields:
+      - properties.state
+  Microsoft.Sql/servers/databases:
+    fields:
+      - sku.name
+      - identity.type
+  Microsoft.Sql/servers/databases/transparentDataEncryption:
+    fields:
+      - properties.state
+  Microsoft.Sql/servers/databases/auditingSettings:
+    fields:
+      - properties.state
+      - properties.retentionDays
+  Microsoft.Sql/servers/databases/advancedThreatProtectionSettings:
+    fields:
+      - properties.state
+  Microsoft.Sql/servers/databases/securityAlertPolicies:
+    fields:
+      - properties.state
+      - properties.disabledAlerts[]
+  Microsoft.Sql/servers/databases/vulnerabilityAssessments:
+    fields:
+      - properties.recurringScans.isEnabled
+  Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies:
+    fields:
+      - properties.retentionDays
+  Microsoft.Sql/servers/databases/backupLongTermRetentionPolicies:
+    fields:
+      - properties.weeklyRetention
+      - properties.monthlyRetention
+      - properties.yearlyRetention
+  Microsoft.Sql/servers/databases/geoBackupPolicies:
+    fields:
+      - properties.state
+  Microsoft.Sql/servers/databases/ledgerDigestUploads:
+    fields:
+      - properties.state
+
+  # --- diagnostics / monitoring ---------------------------------------------------
+  microsoft.insights/diagnosticSettings:
+    fields:  # destination is an edge
+      - properties.logs[].category
+      - properties.logs[].categoryGroup
+      - properties.logs[].enabled
+      - properties.metrics[].enabled
+  Microsoft.OperationalInsights/workspaces:
+    fields:
+      - properties.sku.name
+      - properties.retentionInDays
+      - properties.publicNetworkAccessForIngestion
+      - properties.publicNetworkAccessForQuery
+      - properties.features.enableLogAccessUsingOnlyResourcePermissions
+      - properties.workspaceCapping.dailyQuotaGb
+  Microsoft.OperationalInsights/workspaces/datasources:
+    fields:
+      - kind
+      - properties.enabled
+  Microsoft.OperationalInsights/workspaces/tables:  # ~700 per workspace, no security signal
+    drop: true
+  Microsoft.Insights/dataCollectionEndpoints:
+    fields:
+      - properties.networkAcls.publicNetworkAccess
+  Microsoft.Insights/dataCollectionRules:  # destinations are edges
+    fields: []
+  microsoft.monitor/accounts:
+    fields:
+      - properties.publicNetworkAccess
+      - properties.metrics.enableAccessUsingResourcePermissions
+  microsoft.insights/actiongroups:
+    fields:
+      - properties.enabled
+      - properties.armRoleReceivers[].roleId
+  Microsoft.AlertsManagement/prometheusRuleGroups:
+    fields:
+      - properties.enabled
+  Microsoft.RecoveryServices/vaults:
+    fields:
+      - sku.name
+      - properties.publicNetworkAccess
+      - properties.securitySettings.softDeleteSettings
+      - properties.securitySettings.immutabilitySettings
+      - properties.restoreSettings.crossSubscriptionRestoreSettings.crossSubscriptionRestoreState
+
+  Microsoft.Resources/resourceGroups:
+    fields: []

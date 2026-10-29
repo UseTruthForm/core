@@ -178,9 +178,11 @@ func TestGraphEdgeCases(t *testing.T) {
 			"b": "/subscriptions/OTHER/resourcegroups/HUB/providers/microsoft.network/virtualnetworks/HUB",
 			// IDs in URLs and template text end where the ID does.
 			"c": "https://management.azure.com" + id("Microsoft.Web/sites/w") + "?api-version=2020-01-01",
+			"f": "https://portal.azure.com/#@t/resource" + id("Microsoft.Web/sites/v") + "/overview",
 			"d": "[resourceId('" + id("Microsoft.Web/sites/x") + "')]",
 			// A built-in role definition, tenant level.
 			"e": "/providers/Microsoft.Authorization/roleDefinitions/r9",
+			"g": sub + "/providers/Microsoft.Authorization/roleDefinitions/r9",
 		},
 	})
 	vnet := obj("Microsoft.Network/virtualNetworks", "rg", "vnet", id("Microsoft.Network/virtualNetworks/vnet"), map[string]any{})
@@ -247,8 +249,31 @@ func TestGraphEdgeCases(t *testing.T) {
 	if !has(sub+"/providers/Microsoft.Authorization/roleAssignments/ra", sub, "extension-of") || nodes[sub].Type != "Microsoft.Resources/subscriptions" || nodes[sub].External {
 		t.Errorf("an assignment on the subscription is not the subscription's: %+v", nodes[sub])
 	}
-	if !has(id("Microsoft.Network/networkInterfaces/nic"), "/providers/Microsoft.Authorization/roleDefinitions/r9", "references") {
+	if !has(id("Microsoft.Network/networkInterfaces/nic"), sub+"/providers/Microsoft.Authorization/roleDefinitions/r9", "references") {
 		t.Error("a tenant-level role definition is not referenced")
+	}
+	roles := 0
+	for _, n := range g.Nodes {
+		if n.Type == "Microsoft.Authorization/roleDefinitions" {
+			roles++
+		}
+	}
+	if roles != 1 {
+		t.Errorf("one role definition in two forms is %d nodes", roles)
+	}
+	for _, site := range []string{"w", "v"} {
+		if !has(id("Microsoft.Network/networkInterfaces/nic"), id("Microsoft.Web/sites/"+site), "references") {
+			t.Errorf("the site in a URL (%s) is not found", site)
+		}
+	}
+	for _, n := range g.Nodes {
+		if n.Type == "Microsoft.Network/virtualNetworks/subnets" {
+			t.Errorf("a malformed object became a node: %+v", n)
+		}
+	}
+	withSub := BuildGraph(snap, p, "t", "11111111-2222-3333-4444-555555555555", "")
+	if b, _ := json.Marshal(withSub); strings.Contains(string(b), tokSub) {
+		t.Error("a placeholder is left with --subscription")
 	}
 	if !has(id("Microsoft.Network/networkInterfaces/nic"), id("Microsoft.Web/sites/web"), "references") {
 		t.Error("a tag key naming a resource is not a reference")

@@ -157,6 +157,9 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 	typeCase := map[string]string{}       // lower(type) -> the type as the snapshot spells it
 	for _, o := range s.Objects {
 		rid := objectID(o, tokSub)
+		if !wellFormed(rid) {
+			continue
+		}
 		id := strings.ToLower(rid.String())
 		if _, ok := typeCase[strings.ToLower(rid.Type)]; !ok {
 			typeCase[strings.ToLower(rid.Type)] = rid.Type
@@ -206,6 +209,9 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 
 	for _, o := range s.Objects {
 		rid := objectID(o, tokSub)
+		if !wellFormed(rid) {
+			continue
+		}
 		pt := p.of(rid.Type)
 		if pt.Drop {
 			continue
@@ -220,7 +226,7 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 		if tags, ok := spec["tags"].(map[string]any); ok && len(tags) > 0 {
 			n.Tags = map[string]string{}
 			for k, v := range tags {
-				n.Tags[real(k)] = real(fmt.Sprint(v))
+				n.Tags[real(k)] = real(resolve(fmt.Sprint(v)))
 			}
 		}
 		for _, f := range pt.Fields {
@@ -269,7 +275,7 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 		})
 	}
 	for _, n := range others {
-		n.ID = real(n.ID)
+		n.ID, n.Name = real(n.ID), real(n.Name)
 		g.Nodes = append(g.Nodes, n)
 	}
 	for e := range edges {
@@ -288,6 +294,13 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 		return a.From+"\x00"+a.To+"\x00"+a.Kind+"\x00"+a.Path+"\x00"+a.Subresource < b.From+"\x00"+b.To+"\x00"+b.Kind+"\x00"+b.Path+"\x00"+b.Subresource
 	})
 	return g
+}
+
+// wellFormed reports an ID whose type and name match segment for segment:
+// an object without its ID annotation can have a child's kind and a bare
+// name, which would make a node with its parent's ID.
+func wellFormed(rid ResourceID) bool {
+	return strings.EqualFold(rid.Type, groupType) || strings.Count(rid.Type, "/") == strings.Count(rid.Name, "/")+1
 }
 
 // extensionTypes are attached to whatever scope they sit at: a lock or a
@@ -327,6 +340,11 @@ func resolveTarget(to string, ids map[string]string, dropped map[string]bool, p 
 			return "", ""
 		}
 		id := "/" + strings.Join(segs, "/")
+		if strings.EqualFold(typ, "Microsoft.Authorization/roleDefinitions") && i == 0 {
+			// A role definition is one by either form; role assignments use
+			// the subscription's.
+			return resolveTarget("/subscriptions/"+tokSub+id, ids, dropped, p, other)
+		}
 		other(id, typ, name, "", true)
 		return strings.ToLower(id), ""
 	}
@@ -386,7 +404,7 @@ func findIDs(v string) []string {
 	v = refAnyRE.ReplaceAllString(v, " ")
 	var out []string
 	for _, m := range graphIDRE.FindAllStringIndex(v, -1) {
-		if i := m[0]; i > 0 && (v[i-1] == '/' || v[i-1] == '_' || v[i-1] == '-' || v[i-1] == '.' ||
+		if i := m[0]; i > 0 && !urlBeforeRE.MatchString(v[:i]) && (v[i-1] == '/' || v[i-1] == '_' || v[i-1] == '-' || v[i-1] == '.' ||
 			'a' <= v[i-1] && v[i-1] <= 'z' || 'A' <= v[i-1] && v[i-1] <= 'Z' || '0' <= v[i-1] && v[i-1] <= '9') {
 			continue
 		}
@@ -394,6 +412,11 @@ func findIDs(v string) []string {
 	}
 	return out
 }
+
+// urlBeforeRE is what may come right before an ID in a URL: a host
+// (https://management.azure.com/subscriptions/...) or the portal's
+// /resource path.
+var urlBeforeRE = regexp.MustCompile(`(?i)(?:https?://[^/\s"']+|/resource)$`)
 
 const idSeg = `[^/"',;\s?#()\[\]{}<>|]`
 

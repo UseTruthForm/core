@@ -232,8 +232,9 @@ stackdna graph --from snap/azure --subscription <id> --tenant <id> --out graph.j
   role assignment's `principalId` is the identity's GUID). A node that is
   `external` is something the snapshot refers to but doesn't hold, such as
   another subscription's network or a built-in role definition: only its
-  ID, type and name are known. The subscription itself is a node
-  (`Microsoft.Resources/subscriptions`) when something is attached to it.
+  ID, type and name are known. The captured subscription itself is a node
+  (`Microsoft.Resources/subscriptions`, not external) when something is
+  attached to it.
 - **Edges** run from the resource holding a relationship to the one it
   names. Each has a `kind`:
   - `references`: a field names it; `path` says which. IDs are found in

@@ -122,22 +122,27 @@ func TestClassifyARM(t *testing.T) {
 	for _, c := range []struct {
 		status int
 		code   string
+		msg    string
 		want   error
 	}{
-		{http.StatusBadRequest, "ResourceTypeNotSupported", ErrNotApplicable},
-		{http.StatusBadRequest, "FeatureDisabledOnSelectedEdition", ErrNotApplicable},
-		{http.StatusBadRequest, "BMSUserErrorFeatureNotAvailable", ErrNotApplicable},
-		{http.StatusBadRequest, "KindNotSpecified", nil},
-		{http.StatusNotImplemented, "DataSourceNotImplemented", ErrNotApplicable},
-		{http.StatusNotImplemented, "", nil},
-		{http.StatusMethodNotAllowed, "", ErrNotApplicable},
-		{http.StatusNotFound, "ResourceNotFound", ErrNotFound},
-		{http.StatusNotFound, "", ErrNotFound},
-		{http.StatusBadRequest, "InvalidApiVersionParameter", nil},
-		{http.StatusNotFound, "InvalidResourceType", nil},
-		{http.StatusBadRequest, "", nil},
+		{http.StatusBadRequest, "ResourceTypeNotSupported", "", ErrNotApplicable},
+		{http.StatusBadRequest, "FeatureDisabledOnSelectedEdition", "", ErrNotApplicable},
+		{http.StatusBadRequest, "BMSUserErrorFeatureNotAvailable", "", ErrNotApplicable},
+		{http.StatusBadRequest, "KindNotSpecified", "", nil},
+		{http.StatusNotImplemented, "DataSourceNotImplemented", "", ErrNotApplicable},
+		{http.StatusNotImplemented, "", "", nil},
+		{http.StatusMethodNotAllowed, "", "", ErrNotApplicable},
+		{http.StatusNotFound, "ResourceNotFound", "", ErrNotFound},
+		{http.StatusNotFound, "", "", ErrNotFound},
+		{http.StatusBadRequest, "InvalidApiVersionParameter", "", nil},
+		{http.StatusNotFound, "InvalidResourceType", "", nil},
+		{http.StatusBadRequest, "", "", nil},
+		// A preview child type the subscription has not registered.
+		{http.StatusBadRequest, "BadRequest", "Agent fabric membership is not available in subscription s. Please register the Microsoft.ContainerService/EnableAgentFabricPreview feature.", ErrNotApplicable},
+		// A bad request that only mentions a feature is still a failure.
+		{http.StatusBadRequest, "BadRequest", "The feature flag in the request body is invalid.", nil},
 	} {
-		if got := classifyARM(c.status, c.code); !errors.Is(got, c.want) || (c.want == nil && got != nil) {
+		if got := classifyARM(c.status, c.code, c.msg); !errors.Is(got, c.want) || (c.want == nil && got != nil) {
 			t.Errorf("%d %s: got %v, want %v", c.status, c.code, got, c.want)
 		}
 	}

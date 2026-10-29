@@ -339,6 +339,12 @@ func (v *versions) childTypes(typ string) []string {
 	return out
 }
 
+// nilGUID is what ARM writes for "none" (a policy assignment's instanceId,
+// a SQL server's storageAccountSubscriptionId). Nothing generated it, so
+// no resource owns it: taken for a reference, one resource's "none" became
+// a dependency on another's.
+const nilGUID = "00000000-0000-0000-0000-000000000000"
+
 var guidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // principalRefs replaces, in every spec, a GUID that another captured
@@ -359,7 +365,7 @@ func principalRefs(cs []*captured) {
 	for _, c := range cs {
 		for _, k := range sortedKeys(c.status) {
 			s, ok := c.status[k].(string)
-			if !ok || !guidRE.MatchString(s) || k == "id" || strings.Contains(k, "*") {
+			if !ok || !guidRE.MatchString(s) || s == nilGUID || k == "id" || strings.Contains(k, "*") {
 				continue
 			}
 			g, tok := strings.ToLower(s), refToken(c, k)

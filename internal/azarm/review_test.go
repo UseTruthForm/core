@@ -101,6 +101,21 @@ func TestPrincipalOwnedByTheIdentity(t *testing.T) {
 	}
 }
 
+// The all-zero GUID is ARM's "none", not a value one resource generated
+// and another refers to: it stays as it is.
+func TestNilGUIDIsNotAReference(t *testing.T) {
+	const zero = "00000000-0000-0000-0000-000000000000"
+	mk := func(typ, name string, status, spec map[string]any) *captured {
+		return &captured{rid: ResourceID{Subscription: "s", ResourceGroup: "rg", Type: typ, Name: name}, status: status, spec: spec}
+	}
+	policy := mk("Microsoft.Authorization/policyAssignments", "p", map[string]any{"properties.instanceId": zero}, map[string]any{})
+	sql := mk("Microsoft.Sql/servers", "srv", map[string]any{}, map[string]any{"properties": map[string]any{"storageAccountSubscriptionId": zero}})
+	principalRefs([]*captured{policy, sql})
+	if got := sql.spec["properties"].(map[string]any)["storageAccountSubscriptionId"]; got != zero {
+		t.Errorf("storageAccountSubscriptionId became %v", got)
+	}
+}
+
 // Only what ARM says is "none here" is: a refused list or a wrong API
 // version is a failure, not an empty result.
 func TestClassifyARM(t *testing.T) {

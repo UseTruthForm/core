@@ -55,11 +55,17 @@ func TestRoundTrip(t *testing.T) {
 func TestWriteIsDeterministic(t *testing.T) {
 	a, b := t.TempDir(), t.TempDir()
 	s := sample()
+	// Skips that differ only by reason, as skips recorded per owner do.
+	s.Skips = []Skip{
+		{Resource: "core/v1/pods", Namespace: "shop", Name: "*", Reason: "owned by Deployment/api, whose controller recreates it"},
+		{Resource: "core/v1/pods", Namespace: "shop", Name: "*", Reason: "owned by Deployment/web, whose controller recreates it"},
+	}
 	if err := s.Write(a); err != nil {
 		t.Fatal(err)
 	}
-	// Same objects in a different order must not change the output.
+	// Same objects and skips in a different order must not change the output.
 	s.Objects[0], s.Objects[1] = s.Objects[1], s.Objects[0]
+	s.Skips[0], s.Skips[1] = s.Skips[1], s.Skips[0]
 	if err := s.Write(b); err != nil {
 		t.Fatal(err)
 	}

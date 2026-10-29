@@ -165,7 +165,8 @@ func (s Snapshot) Write(dir string) error {
 	sort.Slice(cov.Types, func(i, j int) bool { return cov.Types[i].Resource < cov.Types[j].Resource })
 	sort.Slice(cov.Skips, func(i, j int) bool {
 		a, b := cov.Skips[i], cov.Skips[j]
-		return a.Resource+"|"+a.Namespace+"|"+a.Name < b.Resource+"|"+b.Namespace+"|"+b.Name
+		// The reason too: skips recorded per owner all have the name "*".
+		return a.Resource+"|"+a.Namespace+"|"+a.Name+"|"+a.Reason < b.Resource+"|"+b.Namespace+"|"+b.Name+"|"+b.Reason
 	})
 	cb, err := encodeYAML(cov)
 	if err != nil {

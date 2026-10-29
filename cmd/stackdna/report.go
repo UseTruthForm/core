@@ -26,7 +26,14 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 	w("| | |\n|---|---|\n")
 	w("| Platform | %s |\n| Capture rules | `%s` |\n| Snapshot digest | `%s` |\n", s.Platform, md(s.Policy), digest)
 	w("| Captured | **%d resources** across %d types |\n", len(s.Objects), read)
-	w("| Skipped on purpose | %d resources |\n| Types not captured | %d |\n\n", len(s.Skips)+countedSkips(s), notCaptured+len(failed))
+	perOwner := ""
+	for _, sk := range s.Skips {
+		if sk.Name == "*" {
+			perOwner = "; what a controller makes counts once per owner"
+			break
+		}
+	}
+	w("| Skipped on purpose | %d resources%s |\n| Types not captured | %d |\n\n", len(s.Skips)+countedSkips(s), perOwner, notCaptured+len(failed))
 
 	if len(g) > 0 {
 		var throttled, other []string
@@ -96,7 +103,11 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 			if strings.HasPrefix(sk.Reason, "listed but could not be read") {
 				continue // listed under Incomplete
 			}
-			byReason[sk.Reason] = append(byReason[sk.Reason], sk.Resource+" "+sk.Name)
+			ex := sk.Resource + " " + sk.Name
+			if sk.Name == "*" {
+				ex = "every " + sk.Resource + " in " + sk.Namespace // recorded per owner, not per instance
+			}
+			byReason[sk.Reason] = append(byReason[sk.Reason], ex)
 		}
 		counts := map[string]int{}
 		for r, xs := range byReason {

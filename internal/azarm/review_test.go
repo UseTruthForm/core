@@ -139,11 +139,14 @@ func TestClassifyARM(t *testing.T) {
 		{http.StatusBadRequest, "", "", nil},
 		// A preview child type the subscription has not registered.
 		{http.StatusBadRequest, "BadRequest", "Agent fabric membership is not available in subscription s. Please register the Microsoft.ContainerService/EnableAgentFabricPreview feature.", ErrNotApplicable},
-		// A bad request that only mentions a feature is still a failure.
+		{http.StatusBadRequest, "BadRequest", "Please register the Microsoft.ContainerService/AKS-GitOps feature.", ErrNotApplicable},
+		// A bad request that only mentions a feature is still a failure, and
+		// so is the same answer under another status.
 		{http.StatusBadRequest, "BadRequest", "The feature flag in the request body is invalid.", nil},
+		{http.StatusConflict, "Conflict", "Please register the Microsoft.ContainerService/EnableAgentFabricPreview feature.", nil},
 	} {
 		if got := classifyARM(c.status, c.code, c.msg); !errors.Is(got, c.want) || (c.want == nil && got != nil) {
-			t.Errorf("%d %s: got %v, want %v", c.status, c.code, got, c.want)
+			t.Errorf("%d %s %q: got %v, want %v", c.status, c.code, c.msg, got, c.want)
 		}
 	}
 }

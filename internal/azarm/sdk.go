@@ -280,7 +280,7 @@ var cannotExistHere = map[string]bool{"ResourceTypeNotSupported": true, "Feature
 // registered ("Agent fabric membership is not available in subscription
 // ... Please register the Microsoft.ContainerService/EnableAgentFabricPreview
 // feature"): without the feature there can be none.
-var unregisteredFeatureRE = regexp.MustCompile(`(?i)\bregister the [\w.]+/\w+ feature\b`)
+var unregisteredFeatureRE = regexp.MustCompile(`(?i)\bregister the [\w.-]+/[\w.-]+ feature\b`)
 
 // notAnAbsence are 404 codes that say the request was wrong, not that the
 // thing is not there.

@@ -48,7 +48,7 @@ func TestHelmHistoryIsListedPerRelease(t *testing.T) {
 		dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{secrets: "SecretList"}, objs...)
 		var snap snapshot.Snapshot
 		cov := &snapshot.Coverage{}
-		if err := captureType(context.Background(), &Clients{Dynamic: dyn}, Policy{}, secrets, "Secret", cov, &snap); err != nil {
+		if err := captureType(context.Background(), &Clients{Dynamic: dyn}, Policy{}, secrets, "Secret", cov, &snap, newOwnership()); err != nil {
 			t.Fatal(err)
 		}
 		sort.Slice(snap.Skips, func(i, j int) bool {
@@ -105,10 +105,90 @@ func TestWithheldIsCapturedDespiteTheBaseline(t *testing.T) {
 		&unstructured.Unstructured{Object: mk("changed-by-someone")})
 	var snap snapshot.Snapshot
 	cov := &snapshot.Coverage{}
-	if err := captureType(context.Background(), &Clients{Dynamic: dyn}, p, deps, "Deployment", cov, &snap); err != nil {
+	if err := captureType(context.Background(), &Clients{Dynamic: dyn}, p, deps, "Deployment", cov, &snap, newOwnership()); err != nil {
 		t.Fatal(err)
 	}
 	if len(snap.Objects) != 1 {
 		t.Fatalf("captured %d objects, skips %+v: the add-on must be captured", len(snap.Objects), snap.Skips)
+	}
+}
+
+// What controllers make is recorded once per root owner. Between two
+// captures of an unchanged cluster every pod and Job was replaced under a
+// new name (a node reimage, a scheduled run); the skips and coverage of the
+// two are the same.
+func TestOwnedObjectsAreListedPerRootOwner(t *testing.T) {
+	pods := schema.GroupVersionResource{Version: "v1", Resource: "pods"}
+	jobs := schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}
+	ownerAPI := map[string]string{"DaemonSet": "apps/v1", "Job": "batch/v1", "ScaledJob": "keda.sh/v1alpha1"}
+	owned := func(apiVersion, kind, ns, name, ownerKind, ownerName string) *unstructured.Unstructured {
+		return &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": apiVersion, "kind": kind,
+			"metadata": map[string]any{"namespace": ns, "name": name, "ownerReferences": []any{
+				map[string]any{"apiVersion": ownerAPI[ownerKind], "kind": ownerKind, "name": ownerName, "controller": true},
+			}},
+		}}
+	}
+	capture := func(suffix string) snapshot.Snapshot {
+		var objs []runtime.Object
+		for i := 0; i < 3; i++ {
+			objs = append(objs, owned("v1", "Pod", "web", fmt.Sprintf("agent-%s%d", suffix, i), "DaemonSet", "agent"),
+				// In kube-system too, where most of a cluster's DaemonSets are.
+				owned("v1", "Pod", "kube-system", fmt.Sprintf("proxy-%s%d", suffix, i), "DaemonSet", "proxy"))
+		}
+		for i := 0; i < 2; i++ {
+			job := fmt.Sprintf("report-%s%d", suffix, i)
+			objs = append(objs, owned("batch/v1", "Job", "web", job, "ScaledJob", "report"),
+				owned("v1", "Pod", "web", job+"-x", "Job", job))
+		}
+		dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+			map[schema.GroupVersionResource]string{pods: "PodList", jobs: "JobList"}, objs...)
+		snap := snapshot.Snapshot{}
+		own := newOwnership()
+		// Pods first: their owners are only known once the Jobs are listed.
+		for _, r := range []struct {
+			gvr  schema.GroupVersionResource
+			kind string
+		}{{pods, "Pod"}, {jobs, "Job"}} {
+			cov := snapshot.Coverage{Resource: resourceID(r.gvr), Kind: r.kind}
+			if err := captureType(context.Background(), &Clients{Dynamic: dyn}, Policy{}, r.gvr, r.kind, &cov, &snap, own); err != nil {
+				t.Fatal(err)
+			}
+			snap.Coverage = append(snap.Coverage, cov)
+		}
+		own.record(&snap)
+		sort.Slice(snap.Skips, func(i, j int) bool {
+			return snap.Skips[i].Resource+snap.Skips[i].Namespace+snap.Skips[i].Reason < snap.Skips[j].Resource+snap.Skips[j].Namespace+snap.Skips[j].Reason
+		})
+		return snap
+	}
+	first, second := capture("a"), capture("b")
+	if !reflect.DeepEqual(first.Skips, second.Skips) || !reflect.DeepEqual(first.Coverage, second.Coverage) {
+		t.Errorf("an unchanged cluster captured differently:\n%+v\n%+v\n%+v\n%+v", first.Skips, second.Skips, first.Coverage, second.Coverage)
+	}
+	want := []snapshot.Skip{
+		{Resource: "batch/v1/jobs", Namespace: "web", Name: "*", Reason: "owned by ScaledJob/report, whose controller recreates it"},
+		{Resource: "core/v1/pods", Namespace: "kube-system", Name: "*", Reason: "owned by DaemonSet/proxy, whose controller recreates it"},
+		{Resource: "core/v1/pods", Namespace: "web", Name: "*", Reason: "owned by DaemonSet/agent, whose controller recreates it"},
+		{Resource: "core/v1/pods", Namespace: "web", Name: "*", Reason: "owned by ScaledJob/report, whose controller recreates it"},
+	}
+	if !reflect.DeepEqual(first.Skips, want) {
+		t.Errorf("skips\n got  %+v\n want %+v", first.Skips, want)
+	}
+}
+
+// An owner is found by its API group as well as its kind and name: a
+// Knative Service owns a Configuration, which owns pods, next to a core
+// Service of the same name (review of #46).
+func TestRootOwnerTellsGroupsApart(t *testing.T) {
+	own := newOwnership()
+	own.owner["shop||Service|web"] = [3]string{"serving.knative.dev", "Route", "web"}
+	own.owner["shop|serving.knative.dev|Route|web"] = [3]string{"serving.knative.dev", "Service", "web"}
+	own.owner["shop|serving.knative.dev|Configuration|web"] = [3]string{"serving.knative.dev", "Service", "web"}
+	if k, n := own.root("shop", "serving.knative.dev", "Configuration", "web"); k+"/"+n != "Service/web" {
+		t.Errorf("root %s/%s, want the Knative Service/web", k, n)
+	}
+	if k, _ := own.root("shop", "", "Service", "web"); k != "Service" {
+		t.Errorf("the core Service web resolved to %s", k)
 	}
 }

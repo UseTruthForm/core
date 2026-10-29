@@ -86,6 +86,7 @@ func Capture(ctx context.Context, c *Clients, p Policy) (snapshot.Snapshot, erro
 		}
 	}
 
+	own := newOwnership()
 	for _, rl := range lists {
 		gv, err := schema.ParseGroupVersion(rl.GroupVersion)
 		if err != nil {
@@ -105,13 +106,14 @@ func Capture(ctx context.Context, c *Clients, p Policy) (snapshot.Snapshot, erro
 			case !has(r.Verbs, "create") && !has(r.Verbs, "patch"):
 				cov.NotCaptured = "the API offers no create or patch verb, so it could not be restored"
 			default:
-				if err := captureType(ctx, c, p, gvr, r.Kind, &cov, &snap); err != nil {
+				if err := captureType(ctx, c, p, gvr, r.Kind, &cov, &snap, own); err != nil {
 					cov.NotCaptured = "list failed: " + err.Error()
 				}
 			}
 			snap.Coverage = append(snap.Coverage, cov)
 		}
 	}
+	own.record(&snap)
 	sort.Slice(snap.Objects, func(i, j int) bool { return snap.Objects[i].Key() < snap.Objects[j].Key() })
 
 	captured := map[schema.GroupVersionKind]bool{}
@@ -131,7 +133,7 @@ func Capture(ctx context.Context, c *Clients, p Policy) (snapshot.Snapshot, erro
 	return snap, nil
 }
 
-func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVersionResource, kind string, cov *snapshot.Coverage, snap *snapshot.Snapshot) error {
+func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVersionResource, kind string, cov *snapshot.Coverage, snap *snapshot.Snapshot, own *ownership) error {
 	cont := ""
 	releases := map[string]bool{} // reason, namespace and release of Helm history already listed
 	for {
@@ -146,6 +148,15 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 			obj["apiVersion"], obj["kind"] = gvr.GroupVersion().String(), kind
 			if reason := p.skipReason(gvr.Group, gvr.Resource, obj); reason != "" {
 				md, _ := obj["metadata"].(map[string]any)
+				ns := strOf(md["namespace"])
+				if k, n, g, ok := controllerRef(md); ok {
+					own.owner[ns+"|"+gvr.Group+"|"+kind+"|"+strOf(md["name"])] = [3]string{g, k, n}
+					if reason == ownedReason(k, n) {
+						// Listed and counted once its owner's owner is known.
+						own.skips = append(own.skips, ownedSkip{resource: resourceID(gvr), ns: ns, group: g, kind: k, name: n})
+						continue
+					}
+				}
 				if cov.Skipped == nil {
 					cov.Skipped = map[string]int{}
 				}
@@ -195,6 +206,64 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 		cont = ul.GetContinue()
 		if cont == "" {
 			return nil
+		}
+	}
+}
+
+// ownership collects what controllers own, so what they make (pods,
+// ReplicaSets, Jobs) is recorded once per root owner (the Deployment,
+// DaemonSet or CronJob) instead of once per instance. Instances come and go
+// under a new name with every rollout, node reimage or scheduled run; listed
+// one by one, and counted by their immediate owner (a Job named for its
+// run), an unchanged cluster captured differently every time.
+type ownership struct {
+	owner map[string][3]string // namespace|group|Kind|name -> its controller's group, Kind, name
+	skips []ownedSkip
+}
+
+func newOwnership() *ownership { return &ownership{owner: map[string][3]string{}} }
+
+type ownedSkip struct{ resource, ns, group, kind, name string }
+
+// root follows an owner up to the controller nothing owns.
+func (o *ownership) root(ns, group, kind, name string) (string, string) {
+	for i := 0; i < 10; i++ {
+		up, ok := o.owner[ns+"|"+group+"|"+kind+"|"+name]
+		if !ok {
+			up, ok = o.owner["|"+group+"|"+kind+"|"+name] // a cluster-scoped owner
+		}
+		if !ok {
+			break
+		}
+		group, kind, name = up[0], up[1], up[2]
+	}
+	return kind, name
+}
+
+// record lists each type's owned objects once per namespace and root owner,
+// and counts them in coverage by owner, not by instance: how many pods a
+// DaemonSet has right now is the cluster's, not a change to it.
+func (o *ownership) record(snap *snapshot.Snapshot) {
+	seen := map[string]bool{}
+	byType := map[string]int{}
+	for i, c := range snap.Coverage {
+		byType[c.Resource] = i
+	}
+	for _, sk := range o.skips {
+		k, n := o.root(sk.ns, sk.group, sk.kind, sk.name)
+		reason := ownedReason(k, n)
+		key := sk.resource + "\x00" + sk.ns + "\x00" + reason
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		snap.Skips = append(snap.Skips, snapshot.Skip{Resource: sk.resource, Namespace: sk.ns, Name: "*", Reason: reason})
+		if i, ok := byType[sk.resource]; ok {
+			c := &snap.Coverage[i]
+			if c.Skipped == nil {
+				c.Skipped = map[string]int{}
+			}
+			c.Skipped[reason]++
 		}
 	}
 }

@@ -51,6 +51,12 @@ func TestSkipReason(t *testing.T) {
 		// Regression guard: one user-side manager means a person changed it,
 		// so it must be captured even though the platform also wrote fields.
 		{"platform plus a user edit is captured", "", "configmaps", k8sObj("ConfigMap", "shop", "x", userAndPlatform, nil), ""},
+		// What AKS installs and upgrades itself, and what an addon manager
+		// keeps as shipped; one it only created is captured, edits and all.
+		{"installed by AKS", "apps", "daemonsets", k8sObj("DaemonSet", "gw", "agent", map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "aks"}}, nil), "upgraded by AKS"},
+		{"labelled for another manager is captured", "apps", "daemonsets", k8sObj("DaemonSet", "gw", "agent", map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "someone"}}, nil), ""},
+		{"reconciled by the addon manager", "storage.k8s.io", "storageclasses", k8sObj("StorageClass", "", "fast", map[string]any{"labels": map[string]any{"addonmanager.kubernetes.io/mode": "Reconcile"}}, nil), "addon manager"},
+		{"only created by the addon manager is captured", "storage.k8s.io", "storageclasses", k8sObj("StorageClass", "", "fast", map[string]any{"labels": map[string]any{"addonmanager.kubernetes.io/mode": "EnsureExists"}}, nil), ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -73,6 +79,10 @@ func TestIncludeSystemStillSkipsOwnedObjects(t *testing.T) {
 	}
 	if r := p.skipReason("", "pods", k8sObj("Pod", "kube-system", "p", owned, nil)); r == "" {
 		t.Fatal("owned pods are recreated by their controller and must stay skipped")
+	}
+	aks := map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "aks"}}
+	if r := p.skipReason("apps", "daemonsets", k8sObj("DaemonSet", "gw", "agent", aks, nil)); r != "" {
+		t.Fatalf("include-system must capture what AKS installs, got skip: %s", r)
 	}
 }
 

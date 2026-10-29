@@ -182,6 +182,13 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	ns, _ := md["namespace"].(string)
 	name, _ := md["name"].(string)
 
+	// First, so what a controller makes is recorded under its owner wherever
+	// it is (kube-system included): grouped by owner, a node reimage that
+	// renames every DaemonSet pod changes nothing (review of #46).
+	if kind, name, ok := controllerOf(md); ok {
+		return ownedReason(kind, name)
+	}
+
 	if !p.IncludeSystem {
 		if systemNamespaces[ns] {
 			return "in system namespace " + ns
@@ -211,13 +218,6 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		return "leader-election record, rewritten continuously by its owner"
 	}
 
-	for _, o := range list(md["ownerReferences"]) {
-		ref, _ := o.(map[string]any)
-		if c, _ := ref["controller"].(bool); c {
-			return "owned by " + strOf(ref["kind"]) + "/" + strOf(ref["name"]) + ", whose controller recreates it"
-		}
-	}
-
 	if p.IncludeSystem {
 		return ""
 	}
@@ -230,6 +230,17 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		return "the API server's own service"
 	case group == "" && resource == "secrets" && strOf(obj["type"]) == "kubernetes.io/service-account-token":
 		return "service-account token, issued by the cluster"
+	}
+	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" {
+		// AKS installs these (its add-ons, their namespaces and roles) and
+		// upgrades them on its own schedule: captured, every upgrade showed
+		// up as drift, and a restore would fight AKS for them.
+		return "installed and upgraded by AKS itself; a new cluster provides it"
+	}
+	if labels, _ := md["labels"].(map[string]any); strOf(labels["addonmanager.kubernetes.io/mode"]) == "Reconcile" {
+		// The addon manager puts these back as it shipped them. EnsureExists
+		// ones are only created, so what someone changed in them is theirs.
+		return "kept as shipped by the cluster's addon manager; a new cluster provides it"
 	}
 	if labels, _ := md["labels"].(map[string]any); labels["kube-aggregator.kubernetes.io/automanaged"] != nil {
 		return "registered automatically by the API server for a group it serves"
@@ -244,6 +255,32 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		return "written only by the platform (" + strings.Join(mgrs, ", ") + ")"
 	}
 	return ""
+}
+
+// controllerOf names the controller that owns an object, if one does.
+func controllerOf(md map[string]any) (kind, name string, ok bool) {
+	kind, name, _, ok = controllerRef(md)
+	return kind, name, ok
+}
+
+// controllerRef is controllerOf with the owner's API group, which tells a
+// Knative Service from a core one.
+func controllerRef(md map[string]any) (kind, name, group string, ok bool) {
+	for _, o := range list(md["ownerReferences"]) {
+		ref, _ := o.(map[string]any)
+		if c, _ := ref["controller"].(bool); c {
+			group, _, _ = strings.Cut(strOf(ref["apiVersion"]), "/")
+			if !strings.Contains(strOf(ref["apiVersion"]), "/") {
+				group = "" // "v1": the core group
+			}
+			return strOf(ref["kind"]), strOf(ref["name"]), group, true
+		}
+	}
+	return "", "", "", false
+}
+
+func ownedReason(kind, name string) string {
+	return "owned by " + kind + "/" + name + ", whose controller recreates it"
 }
 
 // renderedBy reports which higher-level source applied an object, from the

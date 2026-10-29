@@ -218,7 +218,6 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		return "leader-election record, rewritten continuously by its owner"
 	}
 
-
 	if p.IncludeSystem {
 		return ""
 	}

@@ -29,6 +29,7 @@ types:
       - properties.policyDefinitionId
       - properties.enforcementMode
       - properties.notScopes[]
+      - identity.type
   Microsoft.Authorization/locks:
     fields:
       - properties.level
@@ -57,6 +58,9 @@ types:
       - properties.azureMonitorProfile.containerInsights.enabled
       - properties.autoUpgradeProfile
       - properties.identityProfile.kubeletidentity.resourceId
+      - properties.publicNetworkAccess
+      - properties.addonProfiles.azurepolicy.enabled
+      - properties.servicePrincipalProfile.clientId
   Microsoft.Compute/virtualMachineScaleSets:
     fields:
       - identity.type
@@ -65,6 +69,8 @@ types:
       - properties.virtualMachineProfile.osProfile.linuxConfiguration.disablePasswordAuthentication
       - properties.upgradePolicy.mode
       - sku.name
+      - properties.virtualMachineProfile.securityProfile
+      - properties.virtualMachineProfile.networkProfile.networkInterfaceConfigurations[].properties.ipConfigurations[].properties.publicIPAddressConfiguration
   Microsoft.Compute/virtualMachineScaleSets/virtualMachines:
     drop: true          # per-instance; the scale set carries the security posture
   Microsoft.Compute/virtualMachineScaleSets/virtualMachines/extensions:
@@ -80,6 +86,7 @@ types:
       - properties.publicIPAddressVersion
       - properties.ipAddress
       - sku.name
+      - properties.dnsSettings.fqdn
   Microsoft.Network/loadBalancers:
     fields:
       - sku.name
@@ -88,6 +95,9 @@ types:
       - properties.loadBalancingRules[].properties.frontendPort
       - properties.loadBalancingRules[].properties.protocol
       - properties.outboundRules[].properties.protocol
+      - properties.inboundNatRules[]
+      - properties.inboundNatPools[]
+      - properties.loadBalancingRules[].properties.backendPort
   Microsoft.Network/virtualNetworks:
     fields:
       - properties.addressSpace.addressPrefixes[]
@@ -98,6 +108,7 @@ types:
       - properties.virtualNetworkPeerings[].properties.allowGatewayTransit
       - properties.virtualNetworkPeerings[].properties.useRemoteGateways
       - properties.virtualNetworkPeerings[].properties.peeringState
+      - properties.virtualNetworkPeerings[].properties.allowVirtualNetworkAccess
   Microsoft.Network/networkWatchers:
     fields: []
 
@@ -134,6 +145,7 @@ types:
       - properties.networkAcls
       - properties.encryption.keySource
       - properties.encryption.requireInfrastructureEncryption
+      - identity.type
   Microsoft.Storage/storageAccounts/blobServices:
     fields:
       - properties.deleteRetentionPolicy
@@ -157,6 +169,11 @@ types:
       - properties.enablePurgeProtection
       - properties.publicNetworkAccess
       - properties.networkAcls
+      - properties.accessPolicies[]
+      - properties.enabledForDeployment
+      - properties.enabledForTemplateDeployment
+      - properties.enabledForDiskEncryption
+      - identity.type
   Microsoft.ContainerRegistry/registries:
     fields:
       - sku.name
@@ -169,6 +186,7 @@ types:
       - properties.encryption.status
       - properties.policies
       - properties.roleAssignmentMode
+      - identity.type
   Microsoft.ContainerRegistry/registries/replications:
     fields:
       - properties.regionEndpointEnabled
@@ -181,6 +199,7 @@ types:
       - properties.publicNetworkAccess
       - properties.networkAcls
       - properties.disableLocalAuth
+      - identity.type
   Microsoft.SignalRService/WebPubSub:
     fields:
       - sku.name
@@ -345,5 +364,36 @@ types:
       - properties.securitySettings.immutabilitySettings
       - properties.restoreSettings.crossSubscriptionRestoreSettings.crossSubscriptionRestoreState
 
+  Microsoft.Sql/servers/firewallRules:
+    fields:
+      - properties.startIpAddress
+      - properties.endIpAddress
+  Microsoft.Sql/servers/virtualNetworkRules:
+    fields:
+      - properties.ignoreMissingVnetServiceEndpoint
+  Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials:
+    fields:
+      - properties.issuer
+      - properties.subject
+      - properties.audiences[]
+  Microsoft.Web/sites:
+    fields:
+      - identity.type
+      - properties.httpsOnly
+      - properties.publicNetworkAccess
+      - properties.clientCertEnabled
+      - properties.siteConfig.minTlsVersion
+      - properties.siteConfig.ftpsState
+      - properties.siteConfig.ipSecurityRestrictions[]
+      - properties.virtualNetworkSubnetId
+  Microsoft.Network/networkInterfaces:
+    fields:
+      - properties.enableIPForwarding
+      - properties.ipConfigurations[].properties.privateIPAddress
+  Microsoft.Compute/disks:
+    fields:
+      - properties.networkAccessPolicy
+      - properties.publicNetworkAccess
+      - properties.encryption.type
   Microsoft.Resources/resourceGroups:
     fields: []

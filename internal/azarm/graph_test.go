@@ -111,8 +111,8 @@ func TestGraphDrawsEveryRelationship(t *testing.T) {
 	if !reflect.DeepEqual(vnet.Properties["properties.subnets[].properties.addressPrefix"], []any{"10.0.1.0/24"}) || vnet.Location != "westus" {
 		t.Errorf("network %+v", vnet)
 	}
-	if site := nodes["Microsoft.Web/sites/web"]; site.Tags["env"] != "dev" || site.Properties != nil {
-		t.Errorf("a type the projection lists without fields: %+v", site)
+	if site := nodes["Microsoft.Web/sites/web"]; site.Tags["env"] != "dev" || len(site.Properties) != 1 || site.Properties["properties.httpsOnly"] != true {
+		t.Errorf("a site carries what the projection lists and has: %+v", site)
 	}
 	if n := len(g.Nodes); n != 9 {
 		t.Errorf("%d nodes, want the 7 kept and 2 external", n)
@@ -153,5 +153,127 @@ func TestLoadProjection(t *testing.T) {
 	p, _, err := LoadProjection("p.yaml", read("version: 1\ntypes:\n  microsoft.storage/storageaccounts:\n    fields:\n      - sku.name\n"))
 	if err != nil || len(p.of("Microsoft.Storage/storageAccounts").Fields) != 1 {
 		t.Errorf("a type is matched in any case: %v %v", p, err)
+	}
+}
+
+// What the review of #48 found: each of these gave a dangling edge, a
+// bogus node, a wrong edge, a missing one or a panic.
+func TestGraphEdgeCases(t *testing.T) {
+	sub := "/subscriptions/" + tokSub
+	rg := sub + "/resourceGroups/rg"
+	id := func(p string) string { return rg + "/providers/" + p }
+	group := obj("Microsoft.Resources/resourceGroups", "", "rg", rg, map[string]any{})
+	identity := obj("Microsoft.ManagedIdentity/userAssignedIdentities", "rg", "id1", id("Microsoft.ManagedIdentity/userAssignedIdentities/id1"), map[string]any{})
+	identity.Body["status"] = map[string]any{"properties.principalId": "aaaaaaaa-0000-4000-8000-000000000001"}
+	nic := obj("Microsoft.Network/networkInterfaces", "rg", "nic", id("Microsoft.Network/networkInterfaces/nic"), map[string]any{
+		"tags": map[string]any{"hidden-link:" + id("Microsoft.Web/sites/web"): "Resource"},
+		"properties": map[string]any{
+			// Two subnets of one network through one path: tied in the sort.
+			"ipConfigurations": []any{
+				map[string]any{"subnet": map[string]any{"id": id("Microsoft.Network/virtualNetworks/vnet/subnets/b")}},
+				map[string]any{"subnet": map[string]any{"id": id("Microsoft.Network/virtualNetworks/vnet/subnets/a")}},
+			},
+			// One external resource, in two cases.
+			"a": "/subscriptions/other/resourceGroups/hub/providers/Microsoft.Network/virtualNetworks/hub/subnets/s1",
+			"b": "/subscriptions/OTHER/resourcegroups/HUB/providers/microsoft.network/virtualnetworks/HUB",
+			// IDs in URLs and template text end where the ID does.
+			"c": "https://management.azure.com" + id("Microsoft.Web/sites/w") + "?api-version=2020-01-01",
+			"d": "[resourceId('" + id("Microsoft.Web/sites/x") + "')]",
+			// A built-in role definition, tenant level.
+			"e": "/providers/Microsoft.Authorization/roleDefinitions/r9",
+		},
+	})
+	vnet := obj("Microsoft.Network/virtualNetworks", "rg", "vnet", id("Microsoft.Network/virtualNetworks/vnet"), map[string]any{})
+	lock := obj("Microsoft.Authorization/locks", "rg", "nodelete", id("Microsoft.Authorization/locks/nodelete"), map[string]any{})
+	assign := obj("Microsoft.Authorization/roleAssignments", "", "ra", sub+"/providers/Microsoft.Authorization/roleAssignments/ra", map[string]any{
+		"properties": map[string]any{
+			"principalId": "{{stackdna|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|id1|properties.principalId}}",
+			"note":        "{{stackdna|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|id1|properties.createdBy}}",
+			// An extension's token, whose name is providers/... text.
+			"other": "{{stackdna|ref|Microsoft.Authorization/roleAssignments|rg|providers/Microsoft.Network/virtualNetworks/vnet/providers/Microsoft.Authorization/roleAssignments/r2|properties.createdBy}}",
+		},
+	})
+	// No ID annotation and a nested kind: took a slice out of range.
+	bare := snapshot.Object{Body: map[string]any{"apiVersion": APIVersion, "kind": "Microsoft.Network/virtualNetworks/subnets",
+		"metadata": map[string]any{"name": "s", "namespace": "rg"}, "spec": map[string]any{}}}
+	snap := snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{group, identity, nic, vnet, lock, assign, bare}}
+	p := Projection{Version: 1, Types: map[string]ProjectionType{"Microsoft.Authorization/roleAssignments": {Fields: []string{"properties.principalId"}}}}
+
+	first, _ := json.Marshal(BuildGraph(snap, p, "t", "", ""))
+	for i := 0; i < 20; i++ {
+		if b, _ := json.Marshal(BuildGraph(snap, p, "t", "", "")); string(b) != string(first) {
+			t.Fatal("two graphs of one snapshot differ")
+		}
+	}
+	g := BuildGraph(snap, p, "t", "", "")
+	nodes := map[string]GraphNode{}
+	for _, n := range g.Nodes {
+		nodes[n.ID] = n
+	}
+	has := func(from, to, kind string) bool {
+		for _, e := range g.Edges {
+			if e.From == from && e.To == to && e.Kind == kind {
+				return true
+			}
+		}
+		return false
+	}
+	for _, e := range g.Edges {
+		if _, ok := nodes[e.To]; !ok {
+			t.Errorf("edge to no node: %+v", e)
+		}
+		if strings.Contains(e.To, "?") || strings.Contains(e.To, "'") {
+			t.Errorf("an ID ran past its end: %s", e.To)
+		}
+		if strings.HasSuffix(e.Path, "note") || strings.HasSuffix(e.Path, "other") {
+			t.Errorf("a token to who created something is an edge: %+v", e)
+		}
+	}
+	hubs := 0
+	for _, n := range g.Nodes {
+		if strings.EqualFold(n.ID, "/subscriptions/other/resourceGroups/hub/providers/Microsoft.Network/virtualNetworks/hub") {
+			hubs++
+			if !n.External || n.Type != "Microsoft.Network/virtualNetworks" {
+				t.Errorf("the external network, typed as the held ones: %+v", n)
+			}
+		}
+	}
+	if hubs != 1 {
+		t.Errorf("%d nodes for one external network", hubs)
+	}
+	if !has(id("Microsoft.Authorization/locks/nodelete"), rg, "extension-of") {
+		t.Error("a lock on the group is not the group's")
+	}
+	if !has(sub+"/providers/Microsoft.Authorization/roleAssignments/ra", sub, "extension-of") || nodes[sub].Type != "Microsoft.Resources/subscriptions" || nodes[sub].External {
+		t.Errorf("an assignment on the subscription is not the subscription's: %+v", nodes[sub])
+	}
+	if !has(id("Microsoft.Network/networkInterfaces/nic"), "/providers/Microsoft.Authorization/roleDefinitions/r9", "references") {
+		t.Error("a tenant-level role definition is not referenced")
+	}
+	if !has(id("Microsoft.Network/networkInterfaces/nic"), id("Microsoft.Web/sites/web"), "references") {
+		t.Error("a tag key naming a resource is not a reference")
+	}
+	if got := nodes[sub+"/providers/Microsoft.Authorization/roleAssignments/ra"].Properties["properties.principalId"]; got != "aaaaaaaa-0000-4000-8000-000000000001" {
+		t.Errorf("principalId %v, want the identity's value", got)
+	}
+}
+
+func TestProjectionRefusesWhatItCannotMean(t *testing.T) {
+	read := func(b string) func(string) ([]byte, error) {
+		return func(string) ([]byte, error) { return []byte(b), nil }
+	}
+	for _, y := range []string{
+		"version: 1\ntypes:\n  A/b:\n    fields: [x]\n  a/B:\n    fields: [y]\n",
+		"version: 1\ntypes:\n  A/b:\n    drop: true\n    fields: [x]\n",
+		"version: 1\ntypes:\n  A/b:\n    fields: [x..y]\n",
+	} {
+		if _, _, err := LoadProjection("p.yaml", read(y)); err == nil {
+			t.Errorf("accepted %q", y)
+		}
+	}
+	// Two fields of one list stay lined up.
+	v, _ := project(map[string]any{"x": []any{map[string]any{"a": 1}, map[string]any{"b": 2}}}, []string{"x[]", "a"})
+	if !reflect.DeepEqual(v, []any{1.0, nil}) && !reflect.DeepEqual(v, []any{1, nil}) {
+		t.Errorf("x[].a = %v", v)
 	}
 }

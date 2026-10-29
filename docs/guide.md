@@ -226,17 +226,25 @@ stackdna graph --from snap/azure --subscription <id> --tenant <id> --out graph.j
 - **Nodes** are resources: `id` (the resource ID), `type`, `name`,
   `group`, `location`, `tags`, and the `properties` the projection
   chooses, keyed by their path (`properties.publicNetworkAccess`). A path
-  through a list (`properties.securityRules[]`) gives a list. A node that is
+  through a list (`properties.securityRules[]`) gives a list, with a null
+  for an element without the field, so two fields of one list line up. A
+  reference token in a property is replaced by the value it stands for (a
+  role assignment's `principalId` is the identity's GUID). A node that is
   `external` is something the snapshot refers to but doesn't hold, such as
   another subscription's network or a built-in role definition: only its
-  ID, type and name are known.
+  ID, type and name are known. The subscription itself is a node
+  (`Microsoft.Resources/subscriptions`) when something is attached to it.
 - **Edges** run from the resource holding a relationship to the one it
   names. Each has a `kind`:
   - `references`: a field names it; `path` says which. IDs are found in
-    any case, several joined in one string, or as map keys.
+    any case, several joined in one string, inside a URL or template, as
+    map keys (`identity.userAssignedIdentities{}`) and in tag keys, at
+    tenant level too (a built-in role or policy definition). A reference
+    to who created or changed something is not a relationship.
   - `child-of`: a child resource of its parent.
-  - `extension-of`: a role assignment, lock or diagnostic setting on the
-    resource it is attached to.
+  - `extension-of`: a role assignment, lock, policy assignment or
+    diagnostic setting on the resource, resource group or subscription it
+    is attached to.
   - `depends-on`: a resource created by another, such as an AKS cluster's
     managed group.
 
@@ -251,8 +259,9 @@ stackdna graph --from snap/azure --subscription <id> --tenant <id> --out graph.j
   resource without properties. A file in the same format as the built-in
   one (`internal/azarm/graph_security.yaml`) gives your own.
 - **IDs** keep the `{{stackdna|subscription}}` placeholder unless
-  `--subscription` gives the real one, so a graph shared outside the
-  estate names no subscription. `--tenant` does the same for the tenant.
+  `--subscription` gives the real one, and `--tenant` does the same for the
+  tenant. Another subscription that a resource refers to (a peered network)
+  keeps its real ID either way, since the snapshot holds it as it is.
 
 The output is deterministic: the same snapshot gives the same graph.
 

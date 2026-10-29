@@ -29,6 +29,11 @@ func graphCmd(args []string) int {
 		fmt.Fprintln(os.Stderr, "graph: --from is required and no positional arguments are accepted")
 		return 1
 	}
+	for _, v := range []struct{ flag, val string }{{"--subscription", *sub}, {"--tenant", *tenant}} {
+		if v.val != "" && !azarm.IsGUID(v.val) {
+			return fail(fmt.Errorf("graph: %s %q is not a GUID", v.flag, v.val))
+		}
+	}
 	s, err := snapshot.Read(*from)
 	if err != nil {
 		return fail(err)

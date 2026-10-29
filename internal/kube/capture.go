@@ -149,11 +149,11 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 			if reason := p.skipReason(gvr.Group, gvr.Resource, obj); reason != "" {
 				md, _ := obj["metadata"].(map[string]any)
 				ns := strOf(md["namespace"])
-				if k, n, ok := controllerOf(md); ok {
-					own.owner[ns+"|"+kind+"|"+strOf(md["name"])] = [2]string{k, n}
+				if k, n, g, ok := controllerRef(md); ok {
+					own.owner[ns+"|"+gvr.Group+"|"+kind+"|"+strOf(md["name"])] = [3]string{g, k, n}
 					if reason == ownedReason(k, n) {
 						// Listed and counted once its owner's owner is known.
-						own.skips = append(own.skips, ownedSkip{resource: resourceID(gvr), ns: ns, kind: k, name: n})
+						own.skips = append(own.skips, ownedSkip{resource: resourceID(gvr), ns: ns, group: g, kind: k, name: n})
 						continue
 					}
 				}
@@ -217,25 +217,25 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 // one by one, and counted by their immediate owner (a Job named for its
 // run), an unchanged cluster captured differently every time.
 type ownership struct {
-	owner map[string][2]string // namespace|Kind|name -> its controller's Kind, name
+	owner map[string][3]string // namespace|group|Kind|name -> its controller's group, Kind, name
 	skips []ownedSkip
 }
 
-func newOwnership() *ownership { return &ownership{owner: map[string][2]string{}} }
+func newOwnership() *ownership { return &ownership{owner: map[string][3]string{}} }
 
-type ownedSkip struct{ resource, ns, kind, name string }
+type ownedSkip struct{ resource, ns, group, kind, name string }
 
 // root follows an owner up to the controller nothing owns.
-func (o *ownership) root(ns, kind, name string) (string, string) {
+func (o *ownership) root(ns, group, kind, name string) (string, string) {
 	for i := 0; i < 10; i++ {
-		up, ok := o.owner[ns+"|"+kind+"|"+name]
+		up, ok := o.owner[ns+"|"+group+"|"+kind+"|"+name]
 		if !ok {
-			up, ok = o.owner["|"+kind+"|"+name] // a cluster-scoped owner
+			up, ok = o.owner["|"+group+"|"+kind+"|"+name] // a cluster-scoped owner
 		}
 		if !ok {
 			break
 		}
-		kind, name = up[0], up[1]
+		group, kind, name = up[0], up[1], up[2]
 	}
 	return kind, name
 }
@@ -250,7 +250,7 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 		byType[c.Resource] = i
 	}
 	for _, sk := range o.skips {
-		k, n := o.root(sk.ns, sk.kind, sk.name)
+		k, n := o.root(sk.ns, sk.group, sk.kind, sk.name)
 		reason := ownedReason(k, n)
 		key := sk.resource + "\x00" + sk.ns + "\x00" + reason
 		if seen[key] {

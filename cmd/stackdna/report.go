@@ -105,7 +105,10 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 			}
 			ex := sk.Resource + " " + sk.Name
 			if sk.Name == "*" {
-				ex = "every " + sk.Resource + " in " + sk.Namespace // recorded per owner, not per instance
+				ex = "every " + sk.Resource // recorded per owner, not per instance
+				if sk.Namespace != "" {
+					ex += " in " + sk.Namespace
+				}
 			}
 			byReason[sk.Reason] = append(byReason[sk.Reason], ex)
 		}

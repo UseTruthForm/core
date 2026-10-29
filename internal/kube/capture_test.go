@@ -120,18 +120,21 @@ func TestWithheldIsCapturedDespiteTheBaseline(t *testing.T) {
 func TestOwnedObjectsAreListedPerRootOwner(t *testing.T) {
 	pods := schema.GroupVersionResource{Version: "v1", Resource: "pods"}
 	jobs := schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}
+	ownerAPI := map[string]string{"DaemonSet": "apps/v1", "Job": "batch/v1", "ScaledJob": "keda.sh/v1alpha1"}
 	owned := func(apiVersion, kind, ns, name, ownerKind, ownerName string) *unstructured.Unstructured {
 		return &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": apiVersion, "kind": kind,
 			"metadata": map[string]any{"namespace": ns, "name": name, "ownerReferences": []any{
-				map[string]any{"kind": ownerKind, "name": ownerName, "controller": true},
+				map[string]any{"apiVersion": ownerAPI[ownerKind], "kind": ownerKind, "name": ownerName, "controller": true},
 			}},
 		}}
 	}
 	capture := func(suffix string) snapshot.Snapshot {
 		var objs []runtime.Object
 		for i := 0; i < 3; i++ {
-			objs = append(objs, owned("v1", "Pod", "web", fmt.Sprintf("agent-%s%d", suffix, i), "DaemonSet", "agent"))
+			objs = append(objs, owned("v1", "Pod", "web", fmt.Sprintf("agent-%s%d", suffix, i), "DaemonSet", "agent"),
+				// In kube-system too, where most of a cluster's DaemonSets are.
+				owned("v1", "Pod", "kube-system", fmt.Sprintf("proxy-%s%d", suffix, i), "DaemonSet", "proxy"))
 		}
 		for i := 0; i < 2; i++ {
 			job := fmt.Sprintf("report-%s%d", suffix, i)
@@ -155,7 +158,7 @@ func TestOwnedObjectsAreListedPerRootOwner(t *testing.T) {
 		}
 		own.record(&snap)
 		sort.Slice(snap.Skips, func(i, j int) bool {
-			return snap.Skips[i].Resource+snap.Skips[i].Reason < snap.Skips[j].Resource+snap.Skips[j].Reason
+			return snap.Skips[i].Resource+snap.Skips[i].Namespace+snap.Skips[i].Reason < snap.Skips[j].Resource+snap.Skips[j].Namespace+snap.Skips[j].Reason
 		})
 		return snap
 	}
@@ -165,10 +168,27 @@ func TestOwnedObjectsAreListedPerRootOwner(t *testing.T) {
 	}
 	want := []snapshot.Skip{
 		{Resource: "batch/v1/jobs", Namespace: "web", Name: "*", Reason: "owned by ScaledJob/report, whose controller recreates it"},
+		{Resource: "core/v1/pods", Namespace: "kube-system", Name: "*", Reason: "owned by DaemonSet/proxy, whose controller recreates it"},
 		{Resource: "core/v1/pods", Namespace: "web", Name: "*", Reason: "owned by DaemonSet/agent, whose controller recreates it"},
 		{Resource: "core/v1/pods", Namespace: "web", Name: "*", Reason: "owned by ScaledJob/report, whose controller recreates it"},
 	}
 	if !reflect.DeepEqual(first.Skips, want) {
 		t.Errorf("skips\n got  %+v\n want %+v", first.Skips, want)
+	}
+}
+
+// An owner is found by its API group as well as its kind and name: a
+// Knative Service owns a Configuration, which owns pods, next to a core
+// Service of the same name (review of #46).
+func TestRootOwnerTellsGroupsApart(t *testing.T) {
+	own := newOwnership()
+	own.owner["shop||Service|web"] = [3]string{"serving.knative.dev", "Route", "web"}
+	own.owner["shop|serving.knative.dev|Route|web"] = [3]string{"serving.knative.dev", "Service", "web"}
+	own.owner["shop|serving.knative.dev|Configuration|web"] = [3]string{"serving.knative.dev", "Service", "web"}
+	if k, n := own.root("shop", "serving.knative.dev", "Configuration", "web"); k+"/"+n != "Service/web" {
+		t.Errorf("root %s/%s, want the Knative Service/web", k, n)
+	}
+	if k, _ := own.root("shop", "", "Service", "web"); k != "Service" {
+		t.Errorf("the core Service web resolved to %s", k)
 	}
 }

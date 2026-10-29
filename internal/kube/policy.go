@@ -182,6 +182,13 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	ns, _ := md["namespace"].(string)
 	name, _ := md["name"].(string)
 
+	// First, so what a controller makes is recorded under its owner wherever
+	// it is (kube-system included): grouped by owner, a node reimage that
+	// renames every DaemonSet pod changes nothing (review of #46).
+	if kind, name, ok := controllerOf(md); ok {
+		return ownedReason(kind, name)
+	}
+
 	if !p.IncludeSystem {
 		if systemNamespaces[ns] {
 			return "in system namespace " + ns
@@ -211,9 +218,6 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		return "leader-election record, rewritten continuously by its owner"
 	}
 
-	if kind, name, ok := controllerOf(md); ok {
-		return ownedReason(kind, name)
-	}
 
 	if p.IncludeSystem {
 		return ""
@@ -256,13 +260,24 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 
 // controllerOf names the controller that owns an object, if one does.
 func controllerOf(md map[string]any) (kind, name string, ok bool) {
+	kind, name, _, ok = controllerRef(md)
+	return kind, name, ok
+}
+
+// controllerRef is controllerOf with the owner's API group, which tells a
+// Knative Service from a core one.
+func controllerRef(md map[string]any) (kind, name, group string, ok bool) {
 	for _, o := range list(md["ownerReferences"]) {
 		ref, _ := o.(map[string]any)
 		if c, _ := ref["controller"].(bool); c {
-			return strOf(ref["kind"]), strOf(ref["name"]), true
+			group, _, _ = strings.Cut(strOf(ref["apiVersion"]), "/")
+			if !strings.Contains(strOf(ref["apiVersion"]), "/") {
+				group = "" // "v1": the core group
+			}
+			return strOf(ref["kind"]), strOf(ref["name"]), group, true
 		}
 	}
-	return "", "", false
+	return "", "", "", false
 }
 
 func ownedReason(kind, name string) string {

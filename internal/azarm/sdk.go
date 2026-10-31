@@ -149,7 +149,7 @@ func (s *SDK) getOnce(ctx context.Context, u string, v any) error {
 			code = re.ErrorCode
 		}
 		ae := &armError{url: u, status: resp.StatusCode, code: code, msg: armMessage(resp), retryAfter: retryAfter(resp), err: err}
-		if c := classifyARM(resp.StatusCode, code); c != nil {
+		if c := classifyARM(resp.StatusCode, code, ae.msg); c != nil {
 			return fmt.Errorf("%w: %v", c, ae)
 		}
 		if resp.StatusCode == http.StatusBadRequest && code == "KindNotSpecified" {
@@ -251,10 +251,11 @@ func armMessage(resp *http.Response) string {
 // Every 400 and 404 used to read as "none here", so a list that was
 // refused looked exactly like a list that was empty (review,
 // 2026-10-22). nil means a real failure.
-func classifyARM(status int, code string) error {
+func classifyARM(status int, code, msg string) error {
 	switch {
 	case status == http.StatusMethodNotAllowed,
 		status == http.StatusBadRequest && cannotExistHere[code],
+		status == http.StatusBadRequest && unregisteredFeatureRE.MatchString(msg),
 		// A data source kind the definition names but the service does
 		// not implement (ApplicationInsights, SqlDataClassification).
 		status == http.StatusNotImplemented && code == "DataSourceNotImplemented":
@@ -273,6 +274,13 @@ func classifyARM(status int, code string) error {
 // the feature; both read as failed, and an otherwise complete capture
 // reported itself incomplete.
 var cannotExistHere = map[string]bool{"ResourceTypeNotSupported": true, "FeatureDisabledOnSelectedEdition": true, "BMSUserErrorFeatureNotAvailable": true}
+
+// unregisteredFeatureRE is ARM's answer, under the bare code BadRequest,
+// for a child type behind a preview feature the subscription has not
+// registered ("Agent fabric membership is not available in subscription
+// ... Please register the Microsoft.ContainerService/EnableAgentFabricPreview
+// feature"): without the feature there can be none.
+var unregisteredFeatureRE = regexp.MustCompile(`(?i)\bregister the [\w.-]+/[\w.-]+ feature\b`)
 
 // notAnAbsence are 404 codes that say the request was wrong, not that the
 // thing is not there.

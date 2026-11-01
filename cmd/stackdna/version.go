@@ -41,11 +41,15 @@ func versionInfo() (ver, rev, date string, dirty bool) {
 }
 
 // generator names the build that wrote a file, so a consumer holding only
-// the file can say which one made it. Version and commit, and nothing that
-// varies between binaries of one commit: the edition, OS and build time would
-// make the same snapshot give different bytes on different machines.
+// the file can say which one made it.
 func generator() string {
 	ver, rev, _, dirty := versionInfo()
+	return generatorOf(ver, rev, dirty)
+}
+
+// generatorOf takes only what it may print. The edition, OS and build time
+// would make one release's binaries write different bytes from one snapshot.
+func generatorOf(ver, rev string, dirty bool) string {
 	if rev == "" {
 		rev = "unknown commit"
 	}

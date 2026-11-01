@@ -1,30 +1,39 @@
 package main
 
 import (
-	"runtime"
 	"strings"
 	"testing"
 )
 
-// The version line names the edition: a capture-only binary must say it
-// cannot restore, so whoever holds it knows what it can do. CI runs this in
-// both editions.
-// Two binaries of one commit must write the same graph, so the generator
-// names the version and commit and nothing else.
+// One release's binaries must write the same graph, so the generator names
+// the version and commit and nothing that differs between them, the build
+// time included.
 func TestGeneratorIsVersionAndCommitOnly(t *testing.T) {
-	v, c := version, commit
-	defer func() { version, commit = v, c }()
-	version, commit = "v9.9.9", "abc123"
-	if got := generator(); !strings.HasPrefix(got, "stackdna v9.9.9 (abc123") {
-		t.Errorf("generator() = %q, want the version and commit", got)
+	v, c, b := version, commit, built
+	defer func() { version, commit, built = v, c, b }()
+	version, commit, built = "v9.9.9", "abc123", "2026-01-01T00:00:00Z"
+	_, _, _, dirty := versionInfo()
+	if got, want := generator(), generatorOf("v9.9.9", "abc123", dirty); got != want {
+		t.Errorf("generator() = %q, want %q", got, want)
 	}
-	for _, varies := range []string{runtime.GOOS, runtime.GOARCH, runtime.Version(), "capture-only", "full"} {
-		if strings.Contains(generator(), varies) {
-			t.Errorf("generator() = %q holds %q, which differs between binaries of one commit", generator(), varies)
+	for _, c := range []struct {
+		ver, rev string
+		dirty    bool
+		want     string
+	}{
+		{"v9.9.9", "abc123", false, "stackdna v9.9.9 (abc123)"},
+		{"v9.9.9", "abc123", true, "stackdna v9.9.9 (abc123, with uncommitted changes)"},
+		{"dev", "", false, "stackdna dev (unknown commit)"},
+	} {
+		if got := generatorOf(c.ver, c.rev, c.dirty); got != c.want {
+			t.Errorf("generatorOf(%q, %q, %v) = %q, want %q", c.ver, c.rev, c.dirty, got, c.want)
 		}
 	}
 }
 
+// The version line names the edition: a capture-only binary must say it
+// cannot restore, so whoever holds it knows what it can do. CI runs this in
+// both editions.
 func TestVersionNamesEdition(t *testing.T) {
 	v := versionString()
 	want := "full"

@@ -103,3 +103,16 @@ func TestMCPCheckArgv(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// An agent rehearsing a restore into another subscription compares under the
+// new names; without --rename every renamed resource read as missing.
+func TestMCPDiffArgvCarriesRenameAndParallel(t *testing.T) {
+	got := mcpArgv("diff", map[string]any{"platform": "azure", "subscription": "s", "parallel": "2", "rename": "n.yaml", "from": "d"})
+	want := []string{"diff", "--platform=azure", "--subscription=s", "--parallel=2", "--rename=n.yaml", "--from=d"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got := mcpArgv("capture", map[string]any{"platform": "azure", "rename": "n.yaml", "out": "d"}); !reflect.DeepEqual(got, []string{"capture", "--platform=azure", "--out=d"}) {
+		t.Errorf("capture has no --rename, and an unknown flag exits 2: %q", got)
+	}
+}

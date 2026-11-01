@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stackdna/core/internal/azarm"
 	"github.com/stackdna/core/internal/snapshot"
 )
 
@@ -62,5 +63,16 @@ func TestGraphCommand(t *testing.T) {
 	}
 	if code := graphCmd([]string{"--from", snap, "--types", filepath.Join(dir, "missing.yaml")}); code == 0 {
 		t.Error("a missing projection file was accepted")
+	}
+}
+
+// A projection file's path went into the export as typed, so a graph handed to
+// another system named a directory on the machine that wrote it.
+func TestGraphProjectionNameHasNoPath(t *testing.T) {
+	read := func(string) ([]byte, error) { return []byte("version: 1\n"), nil }
+	for _, p := range []string{`C:\Users\someone\views\mine.yaml`, "/home/someone/views/mine.yaml", "views/mine.yaml", "mine.yaml"} {
+		if _, name, err := azarm.LoadProjection(p, read); err != nil || name != "mine.yaml" {
+			t.Errorf("%s: name %q, err %v", p, name, err)
+		}
 	}
 }

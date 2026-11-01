@@ -77,6 +77,7 @@ func mcpTools() []mcp.Tool {
 		"account": str("github: the organisation; cloudflare: the account ID"),
 		"context": str("kubernetes: the kubeconfig context"), "types": str("type patterns to limit to, e.g. 'AWS::S3::*'"),
 		"baseline": str("snapshot directory (or comma-separated, one per region) of what a fresh account holds"),
+		"parallel": str("aws, azure, gcp: API calls in flight at once; lower it if the platform throttles"),
 	}
 	with := func(extra map[string]any) map[string]any {
 		m := map[string]any{}
@@ -119,7 +120,8 @@ func mcpTools() []mcp.Tool {
 			}},
 		{Name: "diff", ReadOnly: true,
 			Description: "Compare a live target with a snapshot, read-only. Exit 0 means no differences, 2 means differences (listed).",
-			Schema:      obj([]string{"platform", "from"}, with(map[string]any{"from": str("the snapshot directory to compare with")})),
+			Schema: obj([]string{"platform", "from"}, with(map[string]any{"from": str("the snapshot directory to compare with"),
+				"rename": str("azure: file of new names, to compare a snapshot with where it was restored under them")})),
 			Call: func(ctx context.Context, a map[string]any) (string, error) {
 				return runStackDNA(ctx, "diff", a, "from")
 			}},
@@ -329,8 +331,8 @@ func saasClient(name string) (*saas.Client, error) {
 // into a restore. Per command, because a flag the command does not define
 // makes it exit 2 with its usage, which read as "differences found".
 var mcpFlags = map[string][]string{
-	"capture": {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "out"},
-	"diff":    {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "from"},
+	"capture": {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "parallel", "out"},
+	"diff":    {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "parallel", "rename", "from"},
 	"check":   {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "access"},
 }
 

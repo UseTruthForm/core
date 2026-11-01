@@ -3,6 +3,7 @@ package azarm
 import (
 	_ "embed"
 	"fmt"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -119,6 +120,9 @@ func LoadProjection(name string, read func(string) ([]byte, error)) (Projection,
 		if b, err = read(name); err != nil {
 			return Projection{}, "", err
 		}
+		// The name goes in the export, which leaves this machine; the path to
+		// it says whose machine that was.
+		name = path.Base(strings.ReplaceAll(name, `\`, "/"))
 	}
 	var p Projection
 	if err := yaml.UnmarshalStrict(b, &p); err != nil {

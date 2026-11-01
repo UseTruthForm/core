@@ -270,6 +270,9 @@ func restore(ctx context.Context, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
+	if err := valuesAccepted(*platform, *values); err != nil {
+		return fail(err)
+	}
 	switch *platform {
 	case "aws":
 		return restoreAWS(ctx, &aws, snap, *values, *update)
@@ -561,6 +564,16 @@ const renameHelp = "azure: YAML file of new names for resources whose names are 
 
 // renamed applies --rename to a snapshot. Only Azure has it; elsewhere it
 // is refused, never ignored.
+// valuesAccepted refuses --values where nothing reads it. A restore that
+// dropped the file would say what it applied and look as if the secrets went
+// with it.
+func valuesAccepted(platform, file string) error {
+	if file != "" && (platform == "gcp" || platform == "kubernetes") {
+		return fmt.Errorf("--values is not read on --platform %s; nothing was restored", platform)
+	}
+	return nil
+}
+
 func renamed(file, platform string, s snapshot.Snapshot) (map[string]string, snapshot.Snapshot, error) {
 	if file == "" {
 		return nil, s, nil

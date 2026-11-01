@@ -40,6 +40,21 @@ func versionInfo() (ver, rev, date string, dirty bool) {
 	return ver, rev, date, dirty
 }
 
+// generator names the build that wrote a file, so a consumer holding only
+// the file can say which one made it. Version and commit, and nothing that
+// varies between binaries of one commit: the edition, OS and build time would
+// make the same snapshot give different bytes on different machines.
+func generator() string {
+	ver, rev, _, dirty := versionInfo()
+	if rev == "" {
+		rev = "unknown commit"
+	}
+	if dirty {
+		rev += ", with uncommitted changes"
+	}
+	return fmt.Sprintf("stackdna %s (%s)", ver, rev)
+}
+
 // versionString is one line for people and bug reports: which build, which
 // source, which edition (a capture-only binary must say so).
 func versionString() string {

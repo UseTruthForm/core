@@ -20,6 +20,7 @@ import (
 type Graph struct {
 	Format         int         `json:"format"`
 	Platform       string      `json:"platform"`
+	Generator      string      `json:"generator,omitempty"`
 	SnapshotDigest string      `json:"snapshotDigest,omitempty"`
 	Projection     string      `json:"projection"`
 	Nodes          []GraphNode `json:"nodes"`

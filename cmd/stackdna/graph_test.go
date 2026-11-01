@@ -42,6 +42,12 @@ func TestGraphCommand(t *testing.T) {
 		g.Nodes[0]["properties"].(map[string]any)["properties.publicNetworkAccess"] != "Disabled" {
 		t.Errorf("graph %s", b)
 	}
+	// A live consumer held an export and nobody could say which build wrote
+	// it: its counts differed from a known run, and neither the file nor the
+	// consumer's logs named a version.
+	if want := generator(); want == "" || !strings.Contains(string(b), `"generator": "`+want+`"`) {
+		t.Errorf("the graph does not name the build that wrote it: %s", b)
+	}
 	if !strings.Contains(string(b), "{{stackdna|subscription}}") {
 		t.Error("without --subscription the graph must keep the placeholder")
 	}

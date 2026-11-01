@@ -264,7 +264,12 @@ stackdna graph --from snap/azure --subscription <id> --tenant <id> --out graph.j
   tenant. Another subscription that a resource refers to (a peered network)
   keeps its real ID either way, since the snapshot holds it as it is.
 
-The output is deterministic: the same snapshot gives the same graph.
+The output is deterministic: the same snapshot gives the same graph from
+any binary of one release, whichever its edition or OS. `generator` names
+the version and commit that wrote it, so another build (a new release, a
+local `go build`, a tree with uncommitted changes) can change the file even
+where the nodes and edges have not changed. To compare graphs across builds,
+compare `nodes` and `edges`.
 
 ## For AI agents (MCP)
 

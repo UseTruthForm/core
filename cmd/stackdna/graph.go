@@ -46,6 +46,7 @@ func graphCmd(args []string) int {
 		return fail(err)
 	}
 	g := azarm.BuildGraph(s, p, name, *sub, *tenant)
+	g.Generator = generator()
 	if g.SnapshotDigest, err = snapshot.Digest(*from); err != nil {
 		return fail(err)
 	}

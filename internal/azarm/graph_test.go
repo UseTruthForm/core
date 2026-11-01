@@ -1,8 +1,11 @@
 package azarm
 
 import (
+	"context"
 	"encoding/json"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -300,5 +303,171 @@ func TestProjectionRefusesWhatItCannotMean(t *testing.T) {
 	v, _ := project(map[string]any{"x": []any{map[string]any{"a": 1}, map[string]any{"b": 2}}}, []string{"x[]", "a"})
 	if !reflect.DeepEqual(v, []any{1.0, nil}) && !reflect.DeepEqual(v, []any{1, nil}) {
 		t.Errorf("x[].a = %v", v)
+	}
+}
+
+// A graph of a real estate showed no public IP, which read as nothing exposed:
+// an AKS cluster's load balancer and public IPs are in its node group, which
+// capture skips. What a manager keeps must be in the graph as existing and not
+// read. It goes through a snapshot on disk, since coverage.yaml is all a graph
+// has of it.
+func TestGraphNamesWhatAManagerKeeps(t *testing.T) {
+	reg := fixtures(t)
+	f := NewWorld(reg).Subscription("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-0000000000aa")
+	put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})
+	mc := put(t, f, "", groupType, "MC_shop_aks_eastus", map[string]any{"location": "eastus"})
+	cluster := "/subscriptions/" + f.sub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks"
+	f.ManagedBy[strings.ToLower(mc)] = cluster
+	seed := func(typ, name string) {
+		i := id(f.sub, "MC_shop_aks_eastus", typ, name)
+		f.res[strings.ToLower(i)] = stored{id: i, typ: typ, body: map[string]any{"location": "eastus"}}
+	}
+	seed("Microsoft.Network/publicIPAddresses", "kubernetes-abc")
+	seed("Microsoft.Network/loadBalancers", "kubernetes")
+	s, err := Capture(context.Background(), f, reg, Policy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Skips of other kinds, and of what the projection drops, are not nodes.
+	s.Skips = append(s.Skips,
+		snapshot.Skip{Resource: "Microsoft.Network/networkWatchers", Name: "NetworkWatcherRG/nw", Reason: "made by Azure"},
+		snapshot.Skip{Resource: "Microsoft.Compute/virtualMachineScaleSets/virtualMachines", Name: "MC_shop_aks_eastus/vmss/0", Reason: reasonManagedGroup + cluster + ", which recreates it"},
+	)
+	dir := filepath.Join(t.TempDir(), "snap")
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	if s, err = snapshot.Read(dir); err != nil {
+		t.Fatal(err)
+	}
+	// A reference to one resolves to it, rather than to an external node.
+	nic := "/subscriptions/" + tokSub + "/resourceGroups/shop-rg/providers/Microsoft.Network/networkInterfaces/nic"
+	pip := "/subscriptions/" + tokSub + "/resourceGroups/MC_shop_aks_eastus/providers/Microsoft.Network/publicIPAddresses/kubernetes-abc"
+	s.Objects = append(s.Objects, snapshot.Object{Body: map[string]any{
+		"apiVersion": "azure.stackdna.org/v1", "kind": "Microsoft.Network/networkInterfaces",
+		"metadata": map[string]any{"name": "nic", "namespace": "shop-rg", "annotations": map[string]any{"stackdna.org/id": nic, "stackdna.org/api-version": "2023-01-01"}},
+		"spec":     map[string]any{"properties": map[string]any{"publicIPAddress": map[string]any{"id": pip}}},
+	}})
+	p, _, _ := LoadProjection("security", nil)
+	build := func(sub string) (Graph, string) {
+		g := BuildGraph(s, p, "security", sub, "")
+		b, err := json.Marshal(g)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return g, string(b)
+	}
+	g, b := build("")
+	if strings.Contains(b, f.sub) {
+		t.Errorf("a graph without --subscription names the subscription: %s", b)
+	}
+	wantBy := "/subscriptions/" + tokSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks"
+	nodes := map[string]GraphNode{}
+	for _, n := range g.Nodes {
+		nodes[n.ID] = n
+	}
+	for _, want := range []string{
+		pip,
+		"/subscriptions/" + tokSub + "/resourceGroups/MC_shop_aks_eastus/providers/Microsoft.Network/loadBalancers/kubernetes",
+		"/subscriptions/" + tokSub + "/resourceGroups/MC_shop_aks_eastus",
+	} {
+		n, ok := nodes[want]
+		if !ok {
+			t.Errorf("no node for %s: %s", want, b)
+			continue
+		}
+		if n.ManagedBy != wantBy || n.External || n.Properties != nil {
+			t.Errorf("%s: want managedBy, not external, no properties: %+v", want, n)
+		}
+		if wantGroup := "MC_shop_aks_eastus"; n.Group != wantGroup && strings.HasPrefix(n.Type, "Microsoft.Network") {
+			t.Errorf("%s: group %q, want %q", want, n.Group, wantGroup)
+		}
+		if strings.EqualFold(n.Type, groupType) && n.Group != "" {
+			t.Errorf("a resource group is not in a group: %+v", n)
+		}
+		if !slices.ContainsFunc(g.Edges, func(e GraphEdge) bool { return e.From == want && e.To == wantBy && e.Kind == "managed-by" }) {
+			t.Errorf("%s has no managed-by edge to its manager: %s", want, b)
+		}
+	}
+	if !nodes[wantBy].External {
+		t.Errorf("a manager the snapshot does not hold should be external: %+v", nodes[wantBy])
+	}
+	if !slices.ContainsFunc(g.Edges, func(e GraphEdge) bool { return e.From == nic && e.To == pip && e.Kind == "references" }) {
+		t.Errorf("a reference to a managed resource did not reach it: %s", b)
+	}
+	if strings.Contains(b, "networkWatchers") || strings.Contains(b, "virtualMachines") {
+		t.Errorf("another kind of skip, or a dropped type, became a node: %s", b)
+	}
+	// A resource the snapshot holds stays as read, skip or no skip.
+	s.Skips = append(s.Skips, snapshot.Skip{Resource: "Microsoft.Network/networkInterfaces", Name: "shop-rg/nic", Reason: reasonManagedBy + cluster + ", which recreates it"})
+	if g2, _ := build(""); slices.ContainsFunc(g2.Nodes, func(n GraphNode) bool { return n.ID == nic && n.ManagedBy != "" }) {
+		t.Error("a skip overrode a held resource")
+	}
+	_, withSub := build(f.sub)
+	if strings.Contains(withSub, tokSub) || !strings.Contains(withSub, cluster) {
+		t.Errorf("--subscription did not fill in the node and its manager: %s", withSub)
+	}
+	if _, again := build(f.sub); again != withSub {
+		t.Error("the graph is not deterministic")
+	}
+}
+
+// Reasons as snapshots already on disk hold them: the graph reads them back,
+// so a reworded reason would quietly lose these nodes. ARM spells a manager's
+// ID its own way, and managedBy must still join to the manager's node.
+func TestGraphReadsReasonsAsWritten(t *testing.T) {
+	sub := "11111111-1111-1111-1111-111111111111"
+	cluster := "/subscriptions/" + sub + "/resourcegroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks"
+	inGroup := "in a resource group managed by " + cluster + ", which recreates it; its children and diagnostic settings are not read"
+	vm := "managed by subscriptions/" + sub + "/resourceGroups/shop-rg/providers/Microsoft.Compute/virtualMachines/vm1, which recreates it"
+	s := snapshot.Snapshot{Platform: "azure", Skips: []snapshot.Skip{
+		{Resource: "Microsoft.Network/publicIPAddresses", Name: "MC_aks/ip", Reason: inGroup},
+		{Resource: "Microsoft.Compute/virtualMachineScaleSets", Name: "MC_aks/vmss", Reason: inGroup},
+		{Resource: "Microsoft.Compute/virtualMachineScaleSets/extensions", Name: "MC_aks/vmss/ext", Reason: inGroup},
+		{Resource: "Microsoft.Compute/disks", Name: "shop-rg/data", Reason: vm},
+		// Hand-edited: refused like a malformed object, not a panic.
+		{Resource: "NotAType", Name: "MC_aks/x", Reason: inGroup},
+		{Resource: "Microsoft.Network/loadBalancers", Name: "no-slash", Reason: inGroup},
+	}}
+	p, _, _ := LoadProjection("security", nil)
+	g := BuildGraph(s, p, "security", "", "")
+	b, _ := json.Marshal(g)
+	if strings.Contains(string(b), sub) {
+		t.Errorf("the real subscription reached the graph: %s", b)
+	}
+	nodes := map[string]GraphNode{}
+	for _, n := range g.Nodes {
+		nodes[n.ID] = n
+	}
+	base := "/subscriptions/" + tokSub + "/resourceGroups/"
+	ip, ok := nodes[base+"MC_aks/providers/Microsoft.Network/publicIPAddresses/ip"]
+	if !ok {
+		t.Fatalf("no node for the public IP: %s", b)
+	}
+	manager, ok := nodes[ip.ManagedBy]
+	if !ok || !manager.External {
+		t.Errorf("managedBy %q does not join to the manager's node: %s", ip.ManagedBy, b)
+	}
+	if !slices.ContainsFunc(g.Edges, func(e GraphEdge) bool { return e.To == ip.ManagedBy && e.Kind == "managed-by" }) {
+		t.Errorf("no managed-by edge to %s: %s", ip.ManagedBy, b)
+	}
+	ext := base + "MC_aks/providers/Microsoft.Compute/virtualMachineScaleSets/vmss/extensions/ext"
+	if n, ok := nodes[ext]; !ok || n.Name != "vmss/ext" {
+		t.Errorf("a managed child was not named whole: %s", b)
+	}
+	vmss := base + "MC_aks/providers/Microsoft.Compute/virtualMachineScaleSets/vmss"
+	if !slices.ContainsFunc(g.Edges, func(e GraphEdge) bool { return e.From == ext && e.To == vmss && e.Kind == "child-of" }) {
+		t.Errorf("a managed child has no child-of edge to its parent: %s", b)
+	}
+	// A VM does not create a data disk attached to it, so no depends-on.
+	disk := base + "shop-rg/providers/Microsoft.Compute/disks/data"
+	if slices.ContainsFunc(g.Edges, func(e GraphEdge) bool { return e.From == disk && e.Kind == "depends-on" }) {
+		t.Errorf("a managed disk claims its VM created it: %s", b)
+	}
+	if !slices.ContainsFunc(g.Edges, func(e GraphEdge) bool { return e.From == disk && e.Kind == "managed-by" }) {
+		t.Errorf("no managed-by edge from the disk: %s", b)
+	}
+	if strings.Contains(string(b), "NotAType") || strings.Contains(string(b), "no-slash") {
+		t.Errorf("a malformed skip became a node: %s", b)
 	}
 }

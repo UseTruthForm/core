@@ -98,6 +98,14 @@ func (p Policy) selected(typ string) bool {
 // Unreadable prefixes skip reasons for listed resources whose GET failed.
 const Unreadable = "listed but could not be read: "
 
+// Why capture left out what something else manages. BuildGraph reads these
+// back to name what the snapshot does not hold, from snapshots already
+// written, so the text must not change (TestGraphReadsReasonsAsWritten).
+const (
+	reasonManagedBy    = "managed by "
+	reasonManagedGroup = "in a resource group managed by "
+)
+
 // captured is one resource as read.
 type captured struct {
 	rid     ResourceID
@@ -166,11 +174,11 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			continue
 		}
 		if r.ManagedBy != "" && !p.CaptureManaged {
-			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, "managed by "+r.ManagedBy+", which recreates it")
+			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedBy+r.ManagedBy+", which recreates it")
 			continue
 		}
 		if by := managedGroups[strings.ToLower(rid.ResourceGroup)]; by != "" && !strings.EqualFold(rid.Type, groupType) && !p.CaptureManaged {
-			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, "in a resource group managed by "+by+", which recreates it; its children and diagnostic settings are not read")
+			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedGroup+by+", which recreates it; its children and diagnostic settings are not read")
 			continue
 		}
 		todo = append(todo, r)

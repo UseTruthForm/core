@@ -234,7 +234,12 @@ stackdna graph --from snap/azure --subscription <id> --tenant <id> --out graph.j
   another subscription's network or a built-in role definition: only its
   ID, type and name are known. The captured subscription itself is a node
   (`Microsoft.Resources/subscriptions`, not external) when something is
-  attached to it.
+  attached to it. A node with `managedBy` is something capture left out
+  because that resource makes and replaces it, such as the load balancers
+  and public IPs in an AKS cluster's node group: it exists, a `depends-on`
+  edge runs to its manager, and only its ID, type and name are known. It was
+  not read, so it says nothing about its address or rules, and a public IP
+  there may only be the cluster's way out. `--capture-managed` reads them.
 - **Edges** run from the resource holding a relationship to the one it
   names. Each has a `kind`:
   - `references`: a field names it; `path` says which. IDs are found in

@@ -31,7 +31,10 @@ type Graph struct {
 // a path through a list ("properties.securityRules[].name") gives a list.
 // External is a resource something in the snapshot refers to that the
 // snapshot does not hold (another subscription's network, a shared
-// gallery): only its ID, type and name are known.
+// gallery): only its ID, type and name are known. ManagedBy is a resource
+// capture left out because that resource makes and replaces it (an AKS
+// cluster's load balancers and public IPs): it exists, but only its ID, type
+// and name are known, so no property on it means not read, not not set.
 type GraphNode struct {
 	ID         string            `json:"id"`
 	Type       string            `json:"type"`
@@ -41,6 +44,7 @@ type GraphNode struct {
 	Tags       map[string]string `json:"tags,omitempty"`
 	Properties map[string]any    `json:"properties,omitempty"`
 	External   bool              `json:"external,omitempty"`
+	ManagedBy  string            `json:"managedBy,omitempty"`
 }
 
 // A GraphEdge runs from the resource that holds a relationship to the one
@@ -62,6 +66,22 @@ type GraphEdge struct {
 	Path        string `json:"path,omitempty"`
 	Subresource string `json:"subresource,omitempty"`
 }
+
+// skippedManagedBy returns the manager's ID from a skip's reason, or "" for a
+// skip of any other kind. A reason holds the ID as ARM gave it, with the real
+// subscription; a manager sits in the subscription of what it manages, so the
+// placeholder goes in and a graph without --subscription still names none.
+func skippedManagedBy(reason string) string {
+	for _, prefix := range []string{reasonManagedGroup, reasonManagedBy} {
+		if by, ok := strings.CutPrefix(reason, prefix); ok {
+			by, _, _ = strings.Cut(by, ",")
+			return managerSubRE.ReplaceAllString(by, "/subscriptions/"+tokSub)
+		}
+	}
+	return ""
+}
+
+var managerSubRE = regexp.MustCompile(`(?i)^/subscriptions/[^/]+`)
 
 // A Projection chooses, type by type, which fields a node carries. A type
 // it does not list is a node with no properties, so relationships through
@@ -171,6 +191,33 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 		ids[id] = rid.String()
 		status[id], _ = o.Body["status"].(map[string]any)
 	}
+	// What capture left out because something else makes and replaces it is
+	// still running: an AKS cluster's load balancers and public IPs live in
+	// its node group. Without these nodes a graph with no public IP reads as
+	// nothing exposed, when the one that matters was never looked at. The
+	// skip gives only type and name, so ManagedBy marks them as not read.
+	var managed []GraphNode
+	for _, sk := range s.Skips {
+		by := skippedManagedBy(sk.Reason)
+		if by == "" {
+			continue
+		}
+		group, name, _ := strings.Cut(sk.Name, "/")
+		rid := ResourceID{Subscription: tokSub, ResourceGroup: group, Type: sk.Resource, Name: name}
+		id := strings.ToLower(rid.String())
+		if !wellFormed(rid) || ids[id] != "" {
+			continue
+		}
+		if p.of(rid.Type).Drop {
+			dropped[id] = true
+			continue
+		}
+		ids[id] = rid.String()
+		if strings.EqualFold(rid.Type, groupType) {
+			group = ""
+		}
+		managed = append(managed, GraphNode{ID: rid.String(), Type: rid.Type, Name: name, Group: group, ManagedBy: by})
+	}
 	// What the snapshot does not hold, by lower(ID); of the spellings seen,
 	// the least is kept, so the graph does not depend on the order seen.
 	others := map[string]GraphNode{}
@@ -205,6 +252,12 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 			}
 			return tok
 		})
+	}
+
+	for _, n := range managed {
+		edge(n.ID, n.ManagedBy, "depends-on", "")
+		n.ID, n.ManagedBy = real(n.ID), real(n.ManagedBy)
+		g.Nodes = append(g.Nodes, n)
 	}
 
 	for _, o := range s.Objects {

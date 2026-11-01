@@ -32,9 +32,9 @@ type Graph struct {
 // External is a resource something in the snapshot refers to that the
 // snapshot does not hold (another subscription's network, a shared
 // gallery): only its ID, type and name are known. ManagedBy is a resource
-// capture left out because that resource makes and replaces it (an AKS
-// cluster's load balancers and public IPs): it exists, but only its ID, type
-// and name are known, so no property on it means not read, not not set.
+// capture left out because that resource manages it (an AKS cluster's load
+// balancers and public IPs): it exists, but only its ID, type and name are
+// known, so no property on it means not read, not not set.
 type GraphNode struct {
 	ID         string            `json:"id"`
 	Type       string            `json:"type"`
@@ -53,7 +53,9 @@ type GraphNode struct {
 //   - child-of: From is a child resource of To (a subnet of its network);
 //   - extension-of: From is attached to To (a role assignment, a lock, a
 //     diagnostic setting on it);
-//   - depends-on: From is created by To and must come after it.
+//   - depends-on: From is created by To and must come after it;
+//   - managed-by: capture left From out because To manages it. Not depends-on:
+//     a VM manages a data disk attached to it without creating it.
 //
 // A reference to a part of a resource that ARM keeps inside it (a
 // network's subnet, a load balancer's backend pool, a security group's
@@ -69,8 +71,9 @@ type GraphEdge struct {
 
 // skippedManagedBy returns the manager's ID from a skip's reason, or "" for a
 // skip of any other kind. A reason holds the ID as ARM gave it, with the real
-// subscription; a manager sits in the subscription of what it manages, so the
-// placeholder goes in and a graph without --subscription still names none.
+// subscription, and nothing in the snapshot says which that is. A manager is
+// assumed to be in the subscription of what it manages, as an AKS cluster is,
+// so the placeholder goes in and a graph without --subscription names none.
 func skippedManagedBy(reason string) string {
 	for _, prefix := range []string{reasonManagedGroup, reasonManagedBy} {
 		if by, ok := strings.CutPrefix(reason, prefix); ok {
@@ -81,7 +84,7 @@ func skippedManagedBy(reason string) string {
 	return ""
 }
 
-var managerSubRE = regexp.MustCompile(`(?i)^/subscriptions/[^/]+`)
+var managerSubRE = regexp.MustCompile(`(?i)^/?subscriptions/[^/]+`)
 
 // A Projection chooses, type by type, which fields a node carries. A type
 // it does not list is a node with no properties, so relationships through
@@ -204,8 +207,11 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 		}
 		group, name, _ := strings.Cut(sk.Name, "/")
 		rid := ResourceID{Subscription: tokSub, ResourceGroup: group, Type: sk.Resource, Name: name}
+		if name == "" || !wellFormed(rid) {
+			continue
+		}
 		id := strings.ToLower(rid.String())
-		if !wellFormed(rid) || ids[id] != "" {
+		if ids[id] != "" {
 			continue
 		}
 		if p.of(rid.Type).Drop {
@@ -252,12 +258,6 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 			}
 			return tok
 		})
-	}
-
-	for _, n := range managed {
-		edge(n.ID, n.ManagedBy, "depends-on", "")
-		n.ID, n.ManagedBy = real(n.ID), real(n.ManagedBy)
-		g.Nodes = append(g.Nodes, n)
 	}
 
 	for _, o := range s.Objects {
@@ -326,6 +326,25 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 				}
 			}
 		})
+	}
+	for _, n := range managed {
+		edge(n.ID, n.ManagedBy, "managed-by", "")
+		if rid, err := ParseID(n.ID); err == nil && strings.Count(rid.Type, "/") > 1 && strings.Count(rid.Type, "/") == strings.Count(rid.Name, "/")+1 {
+			parent := rid
+			parent.Type = rid.Type[:strings.LastIndex(rid.Type, "/")]
+			parent.Name = rid.Name[:strings.LastIndex(rid.Name, "/")]
+			edge(n.ID, parent.String(), "child-of", "")
+		}
+		// As the manager's node spells it, so the two join: ARM's own spelling
+		// can differ in case from the ID the graph gives that node.
+		k := strings.ToLower(n.ManagedBy)
+		if id := ids[k]; id != "" {
+			n.ManagedBy = id
+		} else if o, ok := others[k]; ok {
+			n.ManagedBy = o.ID
+		}
+		n.ID, n.ManagedBy = real(n.ID), real(n.ManagedBy)
+		g.Nodes = append(g.Nodes, n)
 	}
 	for _, n := range others {
 		n.ID, n.Name = real(n.ID), real(n.Name)

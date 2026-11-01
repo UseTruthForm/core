@@ -99,8 +99,8 @@ func (p Policy) selected(typ string) bool {
 const Unreadable = "listed but could not be read: "
 
 // Why capture left out what something else manages. BuildGraph reads these
-// back to name what the snapshot does not hold, so a change here must keep
-// them parseable (TestGraphNamesWhatAManagerKeeps).
+// back to name what the snapshot does not hold, from snapshots already
+// written, so the text must not change (TestGraphReadsReasonsAsWritten).
 const (
 	reasonManagedBy    = "managed by "
 	reasonManagedGroup = "in a resource group managed by "

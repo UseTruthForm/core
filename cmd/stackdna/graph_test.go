@@ -75,4 +75,7 @@ func TestGraphProjectionNameHasNoPath(t *testing.T) {
 			t.Errorf("%s: name %q, err %v", p, name, err)
 		}
 	}
+	if _, name, err := azarm.LoadProjection("views/security", read); err != nil || name != "./security" {
+		t.Errorf("a file named as a built-in reads as it: %q, %v", name, err)
+	}
 }

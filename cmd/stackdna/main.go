@@ -239,7 +239,7 @@ func restore(ctx context.Context, args []string) int {
 	secretsFrom := fs.String("secrets-from-context", "", "live cluster to read withheld secret values from")
 	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
 	update := fs.Bool("update", false, "aws, azure, gcp, github, cloudflare: also bring existing resources that differ in line with the snapshot (never replaces one); without it, restore only creates what is missing. Kubernetes restore always applies (server-side apply)")
-	values := fs.String("values", "", "aws, azure: YAML file of values the cloud never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the cloud, never written")
+	values := fs.String("values", "", "aws, azure, github, cloudflare: YAML file of values the platform never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the platform, never written. Refused elsewhere")
 	rename := fs.String("rename", "", renameHelp)
 	var aws awsFlags
 	aws.register(fs)
@@ -536,6 +536,16 @@ func samePlatformName(snapPlatform, flag string) bool {
 	return snapPlatform == flag || snapPlatform == "saas/"+flag
 }
 
+// valuesAccepted refuses --values where nothing reads it. A restore that
+// dropped the file would say what it applied and look as if the secrets went
+// with it.
+func valuesAccepted(platform, file string) error {
+	if file != "" && (platform == "gcp" || platform == "kubernetes") {
+		return fmt.Errorf("--values is not read on --platform %s; nothing was restored", platform)
+	}
+	return nil
+}
+
 // samePlatform refuses to apply a snapshot to a different kind of platform:
 // a Kubernetes restore of an AWS snapshot would try to apply every resource
 // as an unknown kind and fail object by object.
@@ -564,16 +574,6 @@ const renameHelp = "azure: YAML file of new names for resources whose names are 
 
 // renamed applies --rename to a snapshot. Only Azure has it; elsewhere it
 // is refused, never ignored.
-// valuesAccepted refuses --values where nothing reads it. A restore that
-// dropped the file would say what it applied and look as if the secrets went
-// with it.
-func valuesAccepted(platform, file string) error {
-	if file != "" && (platform == "gcp" || platform == "kubernetes") {
-		return fmt.Errorf("--values is not read on --platform %s; nothing was restored", platform)
-	}
-	return nil
-}
-
 func renamed(file, platform string, s snapshot.Snapshot) (map[string]string, snapshot.Snapshot, error) {
 	if file == "" {
 		return nil, s, nil

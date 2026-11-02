@@ -333,7 +333,7 @@ func saasClient(name string) (*saas.Client, error) {
 var mcpFlags = map[string][]string{
 	"capture": {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "parallel", "out"},
 	"diff":    {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "parallel", "rename", "from"},
-	"check":   {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "access"},
+	"check":   {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "parallel", "access"},
 }
 
 // permissionsTool builds the plan in-process: it reads nothing and writes

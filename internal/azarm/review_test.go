@@ -427,7 +427,7 @@ func TestManagedPartMovesToStatusAndOwnsItsPrincipal(t *testing.T) {
 	assignRID, _ := ParseID(sub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerRegistry/registries/shop/providers/Microsoft.Authorization/roleAssignments/a1")
 	assign := &captured{rid: assignRID, status: map[string]any{"id": assignRID.String()}, spec: map[string]any{"properties": map[string]any{"principalId": kubelet, "principalType": "ServicePrincipal"}}}
 	managed := map[string]string{"mc_shop_aks_eastus": clusterRID.String()}
-	cluster.spec = withoutManaged(cluster, managed)
+	cluster.spec = withoutManaged(cluster, managed, func(string) bool { return false })
 	props := cluster.spec["properties"].(map[string]any)
 	if _, ok := props["identityProfile"]; ok {
 		t.Errorf("the kubelet identity is still in the spec: %v", props)

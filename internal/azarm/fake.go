@@ -92,7 +92,8 @@ func (f *Fake) list(groups bool) []Ref {
 			continue
 		}
 		loc, _ := r.body["location"].(string)
-		out = append(out, Ref{ID: r.id, Type: r.typ, Location: loc, ManagedBy: f.ManagedBy[k]})
+		tags, _ := r.body["tags"].(map[string]any)
+		out = append(out, Ref{ID: r.id, Type: r.typ, Location: loc, ManagedBy: f.ManagedBy[k], Tags: tags})
 	}
 	// Reverse order: callers must not depend on the order ARM lists in.
 	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })

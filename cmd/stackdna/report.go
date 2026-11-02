@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/stackdna/core/internal/azarm"
 	"github.com/stackdna/core/internal/kube"
 	"github.com/stackdna/core/internal/snapshot"
 )
@@ -82,6 +83,32 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 			w("| %s | %s |\n", md(r[0]), md(r[1]))
 		}
 		w("\n")
+	}
+
+	if s.Platform == "azure" {
+		var check []string
+		for _, sk := range s.Skips {
+			if azarm.MayNotComeBack(sk.Reason) {
+				check = append(check, sk.Resource+" "+sk.Name)
+			}
+		}
+		if len(check) > 0 {
+			sort.Strings(check)
+			w("## Check before relying on a restore: %d resources\n\n", len(check))
+			w("These were left out because something else manages them, and nothing shows it will recreate them. Something a person put there, or a data disk attached to a VM, will not come back. `--capture-managed` reads them.\n\n")
+			for _, x := range check {
+				w("- %s\n", md(x))
+			}
+			w("\n")
+		}
+		if kept := azarm.KeptInManagedGroups(s); len(kept) > 0 {
+			w("## Captured from a managed resource group: %d resources\n\n", len(kept))
+			w("Nothing shows the manager made these, so they are in this snapshot and a restore applies them after it. If it did make one, the restore reports a conflict for that resource.\n\n")
+			for _, x := range kept {
+				w("- %s\n", md(x))
+			}
+			w("\n")
+		}
 	}
 
 	if len(s.Objects) > 0 {

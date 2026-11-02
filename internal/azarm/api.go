@@ -32,6 +32,9 @@ type ARM interface {
 // Ref is a listed resource.
 type Ref struct {
 	ID, Type, Location, ManagedBy string
+	// Tags are read for their keys. Not strings: one odd value must not fail
+	// the listing of a whole subscription.
+	Tags map[string]any
 }
 
 // ErrNotFound means the resource does not exist.

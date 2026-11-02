@@ -320,7 +320,8 @@ func TestGraphNamesWhatAManagerKeeps(t *testing.T) {
 	f.ManagedBy[strings.ToLower(mc)] = cluster
 	seed := func(typ, name string) {
 		i := id(f.sub, "MC_shop_aks_eastus", typ, name)
-		f.res[strings.ToLower(i)] = stored{id: i, typ: typ, body: map[string]any{"location": "eastus"}}
+		// As the real ones are tagged: an untagged public IP there is taken as placed.
+		f.res[strings.ToLower(i)] = stored{id: i, typ: typ, body: map[string]any{"location": "eastus", "tags": map[string]any{"aks-managed-cluster-name": "aks"}}}
 	}
 	seed("Microsoft.Network/publicIPAddresses", "kubernetes-abc")
 	seed("Microsoft.Network/loadBalancers", "kubernetes")

@@ -434,9 +434,10 @@ spec, such as `osProfile.adminPassword`, is reported as "not supplied" when
 missing, because a VM restored without its password is configured but
 unusable.
 
-**Skipped by default:** resources with `managedBy` set (an AKS cluster's
-node resource group and its contents), and anything identical to a
-subscription baseline (`NetworkWatcherRG`).
+**Skipped by default:** resources with `managedBy` set, what an AKS cluster
+is recognised to have made in its node group, everything in another manager's
+group, and anything identical to a subscription baseline (`NetworkWatcherRG`).
+Something else in a node group is captured and restored after the cluster.
 
 **Proven against a fake only, so far.** The drill runs between two fake
 subscriptions in different tenants, using the trimmed real definitions in

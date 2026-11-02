@@ -304,6 +304,7 @@ func (s *SDK) list(ctx context.Context, u string) ([]Ref, error) {
 		var page struct {
 			Value []struct {
 				ID, Type, Location, ManagedBy string
+				Tags                          map[string]any
 			} `json:"value"`
 			NextLink string `json:"nextLink"`
 		}
@@ -311,7 +312,7 @@ func (s *SDK) list(ctx context.Context, u string) ([]Ref, error) {
 			return nil, err
 		}
 		for _, v := range page.Value {
-			out = append(out, Ref{ID: v.ID, Type: v.Type, Location: v.Location, ManagedBy: v.ManagedBy})
+			out = append(out, Ref{ID: v.ID, Type: v.Type, Location: v.Location, ManagedBy: v.ManagedBy, Tags: v.Tags})
 		}
 		u = page.NextLink
 	}

@@ -285,9 +285,9 @@ func TestSnapshotOnDisk(t *testing.T) {
 		reasons[s.Name+": "+strings.SplitN(s.Reason, ",", 2)[0]] = true
 	}
 	for _, want := range []string{
-		"MC_shop_aks_eastus/MC_shop_aks_eastus: managed by /subscriptions/" + srcSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks",
-		"MC_shop_aks_eastus/aks-agentpool-nsg: in a resource group managed by /subscriptions/" + srcSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks",
-		"providers/Microsoft.Network/networkSecurityGroups/aks-agentpool-nsg/providers/Microsoft.Authorization/locks/nsg-lock: on a resource in a resource group managed by /subscriptions/" + srcSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks",
+		"MC_shop_aks_eastus/MC_shop_aks_eastus: managed by /subscriptions/" + tokSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks",
+		"MC_shop_aks_eastus/aks-agentpool-nsg: in a resource group managed by /subscriptions/" + tokSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks",
+		"providers/Microsoft.Network/networkSecurityGroups/aks-agentpool-nsg/providers/Microsoft.Authorization/locks/nsg-lock: on a resource in a resource group managed by /subscriptions/" + tokSub + "/resourceGroups/shop-rg/providers/Microsoft.ContainerService/managedClusters/aks",
 		"NetworkWatcherRG/NetworkWatcherRG: identical to the baseline snapshot (already there",
 	} {
 		if !reasons[want] {

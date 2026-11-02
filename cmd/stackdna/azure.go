@@ -102,6 +102,15 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 		}
 	}
 	fmt.Printf("%d types not captured, %d skipped resources; see %s/coverage.yaml\n", notCaptured, len(skips), out)
+	check := 0
+	for _, s := range skips {
+		if azarm.MayNotComeBack(s.Reason) {
+			check++
+		}
+	}
+	if check > 0 {
+		fmt.Printf("CHECK: %d skipped resources may not come back on a restore; see %s/REPORT.md\n", check, out)
+	}
 	for _, r := range topReasons(skips, 8) {
 		fmt.Println("  skipped:", r)
 	}

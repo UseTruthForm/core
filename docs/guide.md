@@ -239,8 +239,8 @@ stackdna graph --from snap/azure --subscription <id> --tenant <id> --out graph.j
   IPs in an AKS cluster's node group: it exists, and only its ID, type and
   name are known. It was not read, so it says nothing about its address or
   rules, and a public IP there may only be the cluster's way out.
-  `--capture-managed` reads them. The manager is taken to be in the captured
-  subscription.
+  `--capture-managed` reads them. In a snapshot from an earlier release, the
+  manager is taken to be in the captured subscription.
 - **Edges** run from the resource holding a relationship to the one it
   names. Each has a `kind`:
   - `references`: a field names it; `path` says which. IDs are found in
@@ -252,8 +252,8 @@ stackdna graph --from snap/azure --subscription <id> --tenant <id> --out graph.j
   - `extension-of`: a role assignment, lock, policy assignment or
     diagnostic setting on the resource, resource group or subscription it
     is attached to.
-  - `depends-on`: a resource created by another, such as an AKS cluster's
-    managed group.
+  - `depends-on`: a resource that cannot exist until another does, because
+    it is in the group an AKS cluster creates.
   - `managed-by`: a resource capture left out, to the one that manages it
     (where the graph has that one: a type the projection leaves out has no
     node).

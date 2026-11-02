@@ -54,7 +54,8 @@ type GraphNode struct {
 //   - child-of: From is a child resource of To (a subnet of its network);
 //   - extension-of: From is attached to To (a role assignment, a lock, a
 //     diagnostic setting on it);
-//   - depends-on: From is created by To and must come after it;
+//   - depends-on: From cannot exist until To does, and a restore applies it
+//     after: what is in an AKS cluster's node group, which the cluster creates;
 //   - managed-by: capture left From out because To manages it. Not depends-on:
 //     a VM manages a data disk attached to it without creating it.
 //
@@ -71,10 +72,11 @@ type GraphEdge struct {
 }
 
 // skippedManagedBy returns the manager's ID from a skip's reason, or "" for a
-// skip of any other kind. A reason holds the ID as ARM gave it, with the real
-// subscription, and nothing in the snapshot says which that is. A manager is
-// assumed to be in the subscription of what it manages, as an AKS cluster is,
-// so the placeholder goes in and a graph without --subscription names none.
+// skip of any other kind. A snapshot from an earlier release holds the ID as
+// ARM gave it, with the real subscription, and nothing in the snapshot says
+// which that is. A manager is assumed to be in the subscription of what it
+// manages, as an AKS cluster is, so the placeholder goes in and a graph without
+// --subscription names none.
 func skippedManagedBy(reason string) string {
 	for _, prefix := range []string{reasonManagedGroup, reasonManagedBy} {
 		if by, ok := strings.CutPrefix(reason, prefix); ok {

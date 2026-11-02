@@ -79,6 +79,11 @@ type Collection struct {
 	// (Actions permissions). Captured as one item named "settings"; a
 	// restore applies it, since the target always has some value.
 	Singleton bool
+	// Transient names, for a listed item that is not configuration but a
+	// moment's state, why it is left out; "" keeps it. Such an item is
+	// neither captured nor counted, so a capture taken mid-way through it
+	// equals one taken before; the rule is stated in docs/guide.md.
+	Transient func(item map[string]any) string
 }
 
 // listPath is the list's path for a parent, with its query.
@@ -150,8 +155,24 @@ var Cloudflare = Provider{
 		// together name a record.
 		{Kind: "cloudflare/dns_record", Parent: "cloudflare/zone", List: "/zones/{zone_id}/dns_records",
 			Get: "/zones/{zone_id}/dns_records/{dns_record_id}", Create: "/zones/{zone_id}/dns_records", Update: "/zones/{zone_id}/dns_records/{dns_record_id}",
-			Bind: map[string]string{"zone_id": "parent:id", "dns_record_id": "item:id"}, Name: []string{"type", "name", "content"}},
+			Bind: map[string]string{"zone_id": "parent:id", "dns_record_id": "item:id"}, Name: []string{"type", "name", "content"},
+			Transient: acmeChallenge},
 	},
+}
+
+// acmeChallenge is a DNS-01 challenge record. cert-manager (and any ACME
+// client) adds a TXT record at _acme-challenge.<name> to prove it holds
+// the domain, and removes it minutes later. Captured, a snapshot taken
+// during a renewal would differ from one taken after, and a restore
+// would put back a stale challenge. A CNAME there is kept: delegating
+// _acme-challenge to another zone is lasting configuration.
+func acmeChallenge(item map[string]any) string {
+	t, _ := item["type"].(string)
+	n, _ := item["name"].(string)
+	if strings.EqualFold(t, "TXT") && (strings.EqualFold(n, "_acme-challenge") || strings.HasPrefix(strings.ToLower(n), "_acme-challenge.")) {
+		return "ACME DNS-01 challenge record, made and removed by cert-manager or another ACME client during a certificate renewal"
+	}
+	return ""
 }
 
 // Providers lists the providers by name.

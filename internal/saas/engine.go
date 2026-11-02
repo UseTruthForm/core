@@ -379,6 +379,12 @@ func (c *Client) inventory(ctx context.Context) ([]*item, []snapshot.Coverage, e
 				break
 			}
 			for _, raw := range items {
+				// Not counted in the coverage either: the count is part of
+				// the snapshot's digest, and a capture taken during a
+				// renewal would no longer equal one taken after it.
+				if col.Transient != nil && col.Transient(raw) != "" {
+					continue
+				}
 				if col.Get != "" {
 					gp, ok := expand(col.Get, col.Bind, c.Account, praw, raw)
 					if !ok {

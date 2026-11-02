@@ -85,7 +85,13 @@ What a snapshot does not hold, by design:
   these values still holds them in its git history;
 - **what the platform made itself**: default VPCs and their subnets,
   built-in roles, AWS-managed policies. Use `--baseline` with a capture of
-  a fresh account to skip anything identical to it.
+  a fresh account to skip anything identical to it;
+- **a moment's state**: Cloudflare TXT records at `_acme-challenge.*`,
+  which cert-manager and other ACME clients add to prove a domain and
+  remove minutes later. Captured, a snapshot taken during a certificate
+  renewal would differ from one taken after, and a restore would put back
+  a stale challenge. A CNAME at `_acme-challenge` (a lasting delegation
+  of the challenge to another zone) is captured.
 
 Limit a capture with `--types 'AWS::EC2::*,AWS::IAM::Role'`. A full AWS
 region (about 1,500 types) takes around five minutes.

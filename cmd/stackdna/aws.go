@@ -28,7 +28,7 @@ func (a *awsFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&a.profile, "profile", "", "AWS shared-config profile (default: the standard credential chain)")
 	fs.StringVar(&a.types, "types", "", "comma-separated type patterns, e.g. 'AWS::S3::*,AWS::IAM::Role' (default: every type)")
 	fs.StringVar(&a.schemas, "schemas", "", "registry schema bundle (.zip) or directory (default: AWS's public bundle, cached for a day)")
-	fs.BoolVar(&a.managed, "capture-managed", false, "also capture resources a CloudFormation stack or an AWS service owns")
+	fs.BoolVar(&a.managed, "capture-managed", false, "also capture resources something else manages: on AWS, what a CloudFormation stack or an AWS service owns; on Azure, what is in a managed resource group or has a managedBy")
 	fs.IntVar(&a.parallel, "parallel", 8, "API calls in flight at once (AWS, Azure, Google Cloud); lower it if the platform throttles the capture")
 	fs.StringVar(&a.zoneMap, "zone-map", "", "restore/diff of a snapshot from another region: zone pairs by zone ID, e.g. 'use2-az1=usw2-az3' (default: paired in zone-ID order)")
 }

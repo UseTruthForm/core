@@ -103,3 +103,37 @@ func TestMCPCheckArgv(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// An agent rehearsing a restore into another subscription compares under the
+// new names; without --rename every renamed resource read as missing.
+func TestMCPDiffArgvCarriesRenameAndParallel(t *testing.T) {
+	got := mcpArgv("diff", map[string]any{"platform": "azure", "subscription": "s", "parallel": "2", "rename": "n.yaml", "from": "d"})
+	want := []string{"diff", "--platform=azure", "--subscription=s", "--parallel=2", "--rename=n.yaml", "--from=d"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got := mcpArgv("capture", map[string]any{"platform": "azure", "rename": "n.yaml", "out": "d"}); !reflect.DeepEqual(got, []string{"capture", "--platform=azure", "--out=d"}) {
+		t.Errorf("capture has no --rename, and an unknown flag fails it: %q", got)
+	}
+	if got := mcpArgv("capture", map[string]any{"platform": "azure", "parallel": "2", "out": "d"}); !reflect.DeepEqual(got, []string{"capture", "--platform=azure", "--parallel=2", "--out=d"}) {
+		t.Errorf("capture: %q", got)
+	}
+	// Advertised in the shared schema, and dropped here without a word.
+	if got := mcpArgv("check", map[string]any{"platform": "azure", "parallel": "2"}); !reflect.DeepEqual(got, []string{"check", "--platform=azure", "--parallel=2"}) {
+		t.Errorf("check: %q", got)
+	}
+}
+
+// A tool's schema is all an agent sees: an argument passed on and not offered
+// is one no agent will send.
+func TestMCPOffersWhatItPasses(t *testing.T) {
+	want := map[string][]string{"capture": {"parallel"}, "diff": {"parallel", "rename"}, "check_access": {"parallel"}}
+	for _, tool := range mcpTools() {
+		for _, name := range want[tool.Name] {
+			props, _ := tool.Schema["properties"].(map[string]any)
+			if _, ok := props[name]; !ok {
+				t.Errorf("%s does not offer %s", tool.Name, name)
+			}
+		}
+	}
+}

@@ -3,6 +3,7 @@ package azarm
 import (
 	_ "embed"
 	"fmt"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -118,6 +119,13 @@ func LoadProjection(name string, read func(string) ([]byte, error)) (Projection,
 		var err error
 		if b, err = read(name); err != nil {
 			return Projection{}, "", err
+		}
+		// The name goes in the export, which leaves this machine; the path to
+		// it says whose machine that was.
+		name = path.Base(strings.ReplaceAll(name, `\`, "/"))
+		// A file named as a built-in must not read as one.
+		if name == "security" || name == "none" {
+			name = "./" + name
 		}
 	}
 	var p Projection

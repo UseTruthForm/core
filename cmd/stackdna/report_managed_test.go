@@ -51,4 +51,28 @@ func TestReportNamesWhatMayNotComeBack(t *testing.T) {
 	if strings.Contains(r, "- Microsoft.Network/loadBalancers MC_x/kubernetes") {
 		t.Errorf("what the manager recreates is listed as needing a look:\n%s", r)
 	}
+	if strings.Contains(r, "## Not checked") {
+		t.Errorf("a current snapshot reads as old:\n%s", r)
+	}
+
+	s.Skips = []snapshot.Skip{{Resource: "Microsoft.Network/loadBalancers", Name: "MC_x/kubernetes", Reason: "in a resource group managed by /subscriptions/11111111-1111-1111-1111-111111111111/x, which recreates it"}}
+	if err := writeReport(dir, s, "azure test"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "REPORT.md")); !strings.Contains(string(b), "## Not checked") {
+		t.Errorf("an old snapshot reads as checked:\n%s", b)
+	}
+}
+
+func TestCaptureSaysToCheck(t *testing.T) {
+	skips := []snapshot.Skip{
+		{Reason: "managed by /x, which may not recreate it"},
+		{Reason: "managed by /y, which recreates it"},
+	}
+	if got := checkLine(skips, "out"); !strings.Contains(got, "CHECK: 1 skipped") {
+		t.Errorf("%q", got)
+	}
+	if got := checkLine(skips[1:], "out"); got != "" {
+		t.Errorf("%q", got)
+	}
 }

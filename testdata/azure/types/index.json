@@ -15,6 +15,9 @@
   "Microsoft.Compute/virtualMachines@2025-04-01": {
    "$ref": "compute_1/microsoft.compute/2025-04-01/types.json#/485"
   },
+  "Microsoft.ContainerService/managedClusters@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/438"
+  },
   "Microsoft.Insights/diagnosticSettings@2016-09-01": {
    "$ref": "monitor_1/microsoft.insights/2016-09-01/types.json#/25"
   },

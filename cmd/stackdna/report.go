@@ -86,6 +86,9 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 	}
 
 	if s.Platform == "azure" {
+		if azarm.PredatesManagedCheck(s) {
+			w("## Not checked: what a manager keeps\n\nThis snapshot's capture did not tell what comes back with its manager from what may not. Its reasons below promise more than anyone checked. Capture again with this release.\n\n")
+		}
 		var check []string
 		for _, sk := range s.Skips {
 			if azarm.MayNotComeBack(sk.Reason) {
@@ -103,7 +106,7 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 		}
 		if kept := azarm.KeptInManagedGroups(s); len(kept) > 0 {
 			w("## Captured from a managed resource group: %d resources\n\n", len(kept))
-			w("Nothing shows the manager made these, so they are in this snapshot and a restore applies them after it. If it did make one, the restore reports a conflict for that resource.\n\n")
+			w("Nothing shows the manager made these, so they are in this snapshot and a restore applies them after it. If it did make one, a restore creates it beside the manager's own, and with `--update` sets it over one of the same name.\n\n")
 			for _, x := range kept {
 				w("- %s\n", md(x))
 			}

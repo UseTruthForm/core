@@ -117,7 +117,8 @@ func MayNotComeBack(reason string) bool { return strings.Contains(reason, mayNot
 
 // KeptInManagedGroups lists what capture read from a managed group because
 // nothing showed its manager made it. A wrong guess here is a resource a
-// restore creates beside its manager, so it is shown rather than assumed.
+// restore creates beside its manager, or with --update sets over the manager's
+// own, so it is shown rather than assumed.
 func KeptInManagedGroups(s snapshot.Snapshot) []string {
 	var out []string
 	for _, o := range s.Objects {
@@ -128,6 +129,19 @@ func KeptInManagedGroups(s snapshot.Snapshot) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// PredatesManagedCheck says a snapshot's managed skips were written before
+// capture told what comes back from what may not, so their reasons promise
+// more than anyone checked. Those reasons hold the real subscription, which a
+// later release replaces. Without this, not having looked reads as all clear.
+func PredatesManagedCheck(s snapshot.Snapshot) bool {
+	for _, sk := range s.Skips {
+		if skippedManagedBy(sk.Reason) != "" && !strings.Contains(sk.Reason, tokSub) {
+			return true
+		}
+	}
+	return false
 }
 
 // aksMakes are the types AKS makes that can carry no tag of its own: in a real
@@ -161,8 +175,9 @@ var aksTagPrefixes = []string{"aks-managed-", "k8s-azure-", "kubernetes.io-creat
 // aksMade says whether a resource in an AKS node group is recognisably the
 // cluster's. It takes positive evidence, because the two mistakes are not
 // alike: taking the cluster's for a person's costs a line in the report and a
-// conflict a restore names, and taking a person's for the cluster's loses it
-// without a word, since the cluster will never recreate it.
+// resource a restore creates beside the cluster's own, and taking a person's
+// for the cluster's loses it without a word, since the cluster will never
+// recreate it.
 func aksMade(typ string, tags map[string]any) bool {
 	for k := range tags {
 		for _, prefix := range aksTagPrefixes {
@@ -176,6 +191,8 @@ func aksMade(typ string, tags map[string]any) bool {
 	return len(parts) >= 2 && aksMakes[parts[0]+"/"+parts[1]]
 }
 
+const managedClusterType = "Microsoft.ContainerService/managedClusters"
+
 func managedByAKS(manager string) bool {
 	return strings.Contains(strings.ToLower(manager), "/providers/microsoft.containerservice/managedclusters/")
 }
@@ -184,8 +201,11 @@ func managedByAKS(manager string) bool {
 // manager: a node group with its cluster, a SQL server's master database. A
 // VM's managedBy disk does not: an OS disk returns with the VM, but a data disk
 // attached to it does not, and the list cannot tell them apart.
-func managerRecreates(typ, manager string) bool {
-	return (strings.EqualFold(typ, groupType) && managedByAKS(manager)) || strings.EqualFold(typ, "Microsoft.Sql/servers/databases")
+func managerRecreates(typ, name, manager string) bool {
+	if strings.EqualFold(typ, groupType) {
+		return managedByAKS(manager)
+	}
+	return strings.EqualFold(typ, "Microsoft.Sql/servers/databases") && strings.EqualFold(lastName(name), "master")
 }
 
 // captured is one resource as read.
@@ -222,7 +242,11 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 		return cov[k]
 	}
+	// Reasons and names hold what ARM said, and an error from ARM holds its URL:
+	// without this coverage.yaml named the real subscription, in a snapshot that
+	// otherwise does not.
 	skip := func(typ, name, reason string) {
+		name, reason = tokenizeString(name, api.Subscription(), tenant), tokenizeString(reason, api.Subscription(), tenant)
 		c := cover(typ)
 		if c.Skipped == nil {
 			c.Skipped = map[string]int{}
@@ -231,14 +255,11 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		snap.Skips = append(snap.Skips, snapshot.Skip{Resource: typ, Name: name, Reason: reason})
 	}
 
-	// A reason holds the manager's ID. Without the placeholder coverage.yaml
-	// named the real subscription, in a snapshot that otherwise does not.
-	managerRef := func(by string) string {
-		return tokenizeString("/"+strings.TrimPrefix(by, "/"), api.Subscription(), tenant)
-	}
+	// A manager's ID, spelled so skip can put the placeholder in.
+	managerRef := func(by string) string { return "/" + strings.TrimPrefix(by, "/") }
 	v := versions{api: api, reg: reg, ctx: ctx, cache: map[string]map[string][]string{}}
 	// A resource group another resource manages (an AKS cluster's node
-	// group) is skipped, and so is everything in it. Only the group carries
+	// group) is skipped, and so is what the manager made in it. Only the group carries
 	// managedBy: in a real subscription the cluster's node scale set and
 	// each node VM in it were captured, and restoring them would fight the
 	// cluster that creates and replaces them.
@@ -262,7 +283,9 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 		if r.ManagedBy != "" && !p.CaptureManaged {
 			fate := mayNotRecreate
-			if managerRecreates(rid.Type, r.ManagedBy) {
+			// A volume's disk has its VM's managedBy, and the cluster makes it.
+			inNodeGroup := managedByAKS(managedGroups[strings.ToLower(rid.ResourceGroup)])
+			if managerRecreates(rid.Type, rid.Name, r.ManagedBy) || (inNodeGroup && aksMade(rid.Type, r.Tags)) {
 				fate = ", which recreates it"
 			}
 			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedBy+managerRef(r.ManagedBy)+fate)
@@ -311,7 +334,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		rid, _ := ParseID(r.ID)
 		switch {
 		case errors.Is(errs[i], errNoVersion):
-			cover(rid.Type).NotCaptured = errs[i].Error()
+			cover(rid.Type).NotCaptured = tokenizeString(errs[i].Error(), api.Subscription(), tenant)
 			continue
 		case errors.Is(errs[i], ErrNotFound):
 			continue // deleted between list and read
@@ -321,6 +344,25 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 		caps = append(caps, out[i])
 	}
+	// What its manager's own spec names cannot be kept: a restore must make it
+	// first, and it cannot come before the manager that makes its group. Each
+	// waited for the other, so the cluster and all behind it were a cycle. Left
+	// out, the cluster is tried, and Azure names what it lacks.
+	specs := map[string]string{}
+	for _, c := range caps {
+		specs[strings.ToLower(c.rid.String())] = strings.ToLower(canon(c.spec))
+	}
+	inManagedGroup := caps[:0]
+	for _, c := range caps {
+		by := managedGroups[strings.ToLower(c.rid.ResourceGroup)]
+		id, _ := c.status["id"].(string)
+		if by != "" && !p.CaptureManaged && strings.Contains(specs[strings.ToLower(managerRef(by))], strings.ToLower(id)+`"`) {
+			skip(c.rid.Type, c.rid.ResourceGroup+"/"+c.rid.Name, reasonManagedGroup+managerRef(by)+mayNotRecreate+"; the manager names it, so it would have to exist first")
+			continue
+		}
+		inManagedGroup = append(inManagedGroup, c)
+	}
+	caps = inManagedGroup
 	// What is in a managed group and was kept above: what is on those goes
 	// with them, as what is on the cluster's own goes with theirs.
 	var kept []string
@@ -350,12 +392,13 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		case f.reason != "":
 			skip(f.typ, f.name, f.reason)
 		// An extension on a resource in a managed group (a lock on one of an
-		// AKS cluster's public IPs) goes with that resource: the manager
-		// creates its own, under new names. One on the group itself (a role
-		// assignment someone granted there) is kept: the group is recreated
-		// under the same name.
+		// AKS cluster's public IPs) goes with that resource: the manager makes
+		// its own, under new names. It may be a person's, and no manager brings
+		// that back, so it is said to need a look. One on the group itself (a
+		// role assignment someone granted there) is kept: the group is
+		// recreated under the same name.
 		case f.c.rid.Scope != "" && managedGroups[strings.ToLower(f.c.rid.ResourceGroup)] != "" && !p.CaptureManaged && !keptScope(f.c.rid.Scope):
-			skip(f.typ, f.name, "on a resource in a resource group managed by "+managerRef(managedGroups[strings.ToLower(f.c.rid.ResourceGroup)])+", which recreates it")
+			skip(f.typ, f.name, "on a resource in a resource group managed by "+managerRef(managedGroups[strings.ToLower(f.c.rid.ResourceGroup)])+mayNotRecreate)
 		default:
 			caps = append(caps, f.c)
 		}
@@ -374,10 +417,10 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 	caps = unique
 	if !p.CaptureManaged {
 		for _, c := range caps {
-			c.spec = withoutManaged(c, managedGroups)
+			c.spec = withoutManaged(c, managedGroups, keptScope)
 			// The group exists only once its manager does.
 			if by := managedGroups[strings.ToLower(c.rid.ResourceGroup)]; by != "" {
-				c.after = managerRef(by)
+				c.after = tokenizeString(managerRef(by), api.Subscription(), tenant)
 			}
 		}
 	}
@@ -626,7 +669,7 @@ func sameSpec(obj, base map[string]any) bool {
 // a restore does not send it, and the manager makes a new one, and its
 // object ID still owns references to it, so a role assignment for the
 // kubelet identity resolves to the restored cluster's (review of #43).
-func withoutManaged(c *captured, managedGroups map[string]string) map[string]any {
+func withoutManaged(c *captured, managedGroups map[string]string, kept func(string) bool) map[string]any {
 	if len(managedGroups) == 0 {
 		return c.spec
 	}
@@ -644,7 +687,8 @@ func withoutManaged(c *captured, managedGroups map[string]string) map[string]any
 		for k, x := range m {
 			if strings.EqualFold(k, "resourceId") {
 				if s, ok := x.(string); ok {
-					if rid, err := ParseID(s); err == nil && managedGroups[strings.ToLower(rid.ResourceGroup)] != "" {
+					// What is in the snapshot comes back under this name.
+					if rid, err := ParseID(s); err == nil && managedGroups[strings.ToLower(rid.ResourceGroup)] != "" && !kept(rid.String()) {
 						return true
 					}
 				}

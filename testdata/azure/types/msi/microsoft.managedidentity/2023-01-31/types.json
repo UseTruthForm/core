@@ -241,5 +241,107 @@
   "name": "Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31",
   "readableScopes": 8,
   "writableScopes": 8
+ },
+ {
+  "$type": "StringType",
+  "pattern": "^[a-zA-Z0-9]{1}[a-zA-Z0-9-_]{2,119}$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2023-01-31"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/21"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "properties": {
+    "description": "The properties associated with the federated identity credential.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/23"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/7"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/20"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "FederatedIdentityCredentialProperties",
+  "properties": {
+   "audiences": {
+    "description": "The list of audiences that can appear in the issued token.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/24"
+    }
+   },
+   "issuer": {
+    "description": "The URL of the issuer to be trusted.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "subject": {
+    "description": "The identifier of the external identity.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/22"
+  },
+  "name": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31",
+  "readableScopes": 8,
+  "writableScopes": 8
  }
 ]

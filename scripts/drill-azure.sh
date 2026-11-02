@@ -11,10 +11,13 @@
 #
 # Free only: a resource group, network security group, virtual network with
 # a subnet that references the NSG, a user-assigned managed identity, a
-# Reader role assignment for that identity on the group, and a delete lock
-# on the group. The assignment proves the principal remap: restoring the
-# identity creates a new principal, and the assignment must follow it.
-# None is metered. Not used: VMs, storage, public IPs, Log Analytics. An
+# Reader role assignment for that identity on the group, a delete lock on the
+# group, a second network peered with the first both ways, and a federated
+# credential on the identity. The assignment proves the principal remap:
+# restoring the identity creates a new principal, and the assignment must
+# follow it. The peerings prove two networks that name each other can be
+# restored at all, and that an update does not cut them: a peering costs only
+# for traffic, and there is none. None is metered. Not used: VMs, storage, public IPs, Log Analytics. An
 # App Service plan and web app (Free F1) were in the first run, to test a
 # map keyed by resource ID against Azure, but the subscription's F1 quota is
 # 0 ("Current Limit (F1 VMs): 0"); that case stays covered by the fake.
@@ -74,6 +77,12 @@ seed() {
   # principalType skips the directory lookup that fails for a few seconds
   # after an identity is created (replication delay).
   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal     --role Reader --scope "$rgid" -o none
+  az identity federated-credential create -g "$RG" --identity-name "$N-id" -n "$N-fic" \
+    --issuer https://token.actions.githubusercontent.com --subject repo:example/example:ref:refs/heads/main \
+    --audiences api://AzureADTokenExchange -o none
+  az network vnet create -g "$RG" -n "$N-vnet2" -l "$LOCATION" --address-prefixes 10.43.0.0/16 -o none
+  az network vnet peering create -g "$RG" --vnet-name "$N-vnet" -n to-2 --remote-vnet "$N-vnet2" --allow-vnet-access -o none
+  az network vnet peering create -g "$RG" --vnet-name "$N-vnet2" -n to-1 --remote-vnet "$N-vnet" --allow-vnet-access -o none
   az lock create --name "$N-lock" --lock-type CanNotDelete --resource-group "$RG" --notes "StackDNA drill" -o none
   echo "seeded $RG"
 }
@@ -115,6 +124,13 @@ echo "restore took $(( $(date +%s) - t0 ))s"
 newp=$(az identity show -g "$RG" -n "$N-id" --query principalId -o tsv)
 az role assignment list --scope "$(az group show --name "$RG" --query id -o tsv)" --query "[?principalId=='$newp'].roleDefinitionName" -o tsv | grep -qx Reader   || { echo "FAIL: the restored role assignment does not name the restored identity ($newp)"; exit 1; }
 echo "role assignment follows the restored identity's new principal $newp"
+# Applied is not enough: a peering that is only Initiated carries nothing.
+for pair in "$N-vnet to-2" "$N-vnet2 to-1"; do
+  set -- $pair
+  state=$(az network vnet peering show -g "$RG" --vnet-name "$1" -n "$2" --query peeringState -o tsv)
+  [ "$state" = Connected ] || { echo "FAIL: peering $1/$2 is $state, want Connected"; exit 1; }
+done
+echo "both peerings restored and Connected"
 step "diff: the subscription must match the snapshot"
 sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
 echo "DRILL PASSED"
@@ -123,7 +139,7 @@ echo "DRILL PASSED"
 # them alone and say so (exit 3); --update must put them right, and the
 # identity must keep its principal (an update, not a re-creation).
 step "update: drift two resources, then restore --update"
-for id in "$(az identity show -g "$RG" -n "$N-id" --query id -o tsv)" "$(az network nsg show -g "$RG" -n "$N-nsg" --query id -o tsv)"; do
+for id in "$(az identity show -g "$RG" -n "$N-id" --query id -o tsv)" "$(az network nsg show -g "$RG" -n "$N-nsg" --query id -o tsv)" "$(az network vnet show -g "$RG" -n "$N-vnet" --query id -o tsv)"; do
   az tag update --resource-id "$id" --operation Merge --tags edited=by-hand -o none
 done
 code=0; sd restore --from "$OUT/snap" > "$OUT/restore-plain.txt" || code=$?
@@ -133,4 +149,6 @@ grep -q "not modified (--update modifies it)" "$OUT/restore-plain.txt" || { echo
 sd restore --from "$OUT/snap" --update
 [ "$(az identity show -g "$RG" -n "$N-id" --query principalId -o tsv)" = "$newp" ] || { echo "FAIL: the update changed the identity's principal"; exit 1; }
 sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
+# A PUT replaces a whole network, and the snapshot holds its peerings apart.
+[ "$(az network vnet peering show -g "$RG" --vnet-name "$N-vnet" -n to-2 --query peeringState -o tsv)" = Connected ] || { echo "FAIL: updating the network cut its peering"; exit 1; }
 echo "UPDATE PASSED"

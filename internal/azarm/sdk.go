@@ -51,7 +51,23 @@ var retryOptions = policy.RetryOptions{MaxRetryDelay: 2 * time.Minute}
 // putRetry is a write's retry policy: only a 429, which ARM sends before
 // it accepts anything. A 5xx can come after a create has started, and
 // sent again it can collide with it (review of #36).
-var putRetry = policy.RetryOptions{StatusCodes: []int{http.StatusTooManyRequests}}
+var putRetry = policy.RetryOptions{StatusCodes: []int{http.StatusTooManyRequests}, MaxRetryDelay: 2 * time.Minute}
+
+// busyCodes are refusals that say to come back: ARM turned the write away
+// before starting it, so sending it again cannot collide with anything. A re-run
+// recovers these too, but a long restore should not stop for one. A code not
+// listed fails as before. The last is from Microsoft's workload identity docs;
+// the others are recalled and not seen here yet.
+var busyCodes = map[string]bool{
+	"AnotherOperationInProgress":                                           true,
+	"RetryableError":                                                       true,
+	"ReferencedResourceNotProvisioned":                                     true,
+	"CanceledAndSupersededDueToAnotherOperation":                           true,
+	"ConcurrentFederatedIdentityCredentialsWritesForSingleManagedIdentity": true,
+}
+
+// busyWaits are the pauses between sending a write that was refused as busy.
+var busyWaits = []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute}
 
 func clientOptions(readOnly bool) *arm.ClientOptions {
 	o := &arm.ClientOptions{ClientOptions: policy.ClientOptions{Retry: retryOptions}}
@@ -381,13 +397,9 @@ const putTimeout = 2 * time.Hour
 func (s *SDK) Put(ctx context.Context, id, apiVersion string, body map[string]any) (map[string]any, error) {
 	ctx, cancel := context.WithTimeout(ctx, putTimeout)
 	defer cancel()
-	ctx = policy.WithRetryOptions(ctx, putRetry)
-	resp, err := s.do(ctx, http.MethodPut, s.url(id, apiVersion), body)
+	resp, err := s.putOnce(ctx, id, apiVersion, body)
 	if err != nil {
 		return nil, err
-	}
-	if !runtime.HasStatusCode(resp, http.StatusOK, http.StatusCreated, http.StatusAccepted) {
-		return nil, runtime.NewResponseError(resp)
 	}
 	// Only an asynchronous answer goes to the poller: 202, or a header that
 	// names an operation to poll. A 200 or 201 without one is finished
@@ -398,7 +410,7 @@ func (s *SDK) Put(ctx context.Context, id, apiVersion string, body map[string]an
 		if err != nil {
 			return nil, err
 		}
-		if _, err := p.PollUntilDone(ctx, &runtime.PollUntilDoneOptions{Frequency: 5 * time.Second}); err != nil {
+		if err := waitFor(ctx, p); err != nil {
 			return nil, fmt.Errorf("%s: %w", id, err)
 		}
 	} else {
@@ -407,8 +419,81 @@ func (s *SDK) Put(ctx context.Context, id, apiVersion string, body map[string]an
 	return s.settled(ctx, id, apiVersion)
 }
 
+// pollEvery and pollMisses pace waitFor.
+var (
+	pollEvery  = 5 * time.Second
+	pollMisses = 60
+)
+
+// waitFor polls an operation to its end. A poll is a read and gets a read's
+// retries. A server error here says nothing of the write, which Azure is still
+// carrying out: one 503 ended a restore's wait for a cluster that went on to be
+// created. So it asks again, and only the operation is asked: the resource itself
+// reads as fine during an update that goes on to fail. After pollMisses errors,
+// about 15 minutes with each one's own retries, the outcome is unknown, which is
+// not success. A Retry-After from Azure is honoured, as PollUntilDone did.
+func waitFor(ctx context.Context, p *runtime.Poller[map[string]any]) error {
+	misses := 0
+	for !p.Done() {
+		resp, err := p.Poll(ctx)
+		var re *azcore.ResponseError
+		switch {
+		case err == nil:
+			misses = 0
+		case errors.As(err, &re) && re.StatusCode >= 500 && misses < pollMisses:
+			misses++
+		case errors.As(err, &re) && re.StatusCode >= 500:
+			return fmt.Errorf("the operation's outcome is unknown, after %d errors asking: %w; check the resource and run the restore again", misses, err)
+		default:
+			return err
+		}
+		if p.Done() {
+			break
+		}
+		wait := pollEvery
+		if resp != nil {
+			if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && s > 0 {
+				wait = max(wait, time.Duration(s)*time.Second)
+			}
+		}
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	_, err := p.Result(ctx)
+	return err
+}
+
+// putOnce sends the write until it is taken or refused for good. Only the write
+// has putRetry: from here on the reads are ordinary.
+func (s *SDK) putOnce(ctx context.Context, id, apiVersion string, body map[string]any) (*http.Response, error) {
+	for i := 0; ; i++ {
+		resp, err := s.do(policy.WithRetryOptions(ctx, putRetry), http.MethodPut, s.url(id, apiVersion), body)
+		if err != nil {
+			return nil, err
+		}
+		if runtime.HasStatusCode(resp, http.StatusOK, http.StatusCreated, http.StatusAccepted) {
+			return resp, nil
+		}
+		refused := runtime.NewResponseError(resp)
+		var re *azcore.ResponseError
+		if i == len(busyWaits) || !errors.As(refused, &re) || !busyCodes[re.ErrorCode] {
+			return nil, refused
+		}
+		select {
+		case <-time.After(busyWaits[i]):
+		case <-ctx.Done():
+			return nil, refused
+		}
+	}
+}
+
 // settled reads the resource until its provisioningState is final, for
-// the resources that answer a PUT synchronously but keep provisioning.
+// the resources that answer a PUT synchronously but keep provisioning. A state
+// that reads as in progress waits: a type with its own word for finished would
+// otherwise hold a restore for the two hours of putTimeout.
 func (s *SDK) settled(ctx context.Context, id, apiVersion string) (map[string]any, error) {
 	for {
 		got, err := s.Get(ctx, id, apiVersion)
@@ -416,11 +501,12 @@ func (s *SDK) settled(ctx context.Context, id, apiVersion string) (map[string]an
 			return nil, err
 		}
 		props, _ := got["properties"].(map[string]any)
-		switch state, _ := props["provisioningState"].(string); state {
-		case "", "Succeeded":
-			return got, nil
-		case "Failed", "Canceled":
+		state, _ := props["provisioningState"].(string)
+		switch {
+		case provisioningFailed(state):
 			return nil, fmt.Errorf("%s: provisioning %s", id, state)
+		case !provisioningRunning(state):
+			return got, nil
 		}
 		select {
 		case <-ctx.Done():

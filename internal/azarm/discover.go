@@ -33,6 +33,10 @@ var extensionLists = []struct {
 	}},
 	{"Microsoft.Authorization/locks", nil},
 	{"Microsoft.Authorization/policyAssignments", nil},
+	// An assignment of a custom policy was restored with nothing to point at.
+	// Asked for by filter: a subscription lists thousands of Azure's own.
+	{"Microsoft.Authorization/policyDefinitions?$filter=policyType%20eq%20%27Custom%27", nil},
+	{"Microsoft.Authorization/policySetDefinitions?$filter=policyType%20eq%20%27Custom%27", nil},
 }
 
 // builtInRole is recorded as a count, not per item: a subscription lists
@@ -59,7 +63,7 @@ type found struct {
 // extension resources listed across the subscription, diagnostic settings
 // on the subscription and on every tracked resource, and the children of
 // every captured resource, found through the provider registrations.
-func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []*captured, par int) []found {
+func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []*captured, par int, leftOut map[string]bool) []found {
 	var mu sync.Mutex
 	var out []found
 	add := func(f found) {
@@ -82,7 +86,8 @@ func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []
 
 	for _, e := range extensionLists {
 		run(func() {
-			for _, f := range listOf(ctx, api, v, tenant, e.typ, sub+"/providers/"+e.typ, e.skip) {
+			typ, _, _ := strings.Cut(e.typ, "?")
+			for _, f := range listOf(ctx, api, v, tenant, typ, sub+"/providers/"+e.typ, e.skip) {
 				add(f)
 			}
 		})
@@ -125,10 +130,25 @@ func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []
 				}
 			}
 			run(func() {
-				for _, f := range listOf(ctx, api, v, tenant, ct, parent.rid.String()+"/"+coll, nil) {
+				for _, f := range listOf(ctx, api, v, tenant, ct, parent.rid.String()+"/"+coll, childSkip) {
+					// Left out as what something else manages, and reached
+					// again as a child: a SQL server's master database was
+					// skipped and captured both, with its own children.
+					if f.c != nil && leftOut[strings.ToLower(f.c.rid.String())] {
+						continue
+					}
 					add(f)
-					if f.c != nil {
-						children(f.c, depth+1)
+					if f.c == nil {
+						continue
+					}
+					children(f.c, depth+1)
+					if ownDiagnostics[strings.ToLower(f.typ)] {
+						scope := f.c.rid.String()
+						run(func() {
+							for _, d := range listOf(ctx, api, v, tenant, diagnosticType, scope+"/providers/"+diagnosticType, nil) {
+								add(d)
+							}
+						})
 					}
 				}
 			})
@@ -142,6 +162,60 @@ func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []
 	wg.Wait()
 	sort.Slice(out, func(i, j int) bool { return out[i].typ+"|"+out[i].name < out[j].typ+"|"+out[j].name })
 	return out
+}
+
+// ownDiagnostics are children with diagnostic settings of their own. A storage
+// account's logs are set on its blob, file, queue and table services, not on the
+// account: the settings were never read, and nothing said so.
+var ownDiagnostics = map[string]bool{
+	"microsoft.storage/storageaccounts/blobservices":  true,
+	"microsoft.storage/storageaccounts/fileservices":  true,
+	"microsoft.storage/storageaccounts/queueservices": true,
+	"microsoft.storage/storageaccounts/tableservices": true,
+	"microsoft.sql/servers/databases":                 true,
+}
+
+// childSkip names children something else makes, seen on a real estate. A
+// private endpoint connection comes when its endpoint is created, and a record a
+// DNS zone group wrote comes when that is. Restored, the first has no endpoint
+// to name and its name holds the old endpoint's GUID, and the second holds the
+// old network's address.
+func childSkip(item map[string]any) string {
+	typ, _ := item["type"].(string)
+	if strings.HasSuffix(strings.ToLower(typ), "/privateendpointconnections") {
+		return "made when its private endpoint is created"
+	}
+	props, _ := item["properties"].(map[string]any)
+	md, _ := props["metadata"].(map[string]any)
+	if c, _ := md["creator"].(string); strings.HasPrefix(c, "created by private endpoint ") {
+		return "written by a private endpoint's DNS zone group, which writes it again with the new address"
+	}
+	return ""
+}
+
+// issuerRefs turns a federated credential's issuer into a reference to the
+// cluster it names. It is a plain setting, so it was restored as it was: it went
+// on trusting the source cluster, the target's workloads could not sign in, and
+// a diff was clean. One naming a cluster outside the snapshot stays as it is.
+func issuerRefs(cs []*captured) {
+	const issuerPath = "properties.oidcIssuerProfile.issuerURL"
+	clusters := map[string]*captured{}
+	for _, c := range cs {
+		if strings.EqualFold(c.rid.Type, managedClusterType) {
+			if u, _ := c.status[issuerPath].(string); u != "" {
+				clusters[u] = c
+			}
+		}
+	}
+	for _, c := range cs {
+		if !strings.EqualFold(c.rid.Type, federatedCredentialType) {
+			continue
+		}
+		props, _ := c.spec["properties"].(map[string]any)
+		if issuer, _ := props["issuer"].(string); clusters[issuer] != nil {
+			props["issuer"] = refToken(clusters[issuer], issuerPath)
+		}
+	}
 }
 
 // listOf lists one collection and turns each item into a found. A

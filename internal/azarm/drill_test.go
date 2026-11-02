@@ -146,7 +146,7 @@ func seedShop(t *testing.T, f *Fake) {
 	rawPut(t, f, nsgID+"/providers/Microsoft.Insights/diagnosticSettings/to-storage", "Microsoft.Insights/diagnosticSettings", map[string]any{
 		// The 2016-09-01 definition requires a location on diagnostic settings.
 		"location":   "eastus",
-		"properties": map[string]any{"storageAccountId": storage, "logs": []any{map[string]any{"categoryGroup": "allLogs", "enabled": true}}}})
+		"properties": map[string]any{"storageAccountId": storage, "logs": []any{map[string]any{"category": "AuditEvent", "enabled": true}}}})
 
 	// A group another resource manages (an AKS node group): skipped.
 	mc := put(t, f, "", groupType, "MC_shop_aks_eastus", map[string]any{"location": "eastus"})
@@ -196,6 +196,7 @@ func newEnv(t *testing.T) env {
 	e := env{reg: reg, src: w.Subscription(srcSub, srcTenant), dst: w.Subscription(dstSub, dstTenant)}
 	azureBehaviour(e.src)
 	azureBehaviour(e.dst)
+	e.dst.CheckReferences = true
 	e.pol = Policy{}.WithBaseline(base, "sha256:test-baseline")
 	seedShop(t, e.src)
 	networkWatcher(t, e.dst)

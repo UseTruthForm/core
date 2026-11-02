@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,7 +122,8 @@ func mcpTools() []mcp.Tool {
 		{Name: "diff", ReadOnly: true,
 			Description: "Compare a live target with a snapshot, read-only. Exit 0 means no differences, 2 means differences (listed).",
 			Schema: obj([]string{"platform", "from"}, with(map[string]any{"from": str("the snapshot directory to compare with"),
-				"rename": str("azure: file of new names, to compare a snapshot with where it was restored under them")})),
+				"rename":                  str("azure: file of new names, to compare a snapshot with where it was restored under them"),
+				"new-role-assignment-ids": str("azure: true if it was restored with --new-role-assignment-ids")})),
 			Call: func(ctx context.Context, a map[string]any) (string, error) {
 				return runStackDNA(ctx, "diff", a, "from")
 			}},
@@ -175,9 +177,18 @@ func cacheDir(sub string) (string, error) {
 	return filepath.Join(c, "stackdna", sub), nil
 }
 
+// arg reads a string, and also the number or boolean an agent may send for one:
+// dropped, "parallel": 2 would have changed nothing, without a word.
 func arg(a map[string]any, k, def string) string {
-	if s, ok := a[k].(string); ok && s != "" {
-		return s
+	switch v := a[k].(type) {
+	case string:
+		if v != "" {
+			return v
+		}
+	case bool:
+		return strconv.FormatBool(v)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
 	}
 	return def
 }
@@ -332,7 +343,7 @@ func saasClient(name string) (*saas.Client, error) {
 // makes it exit 2 with its usage, which read as "differences found".
 var mcpFlags = map[string][]string{
 	"capture": {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "parallel", "out"},
-	"diff":    {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "parallel", "rename", "from"},
+	"diff":    {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "parallel", "rename", "new-role-assignment-ids", "from"},
 	"check":   {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "parallel", "access"},
 }
 

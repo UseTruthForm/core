@@ -241,6 +241,7 @@ func restore(ctx context.Context, args []string) int {
 	update := fs.Bool("update", false, "aws, azure, gcp, github, cloudflare: also bring existing resources that differ in line with the snapshot (never replaces one); without it, restore only creates what is missing. Kubernetes restore always applies (server-side apply)")
 	values := fs.String("values", "", "aws, azure, github, cloudflare: YAML file of values the platform never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the platform, never written. Refused elsewhere")
 	rename := fs.String("rename", "", renameHelp)
+	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
@@ -270,9 +271,18 @@ func restore(ctx context.Context, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
+	if snap, err = withNewRoleIDs(*newRoleIDs, *platform, az.subscription, snap); err != nil {
+		return fail(err)
+	}
 	if err := valuesAccepted(*platform, *values); err != nil {
 		return fail(err)
 	}
+	// A staged --types that restored everything would create, and bill for,
+	// what was held back.
+	if aws.types != "" && *platform != "azure" {
+		return fail(fmt.Errorf("--types is not read by restore on --platform %s; nothing was restored", *platform))
+	}
+	warnGaps(snap)
 	switch *platform {
 	case "aws":
 		return restoreAWS(ctx, &aws, snap, *values, *update)
@@ -323,6 +333,7 @@ func diff(ctx context.Context, args []string) int {
 	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
 	config := fs.String("config", "", "environment file; diffs every target against --from/<target>")
 	rename := fs.String("rename", "", renameHelp)
+	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
@@ -354,8 +365,12 @@ func diff(ctx context.Context, args []string) int {
 	if err := samePlatform(want, *platform); err != nil {
 		return fail(err)
 	}
+	warnGaps(want)
 	_, want, err = renamed(*rename, *platform, want)
 	if err != nil {
+		return fail(err)
+	}
+	if want, err = withNewRoleIDs(*newRoleIDs, *platform, az.subscription, want); err != nil {
 		return fail(err)
 	}
 	switch *platform {
@@ -534,6 +549,27 @@ func withBaseline(p kube.Policy, dir string) (kube.Policy, error) {
 // SaaS snapshots record their provider as saas/<name>.
 func samePlatformName(snapPlatform, flag string) bool {
 	return snapPlatform == flag || snapPlatform == "saas/"+flag
+}
+
+const newRoleIDsHelp = "azure: give role assignments new names, the same each time for this subscription. For a target in the source's tenant, where a name is taken while the source exists. Pass it to the diff of that target too"
+
+func withNewRoleIDs(on bool, platform, subscription string, s snapshot.Snapshot) (snapshot.Snapshot, error) {
+	if !on {
+		return s, nil
+	}
+	if platform != "azure" {
+		return s, fmt.Errorf("--new-role-assignment-ids is for --platform azure only")
+	}
+	return azarm.NewRoleAssignmentIDs(s, subscription), nil
+}
+
+// warnGaps restates what the capture could not read. Only the capture said so,
+// so a restore of an incomplete snapshot could report every resource applied,
+// and a diff no differences, of a snapshot that does not hold the whole system.
+func warnGaps(s snapshot.Snapshot) {
+	if g := gaps(s); len(g) > 0 {
+		fmt.Printf("INCOMPLETE SNAPSHOT: its capture could not read %d things, and neither restore nor diff can see them; see REPORT.md\n", len(g))
+	}
 }
 
 // valuesAccepted refuses --values where nothing reads it. A restore that

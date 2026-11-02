@@ -124,6 +124,16 @@ func TestMCPDiffArgvCarriesRenameAndParallel(t *testing.T) {
 	}
 }
 
+// An agent may send a number or a boolean for an argument, and dropped it changed
+// nothing, without a word.
+func TestMCPTakesWhatAnAgentMaySend(t *testing.T) {
+	got := mcpArgv("diff", map[string]any{"platform": "azure", "parallel": float64(2), "new-role-assignment-ids": true, "from": "d"})
+	want := []string{"diff", "--platform=azure", "--parallel=2", "--new-role-assignment-ids=true", "--from=d"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 // A tool's schema is all an agent sees: an argument passed on and not offered
 // is one no agent will send.
 func TestMCPOffersWhatItPasses(t *testing.T) {

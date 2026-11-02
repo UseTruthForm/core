@@ -1,0 +1,795 @@
+[
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/privateDnsZones"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2024-06-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/privateDnsZones",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "etag": {
+    "description": "The ETag of the zone.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "The Azure Region where the resource lives",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the Private DNS zone.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/4"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateZoneProperties",
+  "properties": {
+   "internalId": {
+    "description": "Private zone internal Id",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "maxNumberOfRecordSets": {
+    "description": "The maximum number of record sets that can be created in this Private DNS zone. This is a read-only property and any attempt to set this value will be ignored.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "maxNumberOfVirtualNetworkLinks": {
+    "description": "The maximum number of virtual networks that can be linked to this Private DNS zone. This is a read-only property and any attempt to set this value will be ignored.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "maxNumberOfVirtualNetworkLinksWithRegistration": {
+    "description": "The maximum number of virtual networks that can be linked to this Private DNS zone with registration enabled. This is a read-only property and any attempt to set this value will be ignored.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "numberOfRecordSets": {
+    "description": "The current number of record sets in this Private DNS zone. This is a read-only property and any attempt to set this value will be ignored.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "numberOfVirtualNetworkLinks": {
+    "description": "The current number of virtual networks that are linked to this Private DNS zone. This is a read-only property and any attempt to set this value will be ignored.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "numberOfVirtualNetworkLinksWithRegistration": {
+    "description": "The current number of virtual networks that are linked to this Private DNS zone with registration enabled. This is a read-only property and any attempt to set this value will be ignored.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the resource. This is a read-only property and any attempt to set this value will be ignored.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/12"
+    }
+   }
+  }
+ },
+ {
+  "$type": "IntegerType"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/6"
+   },
+   {
+    "$ref": "#/7"
+   },
+   {
+    "$ref": "#/8"
+   },
+   {
+    "$ref": "#/9"
+   },
+   {
+    "$ref": "#/10"
+   },
+   {
+    "$ref": "#/11"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "PrivateZoneTags",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SystemData",
+  "properties": {
+   "createdAt": {
+    "description": "The timestamp of resource creation (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createdBy": {
+    "description": "The identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createdByType": {
+    "description": "The type of identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "lastModifiedAt": {
+    "description": "The timestamp of resource last modification (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "lastModifiedBy": {
+    "description": "The identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "lastModifiedByType": {
+    "description": "The type of identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/24"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/15"
+   },
+   {
+    "$ref": "#/16"
+   },
+   {
+    "$ref": "#/17"
+   },
+   {
+    "$ref": "#/18"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/20"
+   },
+   {
+    "$ref": "#/21"
+   },
+   {
+    "$ref": "#/22"
+   },
+   {
+    "$ref": "#/23"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/3"
+  },
+  "name": "Microsoft.Network/privateDnsZones@2024-06-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/privateDnsZones/A"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2024-06-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/privateDnsZones/A",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/27"
+    }
+   },
+   "etag": {
+    "description": "The ETag of the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The properties of the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/29"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/26"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RecordSetProperties",
+  "properties": {
+   "aRecords": {
+    "description": "The list of A records in the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/33"
+    }
+   },
+   "aaaaRecords": {
+    "description": "The list of AAAA records in the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/35"
+    }
+   },
+   "cnameRecord": {
+    "description": "The CNAME record in the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/36"
+    }
+   },
+   "fqdn": {
+    "description": "Fully qualified domain name of the record set.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "isAutoRegistered": {
+    "description": "Is the record set auto-registered in the Private DNS zone through a virtual network link?",
+    "flags": 2,
+    "type": {
+     "$ref": "#/31"
+    }
+   },
+   "metadata": {
+    "description": "The metadata attached to the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/30"
+    }
+   },
+   "mxRecords": {
+    "description": "The list of MX records in the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/38"
+    }
+   },
+   "ptrRecords": {
+    "description": "The list of PTR records in the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/40"
+    }
+   },
+   "soaRecord": {
+    "description": "The SOA record in the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/41"
+    }
+   },
+   "srvRecords": {
+    "description": "The list of SRV records in the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/43"
+    }
+   },
+   "ttl": {
+    "description": "The TTL (time-to-live) of the records in the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "txtRecords": {
+    "description": "The list of TXT records in the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/46"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "RecordSetPropertiesMetadata",
+  "properties": {}
+ },
+ {
+  "$type": "BooleanType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ARecord",
+  "properties": {
+   "ipv4Address": {
+    "description": "The IPv4 address of this A record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/32"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "AaaaRecord",
+  "properties": {
+   "ipv6Address": {
+    "description": "The IPv6 address of this AAAA record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/34"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "CnameRecord",
+  "properties": {
+   "cname": {
+    "description": "The canonical name for this CNAME record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "MxRecord",
+  "properties": {
+   "exchange": {
+    "description": "The domain name of the mail host for this MX record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "preference": {
+    "description": "The preference value for this MX record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/37"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PtrRecord",
+  "properties": {
+   "ptrdname": {
+    "description": "The PTR target domain name for this PTR record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/39"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SoaRecord",
+  "properties": {
+   "email": {
+    "description": "The email contact for this SOA record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "expireTime": {
+    "description": "The expire time for this SOA record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "host": {
+    "description": "The domain name of the authoritative name server for this SOA record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "minimumTtl": {
+    "description": "The minimum value for this SOA record. By convention this is used to determine the negative caching duration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "refreshTime": {
+    "description": "The refresh value for this SOA record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "retryTime": {
+    "description": "The retry time for this SOA record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "serialNumber": {
+    "description": "The serial number for this SOA record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SrvRecord",
+  "properties": {
+   "port": {
+    "description": "The port value for this SRV record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "priority": {
+    "description": "The priority value for this SRV record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "target": {
+    "description": "The target domain name for this SRV record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "weight": {
+    "description": "The weight value for this SRV record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/42"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "TxtRecord",
+  "properties": {
+   "value": {
+    "description": "The text value of this TXT record.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/45"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/44"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/28"
+  },
+  "name": "Microsoft.Network/privateDnsZones/A@2024-06-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/privateDnsZones/SOA"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2024-06-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/privateDnsZones/SOA",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/49"
+    }
+   },
+   "etag": {
+    "description": "The ETag of the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The properties of the record set.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/29"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/48"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/50"
+  },
+  "name": "Microsoft.Network/privateDnsZones/SOA@2024-06-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ }
+]

@@ -113,7 +113,27 @@ stackdna restore --platform aws --region us-east-2 --from snap/aws --values secr
 
 - **By default a restore only creates what is missing.** Something already
   there and identical counts as applied; something there but different is
-  reported, with the fields that differ, and left alone.
+  reported, with the fields that differ, and left alone. The exception is a
+  child Azure made with a parent this run created, such as a storage account's
+  `blobServices/default`: no one else's change can be in it, so it is set from
+  the snapshot and reported as updated.
+- **A resource that did not provision is not restored (Azure).** One Azure says
+  has failed or is still in progress is reported, even if its configuration
+  matches. `diff` lists one that failed, or a peering that is not connected, as
+  `not working` and exits 2.
+- **A lock is held back if anything else was not applied (Azure),** so it cannot
+  block the re-run.
+- **`--types` limits a restore (Azure),** so a run can be staged:
+  `--types 'Microsoft.Network/*'`. A child goes with its parent's type, resource
+  groups always come, and a pattern that matches nothing is refused. What a selected
+  resource needs and was not selected must already be there. A child Azure already
+  made in an earlier stage needs `--update`, as does one after a first run that
+  failed part way. Check what a pattern covers before relying on it to hold back
+  cost. A lock waits for a run that covers everything. Other platforms refuse
+  `--types` on a restore.
+- **Azure resource providers** are registered as a restore needs them, which takes
+  `*/register/action` (Contributor and Owner have it). It can take minutes, and
+  a resource that outlasts the wait reports the failure and is applied by a re-run.
 - **`--update`** also brings differing resources in line with the
   snapshot. It never replaces a resource: a change the platform can only
   make by deleting and re-creating (an AWS create-only property) is
@@ -136,7 +156,18 @@ stackdna restore --platform aws --region us-east-2 --from snap/aws --values secr
   are refused. Text that only mentions the old
   name (a host name in an app setting) is not changed; each object holding
   some is listed so it can be checked. Write `--values` with the
-  snapshot's names, and give `diff` the same file.
+  snapshot's names, and give `diff` the same file. Key vaults keep their name
+  after deletion, and purge protection makes that last for the whole retention
+  period and cannot be undone, so use a fresh name for each attempt.
+- **Into another subscription in the source's tenant (Azure):** a role assignment's
+  name is unique across a tenant, so pass `--new-role-assignment-ids` to `restore`
+  and to `diff` of that target. A custom role is unique there too. A restore will
+  not take over one that exists for other subscriptions: add the target to its
+  `assignableScopes`, and run the restore again, which then takes the role as it is
+  and will not change it, even with `--update`. A `diff` shows its wider scopes.
+- **Workload identity (Azure):** a federated credential naming a cluster in the
+  snapshot follows it, and trusts the restored cluster's issuer. One naming a
+  cluster that is not in the snapshot keeps its issuer.
 - **Into another region (AWS):** zones are paired by zone ID (printed);
   `--zone-map use2-az1=use1-az4` overrides a pair.
 - **Several at once (AWS, Azure, GCP):** resources that do not depend on
@@ -209,7 +240,7 @@ field (`stackdna.org/output/v1`), and everything meant for a person goes
 to stderr. The exit code is the same as without it. A capture's document
 says whether it is `complete` and lists its `gaps`, and under `throttled`
 the gaps a later capture can close as it is; a diff's lists each
-change with its `kind` (missing, extra, changed) and `fields`; a
+change with its `kind` (missing, extra, changed, not working) and `fields`; a
 restore's lists each resource with `ok` and `detail`.
 
 ```sh
@@ -308,6 +339,17 @@ anything. An agent setting up someone's access should follow
   source of a kind it does not name is not found. The change-tracking
   default registry keys Azure makes up on every read are counted in
   coverage, not captured.
+- A VNet peering to a network in another subscription keeps that network's ID,
+  so a restore connects the target to it if the identity may. Check any before
+  restoring. Private endpoint connections come with their endpoints, and a target
+  in another tenant may need them approved.
+- An attached data disk is skipped with its VM and does not come back. `REPORT.md`
+  lists each under "Check before relying on a restore".
+- A snapshot's IDs and display names do not name the Azure subscription or tenant,
+  but the title of its `REPORT.md` does, to say whose report it is. So does a
+  resource's own name if it holds one, such as `DefaultWorkspace-<id>-EUS`, and a
+  restore creates it under that name. Another subscription a resource refers to
+  keeps its real ID.
 - S3 bucket names are global: a bucket cannot be restored under the same
   name while the original exists, or in another region shortly after it
   was deleted.

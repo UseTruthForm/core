@@ -28,12 +28,15 @@ type World struct {
 	// GUID is refused as PrincipalNotFound: a role assignment restored
 	// with the source identity's principal would grant access to no one.
 	owner map[string]string
+	// roles are the custom roles made, by tenant and ID: in a tenant, a role's
+	// ID answers wherever it is asked for by that ID alone.
+	roles map[string]map[string]any
 }
 
 // NewWorld creates an empty world whose subscriptions serve the registry's
 // types at the versions it has definitions for.
 func NewWorld(reg *Registry) *World {
-	return &World{reg: reg, subs: map[string]bool{}, owner: map[string]string{}}
+	return &World{reg: reg, subs: map[string]bool{}, owner: map[string]string{}, roles: map[string]map[string]any{}}
 }
 
 // Fake is one subscription. It is schema driven and knows no Azure type:
@@ -58,6 +61,9 @@ type Fake struct {
 	// AlsoTracked lists child types ARM's resource list returns as well
 	// (a SQL server's databases are both), so capture meets them twice.
 	AlsoTracked map[string]bool
+	// CheckReferences refuses IDs that name nothing here, as Azure refuses most.
+	// Only for a target: a test seeding a source may build it in any order.
+	CheckReferences bool
 	// ByKind lists collections, by their last path segment in lower case
 	// ("datasources"), that answer only a list filtered by kind, as ARM
 	// answers a Log Analytics workspace's data sources.
@@ -117,6 +123,12 @@ func (f *Fake) APIVersions(_ context.Context, namespace string) (map[string][]st
 func (f *Fake) Get(_ context.Context, id, version string) (map[string]any, error) {
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
+	if name, ok := strings.CutPrefix(strings.ToLower(id), "/providers/microsoft.authorization/roledefinitions/"); ok {
+		if r, ok := f.w.roles[f.tenant+"|"+name]; ok {
+			return deepCopy(r), nil
+		}
+		return nil, fmt.Errorf("%s: %w", id, ErrNotFound)
+	}
 	r, ok := f.res[strings.ToLower(id)]
 	if !ok {
 		return nil, fmt.Errorf("%s: %w", id, ErrNotFound)
@@ -135,6 +147,19 @@ func (f *Fake) Get(_ context.Context, id, version string) (map[string]any, error
 		}
 	}
 	restoreReadOnly(spec, r.body, s)
+	// normalize takes out what is not configuration, and ARM returns it: a
+	// network's peerings inline, and what setByAzure names at the top of properties.
+	stored, _ := r.body["properties"].(map[string]any)
+	if p, _ := spec["properties"].(map[string]any); p != nil {
+		if strings.EqualFold(r.typ, vnetType) && stored["virtualNetworkPeerings"] != nil {
+			p["virtualNetworkPeerings"] = deepCopy(map[string]any{"v": stored["virtualNetworkPeerings"]})["v"]
+		}
+		for k := range setByAzure[strings.ToLower(r.typ)] {
+			if v, ok := stored[k]; ok {
+				p[k] = v
+			}
+		}
+	}
 	return spec, nil
 }
 
@@ -182,6 +207,9 @@ func (f *Fake) Put(_ context.Context, id, version string, body map[string]any) (
 	defer f.w.mu.Unlock()
 	if err := f.validate(s, rid, body); err != nil {
 		return nil, err
+	}
+	if strings.EqualFold(rid.Type, "Microsoft.Authorization/roleDefinitions") {
+		f.w.roles[f.tenant+"|"+strings.ToLower(lastName(rid.Name))] = deepCopy(body)
 	}
 	b := deepCopy(body)
 	b["id"], b["name"], b["type"] = rid.String(), lastName(rid.Name), rid.Type
@@ -250,6 +278,14 @@ func (f *Fake) validate(s *Schema, rid ResourceID, body map[string]any) error {
 			return fmt.Errorf("InvalidRequestContent: %s property %q is read-only", rid.Type, k)
 		}
 	}
+	if err := s.checkNested(body, s.body, ""); err != nil {
+		return fmt.Errorf("InvalidRequestContent: %s %w", rid.Type, err)
+	}
+	if f.CheckReferences {
+		if err := f.references(body); err != nil {
+			return err
+		}
+	}
 	for _, r := range s.Required() {
 		if _, ok := lookup(body, strings.Split(r, ".")); !ok {
 			return fmt.Errorf("InvalidRequestContent: %s requires %s", rid.Type, r)
@@ -287,6 +323,72 @@ func (f *Fake) validate(s *Schema, rid ResourceID, body map[string]any) error {
 			if bad == nil && other != strings.ToLower(f.sub) && strings.Contains(lower, "/subscriptions/"+other) {
 				bad = fmt.Errorf("LinkedAuthorizationFailed: %q is in subscription %s, which this one cannot reach", v, other)
 			}
+		}
+		return v
+	})
+	return bad
+}
+
+// checkNested refuses, below the top level, what the top level refuses: a
+// property the definition does not have, and a value for a read-only one. Only
+// top-level keys were checked, so a nested field Azure would turn away reached
+// the fake and read as restored.
+func (s *Schema) checkNested(v any, t int, path string) error {
+	switch c := v.(type) {
+	case map[string]any:
+		props, add, ok := s.object(t, c)
+		if !ok {
+			return nil
+		}
+		for _, k := range sortedKeys(c) {
+			p, known := props[k]
+			full := join(path, k)
+			switch {
+			case !known && add != nil:
+				if err := s.checkNested(c[k], add.index(), join(path, "*")); err != nil {
+					return err
+				}
+			case !known:
+				return fmt.Errorf("has no property %q", full)
+			case p.Flags&flagReadOnly != 0:
+				return fmt.Errorf("property %q is read-only", full)
+			default:
+				if err := s.checkNested(c[k], p.Type.index(), full); err != nil {
+					return err
+				}
+			}
+		}
+	case []any:
+		if e := s.file[t]; e.Kind == "ArrayType" {
+			for _, x := range c {
+				if err := s.checkNested(x, e.ItemType.index(), path+"[]"); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+var wholeIDRE = regexp.MustCompile(`(?i)^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/[^/]+/[^/]+/[^/]+(/[^/]+/[^/]+)*$`)
+
+// references refuses an ID in this subscription that names nothing there, or
+// names a part of nothing: Azure answers most of these with a failed link, and
+// a restore that sent them out of order had read as fine.
+func (f *Fake) references(body map[string]any) error {
+	var bad error
+	sub := "/subscriptions/" + strings.ToLower(f.sub) + "/"
+	rewriteAll(deepCopy(body), func(v string) string {
+		lower := strings.ToLower(v)
+		if bad != nil || !wholeIDRE.MatchString(v) || !strings.HasPrefix(lower, sub) {
+			return v
+		}
+		// A part ARM keeps inside its resource (a subnet) is not held on its
+		// own here, so what is checked is the resource it is part of.
+		segs := strings.Split(lower, "/")
+		top := strings.Join(segs[:min(len(segs), 9)], "/")
+		if _, ok := f.res[top]; !ok {
+			bad = fmt.Errorf("InvalidResourceReference: %s does not exist", v)
 		}
 		return v
 	})

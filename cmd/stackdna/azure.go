@@ -155,6 +155,9 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 		return fail(err)
 	}
 	ad.Options.Update = update
+	if bad := azarm.UnmatchedTypes(snap, ad.Policy.Types); len(bad) > 0 {
+		return fail(fmt.Errorf("--types: nothing in the snapshot matches %s; nothing was restored", strings.Join(bad, ", ")))
+	}
 	if valuesFile != "" {
 		b, err := os.ReadFile(valuesFile)
 		if err != nil {

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -264,6 +265,19 @@ func (s *Schema) kinds() []string {
 func (s *Schema) secret(p prop) bool {
 	return p.Flags&flagWriteOnly != 0 || s.file[p.Type.index()].Sensitive
 }
+
+// credential reports a property a restore needs given to it. Everything never
+// returned counts, except what only says how a resource was made: a key vault's
+// createMode and a database's sourceDatabaseId need nothing, and counted they
+// refused --update on every such resource and reported each one as restored
+// without its secret. It is a list of those and not of credentials, because what
+// a list misses should be noise: a web app's siteConfig is write-only and has no
+// credential's name, and a rule by name lost it without a word.
+func (s *Schema) credential(name string, p prop) bool {
+	return s.file[p.Type.index()].Sensitive || !howItWasMadeRE.MatchString(name)
+}
+
+var howItWasMadeRE = regexp.MustCompile(`^(createMode|managedInstanceCreateMode|cloningInfo|restorePointInTime|source[A-Z]\w*|crossSubscription\w*|longTermRetentionBackupResourceId|recoverableDatabaseId|restorableDroppedDatabaseId|recoveryServicesRecoveryPointId|sampleName|autoCompleteRestore|lastBackupName|testConnection|createDnsRecord)$`)
 
 // Fields flattens the type into dotted field paths for schema-diff.
 func (s *Schema) Fields() []string {

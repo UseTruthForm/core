@@ -93,6 +93,14 @@ func (p Policy) selected(typ string) bool {
 		if ok, _ := path.Match(strings.ToLower(pat), strings.ToLower(typ)); ok {
 			return true
 		}
+		// Held apart from their network only for a restore's order, they stay part
+		// of it: Microsoft.Network/* would otherwise lose them, with every result
+		// clean. Asked for by name, they match as themselves above.
+		if strings.EqualFold(typ, vnetType+"/virtualNetworkPeerings") {
+			if ok, _ := path.Match(strings.ToLower(pat), strings.ToLower(vnetType)); ok {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -137,7 +145,9 @@ func KeptInManagedGroups(s snapshot.Snapshot) []string {
 // later release replaces. Without this, not having looked reads as all clear.
 func PredatesManagedCheck(s snapshot.Snapshot) bool {
 	for _, sk := range s.Skips {
-		if skippedManagedBy(sk.Reason) != "" && !strings.Contains(sk.Reason, tokSub) {
+		// May-not-recreate is only ever written by a release that checked, even
+		// with a manager in another subscription, whose ID has no placeholder.
+		if skippedManagedBy(sk.Reason) != "" && !strings.Contains(sk.Reason, tokSub) && !MayNotComeBack(sk.Reason) {
 			return true
 		}
 	}
@@ -198,14 +208,20 @@ func managedByAKS(manager string) bool {
 }
 
 // managerRecreates says whether what has managedBy itself comes back with its
-// manager: a node group with its cluster, a SQL server's master database. A
-// VM's managedBy disk does not: an OS disk returns with the VM, but a data disk
-// attached to it does not, and the list cannot tell them apart.
+// manager: a node group with its cluster, a SQL server's master database, the
+// network interface a private endpoint makes. A VM's managedBy disk does not: an
+// OS disk returns with the VM, but a data disk attached to it does not, and the
+// list cannot tell them apart.
 func managerRecreates(typ, name, manager string) bool {
-	if strings.EqualFold(typ, groupType) {
+	switch {
+	case strings.EqualFold(typ, groupType):
 		return managedByAKS(manager)
+	case strings.EqualFold(typ, "Microsoft.Sql/servers/databases"):
+		return strings.EqualFold(lastName(name), "master")
+	case strings.EqualFold(typ, "Microsoft.Network/networkInterfaces"):
+		return strings.Contains(strings.ToLower(manager), "/providers/microsoft.network/privateendpoints/")
 	}
-	return strings.EqualFold(typ, "Microsoft.Sql/servers/databases") && strings.EqualFold(lastName(name), "master")
+	return false
 }
 
 // captured is one resource as read.
@@ -217,6 +233,7 @@ type captured struct {
 	status  map[string]any
 	secrets []string
 	after   string // see annAfter
+	state   string // see notWorking
 }
 
 // Capture reads every selected resource in the subscription.
@@ -271,6 +288,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			}
 		}
 	}
+	leftOut := map[string]bool{}
 	var todo []Ref
 	for _, r := range append(groups, resources...) {
 		rid, err := ParseID(r.ID)
@@ -289,6 +307,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 				fate = ", which recreates it"
 			}
 			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedBy+managerRef(r.ManagedBy)+fate)
+			leftOut[strings.ToLower(rid.String())] = true
 			continue
 		}
 		if by := managedGroups[strings.ToLower(rid.ResourceGroup)]; by != "" && !strings.EqualFold(rid.Type, groupType) && !p.CaptureManaged {
@@ -377,7 +396,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 	}
 	// What the resource list does not return: extension resources and
 	// children. Their own skips go to coverage like any other.
-	for _, f := range discover(ctx, api, &v, tenant, caps, par) {
+	for _, f := range discover(ctx, api, &v, tenant, caps, par, leftOut) {
 		if !p.selected(f.typ) {
 			cover(f.typ).NotCaptured = "not selected (--types)"
 			continue
@@ -425,6 +444,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 	}
 	principalRefs(caps)
+	issuerRefs(caps)
 
 	for _, c := range caps {
 		rid := c.rid
@@ -451,6 +471,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 	for _, k := range sortedKeys(cov) {
 		snap.Coverage = append(snap.Coverage, *cov[k])
 	}
+	snap.Unwell = unwell(caps)
 	sort.Slice(snap.Objects, func(i, j int) bool { return snap.Objects[i].Key() < snap.Objects[j].Key() })
 	sort.Slice(snap.Skips, func(i, j int) bool {
 		a, b := snap.Skips[i], snap.Skips[j]
@@ -559,11 +580,41 @@ func read(ctx context.Context, api ARM, v *versions, r Ref, tenant string) (*cap
 	return process(api, tenant, rid, ver, s, body), nil
 }
 
+// notWorking says what is configured as it should be and is not working, for a
+// diff: its configuration matches, so one after a failed restore read "no
+// differences". A resource still changing is not included: a cluster in an upgrade
+// would turn every scheduled diff red. A peering's state is left out of its
+// configuration, since it comes from the far side, and read here it is not lost:
+// Disconnected carries nothing, and neither does Initiated, one side only.
+func notWorking(body map[string]any) string {
+	props, _ := body["properties"].(map[string]any)
+	if state, _ := props["provisioningState"].(string); provisioningFailed(state) {
+		return "provisioning state " + state
+	}
+	if state, _ := props["peeringState"].(string); state != "" && !strings.EqualFold(state, "Connected") {
+		return "peering state " + state
+	}
+	return ""
+}
+
+// unwell lists what is not working.
+func unwell(caps []*captured) []string {
+	var out []string
+	for _, c := range caps {
+		if c.state != "" {
+			out = append(out, c.rid.Type+" "+c.rid.LocalName()+": "+c.state)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // process turns a body, however it was read (a GET, or an item of a
 // list), into a captured resource.
 func process(api ARM, tenant string, rid ResourceID, ver string, s *Schema, body map[string]any) *captured {
 	spec, sp := s.normalize(body)
 	spec = tokenize(spec, api.Subscription(), tenant)
+	labelWithoutSubscription(spec, api.Subscription())
 	status := map[string]any{"id": tokenizeString(rid.String(), api.Subscription(), tenant)}
 	for k, x := range sp.readOnly {
 		if observed(x) || audit(k) {
@@ -574,7 +625,7 @@ func process(api ARM, tenant string, rid ResourceID, ver string, s *Schema, body
 		}
 		status[k] = x
 	}
-	return &captured{rid: rid, version: ver, schema: s, spec: spec, status: status, secrets: relevantSecrets(spec, s.secretPaths())}
+	return &captured{rid: rid, version: ver, schema: s, spec: spec, status: status, secrets: relevantSecrets(spec, s.secretPaths()), state: notWorking(body)}
 }
 
 // relevantSecrets keeps the secret paths whose parent object is present:
@@ -653,6 +704,18 @@ func tokenizeString(s, sub, tenant string) string {
 	return s
 }
 
+// labelWithoutSubscription takes the subscription out of a display name. Azure's
+// own Defender assignment is "ASC Default (subscription: <id>)": it named the real
+// subscription, and every target's own copy read as differing from it. Only a
+// label: a name like DefaultWorkspace-<id>-EUS is that resource's name, and is
+// matched against its key and its references, so it must stay as it is.
+func labelWithoutSubscription(spec map[string]any, sub string) {
+	props, _ := spec["properties"].(map[string]any)
+	if name, _ := props["displayName"].(string); sub != "" && name != "" {
+		props["displayName"] = regexp.MustCompile(`(?i)`+regexp.QuoteMeta(sub)).ReplaceAllString(name, tokSub)
+	}
+}
+
 func sameSpec(obj, base map[string]any) bool {
 	norm := func(o map[string]any) any {
 		var v any
@@ -684,8 +747,11 @@ func withoutManaged(c *captured, managedGroups map[string]string, kept func(stri
 			}
 			return false
 		}
+		// A subnet's route table in a node group, which a kubenet cluster makes
+		// and attaches: the network comes first, and could not name it.
+		routeTable := strings.HasSuffix(strings.ToLower(path), ".routetable")
 		for k, x := range m {
-			if strings.EqualFold(k, "resourceId") {
+			if strings.EqualFold(k, "resourceId") || (routeTable && strings.EqualFold(k, "id")) {
 				if s, ok := x.(string); ok {
 					// What is in the snapshot comes back under this name.
 					if rid, err := ParseID(s); err == nil && managedGroups[strings.ToLower(rid.ResourceGroup)] != "" && !kept(rid.String()) {

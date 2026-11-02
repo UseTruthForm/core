@@ -17,8 +17,8 @@ type Result struct {
 // Change is one difference between two snapshots.
 type Change struct {
 	Key string
-	// Kind is "missing" (in want, not in got), "extra" (in got, not in want)
-	// or "changed".
+	// Kind is "missing" (in want, not in got), "extra" (in got, not in want),
+	// "changed", or "not working" (got.Unwell: Key says what and why).
 	Kind   string
 	Fields []string // for "changed": the paths that differ
 }
@@ -29,6 +29,11 @@ type Change struct {
 func Compare(want, got Snapshot) []Change {
 	w, g := index(want), index(got)
 	var out []Change
+	// Here, so a diff, an environment's diff and --json all say it, and exit 0
+	// means the target can be relied on.
+	for _, u := range got.Unwell {
+		out = append(out, Change{Key: u, Kind: "not working"})
+	}
 	for k, wo := range w {
 		gobj, ok := g[k]
 		if !ok {

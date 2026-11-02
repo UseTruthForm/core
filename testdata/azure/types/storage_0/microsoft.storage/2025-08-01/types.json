@@ -4126,5 +4126,70 @@
   "name": "Microsoft.Storage/storageAccounts/blobServices/containers@2025-08-01",
   "readableScopes": 8,
   "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Storage/storageAccounts/privateEndpointConnections"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-08-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Storage/storageAccounts/privateEndpointConnections",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/306"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "properties": {
+    "description": "Resource properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/177"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/189"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/305"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/307"
+  },
+  "name": "Microsoft.Storage/storageAccounts/privateEndpointConnections@2025-08-01",
+  "readableScopes": 8,
+  "writableScopes": 8
  }
 ]

@@ -43,8 +43,17 @@ var fixtureTypes = []string{
 	// A workspace's data sources are listed only one kind at a time.
 	"Microsoft.OperationalInsights/workspaces@2025-07-01",
 	"Microsoft.OperationalInsights/workspaces/dataSources@2025-07-01",
-	// A cluster names what it makes, and what must exist first.
+	// What a restore of a real estate meets that the fake's first types do not.
 	"Microsoft.ContainerService/managedClusters@2026-08-01",
+	"Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31",
+	"Microsoft.KeyVault/vaults@2026-05-15",
+	"Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2025-07-01",
+	"Microsoft.Network/privateDnsZones@2024-06-01",
+	"Microsoft.Network/privateDnsZones/A@2024-06-01",
+	"Microsoft.Network/privateDnsZones/SOA@2024-06-01",
+	"Microsoft.Storage/storageAccounts/privateEndpointConnections@2025-08-01",
+	"Microsoft.Authorization/policyDefinitions@2026-07-01",
+	"Microsoft.Authorization/policySetDefinitions@2026-07-01",
 }
 
 const fixtureDir = "../../testdata/azure/types"

@@ -8375,6 +8375,71 @@
  },
  {
   "$type": "StringLiteralType",
+  "value": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-07-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/623"
+    }
+   },
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the virtual network peering.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/567"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/622"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/624"
+  },
+  "name": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2025-07-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
   "value": "Microsoft.Network/networkSecurityGroups/defaultSecurityRules"
  },
  {
@@ -8389,7 +8454,7 @@
     "description": "The resource api version",
     "flags": 10,
     "type": {
-     "$ref": "#/623"
+     "$ref": "#/627"
     }
    },
    "etag": {
@@ -8424,7 +8489,7 @@
     "description": "The resource type",
     "flags": 10,
     "type": {
-     "$ref": "#/622"
+     "$ref": "#/626"
     }
    }
   }
@@ -8432,7 +8497,7 @@
  {
   "$type": "ResourceType",
   "body": {
-   "$ref": "#/624"
+   "$ref": "#/628"
   },
   "name": "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2025-07-01",
   "readableScopes": 8,

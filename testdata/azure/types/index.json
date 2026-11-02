@@ -6,6 +6,12 @@
   "Microsoft.Authorization/policyAssignments@2025-11-01": {
    "$ref": "resources_1/microsoft.authorization/2025-11-01/types.json#/59"
   },
+  "Microsoft.Authorization/policyDefinitions@2026-07-01": {
+   "$ref": "resources_1/microsoft.authorization/2026-07-01/types.json#/45"
+  },
+  "Microsoft.Authorization/policySetDefinitions@2026-07-01": {
+   "$ref": "resources_1/microsoft.authorization/2026-07-01/types.json#/59"
+  },
   "Microsoft.Authorization/roleAssignments@2022-04-01": {
    "$ref": "authorization/microsoft.authorization/2022-04-01/types.json#/24"
   },
@@ -24,11 +30,17 @@
   "Microsoft.Insights/diagnosticSettings@2021-05-01-preview": {
    "$ref": "monitor_1/microsoft.insights/2021-05-01-preview/types.json#/23"
   },
+  "Microsoft.KeyVault/vaults@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/135"
+  },
+  "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31": {
+   "$ref": "msi/microsoft.managedidentity/2023-01-31/types.json#/25"
+  },
   "Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31": {
    "$ref": "msi/microsoft.managedidentity/2023-01-31/types.json#/18"
   },
   "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2025-07-01": {
-   "$ref": "network/microsoft.network/2025-07-01/types.json#/625"
+   "$ref": "network/microsoft.network/2025-07-01/types.json#/629"
   },
   "Microsoft.Network/networkSecurityGroups/securityRules@2025-07-01": {
    "$ref": "network/microsoft.network/2025-07-01/types.json#/617"
@@ -36,8 +48,20 @@
   "Microsoft.Network/networkSecurityGroups@2025-07-01": {
    "$ref": "network/microsoft.network/2025-07-01/types.json#/608"
   },
+  "Microsoft.Network/privateDnsZones/A@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/47"
+  },
+  "Microsoft.Network/privateDnsZones/SOA@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/51"
+  },
+  "Microsoft.Network/privateDnsZones@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/25"
+  },
   "Microsoft.Network/virtualNetworks/subnets@2025-07-01": {
    "$ref": "network/microsoft.network/2025-07-01/types.json#/621"
+  },
+  "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2025-07-01": {
+   "$ref": "network/microsoft.network/2025-07-01/types.json#/625"
   },
   "Microsoft.Network/virtualNetworks@2025-07-01": {
    "$ref": "network/microsoft.network/2025-07-01/types.json#/613"
@@ -56,6 +80,9 @@
   },
   "Microsoft.Storage/storageAccounts/blobServices@2025-08-01": {
    "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/262"
+  },
+  "Microsoft.Storage/storageAccounts/privateEndpointConnections@2025-08-01": {
+   "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/308"
   },
   "Microsoft.Storage/storageAccounts@2025-08-01": {
    "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/229"

@@ -66,7 +66,7 @@ func emit(v any) {
 
 type changeJSON struct {
 	Key    string   `json:"key"`
-	Kind   string   `json:"kind"` // missing, extra, changed
+	Kind   string   `json:"kind"` // missing, extra, changed, not working
 	Fields []string `json:"fields,omitempty"`
 }
 

@@ -1,0 +1,846 @@
+[
+ {
+  "$type": "StringType",
+  "pattern": "^[^\u003c\u003e%\u0026:\\?/]*[^\u003c\u003e%\u0026:\\?/ ]+$"
+ },
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ParameterValuesValue",
+  "properties": {
+   "value": {
+    "description": "The value of the parameter.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/3"
+    }
+   }
+  }
+ },
+ {
+  "$type": "AnyType"
+ },
+ {
+  "$type": "BooleanType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SystemData",
+  "properties": {
+   "createdAt": {
+    "description": "The timestamp of resource creation (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "createdBy": {
+    "description": "The identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "createdByType": {
+    "description": "The type of identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/10"
+    }
+   },
+   "lastModifiedAt": {
+    "description": "The timestamp of resource last modification (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "lastModifiedBy": {
+    "description": "The identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "lastModifiedByType": {
+    "description": "The type of identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/15"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/6"
+   },
+   {
+    "$ref": "#/7"
+   },
+   {
+    "$ref": "#/8"
+   },
+   {
+    "$ref": "#/9"
+   },
+   {
+    "$ref": "#/1"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/11"
+   },
+   {
+    "$ref": "#/12"
+   },
+   {
+    "$ref": "#/13"
+   },
+   {
+    "$ref": "#/14"
+   },
+   {
+    "$ref": "#/1"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ParameterDefinitionsValue",
+  "properties": {
+   "allowedValues": {
+    "description": "The allowed values for the parameter.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/25"
+    }
+   },
+   "defaultValue": {
+    "description": "The default value for the parameter if no value is provided.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "metadata": {
+    "description": "General metadata for the parameter.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/26"
+    }
+   },
+   "schema": {
+    "description": "Provides validation of parameter inputs during assignment using a self-defined JSON schema. This property is only supported for object-type parameters and follows the Json.NET Schema 2019-09 implementation. You can learn more about using schemas at https://json-schema.org/ and test draft schemas at https://www.jsonschemavalidator.net/.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "type": {
+    "description": "The data type of the parameter.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/24"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "String"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Array"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Object"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Boolean"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Integer"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Float"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "DateTime"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/17"
+   },
+   {
+    "$ref": "#/18"
+   },
+   {
+    "$ref": "#/19"
+   },
+   {
+    "$ref": "#/20"
+   },
+   {
+    "$ref": "#/21"
+   },
+   {
+    "$ref": "#/22"
+   },
+   {
+    "$ref": "#/23"
+   },
+   {
+    "$ref": "#/1"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/3"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/3"
+  },
+  "name": "ParameterDefinitionsValueMetadata",
+  "properties": {
+   "assignPermissions": {
+    "description": "Set to true to have Azure portal create role assignments on the resource ID or resource scope value of this parameter during policy assignment. This property is useful in case you wish to assign permissions outside the assignment scope.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/4"
+    }
+   },
+   "description": {
+    "description": "The description of the parameter.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "displayName": {
+    "description": "The display name for the parameter.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "strongType": {
+    "description": "Used when assigning the policy definition through the portal. Provides a context aware list of values for the user to choose from.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ExternalEvaluationEnforcementSettings",
+  "properties": {
+   "endpointSettings": {
+    "description": "The settings of an external endpoint providing evaluation results.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/28"
+    }
+   },
+   "missingTokenAction": {
+    "description": "What to do when evaluating an enforcement policy that requires an external evaluation and the token is missing. Possible values are Audit and Deny and language expressions are supported.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "resultLifespan": {
+    "description": "The lifespan of the endpoint invocation result after which it's no longer valid. Value is expected to follow the ISO 8601 duration format and language expressions are supported.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "roleDefinitionIds": {
+    "description": "An array of the role definition Ids the assignment's MSI will need in order to invoke the endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/29"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ExternalEvaluationEndpointSettings",
+  "properties": {
+   "details": {
+    "description": "The details of the endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "kind": {
+    "description": "The kind of the endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/1"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PolicyDefinitionReference",
+  "properties": {
+   "definitionVersion": {
+    "description": "The version of the policy definition to use.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "effectiveDefinitionVersion": {
+    "description": "The effective version of the policy definition in use. This is only present if requested via the $expand query parameter.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "groupNames": {
+    "description": "The name of the groups that this policy definition reference belongs to.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/32"
+    }
+   },
+   "latestDefinitionVersion": {
+    "description": "The latest version of the policy definition available. This is only present if requested via the $expand query parameter.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "parameters": {
+    "description": "The parameter values for the referenced policy rule. The keys are the parameter names.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/31"
+    }
+   },
+   "policyDefinitionId": {
+    "description": "The ID of the policy definition or policy set definition.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "policyDefinitionReferenceId": {
+    "description": "A unique id (within the policy set definition) for this policy definition reference.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "PolicyDefinitionReferenceParameters",
+  "properties": {}
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/1"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PolicyDefinitionGroup",
+  "properties": {
+   "additionalMetadataId": {
+    "description": "A resource ID of a resource that contains additional metadata about the group.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "category": {
+    "description": "The group's category.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "description": {
+    "description": "The group's description.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "displayName": {
+    "description": "The group's display name.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "name": {
+    "description": "The name of the group.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Authorization/policyDefinitions"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-07-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Authorization/policyDefinitions",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/35"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The policy definition properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/37"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/34"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PolicyDefinitionProperties",
+  "properties": {
+   "description": {
+    "description": "The policy definition description.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "displayName": {
+    "description": "The display name of the policy definition.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "externalEvaluationEnforcementSettings": {
+    "description": "The details of the source of external evaluation results required by the policy during enforcement evaluation.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/27"
+    }
+   },
+   "metadata": {
+    "description": "The policy definition metadata.  Metadata is an open ended object and is typically a collection of key value pairs.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "mode": {
+    "description": "The policy definition mode. Some examples are All, Indexed, Microsoft.KeyVault.Data.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "parameters": {
+    "description": "The parameter definitions for parameters used in the policy rule. The keys are the parameter names.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/43"
+    }
+   },
+   "policyRule": {
+    "description": "The policy rule.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "policyType": {
+    "description": "The type of policy definition. Possible values are NotSpecified, BuiltIn, Custom, and Static.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/42"
+    }
+   },
+   "version": {
+    "description": "The policy definition version in #.#.# format.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "versions": {
+    "description": "A list of available versions for this policy definition.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/44"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "NotSpecified"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "BuiltIn"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Custom"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Static"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/38"
+   },
+   {
+    "$ref": "#/39"
+   },
+   {
+    "$ref": "#/40"
+   },
+   {
+    "$ref": "#/41"
+   },
+   {
+    "$ref": "#/1"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/16"
+  },
+  "name": "PolicyDefinitionPropertiesParameters",
+  "properties": {}
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/1"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/36"
+  },
+  "name": "Microsoft.Authorization/policyDefinitions@2026-07-01",
+  "readableScopes": 7,
+  "writableScopes": 6
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Authorization/policySetDefinitions"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-07-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Authorization/policySetDefinitions",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/47"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The policy set definition properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/49"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/46"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PolicySetDefinitionProperties",
+  "properties": {
+   "description": {
+    "description": "The policy set definition description.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "displayName": {
+    "description": "The display name of the policy set definition.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "metadata": {
+    "description": "The policy set definition metadata.  Metadata is an open ended object and is typically a collection of key value pairs.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "parameters": {
+    "description": "The policy set definition parameters that can be used in policy definition references.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/55"
+    }
+   },
+   "policyDefinitionGroups": {
+    "description": "The metadata describing groups of policy definition references within the policy set definition.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/57"
+    }
+   },
+   "policyDefinitions": {
+    "description": "An array of policy definition references.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/56"
+    }
+   },
+   "policyType": {
+    "description": "The type of policy set definition. Possible values are NotSpecified, BuiltIn, Custom, and Static.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/54"
+    }
+   },
+   "version": {
+    "description": "The policy set definition version in #.#.# format.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "versions": {
+    "description": "A list of available versions for this policy set definition.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/58"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "NotSpecified"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "BuiltIn"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Custom"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Static"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/50"
+   },
+   {
+    "$ref": "#/51"
+   },
+   {
+    "$ref": "#/52"
+   },
+   {
+    "$ref": "#/53"
+   },
+   {
+    "$ref": "#/1"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/16"
+  },
+  "name": "PolicySetDefinitionPropertiesParameters",
+  "properties": {}
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/30"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/33"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/1"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/48"
+  },
+  "name": "Microsoft.Authorization/policySetDefinitions@2026-07-01",
+  "readableScopes": 7,
+  "writableScopes": 6
+ }
+]

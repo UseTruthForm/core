@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 // envelope keys ARM returns on every resource that are not configuration.
@@ -20,6 +21,28 @@ var envelope = map[string]bool{"id": true, "name": true, "type": true, "systemDa
 // definition (2026-03-01) does not declare. Any other undeclared field is
 // kept, see normalize.
 var serverSet = map[string]bool{"provisioningState": true, "resourceGuid": true}
+
+// setByAzure are declared writable and are not configuration. A renamed key
+// vault kept its old vaultUri, so a diff showed it changed forever; a node image
+// changes when AKS upgrades a pool, and a private zone's SOA serial when any
+// record changes, so each would read as drift no one made. A peering's state and
+// the far side's address space come from the far side: one still Initiated, on
+// the way to Connected, read as differing. By type: elsewhere these names are
+// settings (an HDInsight cluster's vaultUri is required configuration).
+var setByAzure = map[string]map[string]bool{
+	"microsoft.keyvault/vaults":                                {"vaultUri": true},
+	"microsoft.containerservice/managedclusters":               {"nodeImageVersion": true},
+	"microsoft.containerservice/managedclusters/agentpools":    {"nodeImageVersion": true},
+	"microsoft.network/privatednszones/soa":                    {"serialNumber": true},
+	"microsoft.network/dnszones/soa":                           {"serialNumber": true},
+	"microsoft.network/virtualnetworks/virtualnetworkpeerings": {"peeringState": true, "peeringSyncLevel": true, "remoteAddressSpace": true, "remoteVirtualNetworkAddressSpace": true},
+}
+
+// A VNet's peerings name other VNets, so two peered ones each waited for the
+// other: "its references form a cycle", for them and for all that needed them,
+// on every run. They are captured as the children they also are, and those come
+// after both networks.
+const vnetType = "Microsoft.Network/virtualNetworks"
 
 // split is what normalize removed from a resource body.
 type split struct {
@@ -38,6 +61,11 @@ func (s *Schema) normalize(body map[string]any) (map[string]any, split) {
 	spec := deepCopy(body)
 	for k := range envelope {
 		delete(spec, k)
+	}
+	if strings.EqualFold(s.Type, vnetType) {
+		if props, _ := spec["properties"].(map[string]any); props != nil {
+			delete(props, "virtualNetworkPeerings")
+		}
 	}
 	s.clean(spec, s.body, "", &sp)
 	spec = walkStrings(spec, canonicalNever).(map[string]any)
@@ -89,6 +117,8 @@ func (s *Schema) clean(v any, t int, path string, sp *split) {
 				// sqlFilter.parameters came and went between two captures
 				// of a real subscription a minute apart.
 				delete(c, k)
+			case setByAzure[strings.ToLower(s.Type)][k]:
+				delete(c, k)
 			case !known:
 				// kept, see normalize
 			case p.Flags&flagReadOnly != 0:
@@ -99,7 +129,9 @@ func (s *Schema) clean(v any, t int, path string, sp *split) {
 				recordScalars(c[k], full, sp)
 				delete(c, k)
 			case s.secret(p):
-				sp.secrets = append(sp.secrets, full)
+				if s.credential(k, p) {
+					sp.secrets = append(sp.secrets, full)
+				}
 				delete(c, k)
 			default:
 				before := -1
@@ -154,7 +186,9 @@ func (s *Schema) secretPaths() []string {
 				continue
 			}
 			if s.secret(p) {
-				out = append(out, join(prefix, k))
+				if s.credential(k, p) {
+					out = append(out, join(prefix, k))
+				}
 				continue
 			}
 			walk(p.Type.index(), join(prefix, k), depth+1, seen)

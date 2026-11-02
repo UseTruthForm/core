@@ -108,6 +108,11 @@ type Snapshot struct {
 	Coverage []Coverage
 	Skips    []Skip
 	Schemas  []TypeSchema
+	// Unwell is what a capture saw that is configured as it should be and is
+	// not working (Azure's provisioningState Failed). It is never written: it
+	// says how the system is now, not what it is, and two captures of an
+	// unchanged system must match. Compare reports it.
+	Unwell []string
 }
 
 type manifest struct {

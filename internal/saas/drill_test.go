@@ -7,6 +7,7 @@ import (
 
 	"github.com/stackdna/core/internal/drilltest"
 	"github.com/stackdna/core/internal/platform"
+	"github.com/stackdna/core/internal/snapshot"
 )
 
 var _ platform.Platform = (*Adapter)(nil)
@@ -225,5 +226,54 @@ func TestWritesDecideWhatIsKept(t *testing.T) {
 		if _, ok := k[f]; ok {
 			t.Errorf("server-computed %s kept", f)
 		}
+	}
+}
+
+// cert-manager proves a domain with a TXT record at _acme-challenge.<name>
+// and removes it minutes later. A capture during a renewal must equal one
+// after it, and a restore must not put back a stale challenge; a CNAME
+// there (a lasting delegation of the challenge to another zone) is kept.
+func TestCloudflareACMEChallengeIsTransient(t *testing.T) {
+	s := spec(t, "cloudflare.json")
+	src := newFake(t, Cloudflare, s, "acct-src-1111")
+	cloudflare(src)
+	zone := src.seed(t, "/zones", map[string]any{"name": "example.com", "type": "full", "account": map[string]any{"id": "acct-src-1111"}})
+	zid := stringOf(zone["id"])
+	src.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "A", "name": "www.example.com", "content": "192.0.2.1", "ttl": 300, "proxied": false})
+	src.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "CNAME", "name": "_acme-challenge.api.example.com", "content": "api.acme-zone.example.net", "ttl": 300, "proxied": false})
+	before, err := (&Adapter{Client: src.client(true)}).Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	src.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "TXT", "name": "_acme-challenge.example.com", "content": "\"gfj9Xq...Rg85nM\"", "ttl": 120, "proxied": false})
+	src.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "TXT", "name": "_ACME-Challenge.www.example.com", "content": "\"other\"", "ttl": 120, "proxied": false})
+	during, err := (&Adapter{Client: src.client(true)}).Capture(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch := snapshot.Compare(before, during); len(ch) != 0 {
+		t.Errorf("a capture during a renewal differs: %+v", ch)
+	}
+	dirA, dirB := t.TempDir(), t.TempDir()
+	if err := before.Write(dirA); err != nil {
+		t.Fatal(err)
+	}
+	if err := during.Write(dirB); err != nil {
+		t.Fatal(err)
+	}
+	da, _ := snapshot.Digest(dirA)
+	db, _ := snapshot.Digest(dirB)
+	if da != db {
+		t.Errorf("digests differ during a renewal: %s vs %s", da, db)
+	}
+	cname := false
+	for _, o := range during.Objects {
+		if strings.Contains(o.Name(), "TXT _acme-challenge") || strings.Contains(o.Name(), "TXT _ACME") {
+			t.Errorf("challenge captured: %s", o.Name())
+		}
+		cname = cname || strings.Contains(o.Name(), "CNAME _acme-challenge.api.example.com")
+	}
+	if !cname {
+		t.Error("the _acme-challenge CNAME delegation is configuration and must be kept")
 	}
 }

@@ -1356,3 +1356,18 @@ func TestAzuresOwnRolesDoNotMoveTheDigest(t *testing.T) {
 		t.Errorf("one more built-in role changed the digest: %s -> %s", before, after)
 	}
 }
+
+// Nothing is recorded of Azure's own roles, so only what says it is one is
+// skipped: a role with no type would otherwise vanish without a word.
+func TestRoleWithNoTypeIsCaptured(t *testing.T) {
+	reg, src, _ := worlds(t)
+	src.SeedAzure("/subscriptions/"+src.sub+"/providers/Microsoft.Authorization/roleDefinitions/22222222-3333-4444-5555-666666666666", stable(reg, "Microsoft.Authorization/roleDefinitions"), map[string]any{
+		"properties": map[string]any{"roleName": "untyped", "assignableScopes": []any{"/subscriptions/" + src.sub}}})
+	found := false
+	for _, o := range capture(t, src, reg).Objects {
+		found = found || strings.HasSuffix(o.Name(), "22222222-3333-4444-5555-666666666666")
+	}
+	if !found {
+		t.Error("a role with no type was dropped")
+	}
+}

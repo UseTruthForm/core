@@ -26,7 +26,9 @@ var extensionLists = []struct {
 	{"Microsoft.Authorization/roleAssignments", nil},
 	{"Microsoft.Authorization/roleDefinitions", func(item map[string]any) string {
 		props, _ := item["properties"].(map[string]any)
-		if t, _ := props["type"].(string); !strings.EqualFold(t, "CustomRole") {
+		// Only what says it is Azure's: one with no type at all is captured, since
+		// nothing is recorded of what is skipped here, and it would vanish.
+		if t, _ := props["type"].(string); strings.EqualFold(t, "BuiltInRole") {
 			return builtInRole
 		}
 		return ""

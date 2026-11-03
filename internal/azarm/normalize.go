@@ -39,16 +39,18 @@ var setByAzure = map[string]map[string]bool{
 }
 
 // defaultOutboundAccess unset on a subnet means it has Azure's default outbound
-// access: subnets made before API version 2025-07-01 leave it out. Made at that
-// version or later, an unset subnet is private instead, so a restore, which writes
-// at a newer version, turned a subnet that reached the internet into one that
-// does not, and VMs with no NAT gateway or load balancer lost it. Found by the
-// first real drill to reach a diff. What it means is written down, so a restore
-// says it.
+// access, under the API versions released before 31 March 2026. Under later ones
+// an unset subnet is made private, so a restore, which writes at a newer version
+// (2026-03-01 in the drill), turned a subnet that reached the internet into one
+// that does not, and VMs with no NAT gateway or load balancer lost it. Found by
+// the first real drill to reach a diff. What it means is written down, so a
+// restore says it. Not on a delegated subnet: private subnets do not apply there,
+// so unset is no risk, and a value Azure may not take is not sent.
 func defaultOutboundAsMeant(typ string, spec map[string]any) {
 	props, _ := spec["properties"].(map[string]any)
 	set := func(p map[string]any) {
-		if _, ok := p["defaultOutboundAccess"]; !ok && p != nil {
+		delegated, _ := p["delegations"].([]any)
+		if _, ok := p["defaultOutboundAccess"]; !ok && p != nil && len(delegated) == 0 {
 			p["defaultOutboundAccess"] = true
 		}
 	}

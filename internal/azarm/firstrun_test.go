@@ -1291,6 +1291,7 @@ func TestSubnetKeepsItsDefaultOutboundAccess(t *testing.T) {
 	spec, _ := s.normalize(map[string]any{"properties": map[string]any{"subnets": []any{
 		map[string]any{"name": "old", "properties": map[string]any{"addressPrefix": "10.0.1.0/24"}},
 		map[string]any{"name": "private", "properties": map[string]any{"addressPrefix": "10.0.2.0/24", "defaultOutboundAccess": false}},
+		map[string]any{"name": "delegated", "properties": map[string]any{"addressPrefix": "10.0.3.0/24", "delegations": []any{map[string]any{"name": "d", "properties": map[string]any{"serviceName": "Microsoft.Web/serverFarms"}}}}},
 	}}})
 	subnets := spec["properties"].(map[string]any)["subnets"].([]any)
 	got := map[string]any{}
@@ -1298,7 +1299,7 @@ func TestSubnetKeepsItsDefaultOutboundAccess(t *testing.T) {
 		sn := x.(map[string]any)
 		got[sn["name"].(string)] = sn["properties"].(map[string]any)["defaultOutboundAccess"]
 	}
-	if got["old"] != true || got["private"] != false {
+	if got["old"] != true || got["private"] != false || got["delegated"] != nil {
 		t.Errorf("defaultOutboundAccess: %v", got)
 	}
 

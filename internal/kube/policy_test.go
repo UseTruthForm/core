@@ -54,6 +54,8 @@ func TestSkipReason(t *testing.T) {
 		// What AKS installs and upgrades itself, and what an addon manager
 		// keeps as shipped; one it only created is captured, edits and all.
 		{"installed by AKS", "apps", "daemonsets", k8sObj("DaemonSet", "gw", "agent", map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "aks"}}, nil), "upgraded by AKS"},
+		{"managed by Eno, as AKS does", "admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-policy", map[string]any{"labels": map[string]any{"app.kubernetes.io/managed-by": "Eno"}}, nil), "upgraded by AKS"},
+		{"managed by Helm is captured", "apps", "deployments", k8sObj("Deployment", "shop", "api", map[string]any{"labels": map[string]any{"app.kubernetes.io/managed-by": "Helm"}}, nil), ""},
 		{"labelled for another manager is captured", "apps", "daemonsets", k8sObj("DaemonSet", "gw", "agent", map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "someone"}}, nil), ""},
 		{"reconciled by the addon manager", "storage.k8s.io", "storageclasses", k8sObj("StorageClass", "", "fast", map[string]any{"labels": map[string]any{"addonmanager.kubernetes.io/mode": "Reconcile"}}, nil), "addon manager"},
 		{"only created by the addon manager is captured", "storage.k8s.io", "storageclasses", k8sObj("StorageClass", "", "fast", map[string]any{"labels": map[string]any{"addonmanager.kubernetes.io/mode": "EnsureExists"}}, nil), ""},
@@ -83,6 +85,10 @@ func TestIncludeSystemStillSkipsOwnedObjects(t *testing.T) {
 	aks := map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "aks"}}
 	if r := p.skipReason("apps", "daemonsets", k8sObj("DaemonSet", "gw", "agent", aks, nil)); r != "" {
 		t.Fatalf("include-system must capture what AKS installs, got skip: %s", r)
+	}
+	eno := map[string]any{"labels": map[string]any{"app.kubernetes.io/managed-by": "Eno"}}
+	if r := p.skipReason("admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-policy", eno, nil)); r != "" {
+		t.Fatalf("include-system must capture what Eno manages, got skip: %s", r)
 	}
 }
 

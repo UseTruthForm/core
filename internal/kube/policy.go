@@ -231,7 +231,10 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	case group == "" && resource == "secrets" && strOf(obj["type"]) == "kubernetes.io/service-account-token":
 		return "service-account token, issued by the cluster"
 	}
-	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" {
+	// Eno is how AKS manages some of its own objects without that label: on a
+	// real cluster an AKS update changed one admission policy and added a policy
+	// and binding, which read as drift no one made.
+	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" || strings.EqualFold(strOf(labels["app.kubernetes.io/managed-by"]), "eno") {
 		// AKS installs these (its add-ons, their namespaces and roles) and
 		// upgrades them on its own schedule: captured, every upgrade showed
 		// up as drift, and a restore would fight AKS for them.

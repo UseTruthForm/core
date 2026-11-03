@@ -139,6 +139,38 @@ func KeptInManagedGroups(s snapshot.Snapshot) []string {
 	return out
 }
 
+// PeeringsAcrossManagedGroups lists the peerings that name a network in a managed
+// group, as their own or as the far side. A new cluster's network has a new
+// generated name, so a restore beside a new cluster refuses them, loudly, and
+// they need a person: this is where the report says so beforehand.
+func PeeringsAcrossManagedGroups(s snapshot.Snapshot) []string {
+	managed := map[string]bool{}
+	for _, sk := range s.Skips {
+		if strings.EqualFold(sk.Resource, groupType) && strings.HasPrefix(sk.Reason, reasonManagedBy) {
+			group, _, _ := strings.Cut(sk.Name, "/")
+			managed[strings.ToLower(group)] = true
+		}
+	}
+	var out []string
+	for _, o := range s.Objects {
+		if !strings.EqualFold(o.Kind(), vnetType+"/virtualNetworkPeerings") {
+			continue
+		}
+		props, _ := o.Body["spec"].(map[string]any)["properties"].(map[string]any)
+		remote, _ := props["remoteVirtualNetwork"].(map[string]any)
+		far, _ := remote["id"].(string)
+		rid, err := ParseID(far)
+		switch {
+		case managed[strings.ToLower(o.Namespace())]:
+			out = append(out, o.Kind()+" "+o.Namespace()+"/"+o.Name()+": on a cluster's network")
+		case err == nil && managed[strings.ToLower(rid.ResourceGroup)]:
+			out = append(out, o.Kind()+" "+o.Namespace()+"/"+o.Name()+": to a cluster's network")
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // PredatesManagedCheck says a snapshot's managed skips were written before
 // capture told what comes back from what may not, so their reasons promise
 // more than anyone checked. Those reasons hold the real subscription, which a
@@ -328,8 +360,19 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedGroup+managerRef(by)+mayNotRecreate+"; its children and diagnostic settings are not read")
 				continue
 			case aksMade(rid.Type, r.Tags):
-				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedGroup+managerRef(by)+", which recreates it; its children and diagnostic settings are not read")
-				continue
+				read := "its children and diagnostic settings are not read"
+				if strings.EqualFold(rid.Type, vnetType) {
+					read = "its peerings are kept, and its other children and diagnostic settings are not read"
+				}
+				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedGroup+managerRef(by)+", which recreates it; "+read)
+				// A cluster's network is its own, and a peering on it is not:
+				// someone peered it with theirs, and the cluster never makes one.
+				// Left with the network, a real estate's reverse half went missing
+				// while the capture said it was complete. Read for its peerings.
+				if !strings.EqualFold(rid.Type, vnetType) || !p.selected(vnetType+"/virtualNetworkPeerings") {
+					continue
+				}
+				forPeerings[strings.ToLower(rid.String())] = true
 			}
 			// Put there by someone: a storage account a StorageClass names was
 			// reported skipped and would not have come back on a restore.

@@ -104,6 +104,14 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 			}
 			w("\n")
 		}
+		if across := azarm.PeeringsAcrossManagedGroups(s); len(across) > 0 {
+			w("## Peerings with a cluster's network: %d\n\n", len(across))
+			w("A new cluster's network gets a new generated name, so a restore beside a new cluster refuses these, and each needs re-making against it. Beside the same cluster, they are restored as captured.\n\n")
+			for _, x := range across {
+				w("- %s\n", md(x))
+			}
+			w("\n")
+		}
 		if kept := azarm.KeptInManagedGroups(s); len(kept) > 0 {
 			w("## Captured from a managed resource group: %d resources\n\n", len(kept))
 			w("Nothing shows the manager made these, so they are in this snapshot and a restore applies them after it. If it did make one, a restore creates it beside the manager's own, and with `--update` sets it over one of the same name.\n\n")

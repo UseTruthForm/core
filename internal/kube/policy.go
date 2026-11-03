@@ -532,12 +532,13 @@ func WithheldDisplay(path string) string {
 // aksByEno says AKS made an object through Eno, the tool it manages some of its
 // own objects with. On a real cluster an AKS update changed admission policies
 // that read as drift no one made. Eno's mark alone is not enough, since Eno is
-// open source and its SDK labels a user's objects the same way, so it takes an
-// AKS mark as well. Of the 131 objects marked by Eno on that cluster, every
-// namespaced one was in kube-system or an aks-* namespace. A cluster-scoped one
-// needs an AKS name, group or key. Those without (an egress gateway's admission
-// policy, some RBAC) stay captured: a line of drift is better than a user's
-// object silently left out.
+// open source and its SDK labels a user's objects the same way, so it takes a
+// mark in Microsoft's own names as well: an aks-managed- name, a
+// *.kubernetes.azure.com group, or a kubernetes.azure.com/* key. Only
+// cluster-scoped objects: those in kube-system are skipped already, and an aks-*
+// namespace is a name users pick. Without such a mark (an egress gateway's
+// admission policy, some RBAC) an object stays captured, as drift. A user object
+// carrying Eno's mark and one of these is still taken as AKS's.
 func aksByEno(ns, name string, md map[string]any) bool {
 	labels, _ := md["labels"].(map[string]any)
 	byEno := strings.EqualFold(strOf(labels["app.kubernetes.io/managed-by"]), "eno") || slices.Contains(managers(md), "eno")
@@ -545,7 +546,7 @@ func aksByEno(ns, name string, md map[string]any) bool {
 	case !byEno:
 		return false
 	case ns != "":
-		return ns == "kube-system" || strings.HasPrefix(ns, "aks-")
+		return false
 	case strings.HasPrefix(name, "aks-managed-") || strings.HasSuffix(name, ".kubernetes.azure.com"):
 		return true
 	}

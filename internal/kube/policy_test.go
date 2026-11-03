@@ -60,7 +60,7 @@ func TestSkipReason(t *testing.T) {
 		{"AKS policy applied by Eno, unlabelled", "admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", enoApplied(nil), nil), "upgraded by AKS"},
 		{"AKS CRD labelled by Eno", "apiextensions.k8s.io", "customresourcedefinitions", k8sObj("CustomResourceDefinition", "", "things.x.kubernetes.azure.com", enoLabel(nil), nil), "upgraded by AKS"},
 		{"Eno with an AKS key", "rbac.authorization.k8s.io", "clusterroles", k8sObj("ClusterRole", "", "r", enoLabel(map[string]any{"annotations": map[string]any{"kubernetes.azure.com/x": "y"}}), nil), "upgraded by AKS"},
-		{"Eno in an aks- namespace", "", "configmaps", k8sObj("ConfigMap", "aks-istio-system", "c", enoApplied(nil), nil), "upgraded by AKS"},
+		{"Eno in an aks- namespace, a name users pick, is captured", "apps", "deployments", k8sObj("Deployment", "aks-store", "api", enoApplied(enoLabel(nil)), nil), ""},
 		{"a user's Eno object is captured", "apps", "deployments", k8sObj("Deployment", "shop", "api", enoLabel(nil), nil), ""},
 		{"a user's cluster-scoped Eno object is captured", "rbac.authorization.k8s.io", "clusterroles", k8sObj("ClusterRole", "", "shop-reader", enoApplied(enoLabel(nil)), nil), ""},
 		{"an AKS-like name without Eno is captured", "admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", nil, nil), ""},

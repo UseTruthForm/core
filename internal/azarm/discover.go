@@ -39,8 +39,8 @@ var extensionLists = []struct {
 	{"Microsoft.Authorization/policySetDefinitions?$filter=policyType%20eq%20%27Custom%27", nil},
 }
 
-// builtInRole is recorded as a count, not per item: a subscription lists
-// several hundred built-in roles, identical in every tenant.
+// builtInRole marks Azure's own roles, which a subscription lists by the
+// hundred, identical in every tenant. Capture records none of them: see Capture.
 const builtInRole = "built-in role, the same in every tenant"
 
 const (

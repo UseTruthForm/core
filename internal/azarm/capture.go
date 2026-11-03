@@ -489,6 +489,11 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			continue
 		}
 		switch {
+		// Azure's own roles are not recorded, not even as a count: the live list
+		// gave 973 and 976 on calls a minute apart, from StackDNA and az alike, so
+		// the count changed the digest of an unchanged subscription, and a
+		// scheduled job would commit noise.
+		case f.count && f.reason == builtInRole:
 		case f.count:
 			c := cover(f.typ)
 			if c.Skipped == nil {

@@ -1334,3 +1334,40 @@ func TestOldSnapshotSubnetKeepsItsDefaultOutboundAccess(t *testing.T) {
 		t.Errorf("an old snapshot's subnet was restored private: %v", got)
 	}
 }
+
+// Seen on a real subscription: Azure's list of its own roles gave 973 and 976 on
+// calls a minute apart. Counted in coverage, that changed the digest of an
+// unchanged subscription.
+func TestAzuresOwnRolesDoNotMoveTheDigest(t *testing.T) {
+	reg, src, _ := worlds(t)
+	seedBuiltInRole(t, src)
+	write := func() string {
+		dir := t.TempDir()
+		if err := capture(t, src, reg).Write(dir); err != nil {
+			t.Fatal(err)
+		}
+		d, _ := snapshot.Digest(dir)
+		return d
+	}
+	before := write()
+	src.SeedAzure("/subscriptions/"+src.sub+"/providers/Microsoft.Authorization/roleDefinitions/11111111-2222-3333-4444-555555555555", stable(reg, "Microsoft.Authorization/roleDefinitions"), map[string]any{
+		"properties": map[string]any{"roleName": "Another", "type": "BuiltInRole", "assignableScopes": []any{"/"}}})
+	if after := write(); after != before {
+		t.Errorf("one more built-in role changed the digest: %s -> %s", before, after)
+	}
+}
+
+// Nothing is recorded of Azure's own roles, so only what says it is one is
+// skipped: a role with no type would otherwise vanish without a word.
+func TestRoleWithNoTypeIsCaptured(t *testing.T) {
+	reg, src, _ := worlds(t)
+	src.SeedAzure("/subscriptions/"+src.sub+"/providers/Microsoft.Authorization/roleDefinitions/22222222-3333-4444-5555-666666666666", stable(reg, "Microsoft.Authorization/roleDefinitions"), map[string]any{
+		"properties": map[string]any{"roleName": "untyped", "assignableScopes": []any{"/subscriptions/" + src.sub}}})
+	found := false
+	for _, o := range capture(t, src, reg).Objects {
+		found = found || strings.HasSuffix(o.Name(), "22222222-3333-4444-5555-666666666666")
+	}
+	if !found {
+		t.Error("a role with no type was dropped")
+	}
+}

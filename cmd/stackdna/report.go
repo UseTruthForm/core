@@ -68,6 +68,9 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 	w("## Not in any snapshot, by design\n\n")
 	w("- **Data:** volume contents, objects in storage, database rows, queue messages. A snapshot is configuration.\n")
 	w("- **Secret values:** passwords, keys, secret data. Restore needs them supplied (`--values`, `--secrets-from-context`).\n")
+	if s.Platform == "azure" {
+		w("- **Azure's built-in roles:** the same in every tenant, so a target has them already.\n")
+	}
 	if n := withAnnotation(s, "secret", "write-only", "withheld"); n > 0 {
 		w("- **%d objects** in this snapshot name values that were withheld or that the platform never returns; restore will say which it was not given.\n", n)
 	}

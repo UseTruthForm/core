@@ -26,7 +26,9 @@ var extensionLists = []struct {
 	{"Microsoft.Authorization/roleAssignments", nil},
 	{"Microsoft.Authorization/roleDefinitions", func(item map[string]any) string {
 		props, _ := item["properties"].(map[string]any)
-		if t, _ := props["type"].(string); !strings.EqualFold(t, "CustomRole") {
+		// Only what says it is Azure's: one with no type at all is captured, since
+		// nothing is recorded of what is skipped here, and it would vanish.
+		if t, _ := props["type"].(string); strings.EqualFold(t, "BuiltInRole") {
 			return builtInRole
 		}
 		return ""
@@ -39,8 +41,8 @@ var extensionLists = []struct {
 	{"Microsoft.Authorization/policySetDefinitions?$filter=policyType%20eq%20%27Custom%27", nil},
 }
 
-// builtInRole is recorded as a count, not per item: a subscription lists
-// several hundred built-in roles, identical in every tenant.
+// builtInRole marks Azure's own roles, which a subscription lists by the
+// hundred, identical in every tenant. Capture records none of them: see Capture.
 const builtInRole = "built-in role, the same in every tenant"
 
 const (

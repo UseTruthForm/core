@@ -292,6 +292,9 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 	}
 	leftOut := map[string]bool{}
+	// Networks read only for their peerings, which --types asked for by name: a
+	// network not read gave none, and nothing said so.
+	forPeerings := map[string]bool{}
 	var todo []Ref
 	for _, r := range append(groups, resources...) {
 		rid, err := ParseID(r.ID)
@@ -300,7 +303,10 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 		if !p.selected(rid.Type) {
 			cover(rid.Type).NotCaptured = "not selected (--types)"
-			continue
+			if !strings.EqualFold(rid.Type, vnetType) || !p.selected(vnetType+"/virtualNetworkPeerings") {
+				continue
+			}
+			forPeerings[strings.ToLower(rid.String())] = true
 		}
 		if r.ManagedBy != "" && !p.CaptureManaged {
 			fate := mayNotRecreate
@@ -389,13 +395,18 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 	// them as a child type, so discovery never lists them: taken out of the
 	// network and read nowhere else, they were lost while the capture said it
 	// was complete, found by the first real drill of this code.
-	for _, c := range append([]*captured(nil), caps...) {
+	withPeerings := caps[:0:0]
+	for _, c := range caps {
 		ps, why := peeringsOf(api, reg, tenant, c)
 		if why != "" {
 			skip(vnetType+"/virtualNetworkPeerings", c.rid.ResourceGroup+"/"+c.rid.Name, Unreadable+why)
 		}
-		caps = append(caps, ps...)
+		if !forPeerings[strings.ToLower(c.rid.String())] {
+			withPeerings = append(withPeerings, c)
+		}
+		withPeerings = append(withPeerings, ps...)
 	}
+	caps = withPeerings
 	// What is in a managed group and was kept above: what is on those goes
 	// with them, as what is on the cluster's own goes with theirs.
 	var kept []string

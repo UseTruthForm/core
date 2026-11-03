@@ -1257,3 +1257,26 @@ func TestPeeringsWithNoDefinitionMakeTheCaptureIncomplete(t *testing.T) {
 		t.Errorf("peerings dropped without a gap: %v", s.Skips)
 	}
 }
+
+// Asked for by name, peerings come from a network --types left out: it is read for
+// them and not kept. Not read, it gave none, and the capture read as clear.
+func TestPeeringsSelectedByNameAreCaptured(t *testing.T) {
+	reg, src, _ := worlds(t)
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	for _, n := range []string{"hub", "spoke"} {
+		put(t, src, "rg", vnetType, n, map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.0.0.0/16"}}}})
+	}
+	rawPut(t, src, id(src.sub, "rg", vnetType, "hub")+"/virtualNetworkPeerings/p", vnetType+"/virtualNetworkPeerings", map[string]any{"properties": map[string]any{
+		"remoteVirtualNetwork": map[string]any{"id": id(src.sub, "rg", vnetType, "spoke")}}})
+	s, err := Capture(context.Background(), src, reg, Policy{Types: []string{vnetType + "/virtualNetworkPeerings"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]int{}
+	for _, o := range s.Objects {
+		kinds[o.Kind()]++
+	}
+	if kinds[vnetType+"/virtualNetworkPeerings"] != 1 || kinds[vnetType] != 0 {
+		t.Errorf("objects by kind: %v", kinds)
+	}
+}

@@ -86,6 +86,12 @@ What a snapshot does not hold, by design:
 - **what the platform made itself**: default VPCs and their subnets,
   built-in roles, AWS-managed policies. Use `--baseline` with a capture of
   a fresh account to skip anything identical to it;
+- **what is only taken to be AKS's**: on Kubernetes, a cluster-scoped object
+  that Eno (the tool AKS manages some of its own objects with) applied or
+  labelled, and that also has an `aks-managed-` name, a `kubernetes.azure.com`
+  group or a `kubernetes.azure.com/*` key. A person's object could carry the
+  same marks, so `REPORT.md` names each one under "Taken as the platform's", and
+  `--capture-platform` keeps them;
 - **a moment's state**: Cloudflare TXT records at `_acme-challenge.*`,
   which cert-manager and other ACME clients add to prove a domain and
   remove minutes later. Captured, a snapshot taken during a certificate

@@ -41,6 +41,7 @@ type Target struct {
 	Kubeconfig     string `json:"kubeconfig,omitempty"`
 	IncludeSystem  bool   `json:"includeSystem,omitempty"`
 	CaptureRender  bool   `json:"captureRendered,omitempty"`
+	CapturePlat    bool   `json:"capturePlatform,omitempty"`
 	CaptureManaged bool   `json:"captureManaged,omitempty"`
 	// aws
 	Region  string `json:"region,omitempty"`
@@ -137,11 +138,11 @@ func loadEnvironment(path string) (*Environment, error) {
 // prevent: types on a GitHub target captured everything.
 func inapplicable(t Target) string {
 	set := map[string]bool{"context": t.Context != "", "kubeconfig": t.Kubeconfig != "", "includeSystem": t.IncludeSystem,
-		"captureRendered": t.CaptureRender, "captureManaged": t.CaptureManaged, "region": t.Region != "", "profile": t.Profile != "",
+		"captureRendered": t.CaptureRender, "capturePlatform": t.CapturePlat, "captureManaged": t.CaptureManaged, "region": t.Region != "", "profile": t.Profile != "",
 		"subscription": t.Subscription != "", "project": t.Project != "", "account": t.Account != "", "types": len(t.Types) > 0,
 		"baseline": t.Baseline != "", "parallel": t.Parallel != 0}
 	applies := map[string][]string{
-		"kubernetes": {"context", "kubeconfig", "includeSystem", "captureRendered", "baseline"},
+		"kubernetes": {"context", "kubeconfig", "includeSystem", "captureRendered", "capturePlatform", "baseline"},
 		"aws":        {"region", "profile", "types", "baseline", "captureManaged", "parallel"},
 		"azure":      {"subscription", "types", "baseline", "captureManaged", "parallel"},
 		"gcp":        {"project", "types", "baseline", "parallel"},
@@ -187,7 +188,7 @@ func captureTarget(ctx context.Context, t Target) (snapshot.Snapshot, error) {
 		if err != nil {
 			return snapshot.Snapshot{}, err
 		}
-		pol := kube.Policy{IncludeSystem: t.IncludeSystem, CaptureRendered: t.CaptureRender}
+		pol := kube.Policy{IncludeSystem: t.IncludeSystem, CaptureRendered: t.CaptureRender, CapturePlatform: t.CapturePlat}
 		if t.Baseline != "" {
 			if pol, err = withBaseline(pol, t.Baseline); err != nil {
 				return snapshot.Snapshot{}, err

@@ -2,6 +2,7 @@ package kube
 
 import (
 	"encoding/json"
+	"maps"
 	"reflect"
 	"regexp"
 	"slices"
@@ -117,6 +118,10 @@ type Policy struct {
 	// recreates them, and restoring both makes two owners fight over every
 	// field. On the tilt platform cluster this was 335 of 632 objects.
 	CaptureRendered bool
+	// CapturePlatform keeps what is only taken to be the platform's, by evidence
+	// that a user object could also carry: see aksByEno. Skipped by default, and
+	// each one is listed in REPORT.md, so a wrong guess can be seen and undone.
+	CapturePlatform bool
 	// Baseline is a capture of a fresh, empty cluster of the same
 	// distribution (kind, EKS, AKS...). Objects identical to it are the
 	// distribution's own add-ons, which a new cluster brings by itself; a
@@ -165,6 +170,9 @@ func (p Policy) Name() string {
 	}
 	if p.CaptureRendered {
 		n += "+rendered"
+	}
+	if p.CapturePlatform {
+		n += "+platform"
 	}
 	if p.BaselineDigest != "" {
 		n += "+baseline:" + p.BaselineDigest
@@ -232,7 +240,12 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	case group == "" && resource == "secrets" && strOf(obj["type"]) == "kubernetes.io/service-account-token":
 		return "service-account token, issued by the cluster"
 	}
-	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" || aksByEno(ns, name, md) {
+	if !p.CapturePlatform {
+		if why := aksByEno(ns, name, md); why != "" {
+			return TakenAsPlatform + why + "; --capture-platform keeps it"
+		}
+	}
+	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" {
 		// AKS installs these (its add-ons, their namespaces and roles) and
 		// upgrades them on its own schedule: captured, every upgrade showed
 		// up as drift, and a restore would fight AKS for them.
@@ -529,7 +542,11 @@ func WithheldDisplay(path string) string {
 	return name
 }
 
-// aksByEno says AKS made an object through Eno, the tool it manages some of its
+// TakenAsPlatform begins the reason for what is skipped on evidence a user object
+// could also carry, so REPORT.md can list each one where a person will see it.
+const TakenAsPlatform = "taken as AKS's: "
+
+// aksByEno says why an object is taken as made by AKS through Eno, the tool it manages some of its
 // own objects with. On a real cluster an AKS update changed admission policies
 // that read as drift no one made. Eno's mark alone is not enough, since Eno is
 // open source and its SDK labels a user's objects the same way, so it takes a
@@ -539,26 +556,35 @@ func WithheldDisplay(path string) string {
 // namespace is a name users pick. Without such a mark (an egress gateway's
 // admission policy, some RBAC) an object stays captured, as drift. A user object
 // carrying Eno's mark and one of these is still taken as AKS's.
-func aksByEno(ns, name string, md map[string]any) bool {
+func aksByEno(ns, name string, md map[string]any) string {
 	labels, _ := md["labels"].(map[string]any)
-	byEno := strings.EqualFold(strOf(labels["app.kubernetes.io/managed-by"]), "eno") || slices.Contains(managers(md), "eno")
+	var eno string
 	switch {
-	case !byEno:
-		return false
-	case ns != "":
-		return false
-	case strings.HasPrefix(name, "aks-managed-") || strings.HasSuffix(name, ".kubernetes.azure.com"):
-		return true
+	case strings.EqualFold(strOf(labels["app.kubernetes.io/managed-by"]), "eno"):
+		eno = "labelled managed-by Eno"
+	case slices.Contains(managers(md), "eno"):
+		eno = "applied by Eno"
+	default:
+		return ""
+	}
+	if ns != "" {
+		return ""
+	}
+	switch {
+	case strings.HasPrefix(name, "aks-managed-"):
+		return eno + ", named aks-managed-"
+	case strings.HasSuffix(name, ".kubernetes.azure.com"):
+		return eno + ", in the kubernetes.azure.com group"
 	}
 	annotations, _ := md["annotations"].(map[string]any)
 	for _, m := range []map[string]any{labels, annotations} {
-		for k := range m {
+		for _, k := range slices.Sorted(maps.Keys(m)) {
 			if strings.HasPrefix(k, "kubernetes.azure.com/") {
-				return true
+				return eno + ", with " + k
 			}
 		}
 	}
-	return false
+	return ""
 }
 
 func managers(md map[string]any) []string {

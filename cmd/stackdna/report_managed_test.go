@@ -76,3 +76,29 @@ func TestCaptureSaysToCheck(t *testing.T) {
 		t.Errorf("%q", got)
 	}
 }
+
+// A guess a person can check: each one named, with its evidence, and the way to
+// keep it.
+func TestReportNamesWhatWasTakenAsThePlatforms(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "snap")
+	s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Skips: []snapshot.Skip{
+		{Resource: "validatingadmissionpolicies.admissionregistration.k8s.io", Name: "aks-managed-x", Reason: "taken as AKS's: applied by Eno, named aks-managed-; --capture-platform keeps it"},
+		{Resource: "daemonsets.apps", Namespace: "gw", Name: "agent", Reason: "installed and upgraded by AKS itself; a new cluster provides it"},
+	}}
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeReport(dir, s, "kube test"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "REPORT.md"))
+	r := string(b)
+	for _, want := range []string{"## Taken as the platform's: 1 resources", "- validatingadmissionpolicies.admissionregistration.k8s.io aks-managed-x: taken as AKS", "`--capture-platform`"} {
+		if !strings.Contains(r, strings.ReplaceAll(want, "taken as AKS", "applied by Eno")) && !strings.Contains(r, want) {
+			t.Errorf("no %q in:\n%s", want, r)
+		}
+	}
+	if strings.Contains(r, "gw/agent") && strings.Contains(r[:strings.Index(r, "## Skipped on purpose")], "gw/agent") {
+		t.Errorf("a fact listed as a guess:\n%s", r)
+	}
+}

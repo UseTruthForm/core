@@ -232,7 +232,7 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	case group == "" && resource == "secrets" && strOf(obj["type"]) == "kubernetes.io/service-account-token":
 		return "service-account token, issued by the cluster"
 	}
-	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" || (!p.IncludeSystem && aksByEno(ns, name, md)) {
+	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" || aksByEno(ns, name, md) {
 		// AKS installs these (its add-ons, their namespaces and roles) and
 		// upgrades them on its own schedule: captured, every upgrade showed
 		// up as drift, and a restore would fight AKS for them.

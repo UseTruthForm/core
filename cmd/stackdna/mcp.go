@@ -123,6 +123,7 @@ func mcpTools() []mcp.Tool {
 			Description: "Compare a live target with a snapshot, read-only. Exit 0 means no differences, 2 means differences (listed).",
 			Schema: obj([]string{"platform", "from"}, with(map[string]any{"from": str("the snapshot directory to compare with"),
 				"rename":                  str("azure: file of new names, to compare a snapshot with where it was restored under them"),
+				"leave-out":               str("azure: file listing the objects it was restored without"),
 				"new-role-assignment-ids": str("azure: true if it was restored with --new-role-assignment-ids")})),
 			Call: func(ctx context.Context, a map[string]any) (string, error) {
 				return runStackDNA(ctx, "diff", a, "from")
@@ -343,7 +344,7 @@ func saasClient(name string) (*saas.Client, error) {
 // makes it exit 2 with its usage, which read as "differences found".
 var mcpFlags = map[string][]string{
 	"capture": {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "parallel", "out"},
-	"diff":    {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "parallel", "rename", "new-role-assignment-ids", "from"},
+	"diff":    {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "baseline", "parallel", "rename", "leave-out", "new-role-assignment-ids", "from"},
 	"check":   {"platform", "region", "profile", "subscription", "project", "account", "context", "types", "parallel", "access"},
 }
 

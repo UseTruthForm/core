@@ -137,7 +137,7 @@ func TestMCPTakesWhatAnAgentMaySend(t *testing.T) {
 // A tool's schema is all an agent sees: an argument passed on and not offered
 // is one no agent will send.
 func TestMCPOffersWhatItPasses(t *testing.T) {
-	want := map[string][]string{"capture": {"parallel"}, "diff": {"parallel", "rename"}, "check_access": {"parallel"}}
+	want := map[string][]string{"capture": {"parallel"}, "diff": {"parallel", "rename", "leave-out"}, "check_access": {"parallel"}}
 	for _, tool := range mcpTools() {
 		for _, name := range want[tool.Name] {
 			props, _ := tool.Schema["properties"].(map[string]any)

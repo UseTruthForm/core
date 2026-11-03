@@ -102,3 +102,29 @@ func TestReportNamesWhatWasTakenAsThePlatforms(t *testing.T) {
 		t.Errorf("a fact listed as a guess:\n%s", r)
 	}
 }
+
+// A peering with a cluster's network fails on a restore beside a new cluster,
+// whose network has a new name: the report says so beforehand.
+func TestReportNamesPeeringsWithAClustersNetwork(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "snap")
+	sub := "/subscriptions/{{stackdna|subscription}}/resourceGroups/"
+	peer := func(ns, name, remote string) snapshot.Object {
+		return snapshot.Object{Body: map[string]any{"apiVersion": "azure.stackdna.org/v1", "kind": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+			"metadata": map[string]any{"name": name, "namespace": ns, "annotations": map[string]any{"stackdna.org/id": sub + ns + "/providers/Microsoft.Network/virtualNetworks/" + name, "stackdna.org/api-version": "2025-07-01"}},
+			"spec":     map[string]any{"properties": map[string]any{"remoteVirtualNetwork": map[string]any{"id": sub + remote}}}}}
+	}
+	s := snapshot.Snapshot{Platform: "azure", Policy: "default",
+		Objects: []snapshot.Object{peer("rg", "core/to-aks", "MC_x/providers/Microsoft.Network/virtualNetworks/aks-vnet"), peer("rg", "core/to-hub", "rg/providers/Microsoft.Network/virtualNetworks/hub")},
+		Skips:   []snapshot.Skip{{Resource: "Microsoft.Resources/resourceGroups", Name: "MC_x/MC_x", Reason: "managed by /subscriptions/{{stackdna|subscription}}/x, which recreates it"}}}
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeReport(dir, s, "azure test"); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "REPORT.md"))
+	r := string(b)
+	if !strings.Contains(r, "## Peerings with a cluster's network: 1") || !strings.Contains(r, "rg/core/to-aks: to a cluster's network") || strings.Contains(r, "core/to-hub:") {
+		t.Errorf("report:\n%s", r)
+	}
+}

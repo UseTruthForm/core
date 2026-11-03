@@ -440,3 +440,106 @@ func TestDiskInANodeGroupGoesByItsTags(t *testing.T) {
 		t.Errorf("a disk that may be someone's reads as coming back: %v", s.Skips)
 	}
 }
+
+// On a real estate a core network was peered both ways with the cluster's
+// network in its node group. The cluster's network is skipped as the cluster's,
+// and its half of the pair went with it, unlisted, while the capture said it was
+// complete. Read for its peerings, it keeps them, and the report says both halves
+// depend on the cluster's network.
+func TestPeeringOnAClustersNetworkIsKept(t *testing.T) {
+	reg := fixtures(t)
+	f := NewWorld(reg).Subscription(srcSub, srcTenant)
+	put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})
+	seedNodeGroup(t, f, strings.ReplaceAll(clusterID, "SUB", srcSub))
+	net := map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.0.0.0/16"}}}}
+	core := put(t, f, "shop-rg", vnetType, "core", net)
+	aks := put(t, f, nodeGroup, vnetType, "aks-vnet-1", map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.1.0.0/16"}}}})
+	peer := vnetType + "/virtualNetworkPeerings"
+	rawPut(t, f, core+"/virtualNetworkPeerings/to-aks", peer, map[string]any{"properties": map[string]any{"remoteVirtualNetwork": map[string]any{"id": aks}}})
+	rawPut(t, f, aks+"/virtualNetworkPeerings/to-core", peer, map[string]any{"properties": map[string]any{"remoteVirtualNetwork": map[string]any{"id": core}}})
+
+	s, err := Capture(context.Background(), f, reg, Policy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]snapshot.Object{}
+	for _, o := range s.Objects {
+		got[o.Kind()+"|"+o.Name()] = o
+	}
+	if _, ok := got[vnetType+"|aks-vnet-1"]; ok {
+		t.Error("the cluster's network was captured")
+	}
+	back, ok := got[peer+"|aks-vnet-1/to-core"]
+	if !ok {
+		t.Fatalf("the cluster's half of the peering was lost: %v", sortedKeys(got))
+	}
+	if annotation(back, annAfter) == nil {
+		t.Error("it does not wait for the cluster, which makes its network")
+	}
+	if _, ok := got[peer+"|core/to-aks"]; !ok {
+		t.Error("the core half was lost")
+	}
+	across := PeeringsAcrossManagedGroups(s)
+	if len(across) != 2 {
+		t.Errorf("report lists %v, want both halves", across)
+	}
+}
+
+// Every way a network is left out as something else's, it keeps its peerings: a
+// managedBy of its own, another manager's group, and one the cluster names.
+func TestPeeringsSurviveEveryManagedSkip(t *testing.T) {
+	for name, setup := range map[string]func(f *Fake, reg *Registry, aks string){
+		"own managedBy": func(f *Fake, _ *Registry, aks string) {
+			f.ManagedBy[strings.ToLower(aks)] = id(f.sub, "shop-rg", "Microsoft.Network/virtualNetworkGateways", "gw")
+		},
+		"named by the cluster": func(f *Fake, reg *Registry, aks string) {
+			f.SeedAzure(id(f.sub, "shop-rg", managedClusterType, "aks"), stable(reg, managedClusterType), map[string]any{"location": "eastus", "properties": map[string]any{
+				"networkProfile": map[string]any{"loadBalancerProfile": map[string]any{"outboundIPs": map[string]any{"publicIPs": []any{map[string]any{"id": aks}}}}}}})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			reg := fixtures(t)
+			f := NewWorld(reg).Subscription(srcSub, srcTenant)
+			put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})
+			seedNodeGroup(t, f, strings.ReplaceAll(clusterID, "SUB", srcSub))
+			core := put(t, f, "shop-rg", vnetType, "core", map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.0.0.0/16"}}}})
+			aks := put(t, f, nodeGroup, vnetType, "aks-vnet-1", map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.1.0.0/16"}}}})
+			rawPut(t, f, aks+"/virtualNetworkPeerings/to-core", vnetType+"/virtualNetworkPeerings", map[string]any{"properties": map[string]any{"remoteVirtualNetwork": map[string]any{"id": core}}})
+			setup(f, reg, aks)
+			s, err := Capture(context.Background(), f, reg, Policy{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, o := range s.Objects {
+				found = found || o.Name() == "aks-vnet-1/to-core"
+				if o.Kind() == vnetType && o.Name() == "aks-vnet-1" {
+					t.Error("the managed network was captured")
+				}
+			}
+			if !found {
+				t.Errorf("its peering was lost: %v", s.Skips)
+			}
+		})
+	}
+	t.Run("another manager's group", func(t *testing.T) {
+		reg := fixtures(t)
+		f := NewWorld(reg).Subscription(srcSub, srcTenant)
+		put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})
+		seedNodeGroup(t, f, "/subscriptions/"+srcSub+"/resourceGroups/shop-rg/providers/Microsoft.Databricks/workspaces/w")
+		core := put(t, f, "shop-rg", vnetType, "core", map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.0.0.0/16"}}}})
+		v := put(t, f, nodeGroup, vnetType, "workers", map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.1.0.0/16"}}}})
+		rawPut(t, f, v+"/virtualNetworkPeerings/to-core", vnetType+"/virtualNetworkPeerings", map[string]any{"properties": map[string]any{"remoteVirtualNetwork": map[string]any{"id": core}}})
+		s, err := Capture(context.Background(), f, reg, Policy{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, o := range s.Objects {
+			found = found || o.Name() == "workers/to-core"
+		}
+		if !found {
+			t.Errorf("its peering was lost: %v", s.Skips)
+		}
+	})
+}

@@ -1280,3 +1280,56 @@ func TestPeeringsSelectedByNameAreCaptured(t *testing.T) {
 		t.Errorf("objects by kind: %v", kinds)
 	}
 }
+
+// Found by the first real drill to reach a diff: a subnet made by an older API
+// leaves defaultOutboundAccess unset, which means it reaches the internet; restored
+// at a newer API, unset means private. It is written as what it meant, so a
+// restore keeps it. One set either way is kept as it is.
+func TestSubnetKeepsItsDefaultOutboundAccess(t *testing.T) {
+	reg := fixtures(t)
+	s := schema(t, reg, vnetType)
+	spec, _ := s.normalize(map[string]any{"properties": map[string]any{"subnets": []any{
+		map[string]any{"name": "old", "properties": map[string]any{"addressPrefix": "10.0.1.0/24"}},
+		map[string]any{"name": "private", "properties": map[string]any{"addressPrefix": "10.0.2.0/24", "defaultOutboundAccess": false}},
+	}}})
+	subnets := spec["properties"].(map[string]any)["subnets"].([]any)
+	got := map[string]any{}
+	for _, x := range subnets {
+		sn := x.(map[string]any)
+		got[sn["name"].(string)] = sn["properties"].(map[string]any)["defaultOutboundAccess"]
+	}
+	if got["old"] != true || got["private"] != false {
+		t.Errorf("defaultOutboundAccess: %v", got)
+	}
+
+	// Through capture and restore: what reaches the target says it.
+	reg, src, dst := worlds(t)
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	put(t, src, "rg", vnetType, "v", map[string]any{"location": "eastus", "properties": map[string]any{
+		"addressSpace": map[string]any{"addressPrefixes": []any{"10.0.0.0/16"}},
+		"subnets":      []any{map[string]any{"name": "a", "properties": map[string]any{"addressPrefix": "10.0.1.0/24"}}}}})
+	snap := capture(t, src, reg)
+	allApplied(t, Restore(context.Background(), dst, reg, snap, RestoreOptions{}))
+	sub := dst.Stored(id(dst.sub, "rg", vnetType, "v"))["properties"].(map[string]any)["subnets"].([]any)[0].(map[string]any)["properties"].(map[string]any)
+	if sub["defaultOutboundAccess"] != true {
+		t.Errorf("restored without saying it reaches the internet: %v", sub)
+	}
+}
+
+// A snapshot written before capture recorded it, as beta.7's are, still restores a
+// subnet that reaches the internet.
+func TestOldSnapshotSubnetKeepsItsDefaultOutboundAccess(t *testing.T) {
+	reg, _, dst := worlds(t)
+	sub := "/subscriptions/" + tokSub
+	g := obj(groupType, "", "rg", sub+"/resourceGroups/rg", map[string]any{"location": "eastus"})
+	g.Body["metadata"].(map[string]any)["annotations"].(map[string]any)[annAPIVersion] = stable(reg, groupType)
+	n := obj(vnetType, "rg", "v", sub+"/resourceGroups/rg/providers/"+vnetType+"/v", map[string]any{"location": "eastus", "properties": map[string]any{
+		"addressSpace": map[string]any{"addressPrefixes": []any{"10.0.0.0/16"}},
+		"subnets":      []any{map[string]any{"name": "a", "properties": map[string]any{"addressPrefix": "10.0.1.0/24"}}}}})
+	n.Body["metadata"].(map[string]any)["annotations"].(map[string]any)[annAPIVersion] = stable(reg, vnetType)
+	allApplied(t, Restore(context.Background(), dst, reg, snapshot.Snapshot{Objects: []snapshot.Object{g, n}}, RestoreOptions{}))
+	got := dst.Stored(id(dst.sub, "rg", vnetType, "v"))["properties"].(map[string]any)["subnets"].([]any)[0].(map[string]any)["properties"].(map[string]any)
+	if got["defaultOutboundAccess"] != true {
+		t.Errorf("an old snapshot's subnet was restored private: %v", got)
+	}
+}

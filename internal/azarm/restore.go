@@ -278,6 +278,8 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	if missing != "" {
 		return false, missing
 	}
+	// A snapshot written before capture said so leaves it unset too.
+	defaultOutboundAsMeant(rid.Type, spec)
 
 	existing, err := api.Get(ctx, id, ver)
 	var changed []string

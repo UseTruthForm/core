@@ -114,6 +114,10 @@ d1=$(grep '^digest:' "$OUT/snap/snapshot.yaml"); d2=$(grep '^digest:' "$OUT/snap
 [ "$d1" = "$d2" ] || { echo "FAIL: two captures differ: $d1 vs $d2"; "$BIN" compare "$OUT/snap" "$OUT/snap2" || true; exit 1; }
 echo "deterministic: $d1"
 
+# Unset on a subnet means default outbound access, if it was made by an older API.
+# A restore at a newer one would make it private unless told otherwise.
+outbound_before=$(az network vnet subnet show -g "$RG" --vnet-name "$N-vnet" -n app --query defaultOutboundAccess -o tsv)
+
 step "disaster: delete $RG"
 unlock
 az group delete --name "$RG" --yes
@@ -133,6 +137,11 @@ for pair in "$N-vnet to-2" "$N-vnet2 to-1"; do
   [ "$state" = Connected ] || { echo "FAIL: peering $1/$2 is $state, want Connected"; exit 1; }
 done
 echo "both peerings restored and Connected"
+outbound_after=$(az network vnet subnet show -g "$RG" --vnet-name "$N-vnet" -n app --query defaultOutboundAccess -o tsv)
+if [ "$outbound_before" != false ] && [ "$outbound_after" = false ]; then
+  echo "FAIL: the subnet had default outbound access (${outbound_before:-unset}) and was restored private"; exit 1
+fi
+echo "subnet outbound access kept: before ${outbound_before:-unset}, after $outbound_after"
 step "diff: the subscription must match the snapshot"
 sd diff --baseline "$OUT/baseline" --from "$OUT/snap"
 echo "DRILL PASSED"

@@ -55,6 +55,12 @@ var ErrAPIVersion = errors.New("API version not accepted here")
 // without $filter=kind eq '…'.
 var ErrNeedsKind = errors.New("listed only by kind")
 
+// ErrBadRequest is any other 400. For a child type the provider registration
+// does not list, it means the resource does not serve that type as a list: a
+// cluster that is not a private-link cluster answers it for its private
+// endpoint connections, and a Recovery Services vault for its certificates.
+var ErrBadRequest = errors.New("bad request")
+
 // ResourceID is a parsed ARM resource ID.
 type ResourceID struct {
 	// ResourceGroup is "" for a resource at subscription scope (a role

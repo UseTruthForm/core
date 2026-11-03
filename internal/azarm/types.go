@@ -148,6 +148,22 @@ func (r *Registry) Versions(resourceType string) []string {
 	return out
 }
 
+// Children lists the immediate child types with a definition, as Azure
+// spells them. A provider's registration does not list every child it serves:
+// Microsoft.CognitiveServices/accounts/deployments has a definition and
+// answers a list, and the registration names no such type.
+func (r *Registry) Children(resourceType string) []string {
+	prefix := strings.ToLower(resourceType) + "/"
+	var out []string
+	for k, t := range r.names {
+		if strings.HasPrefix(k, prefix) && !strings.Contains(k[len(prefix):], "/") {
+			out = append(out, t)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Schema is one resource type at one API version.
 type Schema struct {
 	Type, Version string

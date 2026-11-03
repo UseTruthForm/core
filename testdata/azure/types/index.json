@@ -18,8 +18,20 @@
   "Microsoft.Authorization/roleDefinitions@2022-04-01": {
    "$ref": "authorization/microsoft.authorization/2022-04-01/types.json#/36"
   },
+  "Microsoft.CognitiveServices/accounts/deployments@2026-09-01": {
+   "$ref": "cognitiveservices/microsoft.cognitiveservices/2026-09-01/types.json#/237"
+  },
+  "Microsoft.CognitiveServices/accounts/raiPolicies@2026-09-01": {
+   "$ref": "cognitiveservices/microsoft.cognitiveservices/2026-09-01/types.json#/242"
+  },
+  "Microsoft.CognitiveServices/accounts@2026-09-01": {
+   "$ref": "cognitiveservices/microsoft.cognitiveservices/2026-09-01/types.json#/118"
+  },
   "Microsoft.Compute/virtualMachines@2025-04-01": {
    "$ref": "compute_1/microsoft.compute/2025-04-01/types.json#/485"
+  },
+  "Microsoft.ContainerService/managedClusters/agentPools@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/499"
   },
   "Microsoft.ContainerService/managedClusters@2026-08-01": {
    "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/438"
@@ -74,6 +86,12 @@
   },
   "Microsoft.Resources/resourceGroups@2024-11-01": {
    "$ref": "resources_11/microsoft.resources/2024-11-01/types.json#/7"
+  },
+  "Microsoft.Sql/servers/auditingPolicies@2014-04-01": {
+   "$ref": "sql_0/microsoft.sql/2014-04-01/types.json#/8"
+  },
+  "Microsoft.Sql/servers@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/82"
   },
   "Microsoft.Storage/storageAccounts/blobServices/containers@2025-08-01": {
    "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/304"

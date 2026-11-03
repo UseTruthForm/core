@@ -55,6 +55,9 @@ type Fake struct {
 	// RefuseVersion refuses a list at an API version, as ARM refuses the
 	// subscription's diagnostic settings at their newest stable version.
 	RefuseVersion func(path, version string) bool
+	// BadRequest answers a list with a plain 400, as a resource answers for
+	// a child type it has a definition for and does not serve.
+	BadRequest func(path string) bool
 	// PutDelay makes each PUT take this long, outside the lock, so PUTs
 	// running at once overlap as ARM's long-running ones do.
 	PutDelay time.Duration
@@ -123,9 +126,13 @@ func (f *Fake) APIVersions(_ context.Context, namespace string) (map[string][]st
 // registration does not list, seen on two real subscriptions: a network's
 // peerings and subnets. Offering them here let discovery find peerings as
 // children, which a real subscription never does, and hid their loss.
+// An AI Services account's model deployments and content filters are not
+// listed either, and its registration answers for neither.
 var unregistered = map[string]bool{
 	"microsoft.network/virtualnetworks/virtualnetworkpeerings": true,
 	"microsoft.network/virtualnetworks/subnets":                true,
+	"microsoft.cognitiveservices/accounts/deployments":         true,
+	"microsoft.cognitiveservices/accounts/raipolicies":         true,
 }
 
 // Get returns the resource without its secrets.
@@ -450,6 +457,9 @@ func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any
 	path, query, _ := strings.Cut(path, "?")
 	if f.RefuseVersion != nil && f.RefuseVersion(path, version) {
 		return nil, fmt.Errorf("%s: %w: Invalid api-version query string value", path, ErrAPIVersion)
+	}
+	if f.BadRequest != nil && f.BadRequest(path) {
+		return nil, fmt.Errorf("%s: %w: The requested action is not supported", path, ErrBadRequest)
 	}
 	kind := ""
 	if q, err := url.ParseQuery(query); err == nil {

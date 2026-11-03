@@ -208,6 +208,11 @@ func (e *armError) Error() string {
 
 func (e *armError) Unwrap() error { return e.err }
 
+// Is matches ErrBadRequest for a 400, keeping the error's text as it was.
+func (e *armError) Is(target error) bool {
+	return target == ErrBadRequest && e.status == http.StatusBadRequest
+}
+
 // requestIDRE matches the per-request IDs Azure puts in error messages
 // ("Operation Id: '…'", "(Request ID: …)", Tracking, Correlation, Activity
 // and Trace IDs) and the time the request was answered. An ID is matched
@@ -274,7 +279,11 @@ func classifyARM(status int, code, msg string) error {
 		status == http.StatusBadRequest && unregisteredFeatureRE.MatchString(msg),
 		// A data source kind the definition names but the service does
 		// not implement (ApplicationInsights, SqlDataClassification).
-		status == http.StatusNotImplemented && code == "DataSourceNotImplemented":
+		status == http.StatusNotImplemented && code == "DataSourceNotImplemented",
+		// A child type behind a preview feature the subscription has not
+		// registered, with a code that says so: an AI Services account's
+		// costControls answer it, as 502 Bad Gateway.
+		code == "FeatureNotRegistered":
 		return ErrNotApplicable
 	case status == http.StatusNotFound && !notAnAbsence[code]:
 		return ErrNotFound

@@ -144,6 +144,10 @@ func TestClassifyARM(t *testing.T) {
 		// so is the same answer under another status.
 		{http.StatusBadRequest, "BadRequest", "The feature flag in the request body is invalid.", nil},
 		{http.StatusConflict, "Conflict", "Please register the Microsoft.ContainerService/EnableAgentFabricPreview feature.", nil},
+		// An AI Services account's costControls, behind a feature the
+		// subscription has not registered, answer 502 with a code that says so.
+		{http.StatusBadGateway, "FeatureNotRegistered", "Subscription is not registered for feature 'Microsoft.CognitiveServices/CostControls'.", ErrNotApplicable},
+		{http.StatusBadGateway, "", "", nil},
 	} {
 		if got := classifyARM(c.status, c.code, c.msg); !errors.Is(got, c.want) || (c.want == nil && got != nil) {
 			t.Errorf("%d %s %q: got %v, want %v", c.status, c.code, c.msg, got, c.want)

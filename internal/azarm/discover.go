@@ -121,13 +121,22 @@ func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []
 		if depth > childDepth || (depth > 1 && rootIDs[strings.ToLower(parent.rid.String())]) {
 			return
 		}
-		for _, ct := range v.childTypes(parent.rid.Type) {
+		cts, err := v.childTypes(parent.rid.Type)
+		if err != nil {
+			// Nothing below the parent is read: said, so a gap is never silent.
+			add(found{typ: parent.rid.Type, name: parent.rid.LocalName(), reason: Unreadable + "its child types could not be read: " + err.Error()})
+			return
+		}
+		for _, ct := range cts {
 			coll := ct[strings.LastIndex(ct, "/")+1:]
 			// A child the parent manages inline (a VNet's subnets, an
-			// NSG's securityRules) is already in the parent's spec;
-			// listing it too would capture it twice.
+			// NSG's securityRules, a cluster's agent pools) is already in
+			// the parent's spec; listing it too would capture it twice.
 			if props, _ := parent.spec["properties"].(map[string]any); props != nil {
 				if _, inline := props[coll].([]any); inline {
+					continue
+				}
+				if _, inline := props[inlineAs[strings.ToLower(ct)]].([]any); inline {
 					continue
 				}
 			}
@@ -184,15 +193,33 @@ var ownDiagnostics = map[string]bool{
 // old network's address.
 func childSkip(item map[string]any) string {
 	typ, _ := item["type"].(string)
+	if why := superseded[strings.ToLower(typ)]; why != "" {
+		return why
+	}
 	if strings.HasSuffix(strings.ToLower(typ), "/privateendpointconnections") {
 		return "made when its private endpoint is created"
 	}
 	props, _ := item["properties"].(map[string]any)
+	// Azure's own content filters (Microsoft.Default, Microsoft.DefaultV2),
+	// on every AI Services account, made with it and refused a PUT.
+	if t, _ := props["type"].(string); strings.EqualFold(t, "SystemManaged") {
+		return systemManaged
+	}
 	md, _ := props["metadata"].(map[string]any)
 	if c, _ := md["creator"].(string); strings.HasPrefix(c, "created by private endpoint ") {
 		return "written by a private endpoint's DNS zone group, which writes it again with the new address"
 	}
 	return ""
+}
+
+const systemManaged = "Azure's own, made with its parent"
+
+// superseded are child types Azure still answers for with a retired API's view
+// of what a newer type holds: a SQL server's auditingPolicies (table auditing,
+// 2014-04-01) show the state its auditingSettings already capture.
+var superseded = map[string]string{
+	"microsoft.sql/servers/auditingpolicies":           "retired table auditing; the same state is in auditingSettings",
+	"microsoft.sql/servers/databases/auditingpolicies": "retired table auditing; the same state is in auditingSettings",
 }
 
 // issuerRefs turns a federated credential's issuer into a reference to the
@@ -266,6 +293,10 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 	}
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrNotApplicable):
+		return nil
+	// Read only because it has a definition: a 400 says this resource does
+	// not serve it, and before, it was not read at all.
+	case errors.Is(err, ErrBadRequest) && !v.registered(typ):
 		return nil
 	case err != nil:
 		return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
@@ -388,31 +419,55 @@ func listByKind(ctx context.Context, api ARM, path, ver string, kinds []string) 
 	return items, generated, nil
 }
 
-// childTypes lists the immediate child types the subscription offers for
-// a type: Microsoft.Storage/storageAccounts gives .../blobServices,
-// .../fileServices, and so on, from the provider registration.
-func (v *versions) childTypes(typ string) []string {
+// childTypes lists the immediate child types of a type: those the provider
+// registration offers (Microsoft.Storage/storageAccounts gives
+// .../blobServices, .../fileServices, and so on), and those with a definition
+// that the registration does not list. An AI Services account's model
+// deployments are only the second kind: listed from the registration alone,
+// they were never read, and coverage did not say so.
+func (v *versions) childTypes(typ string) ([]string, error) {
 	ns := strings.ToLower(Namespace(typ))
 	v.mu.Lock()
 	offered, ok := v.cache[ns]
 	v.mu.Unlock()
 	if !ok {
 		if _, err := v.pick(typ); err != nil && !errors.Is(err, errNoVersion) {
-			return nil
+			return nil, err
 		}
 		v.mu.Lock()
 		offered = v.cache[ns]
 		v.mu.Unlock()
 	}
 	prefix := strings.ToLower(typ) + "/"
+	seen := map[string]bool{}
 	var out []string
 	for t := range offered {
 		if strings.HasPrefix(t, prefix) && !strings.Contains(t[len(prefix):], "/") {
+			seen[t] = true
+			out = append(out, typ+t[len(typ):])
+		}
+	}
+	for _, t := range v.reg.Children(typ) {
+		if !seen[strings.ToLower(t)] {
 			out = append(out, typ+t[len(typ):])
 		}
 	}
 	sort.Strings(out)
-	return out
+	return out, nil
+}
+
+// registered says whether the provider registration lists the type itself.
+func (v *versions) registered(typ string) bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	_, ok := v.cache[strings.ToLower(Namespace(typ))][strings.ToLower(typ)]
+	return ok
+}
+
+// inlineAs are child collections a parent's GET returns under another name:
+// a cluster's agent pools are its agentPoolProfiles, already in its spec.
+var inlineAs = map[string]string{
+	"microsoft.containerservice/managedclusters/agentpools": "agentPoolProfiles",
 }
 
 // nilGUID is what ARM writes for "none" (a policy assignment's instanceId,

@@ -1,0 +1,3263 @@
+[
+ {
+  "$type": "StringType",
+  "maxLength": 64,
+  "minLength": 2,
+  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]*$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.CognitiveServices/accounts"
+ },
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-09-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.CognitiveServices/accounts",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "etag": {
+    "description": "Resource Etag.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "identity": {
+    "description": "Identity for the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/110"
+    }
+   },
+   "kind": {
+    "description": "The kind (type) of cognitive service account.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "location": {
+    "description": "The geo-location where the resource lives",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of Cognitive Services account.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "sku": {
+    "description": "The resource model definition representing SKU",
+    "flags": 0,
+    "type": {
+     "$ref": "#/103"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/53"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/102"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "AccountProperties",
+  "properties": {
+   "a365LoggingEnabled": {
+    "description": "Specifies whether A365 logging is enabled. Defaults to true. Set to false to opt out.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "abusePenalty": {
+    "description": "The abuse penalty.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/91"
+    }
+   },
+   "allowProjectManagement": {
+    "description": "Specifies whether this resource support project management as child resources, used as containers for access management, data isolation and cost in AI Foundry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "allowedFqdnList": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/80"
+    }
+   },
+   "amlWorkspace": {
+    "description": "The user owned AML account properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/38"
+    }
+   },
+   "apiProperties": {
+    "description": "The api properties for special APIs.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/69"
+    }
+   },
+   "associatedProjects": {
+    "description": "Specifies the projects, by project name, that are associated with this resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/101"
+    }
+   },
+   "callRateLimit": {
+    "description": "The call rate limit Cognitive Services account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/73"
+    }
+   },
+   "capabilities": {
+    "description": "Gets the capabilities of the cognitive services account. Each item indicates the capability of a specific feature. The values are read-only and for reference only.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/16"
+    }
+   },
+   "commitmentPlanAssociations": {
+    "description": "The commitment plan associations of Cognitive Services account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/90"
+    }
+   },
+   "customSubDomainName": {
+    "description": "Optional subdomain name used for token-based authentication.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "dateCreated": {
+    "description": "Gets the date of cognitive services account creation.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "defaultProject": {
+    "description": "Specifies the project, by project name, that is targeted when data plane endpoints are called without a project parameter.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "deletionDate": {
+    "description": "The deletion date, only available for deleted account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "disableLocalAuth": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "dynamicThrottlingEnabled": {
+    "description": "The flag to enable dynamic throttling.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "encryption": {
+    "description": "The encryption properties for this resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/31"
+    }
+   },
+   "endpoint": {
+    "description": "Endpoint of the created account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "endpoints": {
+    "description": "Dictionary of \u003cstring\u003e",
+    "flags": 2,
+    "type": {
+     "$ref": "#/81"
+    }
+   },
+   "internalId": {
+    "description": "The internal identifier (deprecated, do not use this property).",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "isMigrated": {
+    "description": "If the resource is migrated from an existing key.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "locations": {
+    "description": "The multiregion settings of Cognitive Services account.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/82"
+    }
+   },
+   "migrationToken": {
+    "description": "Resource migration token.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "networkAcls": {
+    "description": "A collection of rules governing the accessibility from specific network locations.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/20"
+    }
+   },
+   "networkInjections": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/100"
+    }
+   },
+   "privateEndpointConnections": {
+    "description": "The private endpoint connection associated with the Cognitive Services account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/64"
+    }
+   },
+   "provisioningState": {
+    "description": "Gets the status of the cognitive services account at the time the operation was called.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "publicNetworkAccess": {
+    "description": "Whether or not public endpoint access is allowed for this account.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/67"
+    }
+   },
+   "quotaLimit": {
+    "flags": 2,
+    "type": {
+     "$ref": "#/78"
+    }
+   },
+   "raiMonitorConfig": {
+    "description": "Cognitive Services Rai Monitor Config.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/95"
+    }
+   },
+   "restore": {
+    "flags": 4,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "restrictOutboundNetworkAccess": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "scheduledPurgeDate": {
+    "description": "The scheduled purge date, only available for deleted account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "skuChangeInfo": {
+    "description": "Sku change info of account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/18"
+    }
+   },
+   "storedCompletionsDisabled": {
+    "description": "The flag to disable stored completions.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "userOwnedStorage": {
+    "description": "The storage accounts for this resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/37"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Accepted"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Moving"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ResolvingDNS"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/6"
+   },
+   {
+    "$ref": "#/7"
+   },
+   {
+    "$ref": "#/8"
+   },
+   {
+    "$ref": "#/9"
+   },
+   {
+    "$ref": "#/10"
+   },
+   {
+    "$ref": "#/11"
+   },
+   {
+    "$ref": "#/12"
+   },
+   {
+    "$ref": "#/13"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SkuCapability",
+  "properties": {
+   "name": {
+    "description": "The name of the SkuCapability.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "value": {
+    "description": "The value of the SkuCapability.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/15"
+  }
+ },
+ {
+  "$type": "BooleanType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SkuChangeInfo",
+  "properties": {
+   "countOfDowngrades": {
+    "description": "Gets the count of downgrades.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "countOfUpgradesAfterDowngrades": {
+    "description": "Gets the count of upgrades after downgrades.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "lastChangeDate": {
+    "description": "Gets the last change date.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "IntegerType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkRuleSet",
+  "properties": {
+   "bypass": {
+    "description": "Setting for trusted services.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/26"
+    }
+   },
+   "defaultAction": {
+    "description": "The default action when no rule from ipRules and from virtualNetworkRules match. This is only used after the bypass property has been evaluated.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/23"
+    }
+   },
+   "ipRules": {
+    "description": "The list of IP address rules.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/28"
+    }
+   },
+   "virtualNetworkRules": {
+    "description": "The list of virtual network rules.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/30"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Allow"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deny"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/21"
+   },
+   {
+    "$ref": "#/22"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AzureServices"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/24"
+   },
+   {
+    "$ref": "#/25"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IpRule",
+  "properties": {
+   "value": {
+    "description": "An IPv4 address range in CIDR notation, such as '124.56.78.91' (simple IP address) or '124.56.78.0/24' (all addresses that start with 124.56.78).",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/27"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VirtualNetworkRule",
+  "properties": {
+   "id": {
+    "description": "Full resource id of a vnet subnet, such as '/subscriptions/subid/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/test-vnet/subnets/subnet1'.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "ignoreMissingVnetServiceEndpoint": {
+    "description": "Ignore missing vnet service endpoint or not.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "state": {
+    "description": "Gets the state of virtual network rule.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/29"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Encryption",
+  "properties": {
+   "keySource": {
+    "description": "Enumerates the possible value of keySource for Encryption",
+    "flags": 0,
+    "type": {
+     "$ref": "#/35"
+    }
+   },
+   "keyVaultProperties": {
+    "description": "Properties of KeyVault",
+    "flags": 0,
+    "type": {
+     "$ref": "#/32"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "KeyVaultProperties",
+  "properties": {
+   "identityClientId": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "keyName": {
+    "description": "Name of the Key from KeyVault",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "keyVaultUri": {
+    "description": "Uri of KeyVault",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "keyVersion": {
+    "description": "Version of the Key from KeyVault",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.CognitiveServices"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.KeyVault"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/33"
+   },
+   {
+    "$ref": "#/34"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "UserOwnedStorage",
+  "properties": {
+   "identityClientId": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "resourceId": {
+    "description": "Full resource id of a Microsoft.Storage resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/36"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "UserOwnedAmlWorkspace",
+  "properties": {
+   "identityClientId": {
+    "description": "Identity Client id of a AML account resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "resourceId": {
+    "description": "Full resource id of a AML account resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointConnection",
+  "properties": {
+   "etag": {
+    "description": "Resource Etag.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "id": {
+    "description": "Fully qualified resource ID for the resource. Ex - /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/{resourceProviderNamespace}/{resourceType}/{resourceName}",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "location": {
+    "description": "The location of the private endpoint connection",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The name of the resource",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "properties": {
+    "description": "Resource properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/40"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/53"
+    }
+   },
+   "type": {
+    "description": "The type of the resource. E.g. \"Microsoft.Compute/virtualMachines\" or \"Microsoft.Storage/storageAccounts\"",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointConnectionProperties",
+  "properties": {
+   "groupIds": {
+    "description": "The private link resource group ids.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/52"
+    }
+   },
+   "privateEndpoint": {
+    "description": "The resource of private end point.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/41"
+    }
+   },
+   "privateLinkServiceConnectionState": {
+    "description": "A collection of information about the state of the connection between service consumer and provider.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/42"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the private endpoint connection resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/51"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpoint",
+  "properties": {
+   "id": {
+    "description": "The ARM identifier for Private Endpoint",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServiceConnectionState",
+  "properties": {
+   "actionsRequired": {
+    "description": "A message indicating if changes on the service provider require any updates on the consumer.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "description": {
+    "description": "The reason for approval/rejection of the connection.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "status": {
+    "description": "Indicates whether the connection has been Approved/Rejected/Removed by the owner of the service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/46"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Pending"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Approved"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Rejected"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/43"
+   },
+   {
+    "$ref": "#/44"
+   },
+   {
+    "$ref": "#/45"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/47"
+   },
+   {
+    "$ref": "#/48"
+   },
+   {
+    "$ref": "#/49"
+   },
+   {
+    "$ref": "#/50"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/2"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SystemData",
+  "properties": {
+   "createdAt": {
+    "description": "The timestamp of resource creation (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "createdBy": {
+    "description": "The identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "createdByType": {
+    "description": "The type of identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/58"
+    }
+   },
+   "lastModifiedAt": {
+    "description": "The timestamp of resource last modification (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "lastModifiedBy": {
+    "description": "The identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "lastModifiedByType": {
+    "description": "The type of identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/54"
+   },
+   {
+    "$ref": "#/55"
+   },
+   {
+    "$ref": "#/56"
+   },
+   {
+    "$ref": "#/57"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/59"
+   },
+   {
+    "$ref": "#/60"
+   },
+   {
+    "$ref": "#/61"
+   },
+   {
+    "$ref": "#/62"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/39"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/65"
+   },
+   {
+    "$ref": "#/66"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "AnyType"
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/68"
+  },
+  "name": "ApiProperties",
+  "properties": {
+   "aadClientId": {
+    "description": "(Metrics Advisor Only) The Azure AD Client Id (Application Id).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/72"
+    }
+   },
+   "aadTenantId": {
+    "description": "(Metrics Advisor Only) The Azure AD Tenant Id.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/72"
+    }
+   },
+   "eventHubConnectionString": {
+    "description": "(Personalization Only) The flag to enable statistics of Bing Search.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/70"
+    }
+   },
+   "qnaAzureSearchEndpointId": {
+    "description": "(QnAMaker Only) The Azure Search endpoint id of QnAMaker.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "qnaAzureSearchEndpointKey": {
+    "description": "(QnAMaker Only) The Azure Search endpoint key of QnAMaker.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "qnaRuntimeEndpoint": {
+    "description": "(QnAMaker Only) The runtime endpoint of QnAMaker.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "statisticsEnabled": {
+    "description": "(Bing Search Only) The flag to enable statistics of Bing Search.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "storageAccountConnectionString": {
+    "description": "(Personalization Only) The storage account connection string.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/71"
+    }
+   },
+   "superUser": {
+    "description": "(Metrics Advisor Only) The super user of Metrics Advisor.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/72"
+    }
+   },
+   "websiteName": {
+    "description": "(Metrics Advisor Only) The website name of Metrics Advisor.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/72"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringType",
+  "maxLength": 1000,
+  "pattern": "^( *)Endpoint=sb://(.*);( *)SharedAccessKeyName=(.*);( *)SharedAccessKey=(.*)$"
+ },
+ {
+  "$type": "StringType",
+  "maxLength": 1000,
+  "pattern": "^(( *)DefaultEndpointsProtocol=(http|https)( *);( *))?AccountName=(.*)AccountKey=(.*)EndpointSuffix=(.*)$"
+ },
+ {
+  "$type": "StringType",
+  "maxLength": 500
+ },
+ {
+  "$type": "ObjectType",
+  "name": "CallRateLimit",
+  "properties": {
+   "count": {
+    "description": "The count value of Call Rate Limit.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "renewalPeriod": {
+    "description": "The renewal period in seconds of Call Rate Limit.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "rules": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/77"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ThrottlingRule",
+  "properties": {
+   "count": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "dynamicThrottlingEnabled": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "key": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "matchPatterns": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/76"
+    }
+   },
+   "minCount": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "renewalPeriod": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RequestMatchPattern",
+  "properties": {
+   "method": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "path": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/75"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/74"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "QuotaLimit",
+  "properties": {
+   "count": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "renewalPeriod": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "rules": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/79"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/74"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/2"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "AccountPropertiesEndpoints",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "name": "MultiRegionSettings",
+  "properties": {
+   "regions": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/88"
+    }
+   },
+   "routingMethod": {
+    "description": "Multiregion routing methods.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/86"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Priority"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Weighted"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Performance"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/83"
+   },
+   {
+    "$ref": "#/84"
+   },
+   {
+    "$ref": "#/85"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RegionSetting",
+  "properties": {
+   "customsubdomain": {
+    "description": "Maps the region to the regional custom subdomain.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "Name of the region.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "value": {
+    "description": "A value for priority or weighted routing methods.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/87"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "CommitmentPlanAssociation",
+  "properties": {
+   "commitmentPlanId": {
+    "description": "The Azure resource id of the commitment plan.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "commitmentPlanLocation": {
+    "description": "The location of of the commitment plan.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/89"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "AbusePenalty",
+  "properties": {
+   "action": {
+    "description": "The action of AbusePenalty.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/94"
+    }
+   },
+   "expiration": {
+    "description": "The datetime of expiration of the AbusePenalty.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "rateLimitPercentage": {
+    "description": "The percentage of rate limit.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Throttle"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Block"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/92"
+   },
+   {
+    "$ref": "#/93"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiMonitorConfig",
+  "properties": {
+   "adxStorageResourceId": {
+    "description": "The storage resource Id.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "identityClientId": {
+    "description": "The identity client Id to access the storage.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkInjection",
+  "properties": {
+   "scenario": {
+    "description": "Specifies what features in AI Foundry network injection applies to. Currently only supports 'agent' for agent scenarios. 'none' means no network injection.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/99"
+    }
+   },
+   "subnetArmId": {
+    "description": "Specify the subnet for which your Agent Client is injected into.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "useMicrosoftManagedNetwork": {
+    "description": "Boolean to enable Microsoft Managed Network for subnet delegation",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "none"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "agent"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/97"
+   },
+   {
+    "$ref": "#/98"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/96"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/2"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "AccountTags",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Sku",
+  "properties": {
+   "capacity": {
+    "description": "If the SKU supports scale out/in then the capacity integer should be included. If scale out/in is not possible for the resource this may be omitted.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "family": {
+    "description": "If the service has different generations of hardware, for the same SKU, then that can be captured here.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The name of the SKU. Ex - P3. It is typically a letter+number code",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "size": {
+    "description": "The SKU size. When the name field is the combination of tier and some other value, this would be the standalone code.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "tier": {
+    "description": "This field is required to be implemented by the Resource Provider if the service has more than one tier, but is not required on a PUT.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/109"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Free"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Basic"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Premium"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enterprise"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/104"
+   },
+   {
+    "$ref": "#/105"
+   },
+   {
+    "$ref": "#/106"
+   },
+   {
+    "$ref": "#/107"
+   },
+   {
+    "$ref": "#/108"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Identity",
+  "properties": {
+   "principalId": {
+    "description": "The principal ID of resource identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "tenantId": {
+    "description": "The tenant ID of resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "type": {
+    "description": "The identity type.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/115"
+    }
+   },
+   "userAssignedIdentities": {
+    "description": "The list of user assigned identities associated with the resource. The user identity dictionary key references will be ARM resource ids in the form: '/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identityName}",
+    "flags": 0,
+    "type": {
+     "$ref": "#/117"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SystemAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "UserAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SystemAssigned, UserAssigned"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/111"
+   },
+   {
+    "$ref": "#/112"
+   },
+   {
+    "$ref": "#/113"
+   },
+   {
+    "$ref": "#/114"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "UserAssignedIdentity",
+  "properties": {
+   "clientId": {
+    "description": "Client App Id associated with this identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "principalId": {
+    "description": "Azure Active Directory principal ID associated with this Identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/116"
+  },
+  "name": "IdentityUserAssignedIdentities",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/4"
+  },
+  "name": "Microsoft.CognitiveServices/accounts@2026-09-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringType",
+  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]*$"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiPolicyProperties",
+  "properties": {
+   "basePolicyName": {
+    "description": "Name of Rai policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "contentFilters": {
+    "description": "The list of Content Filters.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/147"
+    }
+   },
+   "customBlocklists": {
+    "description": "The list of custom Blocklist.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/156"
+    }
+   },
+   "egressPolicy": {
+    "description": "Egress (outbound network) policy controlling which external endpoints sandboxed\nagents can reach. Includes rules with Allow/Deny/Transform/Rewrite actions.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/166"
+    }
+   },
+   "mode": {
+    "description": "Rai policy mode. The enum value mapping is as below: Default = 0, Deferred=1, Blocking=2, Asynchronous_filter =3. Please use 'Asynchronous_filter' after 2025-06-01. It is the same as 'Deferred' in previous version.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/128"
+    }
+   },
+   "safetyProviders": {
+    "description": "The list of Safety Providers.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/165"
+    }
+   },
+   "type": {
+    "description": "Content Filters policy type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/123"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "UserManaged"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SystemManaged"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/121"
+   },
+   {
+    "$ref": "#/122"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Default"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deferred"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Blocking"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Asynchronous_filter"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/124"
+   },
+   {
+    "$ref": "#/125"
+   },
+   {
+    "$ref": "#/126"
+   },
+   {
+    "$ref": "#/127"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiPolicyContentFilter",
+  "properties": {
+   "action": {
+    "description": "The action types to apply to the content filters",
+    "flags": 0,
+    "type": {
+     "$ref": "#/146"
+    }
+   },
+   "blocking": {
+    "description": "If blocking would occur.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "enabled": {
+    "description": "If the ContentFilter is enabled.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "name": {
+    "description": "Name of ContentFilter.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "severityThreshold": {
+    "description": "Level at which content is filtered.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/133"
+    }
+   },
+   "source": {
+    "description": "Content source to apply the Content Filters.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/140"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Low"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Medium"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "High"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/130"
+   },
+   {
+    "$ref": "#/131"
+   },
+   {
+    "$ref": "#/132"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Prompt"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Completion"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PreToolCall"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PostToolCall"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PreRun"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PostRun"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/134"
+   },
+   {
+    "$ref": "#/135"
+   },
+   {
+    "$ref": "#/136"
+   },
+   {
+    "$ref": "#/137"
+   },
+   {
+    "$ref": "#/138"
+   },
+   {
+    "$ref": "#/139"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "BLOCKING"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ANNOTATING"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "HITL"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RETRY"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/141"
+   },
+   {
+    "$ref": "#/142"
+   },
+   {
+    "$ref": "#/143"
+   },
+   {
+    "$ref": "#/144"
+   },
+   {
+    "$ref": "#/145"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/129"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "CustomBlocklistConfig",
+  "properties": {
+   "blocking": {
+    "description": "If blocking would occur.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "blocklistName": {
+    "description": "Name of ContentFilter.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "source": {
+    "description": "Content source to apply the Content Filters.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/155"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Prompt"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Completion"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PreToolCall"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PostToolCall"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PreRun"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PostRun"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/149"
+   },
+   {
+    "$ref": "#/150"
+   },
+   {
+    "$ref": "#/151"
+   },
+   {
+    "$ref": "#/152"
+   },
+   {
+    "$ref": "#/153"
+   },
+   {
+    "$ref": "#/154"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/148"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SafetyProviderConfig",
+  "properties": {
+   "blocking": {
+    "description": "If blocking would occur.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "safetyProviderName": {
+    "description": "Name of RAI Safety Provider.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "source": {
+    "description": "Content source to apply the Content Filters.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/164"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Prompt"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Completion"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PreToolCall"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PostToolCall"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PreRun"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PostRun"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/158"
+   },
+   {
+    "$ref": "#/159"
+   },
+   {
+    "$ref": "#/160"
+   },
+   {
+    "$ref": "#/161"
+   },
+   {
+    "$ref": "#/162"
+   },
+   {
+    "$ref": "#/163"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/157"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiEgressPolicyConfig",
+  "properties": {
+   "defaultAction": {
+    "description": "The default action when no user-defined rules match.\nDeny blocks unmatched traffic; Allow permits it. Transform and Rewrite rules\nare always applied to their matched traffic regardless of this setting —\ndefaultAction only governs traffic that does not match any rule.\nIf omitted on create, the server defaults to Deny (fail-closed). On subsequent\nGET requests, the server always returns the effective value.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/172"
+    }
+   },
+   "description": {
+    "description": "Description of the egress policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "mode": {
+    "description": "The enforcement mode for egress rules.\nIf omitted on create, the server defaults to Enforced. On subsequent GET\nrequests, the server always returns the effective mode.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/169"
+    }
+   },
+   "rules": {
+    "description": "Ordered list of egress rules. First matching rule wins.\nRules are evaluated in declaration order; the first rule whose match criteria\nare satisfied determines the action taken on the request.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/197"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enforced"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Audit"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/167"
+   },
+   {
+    "$ref": "#/168"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Allow"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deny"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/170"
+   },
+   {
+    "$ref": "#/171"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiEgressRule",
+  "properties": {
+   "action": {
+    "description": "The action to take when this rule matches, including the action type and any\ntype-specific configuration (headers for Transform, rewrite target for Rewrite).",
+    "flags": 1,
+    "type": {
+     "$ref": "#/177"
+    }
+   },
+   "description": {
+    "description": "Description of the rule.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "match": {
+    "description": "The match criteria for this rule.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/176"
+    }
+   },
+   "name": {
+    "description": "Name of the rule. Must be unique within the policy.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "ruleType": {
+    "description": "The type of rule (e.g., Fqdn). Determines how match criteria are interpreted.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/175"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Fqdn"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/174"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiEgressRuleMatch",
+  "properties": {
+   "host": {
+    "description": "Host pattern to match using DNS wildcard syntax (e.g., \"\\*.openai.com\").\nA leading \"\\*.\" matches any subdomain. Omit to match all hosts.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "path": {
+    "description": "Path pattern to match using URI prefix matching.\nAn asterisk serves as a single-segment wildcard.\nFor example, \"/v1/\\*\" matches \"/v1/chat\". Omit to match all paths.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiEgressRuleAction",
+  "properties": {
+   "actionType": {
+    "description": "The kind of action.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/182"
+    }
+   },
+   "headers": {
+    "description": "Header transforms to apply. Required for Transform; optional for Rewrite;\nnot allowed for Allow or Deny.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/192"
+    }
+   },
+   "rewrite": {
+    "description": "Destination override. Required for Rewrite; not allowed otherwise.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/193"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Allow"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deny"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Transform"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Rewrite"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/178"
+   },
+   {
+    "$ref": "#/179"
+   },
+   {
+    "$ref": "#/180"
+   },
+   {
+    "$ref": "#/181"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiEgressHeaderTransform",
+  "properties": {
+   "name": {
+    "description": "The HTTP header name (e.g., \"Authorization\", \"X-Custom-Auth\").",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "operation": {
+    "description": "The operation to perform on this header.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/187"
+    }
+   },
+   "value": {
+    "description": "A static header value. Write-only: accepted on create/update, never returned on read.\nIf omitted on update, the existing value is preserved. Use this for non-sensitive values;\nfor credentials, use valueRef instead.",
+    "flags": 4,
+    "type": {
+     "$ref": "#/188"
+    }
+   },
+   "valueRef": {
+    "description": "A dynamic header value resolved at request time from a secret or managed identity.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/189"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Set"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Insert"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Remove"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/184"
+   },
+   {
+    "$ref": "#/185"
+   },
+   {
+    "$ref": "#/186"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringType",
+  "sensitive": true
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiEgressHeaderValueRef",
+  "properties": {
+   "managedIdentityRef": {
+    "description": "Resolve the value from a managed-identity token.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/191"
+    }
+   },
+   "secretRef": {
+    "description": "Resolve the value from a stored secret.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/190"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiEgressSecretRef",
+  "properties": {
+   "format": {
+    "description": "Optional format for the resolved value; \"{value}\" is the placeholder, e.g. \"Bearer {value}\".",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "secretId": {
+    "description": "Identifier of the secret to inject.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "secretKey": {
+    "description": "Optional key within the secret.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/188"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiEgressManagedIdentityRef",
+  "properties": {
+   "format": {
+    "description": "Optional format for the resolved token; \"{value}\" is the placeholder, e.g. \"Bearer {value}\".",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "resource": {
+    "description": "The resource/audience the token is requested for.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/183"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RaiEgressRewriteTarget",
+  "properties": {
+   "host": {
+    "description": "Target host. Original host is kept if omitted.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "path": {
+    "description": "Target path (literal string). Original path (and query) is kept if omitted.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "scheme": {
+    "description": "Target scheme. Original scheme is kept if omitted.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/196"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "http"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "https"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/194"
+   },
+   {
+    "$ref": "#/195"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/173"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.CognitiveServices/accounts/deployments"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-09-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.CognitiveServices/accounts/deployments",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/199"
+    }
+   },
+   "etag": {
+    "description": "Resource Etag.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "properties": {
+    "description": "Properties of Cognitive Services account deployment.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/201"
+    }
+   },
+   "sku": {
+    "description": "The resource model definition representing SKU",
+    "flags": 0,
+    "type": {
+     "$ref": "#/103"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/53"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/236"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/198"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DeploymentProperties",
+  "properties": {
+   "callRateLimit": {
+    "description": "The call rate limit Cognitive Services account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/73"
+    }
+   },
+   "capabilities": {
+    "description": "The capabilities.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/216"
+    }
+   },
+   "capacitySettings": {
+    "description": "Internal use only.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/222"
+    }
+   },
+   "contextCacheContainerId": {
+    "description": "The resource ID of the context cache container associated with this deployment.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "currentCapacity": {
+    "description": "The current capacity.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "deploymentState": {
+    "description": "The state of the deployment. Controls whether the deployment is accepting inference requests. Use 'Running' for active deployments that process requests, or 'Paused' to temporarily stop inference while preserving the deployment configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/229"
+    }
+   },
+   "dynamicThrottlingEnabled": {
+    "description": "If the dynamic throttling is enabled.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "model": {
+    "description": "Properties of Cognitive Services account deployment model.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/211"
+    }
+   },
+   "parentDeploymentName": {
+    "description": "The name of parent deployment.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "provisioningState": {
+    "description": "Gets the status of the resource at the time the operation was called.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/210"
+    }
+   },
+   "raiPolicyName": {
+    "description": "The name of RAI policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "rateLimits": {
+    "flags": 2,
+    "type": {
+     "$ref": "#/217"
+    }
+   },
+   "routing": {
+    "description": "Routing configuration for the model-router deployment. This property is only applicable when the deployed model is 'model-router' version 2025-11-18 or later. Allows you to select the models subset for routing and the routing mode (balanced, quality, cost) for routing across all supported models or the model subset.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/230"
+    }
+   },
+   "scaleSettings": {
+    "description": "Properties of Cognitive Services account deployment model. (Deprecated, please use Deployment.sku instead.)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/212"
+    }
+   },
+   "serviceTier": {
+    "description": "The service tier for the deployment. Determines the pricing and performance level for request processing. Use 'Default' for standard pricing or 'Priority' for higher-priority processing with premium pricing. Note: Pause operations are only supported on Standard, DataZoneStandard, and GlobalStandard SKUs.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/226"
+    }
+   },
+   "spilloverDeploymentName": {
+    "description": "Specifies the deployment name that should serve requests when the request would have otherwise been throttled due to reaching current deployment throughput limit.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "versionUpgradeOption": {
+    "description": "Deployment model version upgrade option.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/221"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Accepted"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Moving"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/202"
+   },
+   {
+    "$ref": "#/203"
+   },
+   {
+    "$ref": "#/204"
+   },
+   {
+    "$ref": "#/205"
+   },
+   {
+    "$ref": "#/206"
+   },
+   {
+    "$ref": "#/207"
+   },
+   {
+    "$ref": "#/208"
+   },
+   {
+    "$ref": "#/209"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DeploymentModel",
+  "properties": {
+   "callRateLimit": {
+    "description": "The call rate limit Cognitive Services account.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/73"
+    }
+   },
+   "format": {
+    "description": "Deployment model format.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "Deployment model name.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "publisher": {
+    "description": "Deployment model publisher.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "source": {
+    "description": "Optional. Deployment model source ARM resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "sourceAccount": {
+    "description": "Optional. Source of the model, another Microsoft.CognitiveServices accounts ARM resource ID.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "version": {
+    "description": "Optional. Deployment model version. If version is not specified, a default version will be assigned. The default version is different for different models and might change when there is new version available for a model. Default version for a model could be found from list models API.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DeploymentScaleSettings",
+  "properties": {
+   "activeCapacity": {
+    "description": "Deployment active capacity. This value might be different from `capacity` if customer recently updated `capacity`.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "capacity": {
+    "description": "Deployment capacity.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "scaleType": {
+    "description": "Deployment scale type.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/215"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Manual"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/213"
+   },
+   {
+    "$ref": "#/214"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "DeploymentPropertiesCapabilities",
+  "properties": {}
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/74"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "OnceNewDefaultVersionAvailable"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "OnceCurrentVersionExpired"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "NoAutoUpgrade"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/218"
+   },
+   {
+    "$ref": "#/219"
+   },
+   {
+    "$ref": "#/220"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DeploymentCapacitySettings",
+  "properties": {
+   "designatedCapacity": {
+    "description": "The designated capacity.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/223"
+    }
+   },
+   "priority": {
+    "description": "The priority of this capacity setting.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/223"
+    }
+   }
+  }
+ },
+ {
+  "$type": "IntegerType",
+  "minValue": 0
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Default"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Priority"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/224"
+   },
+   {
+    "$ref": "#/225"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Running"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Paused"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/227"
+   },
+   {
+    "$ref": "#/228"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DeploymentRouting",
+  "properties": {
+   "mode": {
+    "description": "The model-router routing mode that determines how requests are distributed across models.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/234"
+    }
+   },
+   "models": {
+    "description": "Optional. The list of model-router supported models that the model router can use to route requests across. If not specified, the model router will route to all available models specified in the model-router version.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/235"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "cost"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "balanced"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "quality"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/231"
+   },
+   {
+    "$ref": "#/232"
+   },
+   {
+    "$ref": "#/233"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/211"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "DeploymentTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/200"
+  },
+  "name": "Microsoft.CognitiveServices/accounts/deployments@2026-09-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.CognitiveServices/accounts/raiPolicies"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-09-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.CognitiveServices/accounts/raiPolicies",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/239"
+    }
+   },
+   "etag": {
+    "description": "Resource Etag.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/119"
+    }
+   },
+   "properties": {
+    "description": "Properties of Cognitive Services RaiPolicy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/120"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/53"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/241"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/238"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "RaiPolicyTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/240"
+  },
+  "name": "Microsoft.CognitiveServices/accounts/raiPolicies@2026-09-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ }
+]

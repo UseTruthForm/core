@@ -481,3 +481,13 @@ func TestCapturePlatformKeepsWhatIsOnlyTakenAsAKSs(t *testing.T) {
 		t.Errorf("policy name %q", n)
 	}
 }
+
+// Applied by Eno and labelled by AKS as its own: a fact, so not listed as a guess
+// whose flag would then not keep it.
+func TestAKSLabelIsAFactEvenWhenEnoAppliedIt(t *testing.T) {
+	md := enoApplied(map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "aks"}})
+	obj := k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", md, nil)
+	if r := (Policy{}).skipReason("admissionregistration.k8s.io", "validatingadmissionpolicies", obj); strings.HasPrefix(r, TakenAsPlatform) || !strings.Contains(r, "upgraded by AKS") {
+		t.Errorf("reason %q", r)
+	}
+}

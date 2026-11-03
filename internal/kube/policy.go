@@ -240,16 +240,18 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	case group == "" && resource == "secrets" && strOf(obj["type"]) == "kubernetes.io/service-account-token":
 		return "service-account token, issued by the cluster"
 	}
-	if !p.CapturePlatform {
-		if why := aksByEno(ns, name, md); why != "" {
-			return TakenAsPlatform + why + "; --capture-platform keeps it"
-		}
-	}
+	// A fact before a guess: what AKS labels as its own is listed under the guess
+	// otherwise, with a flag offered that does not keep it.
 	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" {
 		// AKS installs these (its add-ons, their namespaces and roles) and
 		// upgrades them on its own schedule: captured, every upgrade showed
 		// up as drift, and a restore would fight AKS for them.
 		return "installed and upgraded by AKS itself; a new cluster provides it"
+	}
+	if !p.CapturePlatform {
+		if why := aksByEno(ns, name, md); why != "" {
+			return TakenAsPlatform + why + "; --capture-platform keeps it"
+		}
 	}
 	if labels, _ := md["labels"].(map[string]any); strOf(labels["addonmanager.kubernetes.io/mode"]) == "Reconcile" {
 		// The addon manager puts these back as it shipped them. EnsureExists

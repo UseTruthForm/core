@@ -85,6 +85,9 @@ func Rename(s snapshot.Snapshot, names map[string]string) (snapshot.Snapshot, []
 				body[sect] = rewriteAll(v, func(v string) string { return renameText(v, m) })
 			}
 		}
+		if w := renameDerived(objectID(o, tokSub), body, m); w != "" {
+			warnings = append(warnings, w)
+		}
 		for k, v := range names {
 			old := k[strings.LastIndex(k, "/")+1:]
 			if mentions(body["spec"], old) {
@@ -131,6 +134,45 @@ func Rename(s snapshot.Snapshot, names map[string]string) (snapshot.Snapshot, []
 	}
 	sort.Strings(warnings)
 	return out, slicesCompact(warnings), nil
+}
+
+// derivedNames are properties that hold a name unique across Azure other than
+// the resource's own: an AI Services account's customSubDomainName is its
+// endpoint's host name. Renamed with the account, the subdomain stayed, and a
+// restore beside the source would have failed on it.
+var derivedNames = map[string][]string{
+	"microsoft.cognitiveservices/accounts": {"properties", "customSubDomainName"},
+}
+
+// renameDerived gives a renamed resource's derived name its new name when it
+// was the old one (in the old one's case, lower or as written). One that was
+// something else cannot be guessed, and is warned about.
+func renameDerived(was ResourceID, body map[string]any, m map[string]string) string {
+	path := derivedNames[strings.ToLower(was.Type)]
+	if path == nil || was.ResourceGroup == "" || was.Scope != "" {
+		return ""
+	}
+	newName, ok := m[strings.ToLower(was.Type+"/"+was.Name)]
+	if !ok {
+		return ""
+	}
+	parent, _ := body["spec"].(map[string]any)
+	for _, k := range path[:len(path)-1] {
+		parent, _ = parent[k].(map[string]any)
+	}
+	key := path[len(path)-1]
+	cur, _ := parent[key].(string)
+	switch {
+	case cur == "":
+		return ""
+	case cur == strings.ToLower(was.Name):
+		parent[key] = strings.ToLower(newName)
+	case strings.EqualFold(cur, was.Name):
+		parent[key] = newName
+	default:
+		return fmt.Sprintf("%s %s: its %s %q is unique across Azure too and is not its name, so it was not renamed; a restore beside the source fails on it", was.Type, was.Name, strings.Join(path, "."), cur)
+	}
+	return ""
 }
 
 // splitKey splits "Namespace/type[/child...]/name[/childname...]" into the

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -231,7 +232,7 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	case group == "" && resource == "secrets" && strOf(obj["type"]) == "kubernetes.io/service-account-token":
 		return "service-account token, issued by the cluster"
 	}
-	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" {
+	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" || aksByEno(ns, name, md) {
 		// AKS installs these (its add-ons, their namespaces and roles) and
 		// upgrades them on its own schedule: captured, every upgrade showed
 		// up as drift, and a restore would fight AKS for them.
@@ -526,6 +527,38 @@ func WithheldDisplay(path string) string {
 		return owner[j+1:len(owner)-1] + "/" + name
 	}
 	return name
+}
+
+// aksByEno says AKS made an object through Eno, the tool it manages some of its
+// own objects with. On a real cluster an AKS update changed admission policies
+// that read as drift no one made. Eno's mark alone is not enough, since Eno is
+// open source and its SDK labels a user's objects the same way, so it takes a
+// mark in Microsoft's own names as well: an aks-managed- name, a
+// *.kubernetes.azure.com group, or a kubernetes.azure.com/* key. Only
+// cluster-scoped objects: those in kube-system are skipped already, and an aks-*
+// namespace is a name users pick. Without such a mark (an egress gateway's
+// admission policy, some RBAC) an object stays captured, as drift. A user object
+// carrying Eno's mark and one of these is still taken as AKS's.
+func aksByEno(ns, name string, md map[string]any) bool {
+	labels, _ := md["labels"].(map[string]any)
+	byEno := strings.EqualFold(strOf(labels["app.kubernetes.io/managed-by"]), "eno") || slices.Contains(managers(md), "eno")
+	switch {
+	case !byEno:
+		return false
+	case ns != "":
+		return false
+	case strings.HasPrefix(name, "aks-managed-") || strings.HasSuffix(name, ".kubernetes.azure.com"):
+		return true
+	}
+	annotations, _ := md["annotations"].(map[string]any)
+	for _, m := range []map[string]any{labels, annotations} {
+		for k := range m {
+			if strings.HasPrefix(k, "kubernetes.azure.com/") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func managers(md map[string]any) []string {

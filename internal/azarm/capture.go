@@ -139,6 +139,22 @@ func KeptInManagedGroups(s snapshot.Snapshot) []string {
 	return out
 }
 
+// notReadNote says what of a skipped resource is not read; a network's peerings
+// are, by forItsPeerings in Capture.
+func notReadNote(typ string) string {
+	if strings.EqualFold(typ, vnetType) {
+		return "its peerings are kept, and its other children and diagnostic settings are not read"
+	}
+	return "its children and diagnostic settings are not read"
+}
+
+func peeringsNote(typ string) string {
+	if strings.EqualFold(typ, vnetType) {
+		return "; its peerings are kept"
+	}
+	return ""
+}
+
 // PeeringsAcrossManagedGroups lists the peerings that name a network in a managed
 // group, as their own or as the far side. A new cluster's network has a new
 // generated name, so a restore beside a new cluster refuses them, loudly, and
@@ -340,6 +356,17 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			}
 			forPeerings[strings.ToLower(rid.String())] = true
 		}
+		// A network left out because something else manages it is still read for
+		// its peerings, which someone made and no manager does: left with it, a
+		// real estate's half of a two-way peering went missing, unlisted.
+		forItsPeerings := func() bool {
+			if !strings.EqualFold(rid.Type, vnetType) || !p.selected(vnetType+"/virtualNetworkPeerings") {
+				return false
+			}
+			forPeerings[strings.ToLower(rid.String())] = true
+			todo = append(todo, r)
+			return true
+		}
 		if r.ManagedBy != "" && !p.CaptureManaged {
 			fate := mayNotRecreate
 			// A volume's disk has its VM's managedBy, and the cluster makes it.
@@ -347,8 +374,9 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			if managerRecreates(rid.Type, rid.Name, r.ManagedBy) || (inNodeGroup && aksMade(rid.Type, r.Tags)) {
 				fate = ", which recreates it"
 			}
-			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedBy+managerRef(r.ManagedBy)+fate)
+			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedBy+managerRef(r.ManagedBy)+fate+peeringsNote(rid.Type))
 			leftOut[strings.ToLower(rid.String())] = true
+			forItsPeerings()
 			continue
 		}
 		if by := managedGroups[strings.ToLower(rid.ResourceGroup)]; by != "" && !strings.EqualFold(rid.Type, groupType) && !p.CaptureManaged {
@@ -357,22 +385,13 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			// a write to their group, and nothing shows what they made, so it
 			// stays out and is said to need a look.
 			case !managedByAKS(by):
-				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedGroup+managerRef(by)+mayNotRecreate+"; its children and diagnostic settings are not read")
+				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedGroup+managerRef(by)+mayNotRecreate+"; "+notReadNote(rid.Type))
+				forItsPeerings()
 				continue
 			case aksMade(rid.Type, r.Tags):
-				read := "its children and diagnostic settings are not read"
-				if strings.EqualFold(rid.Type, vnetType) {
-					read = "its peerings are kept, and its other children and diagnostic settings are not read"
-				}
-				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedGroup+managerRef(by)+", which recreates it; "+read)
-				// A cluster's network is its own, and a peering on it is not:
-				// someone peered it with theirs, and the cluster never makes one.
-				// Left with the network, a real estate's reverse half went missing
-				// while the capture said it was complete. Read for its peerings.
-				if !strings.EqualFold(rid.Type, vnetType) || !p.selected(vnetType+"/virtualNetworkPeerings") {
-					continue
-				}
-				forPeerings[strings.ToLower(rid.String())] = true
+				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedGroup+managerRef(by)+", which recreates it; "+notReadNote(rid.Type))
+				forItsPeerings()
+				continue
 			}
 			// Put there by someone: a storage account a StorageClass names was
 			// reported skipped and would not have come back on a restore.
@@ -415,6 +434,22 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 		caps = append(caps, out[i])
 	}
+	// A network's peerings, from the network's own read. ARM does not register
+	// them as a child type, so discovery never lists them: taken out of the
+	// network and read nowhere else, they were lost while the capture said it
+	// was complete, found by the first real drill of this code.
+	withPeerings := caps[:0:0]
+	for _, c := range caps {
+		ps, why := peeringsOf(api, reg, tenant, c)
+		if why != "" {
+			skip(vnetType+"/virtualNetworkPeerings", c.rid.ResourceGroup+"/"+c.rid.Name, Unreadable+why)
+		}
+		if !forPeerings[strings.ToLower(c.rid.String())] {
+			withPeerings = append(withPeerings, c)
+		}
+		withPeerings = append(withPeerings, ps...)
+	}
+	caps = withPeerings
 	// What its manager's own spec names cannot be kept: a restore must make it
 	// first, and it cannot come before the manager that makes its group. Each
 	// waited for the other, so the cluster and all behind it were a cycle. Left
@@ -434,22 +469,6 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		inManagedGroup = append(inManagedGroup, c)
 	}
 	caps = inManagedGroup
-	// A network's peerings, from the network's own read. ARM does not register
-	// them as a child type, so discovery never lists them: taken out of the
-	// network and read nowhere else, they were lost while the capture said it
-	// was complete, found by the first real drill of this code.
-	withPeerings := caps[:0:0]
-	for _, c := range caps {
-		ps, why := peeringsOf(api, reg, tenant, c)
-		if why != "" {
-			skip(vnetType+"/virtualNetworkPeerings", c.rid.ResourceGroup+"/"+c.rid.Name, Unreadable+why)
-		}
-		if !forPeerings[strings.ToLower(c.rid.String())] {
-			withPeerings = append(withPeerings, c)
-		}
-		withPeerings = append(withPeerings, ps...)
-	}
-	caps = withPeerings
 	// What is in a managed group and was kept above: what is on those goes
 	// with them, as what is on the cluster's own goes with theirs.
 	var kept []string

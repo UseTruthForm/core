@@ -57,9 +57,9 @@ func TestSkipReason(t *testing.T) {
 		// Seen on a real cluster: AKS's admission policies, some with no label at all
 		// and only Eno as their field manager. Eno alone is not AKS: its SDK labels a
 		// user's objects the same way.
-		{"AKS policy applied by Eno, unlabelled", "admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", enoApplied(nil), nil), "upgraded by AKS"},
-		{"AKS CRD labelled by Eno", "apiextensions.k8s.io", "customresourcedefinitions", k8sObj("CustomResourceDefinition", "", "things.x.kubernetes.azure.com", enoLabel(nil), nil), "upgraded by AKS"},
-		{"Eno with an AKS key", "rbac.authorization.k8s.io", "clusterroles", k8sObj("ClusterRole", "", "r", enoLabel(map[string]any{"annotations": map[string]any{"kubernetes.azure.com/x": "y"}}), nil), "upgraded by AKS"},
+		{"AKS policy applied by Eno, unlabelled", "admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", enoApplied(nil), nil), "taken as AKS's: applied by Eno, named aks-managed-"},
+		{"AKS CRD labelled by Eno", "apiextensions.k8s.io", "customresourcedefinitions", k8sObj("CustomResourceDefinition", "", "things.x.kubernetes.azure.com", enoLabel(nil), nil), "labelled managed-by Eno, in the kubernetes.azure.com group"},
+		{"Eno with an AKS key", "rbac.authorization.k8s.io", "clusterroles", k8sObj("ClusterRole", "", "r", enoLabel(map[string]any{"annotations": map[string]any{"kubernetes.azure.com/x": "y"}}), nil), "with kubernetes.azure.com/x; --capture-platform keeps it"},
 		{"Eno in an aks- namespace, a name users pick, is captured", "apps", "deployments", k8sObj("Deployment", "aks-store", "api", enoApplied(enoLabel(nil)), nil), ""},
 		{"a user's Eno object is captured", "apps", "deployments", k8sObj("Deployment", "shop", "api", enoLabel(nil), nil), ""},
 		{"a user's cluster-scoped Eno object is captured", "rbac.authorization.k8s.io", "clusterroles", k8sObj("ClusterRole", "", "shop-reader", enoApplied(enoLabel(nil)), nil), ""},
@@ -464,4 +464,30 @@ func enoApplied(md map[string]any) map[string]any {
 	}
 	md["managedFields"] = []any{map[string]any{"manager": "eno", "operation": "Apply"}}
 	return md
+}
+
+// What is only taken to be AKS's can be kept, and that is recorded, so a diff
+// compares like with like.
+func TestCapturePlatformKeepsWhatIsOnlyTakenAsAKSs(t *testing.T) {
+	obj := k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", enoApplied(nil), nil)
+	if r := (Policy{CapturePlatform: true}).skipReason("admissionregistration.k8s.io", "validatingadmissionpolicies", obj); r != "" {
+		t.Errorf("--capture-platform skipped it: %s", r)
+	}
+	aks := k8sObj("DaemonSet", "gw", "agent", map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "aks"}}, nil)
+	if r := (Policy{CapturePlatform: true}).skipReason("apps", "daemonsets", aks); r == "" {
+		t.Error("what AKS labels as its own is a fact, not a guess, and stays skipped")
+	}
+	if n := (Policy{CapturePlatform: true}).Name(); n != "default+platform" {
+		t.Errorf("policy name %q", n)
+	}
+}
+
+// Applied by Eno and labelled by AKS as its own: a fact, so not listed as a guess
+// whose flag would then not keep it.
+func TestAKSLabelIsAFactEvenWhenEnoAppliedIt(t *testing.T) {
+	md := enoApplied(map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "aks"}})
+	obj := k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", md, nil)
+	if r := (Policy{}).skipReason("admissionregistration.k8s.io", "validatingadmissionpolicies", obj); strings.HasPrefix(r, TakenAsPlatform) || !strings.Contains(r, "upgraded by AKS") {
+		t.Errorf("reason %q", r)
+	}
 }

@@ -126,6 +126,24 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 		w("\n")
 	}
 
+	// Taken as the platform's on evidence a person's object could also carry:
+	// each is named, not counted under a reason, so one that is theirs is seen.
+	var taken []string
+	for _, sk := range s.Skips {
+		if r, ok := strings.CutPrefix(sk.Reason, kube.TakenAsPlatform); ok {
+			taken = append(taken, sk.Resource+" "+qualified(sk.Namespace, sk.Name)+": "+strings.TrimSuffix(r, "; --capture-platform keeps it"))
+		}
+	}
+	if len(taken) > 0 {
+		sort.Strings(taken)
+		w("## Taken as the platform's: %d resources\n\n", len(taken))
+		w("Left out because they look like AKS's own, by marks a person's object could also carry. If one is yours, capture with `--capture-platform`.\n\n")
+		for _, x := range taken {
+			w("- %s\n", md(x))
+		}
+		w("\n")
+	}
+
 	if len(s.Skips) > 0 || countedSkips(s) > 0 {
 		w("## Skipped on purpose\n\n| Reason | Resources | For example |\n|---|---:|---|\n")
 		byReason := map[string][]string{}
@@ -318,4 +336,11 @@ func sortedByCount(m map[string]int) []string {
 // md keeps a value from breaking a Markdown table.
 func md(s string) string {
 	return strings.NewReplacer("|", `\|`, "\n", " ").Replace(s)
+}
+
+func qualified(ns, name string) string {
+	if ns == "" {
+		return name
+	}
+	return ns + "/" + name
 }

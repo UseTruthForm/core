@@ -151,6 +151,7 @@ func capture(ctx context.Context, args []string) int {
 	out := fs.String("out", "", "snapshot directory to write")
 	includeSystem := fs.Bool("include-system", false, "also capture system namespaces and platform-created objects")
 	baseline := fs.String("baseline", "", "snapshot of a fresh cluster of the same distribution; objects identical to it are skipped")
+	keepPlatform := fs.Bool("capture-platform", false, "kubernetes: also capture what is only taken to be AKS's, by Eno's mark and an AKS name, group or key (skipped by default, and each listed in REPORT.md)")
 	rendered := fs.Bool("capture-rendered", false, "also capture objects rendered by Flux, Argo CD or Crossplane (skipped by default: restoring their source recreates them)")
 	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
 	config := fs.String("config", "", "environment file listing several targets; captures all of them into --out/<target>")
@@ -192,7 +193,7 @@ func capture(ctx context.Context, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	pol := kube.Policy{IncludeSystem: *includeSystem, CaptureRendered: *rendered}
+	pol := kube.Policy{IncludeSystem: *includeSystem, CaptureRendered: *rendered, CapturePlatform: *keepPlatform}
 	if *baseline != "" {
 		if pol, err = withBaseline(pol, *baseline); err != nil {
 			return fail(err)
@@ -390,7 +391,7 @@ func diff(ctx context.Context, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	pol := kube.Policy{IncludeSystem: strings.HasPrefix(want.Policy, "include-system"), CaptureRendered: strings.Contains(want.Policy, "+rendered")}
+	pol := kube.Policy{IncludeSystem: strings.HasPrefix(want.Policy, "include-system"), CaptureRendered: strings.Contains(want.Policy, "+rendered"), CapturePlatform: strings.Contains(want.Policy, "+platform")}
 	if *baseline != "" {
 		if pol, err = withBaseline(pol, *baseline); err != nil {
 			return fail(err)

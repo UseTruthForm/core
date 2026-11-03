@@ -311,7 +311,7 @@ func TestListByKindKeepsOnlyWhatIsThereEveryRead(t *testing.T) {
 		reads:  map[string]int{},
 	}
 	kinds := []string{"ApplicationInsights", "ChangeTrackingDefaultRegistry", "ChangeTrackingRegistry", "Office365", "WindowsEvent"}
-	got, generated, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds)
+	got, generated, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,10 +324,10 @@ func TestListByKindKeepsOnlyWhatIsThereEveryRead(t *testing.T) {
 	api.reads = map[string]int{}
 	api.lagged = nil
 	api.refuse["WindowsEvent"] = errors.New("500 InternalServerError")
-	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds); err == nil || !strings.Contains(err.Error(), "kind WindowsEvent") {
+	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds, false); err == nil || !strings.Contains(err.Error(), "kind WindowsEvent") {
 		t.Errorf("a kind that fails must fail the collection, naming the kind: %v", err)
 	}
-	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", nil); !errors.Is(err, ErrNeedsKind) {
+	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", nil, false); !errors.Is(err, ErrNeedsKind) {
 		t.Errorf("no kinds named: %v", err)
 	}
 }

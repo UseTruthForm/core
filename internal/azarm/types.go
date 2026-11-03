@@ -127,8 +127,14 @@ func newRegistry(load func(string) ([]byte, error)) (*Registry, error) {
 	r := &Registry{index: map[string]string{}, names: map[string]string{}, load: load, files: map[string][]entry{}, sums: map[string]string{}}
 	for k, v := range idx.Resources {
 		r.index[strings.ToLower(k)] = v.Ref
+		// One type can be spelled two ways across versions
+		// (authorizationRules, AuthorizationRules); the first in sort order
+		// is kept, not whichever the map gave last, so a snapshot's kinds
+		// do not change between runs (review of #63).
 		if t, _, ok := strings.Cut(k, "@"); ok {
-			r.names[strings.ToLower(t)] = t
+			if cur, seen := r.names[strings.ToLower(t)]; !seen || t < cur {
+				r.names[strings.ToLower(t)] = t
+			}
 		}
 	}
 	return r, nil

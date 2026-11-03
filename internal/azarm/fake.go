@@ -55,9 +55,10 @@ type Fake struct {
 	// RefuseVersion refuses a list at an API version, as ARM refuses the
 	// subscription's diagnostic settings at their newest stable version.
 	RefuseVersion func(path, version string) bool
-	// BadRequest answers a list with a plain 400, as a resource answers for
-	// a child type it has a definition for and does not serve.
-	BadRequest func(path string) bool
+	// ListError fails a list, given its path with any query: a plain 400,
+	// as a resource answers for a child type it has a definition for and
+	// does not serve, or any other refusal.
+	ListError func(path string) error
 	// PutDelay makes each PUT take this long, outside the lock, so PUTs
 	// running at once overlap as ARM's long-running ones do.
 	PutDelay time.Duration
@@ -454,12 +455,14 @@ func tracked(rid ResourceID) bool {
 // List serves the collections capture reads: an extension type across the
 // subscription, a resource's diagnostic settings, or a child collection.
 func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any, error) {
+	if f.ListError != nil {
+		if err := f.ListError(path); err != nil {
+			return nil, err
+		}
+	}
 	path, query, _ := strings.Cut(path, "?")
 	if f.RefuseVersion != nil && f.RefuseVersion(path, version) {
 		return nil, fmt.Errorf("%s: %w: Invalid api-version query string value", path, ErrAPIVersion)
-	}
-	if f.BadRequest != nil && f.BadRequest(path) {
-		return nil, fmt.Errorf("%s: %w: The requested action is not supported", path, ErrBadRequest)
 	}
 	kind := ""
 	if q, err := url.ParseQuery(query); err == nil {

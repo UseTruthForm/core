@@ -54,7 +54,16 @@ func TestSkipReason(t *testing.T) {
 		// What AKS installs and upgrades itself, and what an addon manager
 		// keeps as shipped; one it only created is captured, edits and all.
 		{"installed by AKS", "apps", "daemonsets", k8sObj("DaemonSet", "gw", "agent", map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "aks"}}, nil), "upgraded by AKS"},
-		{"managed by Eno, as AKS does", "admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-policy", map[string]any{"labels": map[string]any{"app.kubernetes.io/managed-by": "Eno"}}, nil), "upgraded by AKS"},
+		// Seen on a real cluster: AKS's admission policies, some with no label at all
+		// and only Eno as their field manager. Eno alone is not AKS: its SDK labels a
+		// user's objects the same way.
+		{"AKS policy applied by Eno, unlabelled", "admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", enoApplied(nil), nil), "upgraded by AKS"},
+		{"AKS CRD labelled by Eno", "apiextensions.k8s.io", "customresourcedefinitions", k8sObj("CustomResourceDefinition", "", "things.x.kubernetes.azure.com", enoLabel(nil), nil), "upgraded by AKS"},
+		{"Eno with an AKS key", "rbac.authorization.k8s.io", "clusterroles", k8sObj("ClusterRole", "", "r", enoLabel(map[string]any{"annotations": map[string]any{"kubernetes.azure.com/x": "y"}}), nil), "upgraded by AKS"},
+		{"Eno in an aks- namespace", "", "configmaps", k8sObj("ConfigMap", "aks-istio-system", "c", enoApplied(nil), nil), "upgraded by AKS"},
+		{"a user's Eno object is captured", "apps", "deployments", k8sObj("Deployment", "shop", "api", enoLabel(nil), nil), ""},
+		{"a user's cluster-scoped Eno object is captured", "rbac.authorization.k8s.io", "clusterroles", k8sObj("ClusterRole", "", "shop-reader", enoApplied(enoLabel(nil)), nil), ""},
+		{"an AKS-like name without Eno is captured", "admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", nil, nil), ""},
 		{"managed by Helm is captured", "apps", "deployments", k8sObj("Deployment", "shop", "api", map[string]any{"labels": map[string]any{"app.kubernetes.io/managed-by": "Helm"}}, nil), ""},
 		{"labelled for another manager is captured", "apps", "daemonsets", k8sObj("DaemonSet", "gw", "agent", map[string]any{"labels": map[string]any{"kubernetes.azure.com/managedby": "someone"}}, nil), ""},
 		{"reconciled by the addon manager", "storage.k8s.io", "storageclasses", k8sObj("StorageClass", "", "fast", map[string]any{"labels": map[string]any{"addonmanager.kubernetes.io/mode": "Reconcile"}}, nil), "addon manager"},
@@ -86,8 +95,7 @@ func TestIncludeSystemStillSkipsOwnedObjects(t *testing.T) {
 	if r := p.skipReason("apps", "daemonsets", k8sObj("DaemonSet", "gw", "agent", aks, nil)); r != "" {
 		t.Fatalf("include-system must capture what AKS installs, got skip: %s", r)
 	}
-	eno := map[string]any{"labels": map[string]any{"app.kubernetes.io/managed-by": "Eno"}}
-	if r := p.skipReason("admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-policy", eno, nil)); r != "" {
+	if r := p.skipReason("admissionregistration.k8s.io", "validatingadmissionpolicies", k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", enoApplied(nil), nil)); r != "" {
 		t.Fatalf("include-system must capture what Eno manages, got skip: %s", r)
 	}
 }
@@ -440,4 +448,20 @@ func TestDuplicateEnvNamesAreTwoSlots(t *testing.T) {
 	if len(paths) != 2 || paths[0] == paths[1] {
 		t.Fatalf("paths %v: want two distinct slots", paths)
 	}
+}
+
+func enoLabel(md map[string]any) map[string]any {
+	if md == nil {
+		md = map[string]any{}
+	}
+	md["labels"] = map[string]any{"app.kubernetes.io/managed-by": "Eno"}
+	return md
+}
+
+func enoApplied(md map[string]any) map[string]any {
+	if md == nil {
+		md = map[string]any{}
+	}
+	md["managedFields"] = []any{map[string]any{"manager": "eno", "operation": "Apply"}}
+	return md
 }

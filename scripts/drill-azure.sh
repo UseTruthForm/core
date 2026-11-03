@@ -77,8 +77,10 @@ seed() {
   # principalType skips the directory lookup that fails for a few seconds
   # after an identity is created (replication delay).
   az role assignment create --assignee-object-id "$principal" --assignee-principal-type ServicePrincipal     --role Reader --scope "$rgid" -o none
+  # An issuer under .invalid (RFC 2606) no one can hold: a real one such as
+  # GitHub's would give whoever owns the subject Reader on the group meanwhile.
   az identity federated-credential create -g "$RG" --identity-name "$N-id" -n "$N-fic" \
-    --issuer https://token.actions.githubusercontent.com --subject repo:example/example:ref:refs/heads/main \
+    --issuer https://drill.stackdna.invalid --subject stackdna-drill \
     --audiences api://AzureADTokenExchange -o none
   az network vnet create -g "$RG" -n "$N-vnet2" -l "$LOCATION" --address-prefixes 10.43.0.0/16 -o none
   az network vnet peering create -g "$RG" --vnet-name "$N-vnet" -n to-2 --remote-vnet "$N-vnet2" --allow-vnet-access -o none

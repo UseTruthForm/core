@@ -112,11 +112,20 @@ func (f *Fake) APIVersions(_ context.Context, namespace string) (map[string][]st
 	prefix := strings.ToLower(namespace) + "/"
 	for k := range f.w.reg.index {
 		typ, ver, _ := strings.Cut(k, "@")
-		if strings.HasPrefix(typ, prefix) {
+		if strings.HasPrefix(typ, prefix) && !unregistered[typ] {
 			out[typ] = append(out[typ], ver)
 		}
 	}
 	return out, nil
+}
+
+// unregistered are types that have definitions and that ARM's provider
+// registration does not list, seen on two real subscriptions: a network's
+// peerings and subnets. Offering them here let discovery find peerings as
+// children, which a real subscription never does, and hid their loss.
+var unregistered = map[string]bool{
+	"microsoft.network/virtualnetworks/virtualnetworkpeerings": true,
+	"microsoft.network/virtualnetworks/subnets":                true,
 }
 
 // Get returns the resource without its secrets.
@@ -148,11 +157,23 @@ func (f *Fake) Get(_ context.Context, id, version string) (map[string]any, error
 	}
 	restoreReadOnly(spec, r.body, s)
 	// normalize takes out what is not configuration, and ARM returns it: a
-	// network's peerings inline, and what setByAzure names at the top of properties.
+	// network's peerings inline, each as written to the network or as its own
+	// resource, and what setByAzure names at the top of properties.
 	stored, _ := r.body["properties"].(map[string]any)
 	if p, _ := spec["properties"].(map[string]any); p != nil {
-		if strings.EqualFold(r.typ, vnetType) && stored["virtualNetworkPeerings"] != nil {
-			p["virtualNetworkPeerings"] = deepCopy(map[string]any{"v": stored["virtualNetworkPeerings"]})["v"]
+		if strings.EqualFold(r.typ, vnetType) {
+			var inline []any
+			if l, ok := stored["virtualNetworkPeerings"].([]any); ok {
+				inline = append(inline, deepCopy(map[string]any{"v": l})["v"].([]any)...)
+			}
+			for _, k := range sortedKeys(f.res) {
+				if c := f.res[k]; strings.EqualFold(c.typ, vnetType+"/virtualNetworkPeerings") && strings.HasPrefix(k, strings.ToLower(r.id)+"/") {
+					inline = append(inline, deepCopy(c.body))
+				}
+			}
+			if inline != nil {
+				p["virtualNetworkPeerings"] = inline
+			}
 		}
 		for k := range setByAzure[strings.ToLower(r.typ)] {
 			if v, ok := stored[k]; ok {

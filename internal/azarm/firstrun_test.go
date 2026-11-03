@@ -309,14 +309,6 @@ func TestPeeredNetworksRestore(t *testing.T) {
 	}
 	net("hub", "spoke")
 	net("spoke", "hub")
-	// As ARM also returns them: inline on the network.
-	for _, n := range []string{"hub", "spoke"} {
-		i := id(src.sub, "rg", vnetType, n)
-		b := src.Stored(i)
-		b["properties"].(map[string]any)["virtualNetworkPeerings"] = []any{map[string]any{"name": "x", "properties": map[string]any{
-			"remoteVirtualNetwork": map[string]any{"id": id(src.sub, "rg", vnetType, "other")}}}}
-		src.SeedAzure(i, stable(reg, vnetType), b)
-	}
 	snap := capture(t, src, reg)
 	for _, o := range snap.Objects {
 		if o.Kind() == vnetType && strings.Contains(canon(o.Body["spec"]), "virtualNetworkPeerings") {
@@ -1197,5 +1189,71 @@ func TestPollHonoursRetryAfter(t *testing.T) {
 	}
 	if took := time.Since(start); took < 900*time.Millisecond {
 		t.Errorf("asked again after %v, with Retry-After 1", took)
+	}
+}
+
+// Found by the first real drill: ARM returns peerings inline on the network and
+// does not register them as a child type. Capture took them out of the network
+// and read them nowhere else, so a restore lost them while the capture said it was
+// complete. Here they exist only inline, as on a real subscription.
+func TestPeeringsReturnedOnlyInlineAreCaptured(t *testing.T) {
+	reg, src, dst := worlds(t)
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	for _, n := range []string{"hub", "spoke"} {
+		put(t, src, "rg", vnetType, n, map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.0.0.0/16"}}}})
+	}
+	hub := id(src.sub, "rg", vnetType, "hub")
+	b := src.Stored(hub)
+	b["properties"].(map[string]any)["virtualNetworkPeerings"] = []any{map[string]any{"name": "to-spoke", "id": hub + "/virtualNetworkPeerings/to-spoke",
+		"properties": map[string]any{"remoteVirtualNetwork": map[string]any{"id": id(src.sub, "rg", vnetType, "spoke")}, "allowVirtualNetworkAccess": true, "peeringState": "Connected"}}}
+	src.SeedAzure(hub, stable(reg, vnetType), b)
+
+	snap := capture(t, src, reg)
+	found := false
+	for _, o := range snap.Objects {
+		found = found || (o.Kind() == vnetType+"/virtualNetworkPeerings" && o.Name() == "hub/to-spoke")
+	}
+	if !found {
+		t.Fatalf("an inline peering was not captured: %v", snap.Objects)
+	}
+	rs := Restore(context.Background(), dst, reg, snap, RestoreOptions{})
+	allApplied(t, rs)
+	if got := dst.Stored(id(dst.sub, "rg", vnetType, "hub") + "/virtualNetworkPeerings/to-spoke"); got["properties"] == nil {
+		t.Error("not restored")
+	}
+}
+
+// With no definition to read them by, peerings are a gap, never dropped quietly.
+func TestPeeringsWithNoDefinitionAreAGap(t *testing.T) {
+	c := &captured{rid: ResourceID{Subscription: srcSub, ResourceGroup: "rg", Type: vnetType, Name: "hub"}, version: "1999-01-01",
+		peerings: []any{map[string]any{"name": "p"}}}
+	got, why := peeringsOf(nil, fixtures(t), srcTenant, c)
+	if len(got) != 0 || !strings.Contains(why, "no definition") {
+		t.Errorf("got %d, %q", len(got), why)
+	}
+}
+
+// Through capture: the peerings are a gap the capture reports, so a scheduled job
+// sees an incomplete capture rather than a network that lost them.
+func TestPeeringsWithNoDefinitionMakeTheCaptureIncomplete(t *testing.T) {
+	reg, src, _ := worlds(t)
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	put(t, src, "rg", vnetType, "hub", map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.0.0.0/16"}}}})
+	hub := id(src.sub, "rg", vnetType, "hub")
+	b := src.Stored(hub)
+	b["properties"].(map[string]any)["virtualNetworkPeerings"] = []any{map[string]any{"name": "p", "properties": map[string]any{}}}
+	src.SeedAzure(hub, stable(reg, vnetType), b)
+	for k := range reg.index {
+		if strings.HasPrefix(k, "microsoft.network/virtualnetworks/virtualnetworkpeerings@") {
+			delete(reg.index, k)
+		}
+	}
+	s := capture(t, src, reg)
+	gap := false
+	for _, sk := range s.Skips {
+		gap = gap || (strings.HasPrefix(sk.Reason, Unreadable) && strings.Contains(sk.Reason, "peerings"))
+	}
+	if !gap {
+		t.Errorf("peerings dropped without a gap: %v", s.Skips)
 	}
 }

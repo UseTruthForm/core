@@ -234,6 +234,9 @@ type captured struct {
 	secrets []string
 	after   string // see annAfter
 	state   string // see notWorking
+	// peerings are a network's, as its GET returns them inline. normalize takes
+	// them out of its spec, and peeringsOf makes each its own object.
+	peerings []any
 }
 
 // Capture reads every selected resource in the subscription.
@@ -382,6 +385,17 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		inManagedGroup = append(inManagedGroup, c)
 	}
 	caps = inManagedGroup
+	// A network's peerings, from the network's own read. ARM does not register
+	// them as a child type, so discovery never lists them: taken out of the
+	// network and read nowhere else, they were lost while the capture said it
+	// was complete, found by the first real drill of this code.
+	for _, c := range append([]*captured(nil), caps...) {
+		ps, why := peeringsOf(api, reg, tenant, c)
+		if why != "" {
+			skip(vnetType+"/virtualNetworkPeerings", c.rid.ResourceGroup+"/"+c.rid.Name, Unreadable+why)
+		}
+		caps = append(caps, ps...)
+	}
 	// What is in a managed group and was kept above: what is on those goes
 	// with them, as what is on the cluster's own goes with theirs.
 	var kept []string
@@ -597,6 +611,31 @@ func notWorking(body map[string]any) string {
 	return ""
 }
 
+// peeringsOf makes each of a network's inline peerings its own object, read at
+// the network's version, so restore can apply them after both networks. A
+// reason is returned when they cannot be, which capture reports as a gap.
+func peeringsOf(api ARM, reg *Registry, tenant string, c *captured) ([]*captured, string) {
+	if len(c.peerings) == 0 {
+		return nil, ""
+	}
+	typ := vnetType + "/virtualNetworkPeerings"
+	s, err := reg.Schema(typ, c.version)
+	if err != nil {
+		return nil, fmt.Sprintf("%d peerings: no definition at the network's version %s (%v)", len(c.peerings), c.version, err)
+	}
+	var out []*captured
+	for _, x := range c.peerings {
+		item, _ := x.(map[string]any)
+		name, _ := item["name"].(string)
+		if name == "" {
+			return nil, "a peering with no name"
+		}
+		rid := ResourceID{Subscription: c.rid.Subscription, ResourceGroup: c.rid.ResourceGroup, Type: typ, Name: c.rid.Name + "/" + name}
+		out = append(out, process(api, tenant, rid, c.version, s, item))
+	}
+	return out, ""
+}
+
 // unwell lists what is not working.
 func unwell(caps []*captured) []string {
 	var out []string
@@ -625,7 +664,12 @@ func process(api ARM, tenant string, rid ResourceID, ver string, s *Schema, body
 		}
 		status[k] = x
 	}
-	return &captured{rid: rid, version: ver, schema: s, spec: spec, status: status, secrets: relevantSecrets(spec, s.secretPaths()), state: notWorking(body)}
+	c := &captured{rid: rid, version: ver, schema: s, spec: spec, status: status, secrets: relevantSecrets(spec, s.secretPaths()), state: notWorking(body)}
+	if strings.EqualFold(rid.Type, vnetType) {
+		props, _ := body["properties"].(map[string]any)
+		c.peerings, _ = props["virtualNetworkPeerings"].([]any)
+	}
+	return c
 }
 
 // relevantSecrets keeps the secret paths whose parent object is present:

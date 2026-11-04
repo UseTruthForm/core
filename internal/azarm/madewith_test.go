@@ -95,21 +95,37 @@ func TestAzureDiagnosticsKeepsItsRetentionOnceAzureMakesIt(t *testing.T) {
 	ctx := context.Background()
 	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
 	table := tablesType
-	seed := func(ws string, props map[string]any, custom ...any) {
+	defaults := func(plan string) map[string]any {
+		return map[string]any{"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 30, "totalRetentionInDaysAsDefault": true, "plan": plan}
+	}
+	seed := func(ws string, props map[string]any, schema map[string]any) {
 		w := put(t, src, "rg", "Microsoft.OperationalInsights/workspaces", ws, map[string]any{"location": "eastus"})
-		props["schema"] = map[string]any{"name": "AzureDiagnostics", "columns": custom,
-			"standardColumns": []any{map[string]any{"name": "Category", "type": "string"}}}
+		if schema == nil {
+			schema = map[string]any{"name": "AzureDiagnostics"}
+		}
+		schema["standardColumns"] = []any{map[string]any{"name": "Category", "type": "string"}}
+		props["schema"] = schema
 		src.SeedAzure(w+"/tables/AzureDiagnostics", stable(reg, table), map[string]any{"properties": props})
 	}
-	// Set by a person: analytics retention inherited, total retention not.
+	col := func(names ...string) []any {
+		var out []any
+		for _, n := range names {
+			out = append(out, map[string]any{"name": n, "type": "string"})
+		}
+		return out
+	}
+	// Analytics retention inherited, total retention set, and a custom column.
 	seed("law", map[string]any{"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 730, "totalRetentionInDaysAsDefault": false, "plan": "Analytics"},
-		map[string]any{"name": "Note_CF", "type": "string"})
-	// Only the workspace's defaults.
-	seed("plain", map[string]any{"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 30, "totalRetentionInDaysAsDefault": true, "plan": "Analytics"})
-	// Set by a person in one way each: a retention alone, a custom column alone.
-	seed("kept", map[string]any{"retentionInDays": 90, "retentionInDaysAsDefault": false, "totalRetentionInDays": 90, "totalRetentionInDaysAsDefault": true, "plan": "Analytics"})
-	seed("noted", map[string]any{"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 30, "totalRetentionInDaysAsDefault": true, "plan": "Analytics"},
-		map[string]any{"name": "Why_CF", "type": "string"})
+		map[string]any{"name": "AzureDiagnostics", "columns": col("Note_CF")})
+	// Only the workspace's defaults, the plan however it is spelled.
+	seed("plain", defaults("Analytics"), nil)
+	seed("lower", defaults("analytics"), nil)
+	// Set in one way each: an analytics retention, a plan, a custom column
+	// spelled in lower case, with no schema name and beside a column that is
+	// not a custom one.
+	seed("kept", map[string]any{"retentionInDays": 90, "retentionInDaysAsDefault": false, "totalRetentionInDays": 90, "totalRetentionInDaysAsDefault": true, "plan": "Analytics"}, nil)
+	seed("basic", defaults("Basic"), nil)
+	seed("noted", defaults("Analytics"), map[string]any{"columns": col("why_cf", "Legacy")})
 
 	snap := capture(t, src, reg)
 	specs := map[string]string{}
@@ -125,38 +141,47 @@ func TestAzureDiagnosticsKeepsItsRetentionOnceAzureMakesIt(t *testing.T) {
 	if strings.Contains(got, "standardColumns") || strings.Contains(got, `"Category"`) {
 		t.Errorf("Azure's own columns captured: %s", got)
 	}
-	set, defaults := KeptOnceAzureMakesIt(snap)
-	if strings.Join(set, ",") != tablesType+" rg/kept/AzureDiagnostics,"+tablesType+" rg/law/AzureDiagnostics,"+tablesType+" rg/noted/AzureDiagnostics" ||
-		len(defaults) != 1 || !strings.Contains(defaults[0], "plain/AzureDiagnostics") {
-		t.Errorf("listed to check: %v, with defaults only: %v", set, defaults)
+	if n := specs["noted/AzureDiagnostics"]; !strings.Contains(n, "why_cf") || strings.Contains(n, "Legacy") || strings.Contains(n, `"name":null`) {
+		t.Errorf("a custom column is kept, and only that: %s", n)
+	}
+	set, plain := KeptOnceAzureMakesIt(snap)
+	want := []string{}
+	for _, ws := range []string{"basic", "kept", "law", "noted"} {
+		want = append(want, tablesType+" rg/"+ws+"/AzureDiagnostics")
+	}
+	if strings.Join(set, ",") != strings.Join(want, ",") || strings.Join(plain, ",") != tablesType+" rg/lower/AzureDiagnostics,"+tablesType+" rg/plain/AzureDiagnostics" {
+		t.Errorf("listed to check: %v, with defaults only: %v", set, plain)
 	}
 
-	ws := id(dstSub, "rg", "Microsoft.OperationalInsights/workspaces", "law")
-	var sent map[string]any
+	sent := map[string]map[string]any{}
 	dst.PutError = func(id string, body map[string]any) error {
 		if strings.HasSuffix(id, "/tables/AzureDiagnostics") {
 			if dst.Stored(id) == nil {
 				return errors.New("InvalidParameter: cannot create or migrate AzureDiagnostics table")
 			}
-			sent = deepCopy(body)
+			sent[strings.Split(id, "/")[8]] = deepCopy(body)
 		}
 		return nil
 	}
 	rs := Restore(ctx, dst, reg, snap, RestoreOptions{})
 	allApplied(t, rs)
-	for _, ws := range []string{"law", "kept", "noted"} {
-		if r := resultFor(t, rs, ws+"/AzureDiagnostics"); !Pending(r.Detail) {
+	for _, ws := range []string{"law", "kept", "basic", "noted"} {
+		if r := resultFor(t, rs, ws+"/AzureDiagnostics"); !Pending(r.Detail) || strings.Contains(r.Detail, "predates") {
 			t.Errorf("%s: a missing table with something set: %s", ws, r.Detail)
 		}
 	}
-	if r := resultFor(t, rs, "plain/AzureDiagnostics"); !strings.HasPrefix(r.Detail, NotSent) || Pending(r.Detail) {
-		t.Errorf("a missing table with only defaults: %s", r.Detail)
+	for _, ws := range []string{"plain", "lower"} {
+		if r := resultFor(t, rs, ws+"/AzureDiagnostics"); !strings.HasPrefix(r.Detail, NotSent) || Pending(r.Detail) {
+			t.Errorf("%s: a missing table with only defaults: %s", ws, r.Detail)
+		}
 	}
 
-	// Azure makes it, with the workspace's defaults: the diff says it differs.
-	dst.SeedAzure(ws+"/tables/AzureDiagnostics", stable(reg, table), map[string]any{"properties": map[string]any{
-		"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 30, "totalRetentionInDaysAsDefault": true, "plan": "Analytics",
-		"schema": map[string]any{"name": "AzureDiagnostics", "standardColumns": []any{map[string]any{"name": "Other", "type": "string"}}}}})
+	// Azure makes them, with the workspace's defaults: the diff says law's differs.
+	for _, ws := range []string{"law", "kept", "noted"} {
+		dst.SeedAzure(id(dstSub, "rg", "Microsoft.OperationalInsights/workspaces", ws)+"/tables/AzureDiagnostics", stable(reg, table), map[string]any{"properties": map[string]any{
+			"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 30, "totalRetentionInDaysAsDefault": true, "plan": "Analytics",
+			"schema": map[string]any{"name": "AzureDiagnostics", "standardColumns": []any{map[string]any{"name": "Other", "type": "string"}}}}})
+	}
 	var ch []snapshot.Change
 	for _, c := range snapshot.Compare(AsCapturedNow(snap), capture(t, dst, reg)) {
 		if strings.Contains(c.Key, "law/AzureDiagnostics") {
@@ -168,13 +193,42 @@ func TestAzureDiagnosticsKeepsItsRetentionOnceAzureMakesIt(t *testing.T) {
 	}
 	// Run again with --update, as the restore said: what was set is sent, and
 	// what the workspace gives is left to it, not pinned.
-	r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{Update: true}), "law/AzureDiagnostics")
-	if !r.OK || Pending(r.Detail) {
+	rs = Restore(ctx, dst, reg, snap, RestoreOptions{Update: true})
+	if r := resultFor(t, rs, "law/AzureDiagnostics"); !r.OK || Pending(r.Detail) {
 		t.Errorf("an update of the made table: %s", r.Detail)
 	}
-	props, _ := sent["properties"].(map[string]any)
-	if props["totalRetentionInDays"] == nil || props["retentionInDays"] != nil || props["retentionInDaysAsDefault"] != nil || !strings.Contains(canon(props), "Note_CF") {
-		t.Errorf("the update sent: %s", canon(sent))
+	props := func(ws string) map[string]any { p, _ := sent[ws]["properties"].(map[string]any); return p }
+	if p := props("law"); p["totalRetentionInDays"] == nil || p["retentionInDays"] != nil || p["retentionInDaysAsDefault"] != nil || !strings.Contains(canon(p), "Note_CF") {
+		t.Errorf("law's update sent: %s", canon(sent["law"]))
+	}
+	if p := props("kept"); p["retentionInDays"] == nil || p["totalRetentionInDays"] != nil || p["totalRetentionInDaysAsDefault"] != nil {
+		t.Errorf("kept's update sent: %s", canon(sent["kept"]))
+	}
+	if n := canon(sent["noted"]); !strings.Contains(n, "why_cf") || strings.Contains(n, "null") {
+		t.Errorf("noted's update sent: %s", n)
+	}
+}
+
+// Review of #72: a snapshot from before the *AsDefault flags cannot tell a
+// retention set from the workspace's default, and is read as set; it waited on
+// every run with nothing to say why. It says so, and how to clear it.
+func TestAnOlderDiagnosticsTableSaysWhyItWaits(t *testing.T) {
+	reg, _, dst := worlds(t)
+	sub := "/subscriptions/" + tokSub + "/resourceGroups/rg"
+	group := obj(groupType, "", "rg", sub, map[string]any{"location": "eastus"})
+	ws := obj("Microsoft.OperationalInsights/workspaces", "rg", "law", sub+"/providers/Microsoft.OperationalInsights/workspaces/law", map[string]any{"location": "eastus"})
+	tbl := obj(tablesType, "rg", "law/AzureDiagnostics", sub+"/providers/Microsoft.OperationalInsights/workspaces/law/tables/AzureDiagnostics", map[string]any{
+		"properties": map[string]any{"retentionInDays": 30, "totalRetentionInDays": 30, "plan": "Analytics"}})
+	for _, o := range []snapshot.Object{group, ws, tbl} {
+		o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)[annAPIVersion] = stable(reg, o.Kind())
+	}
+	old := snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{group, ws, tbl}}
+	r := resultFor(t, Restore(context.Background(), dst, reg, old, RestoreOptions{}), "law/AzureDiagnostics")
+	if !Pending(r.Detail) || !strings.Contains(r.Detail, "predates") || !strings.Contains(r.Detail, "capture the source again with this version") {
+		t.Errorf("an older table: %s", r.Detail)
+	}
+	if set, _ := KeptOnceAzureMakesIt(old); len(set) != 1 || !strings.Contains(set[0], "predates") || !strings.Contains(set[0], "capture the source again") {
+		t.Errorf("listed to check: %v", set)
 	}
 }
 

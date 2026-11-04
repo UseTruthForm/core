@@ -250,3 +250,22 @@ func TestADiffComparesAnOlderAzureSnapshotAsCapturedNow(t *testing.T) {
 		}
 	}
 }
+
+// Review of #72: a table from a snapshot that predates the *AsDefault flags
+// is taken as set, and REPORT.md says why and how to clear it.
+func TestReportSaysAnOlderDiagnosticsTableIsTakenAsSet(t *testing.T) {
+	s := snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{{Body: map[string]any{
+		"apiVersion": azarm.APIVersion, "kind": "Microsoft.OperationalInsights/workspaces/tables",
+		"metadata": map[string]any{"name": "law/AzureDiagnostics", "namespace": "rg"},
+		"spec":     map[string]any{"properties": map[string]any{"retentionInDays": 30, "totalRetentionInDays": 30}}}}}}
+	dir := t.TempDir()
+	if err := writeReport(dir, s, "azure x"); err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := os.ReadFile(filepath.Join(dir, "REPORT.md"))
+	for _, want := range []string{"## Check before relying on a restore: 1 resources", "rg/law/AzureDiagnostics (this snapshot predates", "capture the source again with this version"} {
+		if !strings.Contains(string(rep), want) {
+			t.Errorf("REPORT.md lacks %q:\n%s", want, rep)
+		}
+	}
+}

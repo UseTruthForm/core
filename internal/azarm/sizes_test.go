@@ -62,6 +62,14 @@ func TestASizeTheTargetCannotHaveIsSaid(t *testing.T) {
 			"properties": map[string]any{"properties": map[string]any{"virtualMachineSize": "Standard_DS3_v2"}}}),
 		obj("Microsoft.Storage/storageAccounts", "rg", "sa", sub+"Microsoft.Storage/storageAccounts/sa", map[string]any{
 			"location": "eastus", "sku": map[string]any{"name": "Standard_LRS"}, "tags": map[string]any{"size": "Standard_D2s_v5"}}),
+		// Spelled like a size and not one (review of #72): a gateway's SKU and
+		// tier, a Web PubSub unit, and free text that begins with a size.
+		obj("Microsoft.Network/applicationGateways", "rg", "agw", sub+"Microsoft.Network/applicationGateways/agw", map[string]any{
+			"location": "eastus", "properties": map[string]any{"sku": map[string]any{"name": "Standard_v2", "tier": "WAF_v2"}}}),
+		obj("Microsoft.SignalRService/WebPubSub", "rg", "ps", sub+"Microsoft.SignalRService/WebPubSub/ps", map[string]any{
+			"location": "eastus", "sku": map[string]any{"name": "Standard_S1"}}),
+		obj("Microsoft.Web/sites", "rg", "site", sub+"Microsoft.Web/sites/site", map[string]any{
+			"location": "eastus", "properties": map[string]any{"siteConfig": map[string]any{"appSettings": []any{map[string]any{"name": "NOTE", "value": "Standard_D2s_v5 was too small"}}}}}),
 	}}
 	c := SizesRefused(context.Background(), f, s, nil)
 	got := strings.Join(c.Refused, "\n")
@@ -91,8 +99,10 @@ func TestASizeTheTargetCannotHaveIsSaid(t *testing.T) {
 			t.Errorf("not said as unchecked: %q in:\n%s", want, unchecked)
 		}
 	}
-	if strings.Contains(unchecked, "storageAccounts") {
-		t.Errorf("a storage SKU or a tag read as a VM size:\n%s", unchecked)
+	for _, not := range []string{"storageAccounts", "applicationGateways", "WebPubSub", "sites"} {
+		if strings.Contains(unchecked, not) {
+			t.Errorf("%s read as holding a VM size:\n%s", not, unchecked)
+		}
 	}
 	if c.Sizes != 8 || c.Regions != 1 {
 		t.Errorf("checked %d sizes in %d regions, want 8 in 1", c.Sizes, c.Regions)

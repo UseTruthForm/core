@@ -156,12 +156,26 @@ func diagnosticsTableOnly(spec map[string]any, readOnly map[string]any) {
 		}
 	}
 	if len(custom) > 0 {
-		kept["schema"] = map[string]any{"name": schema["name"], "columns": custom}
+		sc := map[string]any{"columns": custom}
+		if n, ok := schema["name"].(string); ok && n != "" {
+			sc["name"] = n
+		}
+		kept["schema"] = sc
 	}
 	for k := range spec {
 		delete(spec, k)
 	}
 	spec["properties"] = kept
+}
+
+// diagnosticsTableFlagless says the snapshot predates the *AsDefault flags
+// (one captured before #72), so whether its retention is the workspace's
+// default cannot be told.
+func diagnosticsTableFlagless(spec map[string]any) bool {
+	props, _ := spec["properties"].(map[string]any)
+	_, a := props["retentionInDaysAsDefault"]
+	_, b := props["totalRetentionInDaysAsDefault"]
+	return !a && !b
 }
 
 // diagnosticsTableSet says a person set something on the table: a retention
@@ -195,6 +209,26 @@ func diagnosticsTableBody(desired map[string]any) {
 	}
 	delete(props, "retentionInDaysAsDefault")
 	delete(props, "totalRetentionInDaysAsDefault")
+	dropNulls(props)
+}
+
+// dropNulls removes keys whose value is null, at any depth: a table's schema
+// with no name was sent as "name": null.
+func dropNulls(m map[string]any) {
+	for k, v := range m {
+		switch c := v.(type) {
+		case nil:
+			delete(m, k)
+		case map[string]any:
+			dropNulls(c)
+		case []any:
+			for _, x := range c {
+				if xm, ok := x.(map[string]any); ok {
+					dropNulls(xm)
+				}
+			}
+		}
+	}
 }
 
 // asCapturedNow makes a spec, captured by any version, as this version

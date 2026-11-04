@@ -108,9 +108,15 @@ func sizesOf(s snapshot.Snapshot, values map[string]map[string]any) (uses []size
 	return uses, notChecked
 }
 
-// vmSizeRE is a value spelled as a VM size is (Standard_D2s_v5), not a
-// storage or network SKU (Standard_LRS, Standard).
-var vmSizeRE = regexp.MustCompile(`(?i)^(standard|basic)_[a-z]{1,4}\d`)
+// vmSizeRE is a value spelled as a VM size is, the whole value
+// (Standard_D2s_v5, Standard_DS3_v2), not a storage or network SKU
+// (Standard_LRS, Standard). notVMSizeRE are SKUs spelled like one: an
+// application gateway's Standard_v2 and WAF_v2, a SignalR or Web PubSub
+// Standard_S1, a Premium_P1 (review of #72).
+var (
+	vmSizeRE    = regexp.MustCompile(`(?i)^(standard|basic)_[a-z]{1,4}\d+[a-z]*(_v\d+)?$`)
+	notVMSizeRE = regexp.MustCompile(`(?i)^([a-z]+_v\d+|(standard|premium|basic)_[sp]\d+)$`)
+)
 
 // sizePath is the first path under v whose key names a VM size, or whose
 // value is spelled as one.
@@ -126,7 +132,7 @@ func sizePath(v any, at string) string {
 			if (strings.EqualFold(k, "vmSize") || strings.EqualFold(k, "vmSku")) && c[k] != nil {
 				return p
 			}
-			if str, ok := c[k].(string); ok && vmSizeRE.MatchString(str) {
+			if str, ok := c[k].(string); ok && vmSizeRE.MatchString(str) && !notVMSizeRE.MatchString(str) {
 				return p
 			}
 			if q := sizePath(c[k], p); q != "" {

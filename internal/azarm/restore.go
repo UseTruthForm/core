@@ -331,6 +331,9 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 
 	// Azure makes AzureDiagnostics, and refuses to; its settings go once it is there.
 	if err != nil && isDiagnosticsTable(rid.Type, o.Name()) {
+		if diagnosticsTableFlagless(spec) {
+			return true, NotSent + DiagnosticsTableLater + DiagnosticsTableFlagless
+		}
 		if diagnosticsTableSet(spec) {
 			return true, NotSent + DiagnosticsTableLater
 		}
@@ -527,6 +530,11 @@ func Pending(detail string) bool { return strings.HasPrefix(detail, NotSent+Diag
 // sent, and what keeps its retention.
 const DiagnosticsTableLater = "Azure makes AzureDiagnostics when a diagnostic setting first sends to the workspace, and refuses to before; its retention, plan and custom columns are not kept until then: once data has arrived, run the restore again with --update"
 
+// DiagnosticsTableFlagless follows DiagnosticsTableLater for a snapshot that
+// cannot tell a retention set by a person from the workspace's default, and is
+// read as set: an older one waited on every run, with nothing to say why.
+const DiagnosticsTableFlagless = "; this snapshot predates StackDNA keeping whether its retention is the workspace's default, so it is taken as set: capture the source again with this version, and if nothing was set on it, it no longer waits"
+
 // DiagnosticsTableDefault is why one holding only the workspace's defaults is
 // not sent: the table Azure makes has them too, so there is nothing to wait
 // for. It may never come: no diagnostic setting may send it data.
@@ -543,6 +551,9 @@ func KeptOnceAzureMakesIt(s snapshot.Snapshot) (set, defaults []string) {
 		}
 		k := o.Kind() + " " + o.Namespace() + "/" + o.Name()
 		if spec, _ := o.Body["spec"].(map[string]any); diagnosticsTableSet(spec) {
+			if diagnosticsTableFlagless(spec) {
+				k += " (this snapshot predates StackDNA keeping whether its retention is the workspace's default, so it is taken as set: capture the source again with this version, and if nothing was set on it, it no longer waits)"
+			}
 			set = append(set, k)
 		} else {
 			defaults = append(defaults, k)

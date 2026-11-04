@@ -51,13 +51,14 @@ func TestAResourcesDiagnosticSettingsAreReadAtAVersionItServes(t *testing.T) {
 	if _, err := s.List(context.Background(), path, "2016-09-01"); !errors.Is(err, ErrAPIVersion) || errors.Is(err, ErrNotFound) {
 		t.Fatalf("404 OperationNotFound: got %v, want a refused version", err)
 	}
+	asked = nil // what listOf asks, not the call above
 	api := sdkLists{NewWorld(reg).Subscription(srcSub, srcTenant), s}
 	v := &versions{api: api, reg: reg, ctx: context.Background(), cache: map[string]map[string][]string{}}
 	got := listOf(context.Background(), api, v, srcTenant, diagnosticType, path, nil)
 	if len(got) != 1 || got[0].c == nil || !strings.HasSuffix(got[0].name, "/to-security") {
 		t.Errorf("got %+v (versions asked %v), want the cluster's setting", got, asked)
 	}
-	if len(asked) < 2 || asked[0] != "2016-09-01" {
-		t.Errorf("versions asked %v, want 2016-09-01 refused first", asked)
+	if len(asked) != 2 || asked[0] != "2016-09-01" {
+		t.Errorf("listOf asked %v, want 2016-09-01 refused, then the next", asked)
 	}
 }

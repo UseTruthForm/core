@@ -98,7 +98,7 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 				check = append(check, sk.Resource+" "+sk.Name)
 			}
 		}
-		later := azarm.KeptOnceAzureMakesIt(s)
+		later, defaults := azarm.KeptOnceAzureMakesIt(s)
 		if len(check)+len(later) > 0 {
 			sort.Strings(check)
 			w("## Check before relying on a restore: %d resources\n\n", len(check)+len(later))
@@ -110,12 +110,20 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 				w("\n")
 			}
 			if len(later) > 0 {
-				w("Azure makes these itself, when a diagnostic setting first sends to the workspace, and refuses a restore's PUT before. A restore does not send them, so their retention and plan are not kept until then: once data has arrived, run the restore again with `--update`.\n\n")
+				w("Azure makes these itself, when a diagnostic setting first sends to the workspace, and refuses a restore's PUT before. A restore does not send them, so the retention, plan and custom columns set on them are not kept until then: once data has arrived, run the restore again with `--update`.\n\n")
 				for _, x := range later {
 					w("- %s\n", md(x))
 				}
 				w("\n")
 			}
+		}
+		if len(defaults) > 0 {
+			w("## Made by Azure, with nothing set on them: %d\n\n", len(defaults))
+			w("Azure makes these itself, when a diagnostic setting first sends to the workspace. They hold only the workspace's default retention and plan, which the table Azure makes has too, so a restore does not send them or wait for them.\n\n")
+			for _, x := range defaults {
+				w("- %s\n", md(x))
+			}
+			w("\n")
 		}
 		if across := azarm.PeeringsAcrossManagedGroups(s); len(across) > 0 {
 			w("## Peerings with a cluster's network: %d\n\n", len(across))

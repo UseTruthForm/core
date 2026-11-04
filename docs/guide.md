@@ -188,10 +188,13 @@ stackdna restore --platform aws --region us-east-2 --from snap/aws --values secr
   cluster, its whole `agentPoolProfiles`.
 - **What Azure makes itself (Azure):** a registry's replication in its own
   region is not captured; a restore of an older snapshot says NOT SENT for it.
-  A workspace's AzureDiagnostics table is captured with its retention and
-  plan, and not sent until Azure has made it, when a diagnostic setting first
-  sends data: the restore says NOT SENT, is not complete (`pending` in
-  `--json`, exit 3), and keeps the retention when run again with `--update`.
+  A workspace's AzureDiagnostics table is captured with its retention, plan
+  and custom (`_CF`) columns, and not sent until Azure has made it, when a
+  diagnostic setting first sends data. The restore says NOT SENT. If a person
+  set something on it, the restore is not complete (`pending` in `--json`,
+  exit 3) and keeps it when run again with `--update`; a retention inherited
+  from the workspace is left to the workspace. One with only the workspace's
+  defaults does not hold the restore up.
 
 ## A whole environment
 

@@ -110,8 +110,8 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 	if line := checkLine(skips, out); line != "" {
 		fmt.Println(line)
 	}
-	if later := azarm.KeptOnceAzureMakesIt(snap); len(later) > 0 {
-		fmt.Printf("CHECK: %d resources Azure makes itself are kept only once it has (their retention); see %s/REPORT.md\n", len(later), out)
+	if later, _ := azarm.KeptOnceAzureMakesIt(snap); len(later) > 0 {
+		fmt.Printf("CHECK: %d resources Azure makes itself are kept only once it has (their retention, plan and custom columns); see %s/REPORT.md\n", len(later), out)
 	}
 	for _, r := range topReasons(skips, 8) {
 		fmt.Println("  skipped:", r)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -107,13 +108,25 @@ func sizesOf(s snapshot.Snapshot, values map[string]map[string]any) (uses []size
 	return uses, notChecked
 }
 
-// sizePath is the first path under v whose key names a VM size.
+// vmSizeRE is a value spelled as a VM size is (Standard_D2s_v5), not a
+// storage or network SKU (Standard_LRS, Standard).
+var vmSizeRE = regexp.MustCompile(`(?i)^(standard|basic)_[a-z]{1,4}\d`)
+
+// sizePath is the first path under v whose key names a VM size, or whose
+// value is spelled as one.
 func sizePath(v any, at string) string {
 	switch c := v.(type) {
 	case map[string]any:
 		for _, k := range sortedKeys(c) {
+			// A tag is a person's note, whatever it says.
+			if strings.EqualFold(k, "tags") {
+				continue
+			}
 			p := join(at, k)
 			if (strings.EqualFold(k, "vmSize") || strings.EqualFold(k, "vmSku")) && c[k] != nil {
+				return p
+			}
+			if str, ok := c[k].(string); ok && vmSizeRE.MatchString(str) {
 				return p
 			}
 			if q := sizePath(c[k], p); q != "" {

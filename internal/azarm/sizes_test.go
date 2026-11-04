@@ -57,6 +57,11 @@ func TestASizeTheTargetCannotHaveIsSaid(t *testing.T) {
 			"location": "eastus", "properties": map[string]any{"vmSize": "Standard_Retired"}}),
 		obj("Microsoft.Batch/batchAccounts/pools", "rg", "b/p", sub+"Microsoft.Batch/batchAccounts/b/pools/p", map[string]any{
 			"properties": map[string]any{"vmSize": "standard_d2s_v3"}}),
+		// A size under another name is said too; a storage SKU and a tag are not sizes.
+		obj("Microsoft.MachineLearningServices/workspaces/computes", "rg", "ml/c", sub+"Microsoft.MachineLearningServices/workspaces/ml/computes/c", map[string]any{
+			"properties": map[string]any{"properties": map[string]any{"virtualMachineSize": "Standard_DS3_v2"}}}),
+		obj("Microsoft.Storage/storageAccounts", "rg", "sa", sub+"Microsoft.Storage/storageAccounts/sa", map[string]any{
+			"location": "eastus", "sku": map[string]any{"name": "Standard_LRS"}, "tags": map[string]any{"size": "Standard_D2s_v5"}}),
 	}}
 	c := SizesRefused(context.Background(), f, s, nil)
 	got := strings.Join(c.Refused, "\n")
@@ -80,10 +85,14 @@ func TestASizeTheTargetCannotHaveIsSaid(t *testing.T) {
 	for _, want := range []string{
 		"Microsoft.ContainerService/managedClusters/agentPools/rg/elsewhere/p uses Standard_D4s_v5, and its region is not in the snapshot",
 		"Microsoft.Batch/batchAccounts/pools/rg/b/p has a VM size at properties.vmSize, which is not checked",
+		"Microsoft.MachineLearningServices/workspaces/computes/rg/ml/c has a VM size at properties.properties.virtualMachineSize, which is not checked",
 	} {
 		if !strings.Contains(unchecked, want) {
 			t.Errorf("not said as unchecked: %q in:\n%s", want, unchecked)
 		}
+	}
+	if strings.Contains(unchecked, "storageAccounts") {
+		t.Errorf("a storage SKU or a tag read as a VM size:\n%s", unchecked)
 	}
 	if c.Sizes != 8 || c.Regions != 1 {
 		t.Errorf("checked %d sizes in %d regions, want 8 in 1", c.Sizes, c.Regions)

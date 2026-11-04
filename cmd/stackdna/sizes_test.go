@@ -107,7 +107,15 @@ func TestRestoreSaysWhatItDidNotSend(t *testing.T) {
 		if _, err := src.Put(context.Background(), ws, reg.Versions(law)[0], map[string]any{"location": "eastus"}); err != nil {
 			t.Fatal(err)
 		}
-		src.SeedAzure(ws+"/tables/AzureDiagnostics", reg.Versions(law + "/tables")[0], map[string]any{"properties": map[string]any{"retentionInDays": 90, "totalRetentionInDays": 730}})
+		src.SeedAzure(ws+"/tables/AzureDiagnostics", reg.Versions(law + "/tables")[0], map[string]any{"properties": map[string]any{
+			"retentionInDays": 90, "retentionInDaysAsDefault": false, "totalRetentionInDays": 730, "totalRetentionInDaysAsDefault": false}})
+		// Only the workspace's defaults: nothing to wait for.
+		plain := rg + "/providers/" + law + "/plain"
+		if _, err := src.Put(context.Background(), plain, reg.Versions(law)[0], map[string]any{"location": "eastus"}); err != nil {
+			t.Fatal(err)
+		}
+		src.SeedAzure(plain+"/tables/AzureDiagnostics", reg.Versions(law + "/tables")[0], map[string]any{"properties": map[string]any{
+			"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 30, "totalRetentionInDaysAsDefault": true}})
 	}, nil)
 	dst.PutError = func(id string, body map[string]any) error {
 		if strings.HasSuffix(id, "/tables/AzureDiagnostics") && dst.Stored(id) == nil {
@@ -119,12 +127,57 @@ func TestRestoreSaysWhatItDidNotSend(t *testing.T) {
 	target := []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--from", dir}
 	code, out, errOut := output(t, func() int { return restore(ctx, target) })
 	if code != 3 || !strings.Contains(out, "NOT SENT azure.stackdna.org/v1|"+law+"/tables|rg|law/AzureDiagnostics: Azure makes AzureDiagnostics") ||
-		!strings.Contains(out, "of those, 1 not sent") || !strings.Contains(out, "not finished: 1 wait for Azure") {
+		!strings.Contains(out, "of those, 2 not sent") || !strings.Contains(out, "not finished: 1 wait for Azure") ||
+		!strings.Contains(out, "law/AzureDiagnostics: Azure makes AzureDiagnostics") || !strings.Contains(out, "plain/AzureDiagnostics: Azure makes AzureDiagnostics") {
 		t.Errorf("exit %d\n%s%s", code, out, errOut)
 	}
 	r := asJSON(t, func() { restore(ctx, target) })
-	if ns, _ := r["not_sent"].([]any); r["complete"] != false || r["pending"] != float64(1) || len(ns) != 1 {
+	if ns, _ := r["not_sent"].([]any); r["complete"] != false || r["pending"] != float64(1) || len(ns) != 2 {
 		t.Errorf("the restore document: complete %v, pending %v, not_sent %v", r["complete"], r["pending"], r["not_sent"])
+	}
+	// Leave the one with retention set out: the one with only defaults does
+	// not keep the restore unfinished, and is still said.
+	leave := filepath.Join(t.TempDir(), "leave.yaml")
+	if err := os.WriteFile(leave, []byte("- "+law+"/tables/rg/law/AzureDiagnostics\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut = output(t, func() int { return restore(ctx, append(target, "--leave-out", leave)) })
+	if code != 0 || !strings.Contains(out, "plain/AzureDiagnostics: Azure makes AzureDiagnostics") || strings.Contains(out, "not finished") {
+		t.Errorf("a table with only defaults: exit %d\n%s%s", code, out, errOut)
+	}
+}
+
+// Re-review of #72: nothing failed when the capture's CHECK line or the
+// report's sections for AzureDiagnostics were taken out.
+func TestCaptureSaysWhatAzureMakesAndWhatWaitsForIt(t *testing.T) {
+	law := "Microsoft.OperationalInsights/workspaces"
+	_, dst := azureWorld(t, func(*azarm.Registry, *azarm.Fake, string) {}, nil)
+	reg, _ := azarm.LoadDefinitions(leaveDefs)
+	ctx := context.Background()
+	rg := "/subscriptions/" + leaveDst + "/resourceGroups/rg"
+	if _, err := dst.Put(ctx, rg, reg.Versions("Microsoft.Resources/resourceGroups")[0], map[string]any{"location": "eastus"}); err != nil {
+		t.Fatal(err)
+	}
+	for name, asDefault := range map[string]bool{"law": false, "plain": true} {
+		ws := rg + "/providers/" + law + "/" + name
+		if _, err := dst.Put(ctx, ws, reg.Versions(law)[0], map[string]any{"location": "eastus"}); err != nil {
+			t.Fatal(err)
+		}
+		dst.SeedAzure(ws+"/tables/AzureDiagnostics", reg.Versions(law + "/tables")[0], map[string]any{"properties": map[string]any{
+			"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 90, "totalRetentionInDaysAsDefault": asDefault}})
+	}
+	out := filepath.Join(t.TempDir(), "snap")
+	_, stdout, errOut := output(t, func() int {
+		return capture(ctx, []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--out", out})
+	})
+	if !strings.Contains(stdout, "CHECK: 1 resources Azure makes itself are kept only once it has") {
+		t.Errorf("no CHECK line:\n%s%s", stdout, errOut)
+	}
+	rep, _ := os.ReadFile(filepath.Join(out, "REPORT.md"))
+	for _, want := range []string{"## Check before relying on a restore: 1 resources", "rg/law/AzureDiagnostics", "## Made by Azure, with nothing set on them: 1", "rg/plain/AzureDiagnostics"} {
+		if !strings.Contains(string(rep), want) {
+			t.Errorf("REPORT.md lacks %q:\n%s", want, rep)
+		}
 	}
 }
 

@@ -331,7 +331,10 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 
 	// Azure makes AzureDiagnostics, and refuses to; its settings go once it is there.
 	if err != nil && isDiagnosticsTable(rid.Type, o.Name()) {
-		return true, NotSent + DiagnosticsTableLater
+		if diagnosticsTableSet(spec) {
+			return true, NotSent + DiagnosticsTableLater
+		}
+		return true, NotSent + DiagnosticsTableDefault
 	}
 	desired := rewriteAll(deepCopy(spec), func(v string) string {
 		return strings.ReplaceAll(strings.ReplaceAll(v, tokSub, sub), tokTenant, tenant)
@@ -342,6 +345,9 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	}
 	vals := opt.Values[ref]
 	merge(desired, deepCopy(vals))
+	if isDiagnosticsTable(rid.Type, o.Name()) {
+		diagnosticsTableBody(desired)
+	}
 	var unsupplied []string
 	if s, _ := ann[annSecrets].(string); s != "" {
 		for _, p := range strings.Split(s, ",") {
@@ -519,20 +525,32 @@ func Pending(detail string) bool { return strings.HasPrefix(detail, NotSent+Diag
 
 // DiagnosticsTableLater is why a workspace's AzureDiagnostics table is not
 // sent, and what keeps its retention.
-const DiagnosticsTableLater = "Azure makes AzureDiagnostics when a diagnostic setting first sends to the workspace, and refuses to before; its retention and plan are not kept until then: once data has arrived, run the restore again with --update"
+const DiagnosticsTableLater = "Azure makes AzureDiagnostics when a diagnostic setting first sends to the workspace, and refuses to before; its retention, plan and custom columns are not kept until then: once data has arrived, run the restore again with --update"
 
-// KeptOnceAzureMakesIt lists what s holds that a restore cannot make, whose
-// settings are kept only once Azure has made it: a workspace's AzureDiagnostics
-// table, and its retention.
-func KeptOnceAzureMakesIt(s snapshot.Snapshot) []string {
-	var out []string
+// DiagnosticsTableDefault is why one holding only the workspace's defaults is
+// not sent: the table Azure makes has them too, so there is nothing to wait
+// for. It may never come: no diagnostic setting may send it data.
+const DiagnosticsTableDefault = "Azure makes AzureDiagnostics when a diagnostic setting first sends to the workspace, and refuses to before; it has only the workspace's default retention and plan, which the table Azure makes has too, so nothing waits for it"
+
+// KeptOnceAzureMakesIt lists what s holds that a restore cannot make, by
+// whether a person set something on it: a workspace's AzureDiagnostics table.
+// The first are kept only once Azure has made it; the second hold the
+// workspace's defaults, which the table Azure makes has too.
+func KeptOnceAzureMakesIt(s snapshot.Snapshot) (set, defaults []string) {
 	for _, o := range s.Objects {
-		if isDiagnosticsTable(o.Kind(), o.Name()) {
-			out = append(out, o.Kind()+" "+o.Namespace()+"/"+o.Name())
+		if !isDiagnosticsTable(o.Kind(), o.Name()) {
+			continue
+		}
+		k := o.Kind() + " " + o.Namespace() + "/" + o.Name()
+		if spec, _ := o.Body["spec"].(map[string]any); diagnosticsTableSet(spec) {
+			set = append(set, k)
+		} else {
+			defaults = append(defaults, k)
 		}
 	}
-	sort.Strings(out)
-	return out
+	sort.Strings(set)
+	sort.Strings(defaults)
+	return set, defaults
 }
 
 // madeWithParent is madeWith for a snapshot object, with its parent from the

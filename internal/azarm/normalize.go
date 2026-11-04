@@ -94,48 +94,69 @@ func dropPath(v any, keys []string) {
 	}
 }
 
-// dropSetByAzure removes what setByAzure names for typ at any depth, as a
-// capture's walk does, from a spec captured before it named them.
-func dropSetByAzure(typ string, v any) {
-	names := setByAzure[strings.ToLower(typ)]
-	switch c := v.(type) {
-	case map[string]any:
-		for k, x := range c {
-			if names[k] {
-				delete(c, k)
-				continue
-			}
-			dropSetByAzure(typ, x)
-		}
-	case []any:
-		for _, x := range c {
-			dropSetByAzure(typ, x)
-		}
+// setByAzurePaths are where setByAzure's names are, by type, for a spec read
+// without its definition: a snapshot from before capture dropped them. Only
+// there: a walk of the whole spec took a tag named after one (a cluster's
+// "nodeImageVersion" tag) out of the capture, the PUT and the diff (review of
+// #72). TestSetByAzureHasItsPaths keeps the two tables together.
+var setByAzurePaths = map[string][]string{
+	"microsoft.keyvault/vaults":                                 {"properties.vaultUri"},
+	"microsoft.containerservice/managedclusters":                {"properties.agentPoolProfiles[].nodeImageVersion"},
+	"microsoft.containerservice/managedclusters/agentpools":     {"properties.nodeImageVersion"},
+	"microsoft.network/privatednszones/soa":                     {"properties.soaRecord.serialNumber"},
+	"microsoft.network/dnszones/soa":                            {"properties.soaRecord.serialNumber"},
+	"microsoft.network/virtualnetworks/virtualnetworkpeerings":  {"properties.peeringState", "properties.peeringSyncLevel", "properties.remoteAddressSpace", "properties.remoteVirtualNetworkAddressSpace"},
+	"microsoft.insights/datacollectionendpoints":                {"properties.immutableId"},
+	"microsoft.sql/servers/databases/transparentdataencryption": {"properties.scanState"},
+}
+
+func dropSetByAzurePaths(typ string, spec map[string]any) {
+	for _, path := range setByAzurePaths[strings.ToLower(typ)] {
+		dropPath(spec, strings.Split(path, "."))
 	}
 }
 
 // AzureDiagnostics is the table Azure makes in a workspace when a diagnostic
 // setting first sends to it. Azure refuses to make it ("cannot create or
 // migrate AzureDiagnostics table", seen restoring a real estate), and its
-// columns are what has arrived. What a person sets on it is its retention and
-// plan, which Azure's documentation says a PUT of an existing table sets
-// (Configure table-level retention); a restore sends those once it exists.
+// standard columns are what has arrived. What a person sets on it is its
+// retention, its plan and custom columns (_CF), which Azure's documentation
+// says a PUT of the existing table sets (Configure table-level retention; Add
+// or delete a custom column: a PUT's columns replace the custom ones). Whether
+// each retention is the workspace's default (the *AsDefault flags) is kept, so
+// a restore does not pin an inherited value, and does not wait for a table
+// that holds nothing a person set.
 const tablesType = "Microsoft.OperationalInsights/workspaces/tables"
 
-var diagnosticsTableKeeps = []string{"retentionInDays", "totalRetentionInDays", "plan"}
+var diagnosticsTableKeeps = []string{"retentionInDays", "totalRetentionInDays", "plan", "retentionInDaysAsDefault", "totalRetentionInDaysAsDefault"}
 
 func isDiagnosticsTable(typ, name string) bool {
 	return strings.EqualFold(typ, tablesType) && strings.EqualFold(name[strings.LastIndex(name, "/")+1:], "AzureDiagnostics")
 }
 
-// diagnosticsTableOnly keeps what a person sets on AzureDiagnostics.
-func diagnosticsTableOnly(spec map[string]any) {
+// diagnosticsTableOnly keeps what a person sets on AzureDiagnostics, with
+// the read-only *AsDefault flags from readOnly (a capture) or the spec (a
+// snapshot that has them).
+func diagnosticsTableOnly(spec map[string]any, readOnly map[string]any) {
 	props, _ := spec["properties"].(map[string]any)
 	kept := map[string]any{}
 	for _, k := range diagnosticsTableKeeps {
 		if v, ok := props[k]; ok {
 			kept[k] = v
+		} else if v, ok := readOnly["properties."+k]; ok {
+			kept[k] = v
 		}
+	}
+	schema, _ := props["schema"].(map[string]any)
+	cols, _ := schema["columns"].([]any)
+	var custom []any
+	for _, c := range cols {
+		if n, _ := c.(map[string]any)["name"].(string); strings.HasSuffix(strings.ToUpper(n), "_CF") {
+			custom = append(custom, c)
+		}
+	}
+	if len(custom) > 0 {
+		kept["schema"] = map[string]any{"name": schema["name"], "columns": custom}
 	}
 	for k := range spec {
 		delete(spec, k)
@@ -143,14 +164,47 @@ func diagnosticsTableOnly(spec map[string]any) {
 	spec["properties"] = kept
 }
 
+// diagnosticsTableSet says a person set something on the table: a retention
+// that is not the workspace's default, a plan other than Analytics, or a
+// custom column. One whose flags are not in the snapshot is taken as set.
+func diagnosticsTableSet(spec map[string]any) bool {
+	props, _ := spec["properties"].(map[string]any)
+	if props["retentionInDaysAsDefault"] != true || props["totalRetentionInDaysAsDefault"] != true {
+		return true
+	}
+	if p, _ := props["plan"].(string); p != "" && !strings.EqualFold(p, "Analytics") {
+		return true
+	}
+	_, custom := props["schema"]
+	return custom
+}
+
+// diagnosticsTableBody is what a PUT of the table sends: not the read-only
+// flags, and not a retention that is the workspace's default, which a PUT
+// leaves to the workspace when it is not given.
+func diagnosticsTableBody(desired map[string]any) {
+	props, _ := desired["properties"].(map[string]any)
+	if props == nil {
+		return
+	}
+	if props["retentionInDaysAsDefault"] == true {
+		delete(props, "retentionInDays")
+	}
+	if props["totalRetentionInDaysAsDefault"] == true {
+		delete(props, "totalRetentionInDays")
+	}
+	delete(props, "retentionInDaysAsDefault")
+	delete(props, "totalRetentionInDaysAsDefault")
+}
+
 // asCapturedNow makes a spec, captured by any version, as this version
 // captures it.
 func asCapturedNow(typ, name string, spec map[string]any) {
 	defaultOutboundAsMeant(typ, spec)
-	dropSetByAzure(typ, spec)
+	dropSetByAzurePaths(typ, spec)
 	dropSetByAzureAt(typ, spec)
 	if isDiagnosticsTable(typ, name) {
-		diagnosticsTableOnly(spec)
+		diagnosticsTableOnly(spec, nil)
 	}
 }
 
@@ -215,7 +269,11 @@ func (s *Schema) normalize(body map[string]any) (map[string]any, split) {
 	}
 	s.clean(spec, s.body, "", &sp)
 	spec = walkStrings(spec, canonicalNever).(map[string]any)
-	asCapturedNow(s.Type, name, spec)
+	defaultOutboundAsMeant(s.Type, spec)
+	dropSetByAzureAt(s.Type, spec)
+	if isDiagnosticsTable(s.Type, name) {
+		diagnosticsTableOnly(spec, sp.readOnly)
+	}
 	sort.Strings(sp.secrets)
 	return spec, sp
 }

@@ -86,61 +86,164 @@ func TestWhatAzureMakesWithItsParentIsNotCapturedOrSent(t *testing.T) {
 // or migrate AzureDiagnostics table"). Skipped, its retention was lost with no
 // word (review of #72: 90/730 in the source, 30/30 in the target, a clean
 // diff). It is captured with what a person sets, not sent while missing, said
-// as not finished, and set once Azure has made it.
+// as not finished, and set once Azure has made it. One holding only the
+// workspace's defaults does not keep a restore unfinished (re-review of #72:
+// every run exited 3), and a retention inherited from the workspace is not
+// sent, so an update does not pin it.
 func TestAzureDiagnosticsKeepsItsRetentionOnceAzureMakesIt(t *testing.T) {
 	reg, src, dst := worlds(t)
 	ctx := context.Background()
 	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
-	workspace := put(t, src, "rg", "Microsoft.OperationalInsights/workspaces", "law", map[string]any{"location": "eastus"})
 	table := tablesType
-	src.SeedAzure(workspace+"/tables/AzureDiagnostics", stable(reg, table), map[string]any{"properties": map[string]any{
-		"retentionInDays": 90, "totalRetentionInDays": 730, "plan": "Analytics",
-		"schema": map[string]any{"name": "AzureDiagnostics", "columns": []any{map[string]any{"name": "Category_s", "type": "string"}}}}})
+	seed := func(ws string, props map[string]any, custom ...any) {
+		w := put(t, src, "rg", "Microsoft.OperationalInsights/workspaces", ws, map[string]any{"location": "eastus"})
+		props["schema"] = map[string]any{"name": "AzureDiagnostics", "columns": custom,
+			"standardColumns": []any{map[string]any{"name": "Category", "type": "string"}}}
+		src.SeedAzure(w+"/tables/AzureDiagnostics", stable(reg, table), map[string]any{"properties": props})
+	}
+	// Set by a person: analytics retention inherited, total retention not.
+	seed("law", map[string]any{"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 730, "totalRetentionInDaysAsDefault": false, "plan": "Analytics"},
+		map[string]any{"name": "Note_CF", "type": "string"})
+	// Only the workspace's defaults.
+	seed("plain", map[string]any{"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 30, "totalRetentionInDaysAsDefault": true, "plan": "Analytics"})
+	// Set by a person in one way each: a retention alone, a custom column alone.
+	seed("kept", map[string]any{"retentionInDays": 90, "retentionInDaysAsDefault": false, "totalRetentionInDays": 90, "totalRetentionInDaysAsDefault": true, "plan": "Analytics"})
+	seed("noted", map[string]any{"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 30, "totalRetentionInDaysAsDefault": true, "plan": "Analytics"},
+		map[string]any{"name": "Why_CF", "type": "string"})
 
 	snap := capture(t, src, reg)
-	var spec string
+	specs := map[string]string{}
 	for _, o := range snap.Objects {
-		if o.Name() == "law/AzureDiagnostics" {
-			spec = canon(o.Body["spec"])
+		specs[o.Name()] = canon(o.Body["spec"])
+	}
+	got := specs["law/AzureDiagnostics"]
+	for _, want := range []string{`"totalRetentionInDays":730`, `"retentionInDaysAsDefault":true`, `"totalRetentionInDaysAsDefault":false`, "Note_CF"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("captured table lacks %s: %s", want, got)
 		}
 	}
-	if !strings.Contains(spec, `"retentionInDays":90`) || !strings.Contains(spec, `"totalRetentionInDays":730`) || strings.Contains(spec, "columns") {
-		t.Errorf("captured table: %q", spec)
+	if strings.Contains(got, "standardColumns") || strings.Contains(got, `"Category"`) {
+		t.Errorf("Azure's own columns captured: %s", got)
 	}
-	if got := KeptOnceAzureMakesIt(snap); len(got) != 1 || !strings.Contains(got[0], "law/AzureDiagnostics") {
-		t.Errorf("not listed to check: %v", got)
+	set, defaults := KeptOnceAzureMakesIt(snap)
+	if strings.Join(set, ",") != tablesType+" rg/kept/AzureDiagnostics,"+tablesType+" rg/law/AzureDiagnostics,"+tablesType+" rg/noted/AzureDiagnostics" ||
+		len(defaults) != 1 || !strings.Contains(defaults[0], "plain/AzureDiagnostics") {
+		t.Errorf("listed to check: %v, with defaults only: %v", set, defaults)
 	}
 
-	tableID := id(dstSub, "rg", "Microsoft.OperationalInsights/workspaces", "law") + "/tables/AzureDiagnostics"
+	ws := id(dstSub, "rg", "Microsoft.OperationalInsights/workspaces", "law")
+	var sent map[string]any
 	dst.PutError = func(id string, body map[string]any) error {
-		if strings.EqualFold(id, tableID) && dst.Stored(id) == nil {
-			return errors.New("InvalidParameter: cannot create or migrate AzureDiagnostics table")
+		if strings.HasSuffix(id, "/tables/AzureDiagnostics") {
+			if dst.Stored(id) == nil {
+				return errors.New("InvalidParameter: cannot create or migrate AzureDiagnostics table")
+			}
+			sent = deepCopy(body)
 		}
 		return nil
 	}
 	rs := Restore(ctx, dst, reg, snap, RestoreOptions{})
 	allApplied(t, rs)
-	if r := resultFor(t, rs, "law/AzureDiagnostics"); !Pending(r.Detail) {
-		t.Errorf("a missing table: %s", r.Detail)
+	for _, ws := range []string{"law", "kept", "noted"} {
+		if r := resultFor(t, rs, ws+"/AzureDiagnostics"); !Pending(r.Detail) {
+			t.Errorf("%s: a missing table with something set: %s", ws, r.Detail)
+		}
+	}
+	if r := resultFor(t, rs, "plain/AzureDiagnostics"); !strings.HasPrefix(r.Detail, NotSent) || Pending(r.Detail) {
+		t.Errorf("a missing table with only defaults: %s", r.Detail)
 	}
 
-	// Azure makes it, with its defaults: the diff says the retention differs.
-	dst.SeedAzure(tableID, stable(reg, table), map[string]any{"properties": map[string]any{"retentionInDays": 30, "totalRetentionInDays": 30, "plan": "Analytics",
-		"schema": map[string]any{"name": "AzureDiagnostics", "columns": []any{map[string]any{"name": "Other_s", "type": "string"}}}}})
-	ch := snapshot.Compare(AsCapturedNow(snap), capture(t, dst, reg))
-	if len(ch) != 1 || !strings.Contains(strings.Join(ch[0].Fields, ","), "retentionInDays") {
+	// Azure makes it, with the workspace's defaults: the diff says it differs.
+	dst.SeedAzure(ws+"/tables/AzureDiagnostics", stable(reg, table), map[string]any{"properties": map[string]any{
+		"retentionInDays": 30, "retentionInDaysAsDefault": true, "totalRetentionInDays": 30, "totalRetentionInDaysAsDefault": true, "plan": "Analytics",
+		"schema": map[string]any{"name": "AzureDiagnostics", "standardColumns": []any{map[string]any{"name": "Other", "type": "string"}}}}})
+	var ch []snapshot.Change
+	for _, c := range snapshot.Compare(AsCapturedNow(snap), capture(t, dst, reg)) {
+		if strings.Contains(c.Key, "law/AzureDiagnostics") {
+			ch = append(ch, c)
+		}
+	}
+	if len(ch) != 1 || !strings.Contains(strings.Join(ch[0].Fields, ","), "totalRetentionInDays") {
 		t.Errorf("a diff of the made table: %v", ch)
 	}
-	// Run again with --update, as the restore said: the retention is kept.
+	// Run again with --update, as the restore said: what was set is sent, and
+	// what the workspace gives is left to it, not pinned.
 	r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{Update: true}), "law/AzureDiagnostics")
 	if !r.OK || Pending(r.Detail) {
 		t.Errorf("an update of the made table: %s", r.Detail)
 	}
-	if p := dst.Stored(tableID)["properties"].(map[string]any); p["retentionInDays"] != float64(90) && p["retentionInDays"] != 90 {
-		t.Errorf("retention not kept: %v", p)
+	props, _ := sent["properties"].(map[string]any)
+	if props["totalRetentionInDays"] == nil || props["retentionInDays"] != nil || props["retentionInDaysAsDefault"] != nil || !strings.Contains(canon(props), "Note_CF") {
+		t.Errorf("the update sent: %s", canon(sent))
 	}
+}
+
+// Re-review of #72: the strip of what Azure sets walked the whole spec, tags
+// too, and a cluster's tag "nodeImageVersion: pinned-by-me" was gone from the
+// capture, the PUT and the diff. A tag named after each is kept, on a cluster,
+// its pool, and a pool read on its own.
+func TestATagNamedForWhatAzureSetsIsKept(t *testing.T) {
+	reg, src, dst := worlds(t)
+	ctx := context.Background()
+	tags := map[string]any{}
+	for _, names := range setByAzure {
+		for k := range names {
+			tags[k] = "pinned-by-me"
+		}
+	}
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	cluster := id(srcSub, "rg", managedClusterType, "aks")
+	src.SeedAzure(cluster, stable(reg, managedClusterType), map[string]any{"location": "eastus", "tags": deepCopy(tags), "properties": map[string]any{
+		"dnsPrefix": "aks", "agentPoolProfiles": []any{map[string]any{"name": "sys", "mode": "System", "count": 1, "vmSize": "Standard_D2s_v5",
+			"nodeImageVersion": "AKSUbuntu-1", "tags": deepCopy(tags)}}}})
+	snap := capture(t, src, reg)
+	// The cluster's own tags and its pool's: each name twice.
+	check := func(where, spec string, n int) {
+		t.Helper()
+		for k := range tags {
+			if got := strings.Count(spec, `"`+k+`":"pinned-by-me"`); got != n {
+				t.Errorf("%s has the tag %s %d times, want %d: %s", where, k, got, n, spec)
+			}
+		}
+	}
+	var spec string
+	for _, o := range snap.Objects {
+		if o.Kind() == managedClusterType {
+			spec = canon(o.Body["spec"])
+		}
+	}
+	if strings.Contains(spec, "AKSUbuntu-1") {
+		t.Errorf("what Azure sets is captured: %s", spec)
+	}
+	check("the capture", spec, 2)
+	check("an older snapshot made as captured now", canon(AsCapturedNow(snap).Objects), 2)
+	allApplied(t, Restore(ctx, dst, reg, snap, RestoreOptions{}))
+	check("the PUT", canon(dst.Stored(id(dstSub, "rg", managedClusterType, "aks"))), 2)
 	if ch := snapshot.Compare(AsCapturedNow(snap), capture(t, dst, reg)); len(ch) != 0 {
-		t.Errorf("after the update: %v", ch)
+		t.Errorf("a diff: %v", ch)
+	}
+	pool := obj(managedClusterType+"/agentPools", "rg", "aks/extra", "/subscriptions/"+tokSub+"/resourceGroups/rg/providers/"+managedClusterType+"/aks/agentPools/extra",
+		map[string]any{"properties": map[string]any{"nodeImageVersion": "AKSUbuntu-1", "tags": deepCopy(tags)}})
+	got := canon(AsCapturedNow(snapshot.Snapshot{Objects: []snapshot.Object{pool}}).Objects)
+	if strings.Contains(got, "AKSUbuntu-1") {
+		t.Errorf("a pool's node image is kept: %s", got)
+	}
+	check("a pool on its own", got, 1)
+}
+
+// What setByAzure takes from a capture with its definition, setByAzurePaths
+// takes from an older snapshot without one: each name has its path.
+func TestSetByAzureHasItsPaths(t *testing.T) {
+	for typ, names := range setByAzure {
+		for k := range names {
+			found := false
+			for _, p := range setByAzurePaths[typ] {
+				found = found || strings.HasSuffix(p, "."+k)
+			}
+			if !found {
+				t.Errorf("%s: %s has no path in setByAzurePaths", typ, k)
+			}
+		}
 	}
 }
 

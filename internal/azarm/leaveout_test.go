@@ -72,6 +72,11 @@ func TestLeaveOutRefusesWhatIsStillNeeded(t *testing.T) {
 	grantKey := "Microsoft.Authorization/roleAssignments/rg/providers/Microsoft.Authorization/roleAssignments/g1"
 	cluster := obj(managedClusterType, "rg", "aks", sub+managedClusterType+"/aks", map[string]any{"identity": map[string]any{"type": "UserAssigned", "userAssignedIdentities": map[string]any{idID: map[string]any{}}}})
 	clusterAndGrant := []snapshot.Object{identity, grant, cluster}
+	// Review of beta.14: some properties hold IDs joined into one string, and
+	// only an ID followed by a quote or a "/" was seen as a need.
+	joined := func(ids string) snapshot.Object {
+		return obj("Microsoft.Network/privateEndpoints", "rg", "joined", sub+"Microsoft.Network/privateEndpoints/joined", map[string]any{"properties": map[string]any{"ids": ids}})
+	}
 	for name, tc := range map[string]struct {
 		extra []snapshot.Object
 		keys  []string
@@ -79,6 +84,8 @@ func TestLeaveOutRefusesWhatIsStillNeeded(t *testing.T) {
 	}{
 		"its child":                          {nil, []string{zone}, "virtualNetworkLinks/rg/corp.example/office needs " + zone},
 		"an ID in a spec":                    {[]snapshot.Object{pe}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "privateDnsZoneGroups/rg/pe/default needs " + zone},
+		"an ID joined by a comma":            {[]snapshot.Object{joined(zoneID + "," + sub + "Microsoft.Network/privateDnsZones/other.example")}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "privateEndpoints/rg/joined needs " + zone},
+		"an ID joined by a space":            {[]snapshot.Object{joined(zoneID + " " + sub + "Microsoft.Network/privateDnsZones/other.example")}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "privateEndpoints/rg/joined needs " + zone},
 		"a reference":                        {[]snapshot.Object{byRef}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "privateEndpoints/rg/pe2 needs " + zone},
 		"what it waits for":                  {[]snapshot.Object{waits}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "storageAccounts/rg/after needs " + zone},
 		"a definition at subscription scope": {[]snapshot.Object{policyDef, policyAssign}, []string{"Microsoft.Authorization/policyDefinitions//providers/Microsoft.Authorization/policyDefinitions/mine"}, "policyAssignments//providers/Microsoft.Authorization/policyAssignments/use-mine needs Microsoft.Authorization/policyDefinitions//providers/Microsoft.Authorization/policyDefinitions/mine"},

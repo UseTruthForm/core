@@ -247,7 +247,9 @@ to stderr. The exit code is the same as without it. A capture's document
 says whether it is `complete` and lists its `gaps`, and under `throttled`
 the gaps a later capture can close as it is; a diff's lists each
 change with its `kind` (missing, extra, changed, not working) and `fields`; a
-restore's lists each resource with `ok` and `detail`.
+restore's lists each resource with `ok` and `detail`. Both list under
+`left_out` the objects `--leave-out` held back, so a clean diff says what it
+did not compare.
 
 ```sh
 stackdna diff --platform aws --region us-east-2 --from snap/aws --json | jq '.differences'

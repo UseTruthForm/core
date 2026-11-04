@@ -89,7 +89,7 @@ func needs(o snapshot.Object, goneKeys, goneIDs map[string]string, byKey map[str
 	self := strings.ToLower(objectID(o, tokSub).String())
 	spec := strings.ToLower(canon(o.Body["spec"]))
 	for id, k := range goneIDs {
-		if strings.HasPrefix(self, id+"/") || strings.Contains(spec, id+`"`) || strings.Contains(spec, id+"/") {
+		if strings.HasPrefix(self, id+"/") || namesID(spec, id) {
 			out = append(out, k)
 		}
 	}
@@ -107,6 +107,29 @@ func needs(o snapshot.Object, goneKeys, goneIDs map[string]string, byKey map[str
 	}
 	sort.Strings(out)
 	return slicesCompact(out)
+}
+
+// namesID reports whether text holds id whole: followed by its end, a child's
+// "/", or anything a name cannot hold. Before, only a closing quote or a "/"
+// counted, so an ID joined to another by a comma or a space ("a,b", as some
+// properties write a list) was not seen as a need and the restore failed on it.
+func namesID(text, id string) bool {
+	for i := 0; ; {
+		j := strings.Index(text[i:], id)
+		if j < 0 {
+			return false
+		}
+		end := i + j + len(id)
+		if end == len(text) || !nameByte(text[end]) {
+			return true
+		}
+		i = i + j + 1
+	}
+}
+
+// nameByte is a byte an Azure resource name can hold.
+func nameByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || strings.IndexByte("-_.()", b) >= 0
 }
 
 // otherSubRE is a resource ID in a subscription named outright: capture writes

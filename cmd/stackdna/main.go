@@ -668,9 +668,18 @@ func leftOut(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, err
 
 // warnOtherSubscriptions says, before anything is sent or compared, which
 // objects name another subscription: a restore sends those IDs as they are.
+// It also says what access a restore needs there, which Azure checks.
 func warnOtherSubscriptions(s snapshot.Snapshot, platform string) {
+	needElsewhere = nil
 	if platform != "azure" {
 		return
+	}
+	if need := azarm.AccessElsewhere(s); len(need) > 0 {
+		needElsewhere = need
+		fmt.Fprintf(os.Stderr, "NOTE: a restore needs %d actions outside its target; grant them to the identity that restores, or --leave-out the object:\n", len(need))
+		for _, x := range need {
+			fmt.Fprintln(os.Stderr, "  ", x)
+		}
 	}
 	if other := azarm.OtherSubscriptions(s); len(other) > 0 {
 		fmt.Fprintf(os.Stderr, "NOTE: %d objects name another subscription; a restore sends those IDs as they are, needs access there, and what it makes reaches there (--leave-out holds one back):\n", len(other))

@@ -465,7 +465,7 @@ func diffEnvironment(ctx context.Context, configPath, from string) int {
 			failTarget(t, fmt.Sprintf("captured with policy %q but the config now gives %q", want.Policy, got.Policy))
 			continue
 		}
-		ch := snapshot.Compare(want, got)
+		ch := compareTarget(t.Platform, want, got)
 		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Differences: len(ch), Changes: changesJSON(ch)})
 		fmt.Printf("== %s (%s): %d differences\n", t.Name, t.Platform, len(ch))
 		for _, c := range ch {

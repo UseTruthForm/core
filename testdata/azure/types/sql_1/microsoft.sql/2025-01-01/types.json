@@ -139,6 +139,1175 @@
   "pattern": "^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$"
  },
  {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Sql/servers/databases"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-01-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Sql/servers/databases",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "identity": {
+    "description": "The Azure Active Directory identity of the database.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/99"
+    }
+   },
+   "kind": {
+    "description": "Kind of database. This is metadata used for the Azure portal experience.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "The geo-location where the resource lives",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "managedBy": {
+    "description": "Resource that manages the database.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Resource properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "sku": {
+    "description": "The database SKU.\n\nThe list of SKUs may vary by region and support offer. To determine the SKUs (including the SKU name, tier/edition, family, and capacity) that are available to your subscription in an Azure region, use the `Capabilities_ListByLocation` REST API or one of the following commands:\n\n```azurecli\naz sql db list-editions -l \u003clocation\u003e -o table\n```\n\n```powershell\nGet-AzSqlServerServiceObjective -Location \u003clocation\u003e\n```",
+    "flags": 0,
+    "type": {
+     "$ref": "#/73"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/105"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/16"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DatabaseProperties",
+  "properties": {
+   "autoPauseDelay": {
+    "description": "Time in minutes after which database is automatically paused. A value of -1 means that automatic pause is disabled",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "availabilityZone": {
+    "description": "Specifies the availability zone the database is pinned to.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/98"
+    }
+   },
+   "catalogCollation": {
+    "description": "Collation of the metadata catalog.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/62"
+    }
+   },
+   "collation": {
+    "description": "The collation of the database.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createMode": {
+    "description": "Specifies the mode of database creation.\n\nDefault: regular database creation.\n\nCopy: creates a database as a copy of an existing database. sourceDatabaseId must be specified as the resource ID of the source database.\n\nSecondary: creates a database as a secondary replica of an existing database. sourceDatabaseId must be specified as the resource ID of the existing primary database.\n\nPointInTimeRestore: Creates a database by restoring a point in time backup of an existing database. sourceDatabaseId must be specified as the resource ID of the existing database, and restorePointInTime must be specified.\n\nRecovery: Creates a database by restoring a geo-replicated backup. sourceDatabaseId must be specified as the recoverable database resource ID to restore.\n\nRestore: Creates a database by restoring a backup of a deleted database. sourceDatabaseId must be specified. If sourceDatabaseId is the database's original resource ID, then sourceDatabaseDeletionDate must be specified. Otherwise sourceDatabaseId must be the restorable dropped database resource ID and sourceDatabaseDeletionDate is ignored. restorePointInTime may also be specified to restore from an earlier point in time.\n\nRestoreLongTermRetentionBackup: Creates a database by restoring from a long term retention vault. recoveryServicesRecoveryPointResourceId must be specified as the recovery point resource ID.\n\nCopy, Secondary, and RestoreLongTermRetentionBackup are not supported for DataWarehouse edition.",
+    "flags": 4,
+    "type": {
+     "$ref": "#/30"
+    }
+   },
+   "creationDate": {
+    "description": "The creation date of the database (ISO8601 format).",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "currentBackupStorageRedundancy": {
+    "description": "The storage account type used to store backups for this database.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/78"
+    }
+   },
+   "currentServiceObjectiveName": {
+    "description": "The current service level objective name of the database.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "currentSku": {
+    "description": "The name and tier of the SKU.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/73"
+    }
+   },
+   "databaseId": {
+    "description": "The ID of the database.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/15"
+    }
+   },
+   "defaultSecondaryLocation": {
+    "description": "The default secondary region for this database.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "earliestRestoreDate": {
+    "description": "This records the earliest start date and time that restore is available for this database (ISO8601 format).",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "elasticPoolId": {
+    "description": "The resource identifier of the elastic pool containing this database.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "encryptionProtector": {
+    "description": "The azure key vault URI of the database if it's configured with per Database Customer Managed Keys.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "encryptionProtectorAutoRotation": {
+    "description": "The flag to enable or disable auto rotation of database encryption protector AKV key.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "failoverGroupId": {
+    "description": "Failover Group resource identifier that this database belongs to.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "federatedClientId": {
+    "description": "The Client id used for cross tenant per database CMK scenario",
+    "flags": 0,
+    "type": {
+     "$ref": "#/15"
+    }
+   },
+   "freeLimitExhaustionBehavior": {
+    "description": "Specifies the behavior when monthly free limits are exhausted for the free database.\n\nAutoPause: The database will be auto paused upon exhaustion of free limits for remainder of the month.\n\nBillForUsage: The database will continue to be online upon exhaustion of free limits and any overage will be billed.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/93"
+    }
+   },
+   "highAvailabilityReplicaCount": {
+    "description": "The number of secondary replicas associated with the Business Critical, Premium, or Hyperscale edition database that are used to provide high availability. Not applicable to a Hyperscale database within an elastic pool.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "isInfraEncryptionEnabled": {
+    "description": "Infra encryption is enabled for this database.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "isLedgerOn": {
+    "description": "Whether or not this database is a ledger database, which means all tables in the database are ledger tables. Note: the value of this property cannot be changed after the database has been created.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "keys": {
+    "description": "The resource ids of the user assigned identities to use",
+    "flags": 0,
+    "type": {
+     "$ref": "#/87"
+    }
+   },
+   "licenseType": {
+    "description": "The license type to apply for this database. `LicenseIncluded` if you need a license, or `BasePrice` if you have a license and are eligible for the Azure Hybrid Benefit.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/65"
+    }
+   },
+   "longTermRetentionBackupResourceId": {
+    "description": "The resource identifier of the long term retention backup associated with create operation of this database.",
+    "flags": 4,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "maintenanceConfigurationId": {
+    "description": "Maintenance configuration id assigned to the database. This configuration defines the period when the maintenance updates will occur.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "manualCutover": {
+    "description": "Whether or not customer controlled manual cutover needs to be done during Update Database operation to Hyperscale tier.\n\nThis property is only applicable when scaling database from Business Critical/General Purpose/Premium/Standard tier to Hyperscale tier.\n\nWhen manualCutover is specified, the scaling operation will wait for user input to trigger cutover to Hyperscale database.\n\nTo trigger cutover, please provide 'performCutover' parameter when the Scaling operation is in Waiting state.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "maxLogSizeBytes": {
+    "description": "The max log size for this database.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "maxSizeBytes": {
+    "description": "The max size of the database expressed in bytes.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "minCapacity": {
+    "description": "Minimal capacity that database will always have allocated, if not paused",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "pausedDate": {
+    "description": "The date when database was paused by user configuration or action(ISO8601 format). Null if the database is ready.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "performCutover": {
+    "description": "To trigger customer controlled manual cutover during the wait state while Scaling operation is in progress.\n\nThis property parameter is only applicable for scaling operations that are initiated along with 'manualCutover' parameter.\n\nThis property is only applicable when scaling database from Business Critical/General Purpose/Premium/Standard tier to Hyperscale tier is already in progress.\n\nWhen performCutover is specified, the scaling operation will trigger cutover and perform role-change to Hyperscale database.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "preferredEnclaveType": {
+    "description": "Type of enclave requested on the database i.e. Default or VBS enclaves.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/90"
+    }
+   },
+   "readScale": {
+    "description": "The state of read-only routing. If enabled, connections that have application intent set to readonly in their connection string may be routed to a readonly secondary replica in the same region. Not applicable to a Hyperscale database within an elastic pool.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/68"
+    }
+   },
+   "recoverableDatabaseId": {
+    "description": "The resource identifier of the recoverable database associated with create operation of this database.",
+    "flags": 4,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "recoveryServicesRecoveryPointId": {
+    "description": "The resource identifier of the recovery point associated with create operation of this database.",
+    "flags": 4,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "requestedBackupStorageRedundancy": {
+    "description": "The storage account type to be used to store backups for this database.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/83"
+    }
+   },
+   "requestedServiceObjectiveName": {
+    "description": "The requested service level objective name of the database.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "restorableDroppedDatabaseId": {
+    "description": "The resource identifier of the restorable dropped database associated with create operation of this database.",
+    "flags": 4,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "restorePointInTime": {
+    "description": "Specifies the point in time (ISO8601 format) of the source database that will be restored to create the new database.",
+    "flags": 4,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "resumedDate": {
+    "description": "The date when database was resumed by user action or database login (ISO8601 format). Null if the database is paused.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "sampleName": {
+    "description": "The name of the sample schema to apply when creating this database.",
+    "flags": 4,
+    "type": {
+     "$ref": "#/34"
+    }
+   },
+   "secondaryType": {
+    "description": "The secondary type of the database if it is a secondary.  Valid values are Geo, Named and Standby.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/72"
+    }
+   },
+   "sourceDatabaseDeletionDate": {
+    "description": "Specifies the time that the database was deleted.",
+    "flags": 4,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "sourceDatabaseId": {
+    "description": "The resource identifier of the source database associated with create operation of this database.",
+    "flags": 4,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "sourceResourceId": {
+    "description": "The resource identifier of the source associated with the create operation of this database.\n\nThis property is only supported for DataWarehouse edition and allows to restore across subscriptions.\n\nWhen sourceResourceId is specified, sourceDatabaseId, recoverableDatabaseId, restorableDroppedDatabaseId and sourceDatabaseDeletionDate must not be specified and CreateMode must be PointInTimeRestore, Restore or Recover.\n\nWhen createMode is PointInTimeRestore, sourceResourceId must be the resource ID of the existing database or existing sql pool, and restorePointInTime must be specified.\n\nWhen createMode is Restore, sourceResourceId must be the resource ID of restorable dropped database or restorable dropped sql pool.\n\nWhen createMode is Recover, sourceResourceId must be the resource ID of recoverable database or recoverable sql pool.\n\nWhen source subscription belongs to a different tenant than target subscription, “x-ms-authorization-auxiliary” header must contain authentication token for the source tenant. For more details about “x-ms-authorization-auxiliary” header see https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/authenticate-multi-tenant",
+    "flags": 4,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "status": {
+    "description": "The status of the database.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/59"
+    }
+   },
+   "useFreeLimit": {
+    "description": "Whether or not the database uses free monthly limits. Allowed on one database in a subscription.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "zoneRedundant": {
+    "description": "Whether or not this database is zone redundant, which means the replicas of this database will be spread across multiple availability zones.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/13"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Default"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Copy"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Secondary"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "PointInTimeRestore"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Restore"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Recovery"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RestoreExternalBackup"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RestoreExternalBackupSecondary"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RestoreLongTermRetentionBackup"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "OnlineSecondary"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/20"
+   },
+   {
+    "$ref": "#/21"
+   },
+   {
+    "$ref": "#/22"
+   },
+   {
+    "$ref": "#/23"
+   },
+   {
+    "$ref": "#/24"
+   },
+   {
+    "$ref": "#/25"
+   },
+   {
+    "$ref": "#/26"
+   },
+   {
+    "$ref": "#/27"
+   },
+   {
+    "$ref": "#/28"
+   },
+   {
+    "$ref": "#/29"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AdventureWorksLT"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "WideWorldImportersStd"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "WideWorldImportersFull"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/31"
+   },
+   {
+    "$ref": "#/32"
+   },
+   {
+    "$ref": "#/33"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Online"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Restoring"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RecoveryPending"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Recovering"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Suspect"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Offline"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standby"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Shutdown"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "EmergencyMode"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AutoClosed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Copying"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Inaccessible"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "OfflineSecondary"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Pausing"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Paused"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Resuming"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Scaling"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "OfflineChangingDwPerformanceTiers"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "OnlineChangingDwPerformanceTiers"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Stopping"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Stopped"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Starting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/35"
+   },
+   {
+    "$ref": "#/36"
+   },
+   {
+    "$ref": "#/37"
+   },
+   {
+    "$ref": "#/38"
+   },
+   {
+    "$ref": "#/39"
+   },
+   {
+    "$ref": "#/40"
+   },
+   {
+    "$ref": "#/41"
+   },
+   {
+    "$ref": "#/42"
+   },
+   {
+    "$ref": "#/43"
+   },
+   {
+    "$ref": "#/44"
+   },
+   {
+    "$ref": "#/45"
+   },
+   {
+    "$ref": "#/46"
+   },
+   {
+    "$ref": "#/47"
+   },
+   {
+    "$ref": "#/48"
+   },
+   {
+    "$ref": "#/49"
+   },
+   {
+    "$ref": "#/50"
+   },
+   {
+    "$ref": "#/51"
+   },
+   {
+    "$ref": "#/52"
+   },
+   {
+    "$ref": "#/53"
+   },
+   {
+    "$ref": "#/54"
+   },
+   {
+    "$ref": "#/55"
+   },
+   {
+    "$ref": "#/56"
+   },
+   {
+    "$ref": "#/57"
+   },
+   {
+    "$ref": "#/58"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "DATABASE_DEFAULT"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SQL_Latin1_General_CP1_CI_AS"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/60"
+   },
+   {
+    "$ref": "#/61"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "LicenseIncluded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "BasePrice"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/63"
+   },
+   {
+    "$ref": "#/64"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/66"
+   },
+   {
+    "$ref": "#/67"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Geo"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Named"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standby"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/69"
+   },
+   {
+    "$ref": "#/70"
+   },
+   {
+    "$ref": "#/71"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Sku",
+  "properties": {
+   "capacity": {
+    "description": "Capacity of the particular SKU.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "family": {
+    "description": "If the service has different generations of hardware, for the same SKU, then that can be captured here.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The name of the SKU, typically, a letter + Number code, e.g. P3.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "size": {
+    "description": "Size of the particular SKU",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "tier": {
+    "description": "The tier or edition of the particular SKU, e.g. Basic, Premium.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Geo"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Local"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Zone"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "GeoZone"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/74"
+   },
+   {
+    "$ref": "#/75"
+   },
+   {
+    "$ref": "#/76"
+   },
+   {
+    "$ref": "#/77"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Geo"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Local"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Zone"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "GeoZone"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/79"
+   },
+   {
+    "$ref": "#/80"
+   },
+   {
+    "$ref": "#/81"
+   },
+   {
+    "$ref": "#/82"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DatabaseKey",
+  "properties": {
+   "creationDate": {
+    "description": "The database key creation date.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "keyVersion": {
+    "description": "The database key's version.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "subregion": {
+    "description": "Subregion of the server key.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "thumbprint": {
+    "description": "Thumbprint of the database key.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "type": {
+    "description": "The database key type. Only supported value is 'AzureKeyVault'.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/86"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AzureKeyVault"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/85"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/84"
+  },
+  "name": "DatabasePropertiesKeys",
+  "properties": {}
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Default"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "VBS"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/88"
+   },
+   {
+    "$ref": "#/89"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AutoPause"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "BillOverUsage"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/91"
+   },
+   {
+    "$ref": "#/92"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "NoPreference"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "1"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "3"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/94"
+   },
+   {
+    "$ref": "#/95"
+   },
+   {
+    "$ref": "#/96"
+   },
+   {
+    "$ref": "#/97"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DatabaseIdentity",
+  "properties": {
+   "tenantId": {
+    "description": "The Azure Active Directory tenant id.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/15"
+    }
+   },
+   "type": {
+    "description": "The identity type",
+    "flags": 0,
+    "type": {
+     "$ref": "#/102"
+    }
+   },
+   "userAssignedIdentities": {
+    "description": "The resource ids of the user assigned identities to use",
+    "flags": 0,
+    "type": {
+     "$ref": "#/104"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "UserAssigned"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/100"
+   },
+   {
+    "$ref": "#/101"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DatabaseUserIdentity",
+  "properties": {
+   "clientId": {
+    "description": "The Azure Active Directory client id.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/15"
+    }
+   },
+   "principalId": {
+    "description": "The Azure Active Directory principal id.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/15"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/103"
+  },
+  "name": "DatabaseIdentityUserAssignedIdentities",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "TrackedResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/18"
+  },
+  "name": "Microsoft.Sql/servers/databases@2025-01-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
   "$type": "ObjectType",
   "name": "ResourceIdentity",
   "properties": {
@@ -160,14 +1329,14 @@
     "description": "The identity type. Set this to 'SystemAssigned' in order to automatically create and assign an Azure Active Directory principal for the resource.",
     "flags": 0,
     "type": {
-     "$ref": "#/23"
+     "$ref": "#/114"
     }
    },
    "userAssignedIdentities": {
     "description": "The resource ids of the user assigned identities to use",
     "flags": 0,
     "type": {
-     "$ref": "#/18"
+     "$ref": "#/109"
     }
    }
   }
@@ -195,7 +1364,7 @@
  {
   "$type": "ObjectType",
   "additionalProperties": {
-   "$ref": "#/17"
+   "$ref": "#/108"
   },
   "name": "ResourceIdentityUserAssignedIdentities",
   "properties": {}
@@ -220,16 +1389,16 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/19"
+    "$ref": "#/110"
    },
    {
-    "$ref": "#/20"
+    "$ref": "#/111"
    },
    {
-    "$ref": "#/21"
+    "$ref": "#/112"
    },
    {
-    "$ref": "#/22"
+    "$ref": "#/113"
    },
    {
     "$ref": "#/0"
@@ -244,28 +1413,28 @@
     "description": "Group IDs.",
     "flags": 2,
     "type": {
-     "$ref": "#/26"
+     "$ref": "#/117"
     }
    },
    "privateEndpoint": {
     "description": "Private endpoint which the connection belongs to.",
     "flags": 0,
     "type": {
-     "$ref": "#/25"
+     "$ref": "#/116"
     }
    },
    "privateLinkServiceConnectionState": {
     "description": "Connection state of the private endpoint connection.",
     "flags": 0,
     "type": {
-     "$ref": "#/27"
+     "$ref": "#/118"
     }
    },
    "provisioningState": {
     "description": "State of the private endpoint connection.",
     "flags": 2,
     "type": {
-     "$ref": "#/40"
+     "$ref": "#/131"
     }
    }
   }
@@ -297,7 +1466,7 @@
     "description": "The actions required for private link service connection.",
     "flags": 2,
     "type": {
-     "$ref": "#/34"
+     "$ref": "#/125"
     }
    },
    "description": {
@@ -311,7 +1480,7 @@
     "description": "The private link service connection status.",
     "flags": 1,
     "type": {
-     "$ref": "#/32"
+     "$ref": "#/123"
     }
    }
   }
@@ -336,16 +1505,16 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/28"
+    "$ref": "#/119"
    },
    {
-    "$ref": "#/29"
+    "$ref": "#/120"
    },
    {
-    "$ref": "#/30"
+    "$ref": "#/121"
    },
    {
-    "$ref": "#/31"
+    "$ref": "#/122"
    },
    {
     "$ref": "#/0"
@@ -360,7 +1529,7 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/33"
+    "$ref": "#/124"
    },
    {
     "$ref": "#/0"
@@ -391,19 +1560,19 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/35"
+    "$ref": "#/126"
    },
    {
-    "$ref": "#/36"
+    "$ref": "#/127"
    },
    {
-    "$ref": "#/37"
+    "$ref": "#/128"
    },
    {
-    "$ref": "#/38"
+    "$ref": "#/129"
    },
    {
-    "$ref": "#/39"
+    "$ref": "#/130"
    },
    {
     "$ref": "#/0"
@@ -426,7 +1595,7 @@
     "description": "The resource api version",
     "flags": 10,
     "type": {
-     "$ref": "#/42"
+     "$ref": "#/133"
     }
    },
    "id": {
@@ -440,7 +1609,7 @@
     "description": "The Azure Active Directory identity of the server.",
     "flags": 0,
     "type": {
-     "$ref": "#/16"
+     "$ref": "#/107"
     }
    },
    "kind": {
@@ -468,7 +1637,7 @@
     "description": "Resource properties.",
     "flags": 0,
     "type": {
-     "$ref": "#/44"
+     "$ref": "#/135"
     }
    },
    "systemData": {
@@ -482,14 +1651,14 @@
     "description": "Resource tags.",
     "flags": 0,
     "type": {
-     "$ref": "#/81"
+     "$ref": "#/172"
     }
    },
    "type": {
     "description": "The resource type",
     "flags": 10,
     "type": {
-     "$ref": "#/41"
+     "$ref": "#/132"
     }
    }
   }
@@ -516,21 +1685,21 @@
     "description": "The Azure Active Directory administrator can be utilized during server creation and for server updates, except for the azureADOnlyAuthentication property. To update the azureADOnlyAuthentication property, individual API must be used.",
     "flags": 0,
     "type": {
-     "$ref": "#/60"
+     "$ref": "#/151"
     }
    },
    "createMode": {
     "description": "Create mode for server, only valid values for this are Normal and Restore.",
     "flags": 0,
     "type": {
-     "$ref": "#/80"
+     "$ref": "#/171"
     }
    },
    "externalGovernanceStatus": {
     "description": "Status of external governance.",
     "flags": 2,
     "type": {
-     "$ref": "#/77"
+     "$ref": "#/168"
     }
    },
    "federatedClientId": {
@@ -551,7 +1720,7 @@
     "description": "Whether or not to enable IPv6 support for this server.  Value is optional but if passed in, must be 'Enabled' or 'Disabled'",
     "flags": 0,
     "type": {
-     "$ref": "#/74"
+     "$ref": "#/165"
     }
    },
    "keyId": {
@@ -565,7 +1734,7 @@
     "description": "Minimal TLS version. Allowed values: 'None', 1.0', '1.1', '1.2', '1.3'",
     "flags": 0,
     "type": {
-     "$ref": "#/52"
+     "$ref": "#/143"
     }
    },
    "primaryUserAssignedIdentityId": {
@@ -579,21 +1748,21 @@
     "description": "List of private endpoint connections on a server",
     "flags": 2,
     "type": {
-     "$ref": "#/46"
+     "$ref": "#/137"
     }
    },
    "publicNetworkAccess": {
     "description": "Whether or not public endpoint access is allowed for this server.  Value is optional but if passed in, must be 'Enabled' or 'Disabled' or 'SecuredByPerimeter'",
     "flags": 0,
     "type": {
-     "$ref": "#/56"
+     "$ref": "#/147"
     }
    },
    "restrictOutboundNetworkAccess": {
     "description": "Whether or not to restrict outbound network access for this server.  Value is optional but if passed in, must be 'Enabled' or 'Disabled'",
     "flags": 0,
     "type": {
-     "$ref": "#/70"
+     "$ref": "#/161"
     }
    },
    "retentionDays": {
@@ -621,7 +1790,7 @@
     "description": "Whether or not existing server has a workspace created and if it allows connection from workspace",
     "flags": 2,
     "type": {
-     "$ref": "#/59"
+     "$ref": "#/150"
     }
    }
   }
@@ -641,7 +1810,7 @@
     "description": "Private endpoint connection properties",
     "flags": 2,
     "type": {
-     "$ref": "#/24"
+     "$ref": "#/115"
     }
    }
   }
@@ -649,7 +1818,7 @@
  {
   "$type": "ArrayType",
   "itemType": {
-   "$ref": "#/45"
+   "$ref": "#/136"
   }
  },
  {
@@ -676,19 +1845,19 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/47"
+    "$ref": "#/138"
    },
    {
-    "$ref": "#/48"
+    "$ref": "#/139"
    },
    {
-    "$ref": "#/49"
+    "$ref": "#/140"
    },
    {
-    "$ref": "#/50"
+    "$ref": "#/141"
    },
    {
-    "$ref": "#/51"
+    "$ref": "#/142"
    },
    {
     "$ref": "#/0"
@@ -711,13 +1880,13 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/53"
+    "$ref": "#/144"
    },
    {
-    "$ref": "#/54"
+    "$ref": "#/145"
    },
    {
-    "$ref": "#/55"
+    "$ref": "#/146"
    },
    {
     "$ref": "#/0"
@@ -736,10 +1905,10 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/57"
+    "$ref": "#/148"
    },
    {
-    "$ref": "#/58"
+    "$ref": "#/149"
    },
    {
     "$ref": "#/0"
@@ -754,7 +1923,7 @@
     "description": "Type of the sever administrator.",
     "flags": 0,
     "type": {
-     "$ref": "#/62"
+     "$ref": "#/153"
     }
    },
    "azureADOnlyAuthentication": {
@@ -775,7 +1944,7 @@
     "description": "Principal Type of the sever administrator.",
     "flags": 0,
     "type": {
-     "$ref": "#/66"
+     "$ref": "#/157"
     }
    },
    "sid": {
@@ -802,7 +1971,7 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/61"
+    "$ref": "#/152"
    },
    {
     "$ref": "#/0"
@@ -825,42 +1994,13 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/63"
+    "$ref": "#/154"
    },
    {
-    "$ref": "#/64"
+    "$ref": "#/155"
    },
    {
-    "$ref": "#/65"
-   },
-   {
-    "$ref": "#/0"
-   }
-  ]
- },
- {
-  "$type": "StringLiteralType",
-  "value": "Enabled"
- },
- {
-  "$type": "StringLiteralType",
-  "value": "Disabled"
- },
- {
-  "$type": "StringLiteralType",
-  "value": "SecuredByPerimeter"
- },
- {
-  "$type": "UnionType",
-  "elements": [
-   {
-    "$ref": "#/67"
-   },
-   {
-    "$ref": "#/68"
-   },
-   {
-    "$ref": "#/69"
+    "$ref": "#/156"
    },
    {
     "$ref": "#/0"
@@ -883,13 +2023,42 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/71"
+    "$ref": "#/158"
    },
    {
-    "$ref": "#/72"
+    "$ref": "#/159"
    },
    {
-    "$ref": "#/73"
+    "$ref": "#/160"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SecuredByPerimeter"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/162"
+   },
+   {
+    "$ref": "#/163"
+   },
+   {
+    "$ref": "#/164"
    },
    {
     "$ref": "#/0"
@@ -908,10 +2077,10 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/75"
+    "$ref": "#/166"
    },
    {
-    "$ref": "#/76"
+    "$ref": "#/167"
    },
    {
     "$ref": "#/0"
@@ -930,10 +2099,10 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/78"
+    "$ref": "#/169"
    },
    {
-    "$ref": "#/79"
+    "$ref": "#/170"
    },
    {
     "$ref": "#/0"
@@ -951,9 +2120,178 @@
  {
   "$type": "ResourceType",
   "body": {
-   "$ref": "#/43"
+   "$ref": "#/134"
   },
   "name": "Microsoft.Sql/servers@2025-01-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "current"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/174"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Sql/servers/databases/transparentDataEncryption"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-01-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Sql/servers/databases/transparentDataEncryption",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/177"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/175"
+    }
+   },
+   "properties": {
+    "description": "Resource properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/179"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/176"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "TransparentDataEncryptionProperties",
+  "properties": {
+   "scanState": {
+    "description": "Specifies the encryption scan state of the transparent data encryption.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/189"
+    }
+   },
+   "state": {
+    "description": "Specifies the state of the transparent data encryption.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/182"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/180"
+   },
+   {
+    "$ref": "#/181"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Resume"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Running"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Suspend"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Aborted"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Completed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/183"
+   },
+   {
+    "$ref": "#/184"
+   },
+   {
+    "$ref": "#/185"
+   },
+   {
+    "$ref": "#/186"
+   },
+   {
+    "$ref": "#/187"
+   },
+   {
+    "$ref": "#/188"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/178"
+  },
+  "name": "Microsoft.Sql/servers/databases/transparentDataEncryption@2025-01-01",
   "readableScopes": 8,
   "writableScopes": 8
  }

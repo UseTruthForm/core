@@ -179,7 +179,14 @@ stackdna restore --platform aws --region us-east-2 --from snap/aws --values secr
 - **Several at once (AWS, Azure, GCP):** resources that do not depend on
   each other are created together (`--parallel`, 8 by default).
 - **Secrets** come from a YAML file given with `--values`, keyed by
-  resource. A restore says which secrets it was not given.
+  resource. A restore says which secrets it was not given. The same file can
+  set any other property; a list it sets is replaced whole.
+- **VM sizes (Azure):** a restore and a diff warn of a size the target
+  subscription cannot have in that region, which Azure would refuse. Give
+  another with `--values`: for a cluster, its whole `agentPoolProfiles`.
+- **What Azure makes itself (Azure):** a registry's replication in its own
+  region and a workspace's AzureDiagnostics table are not captured, and a
+  restore of an older snapshot says NOT SENT for them.
 
 ## A whole environment
 

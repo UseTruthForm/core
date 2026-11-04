@@ -66,6 +66,16 @@ var fixtureTypes = []string{
 	"Microsoft.ContainerService/managedClusters/agentPools@2026-08-01",
 	"Microsoft.Sql/servers@2025-01-01",
 	"Microsoft.Sql/servers/auditingPolicies@2014-04-01",
+	// What the first restore of a real estate into another subscription met:
+	// children Azure makes and refuses a PUT for, and values it sets.
+	"Microsoft.ContainerRegistry/registries@2025-11-01",
+	"Microsoft.ContainerRegistry/registries/replications@2025-11-01",
+	"Microsoft.OperationalInsights/workspaces/tables@2025-07-01",
+	"Microsoft.Network/privateEndpoints@2025-07-01",
+	"Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2025-07-01",
+	"Microsoft.Insights/dataCollectionEndpoints@2024-03-11",
+	"Microsoft.Sql/servers/databases@2025-01-01",
+	"Microsoft.Sql/servers/databases/transparentDataEncryption@2025-01-01",
 }
 
 const fixtureDir = "../../testdata/azure/types"

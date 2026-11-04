@@ -20,7 +20,11 @@ var envelope = map[string]bool{"id": true, "name": true, "type": true, "systemDa
 // on subnets[0].properties.resourceGuid, which Azure returns but the subnet
 // definition (2026-03-01) does not declare. Any other undeclared field is
 // kept, see normalize.
-var serverSet = map[string]bool{"provisioningState": true, "resourceGuid": true}
+// An etag is ARM's version of what it is on, so it changes on every write: a
+// private endpoint's DNS zone group returns one in each zone config, which its
+// definition does not declare, and a resumed restore of a real subscription
+// reported all four groups it had just created as differing.
+var serverSet = map[string]bool{"provisioningState": true, "resourceGuid": true, "etag": true}
 
 // setByAzure are declared writable and are not configuration. A renamed key
 // vault kept its old vaultUri, so a diff showed it changed forever; a node image
@@ -36,6 +40,62 @@ var setByAzure = map[string]map[string]bool{
 	"microsoft.network/privatednszones/soa":                    {"serialNumber": true},
 	"microsoft.network/dnszones/soa":                           {"serialNumber": true},
 	"microsoft.network/virtualnetworks/virtualnetworkpeerings": {"peeringState": true, "peeringSyncLevel": true, "remoteAddressSpace": true, "remoteVirtualNetworkAddressSpace": true},
+	// Each new data collection endpoint gets its own, and a transparent data
+	// encryption's scan state is how far Azure's last scan got. Both are
+	// declared writable, so a resumed restore of a real subscription read the
+	// ones it had just created as differing.
+	"microsoft.insights/datacollectionendpoints":                {"immutableId": true},
+	"microsoft.sql/servers/databases/transparentdataencryption": {"scanState": true},
+}
+
+// setByAzureAt are what setByAzure names, inside maps whose keys the definition
+// does not declare, so a walk with the definition cannot name them. A cluster's
+// extensionManager add-on is turned on by Azure when an extension is installed,
+// and refused on create ("Changing property 'AddonProfiles.ExtensionManager' is
+// not allowed"): a real restore could not make the cluster, nor the 22 objects
+// that needed it. A policy assignment's metadata says who made it and when.
+var setByAzureAt = map[string][]string{
+	"microsoft.containerservice/managedclusters": {"properties.addonProfiles.extensionManager"},
+	"microsoft.authorization/policyassignments": {
+		"properties.metadata.createdBy", "properties.metadata.createdOn",
+		"properties.metadata.updatedBy", "properties.metadata.updatedOn",
+	},
+}
+
+// dropSetByAzureAt removes what setByAzureAt names for typ, matching each key
+// without regard to case, as ARM does. It runs on a capture and on a snapshot
+// about to be restored or compared: one captured before it still holds them.
+func dropSetByAzureAt(typ string, spec map[string]any) {
+	for _, path := range setByAzureAt[strings.ToLower(typ)] {
+		keys := strings.Split(path, ".")
+		m := spec
+		for _, k := range keys[:len(keys)-1] {
+			m = valueFold(m, k)
+			if m == nil {
+				break
+			}
+		}
+		if m == nil {
+			continue
+		}
+		last := keys[len(keys)-1]
+		for k := range m {
+			if strings.EqualFold(k, last) {
+				delete(m, k)
+			}
+		}
+	}
+}
+
+// valueFold is the map under k in m, matching k without regard to case.
+func valueFold(m map[string]any, k string) map[string]any {
+	for mk, v := range m {
+		if strings.EqualFold(mk, k) {
+			c, _ := v.(map[string]any)
+			return c
+		}
+	}
+	return nil
 }
 
 // defaultOutboundAccess unset on a subnet means it has Azure's default outbound
@@ -99,6 +159,7 @@ func (s *Schema) normalize(body map[string]any) (map[string]any, split) {
 	s.clean(spec, s.body, "", &sp)
 	spec = walkStrings(spec, canonicalNever).(map[string]any)
 	defaultOutboundAsMeant(s.Type, spec)
+	dropSetByAzureAt(s.Type, spec)
 	sort.Strings(sp.secrets)
 	return spec, sp
 }

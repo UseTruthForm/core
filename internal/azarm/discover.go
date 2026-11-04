@@ -158,8 +158,14 @@ func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []
 			if q := listQuery[strings.ToLower(ct)]; q != "" {
 				path += "?" + q
 			}
+			skip := func(item map[string]any) string {
+				if why := madeWith(parent.spec, item); why != "" {
+					return why
+				}
+				return childSkip(item)
+			}
 			run(func() {
-				for _, f := range listOf(ctx, api, v, tenant, ct, path, childSkip) {
+				for _, f := range listOf(ctx, api, v, tenant, ct, path, skip) {
 					// Left out as what something else manages, and reached
 					// again as a child: a SQL server's master database was
 					// skipped and captured both, with its own children.
@@ -238,6 +244,44 @@ func childSkip(item map[string]any) string {
 		}
 	}
 	return ""
+}
+
+// madeWith names a child Azure makes itself and refuses a PUT for, given its
+// parent's spec. A registry's replication in the registry's own region comes
+// with the registry ("Registry replication must specify a region different from
+// the home registry", HomeReplicationCannotBeOperated), and a workspace's
+// AzureDiagnostics table with the first diagnostic setting that sends to it
+// ("cannot create or migrate AzureDiagnostics table"). A real restore was
+// refused both.
+func madeWith(parent, item map[string]any) string {
+	typ, _ := item["type"].(string)
+	name, _ := item["name"].(string)
+	name = name[strings.LastIndex(name, "/")+1:]
+	switch strings.ToLower(typ) {
+	case "microsoft.containerregistry/registries/replications":
+		home, _ := parent["location"].(string)
+		at, _ := item["location"].(string)
+		if home != "" && sameRegion(home, at) {
+			return homeReplication
+		}
+	case "microsoft.operationalinsights/workspaces/tables":
+		if strings.EqualFold(name, "AzureDiagnostics") {
+			return diagnosticsTable
+		}
+	}
+	return ""
+}
+
+const (
+	homeReplication  = "made with its registry, in the registry's own region; Azure refuses a PUT for it"
+	diagnosticsTable = "made by Azure when a diagnostic setting first sends to the workspace; Azure refuses a PUT for it"
+)
+
+// sameRegion compares two spellings of a region: ARM returns "eastus"
+// in one place and "East US" in another.
+func sameRegion(a, b string) bool {
+	norm := func(s string) string { return strings.ToLower(strings.ReplaceAll(s, " ", "")) }
+	return norm(a) == norm(b)
 }
 
 const csiShare = "made by AKS's Azure Files driver for a volume claim; restoring the claim makes a new one. Its data is not captured"

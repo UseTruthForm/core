@@ -174,6 +174,7 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 	}
 	// The values file is written with the snapshot's names.
 	ad.Options.Values = azarm.RenameValues(ad.Options.Values, names)
+	warnSizes(ctx, ad.API, snap, ad.Options.Values)
 	results := ad.Restore(ctx, snap)
 	if jsonOut {
 		defer emitRestore(results, "azure "+a.subscription)
@@ -186,6 +187,9 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 			continue
 		}
 		ok++
+		if strings.HasPrefix(r.Detail, azarm.NotSent) {
+			fmt.Printf("NOT SENT %s: %s\n", r.Key, strings.TrimPrefix(r.Detail, azarm.NotSent))
+		}
 		// An update changed something live; each one is said.
 		if strings.HasPrefix(r.Detail, "updated") {
 			fmt.Printf("UPDATED %s: %s\n", r.Key, r.Detail)
@@ -221,9 +225,31 @@ func diffAzure(ctx context.Context, a *azureFlags, want snapshot.Snapshot, from 
 	if ad.Policy.Name() != want.Policy {
 		return fail(fmt.Errorf("snapshot was captured with policy %q but this diff would use %q; pass the same --types, --baseline and --capture-managed", want.Policy, ad.Policy.Name()))
 	}
+	warnSizes(ctx, ad.API, want, nil)
 	got, err := ad.Capture(ctx)
 	if err != nil {
 		return fail(err)
 	}
-	return report(snapshot.Compare(want, got), from, "azure "+a.subscription)
+	return report(compareTarget("azure", want, got), from, "azure "+a.subscription)
+}
+
+// compareTarget compares a snapshot with a capture of its target now. An Azure
+// snapshot is first made as this version captures: one from before a fix held
+// what the fix took out, and every diff and nightly showed it as drift.
+func compareTarget(platform string, want, got snapshot.Snapshot) []snapshot.Change {
+	if platform == "azure" {
+		want = azarm.AsCapturedNow(want)
+	}
+	return snapshot.Compare(want, got)
+}
+
+// warnSizes says, before a restore or with a diff, which VM sizes the target
+// cannot have, with the restore's --values applied.
+func warnSizes(ctx context.Context, api azarm.ARM, s snapshot.Snapshot, values map[string]map[string]any) {
+	if w := azarm.SizesRefused(ctx, api, s, values); len(w) > 0 {
+		fmt.Fprintf(os.Stderr, "WARNING: %d VM sizes this subscription cannot have:\n", len(w))
+		for _, x := range w {
+			fmt.Fprintln(os.Stderr, "  ", x)
+		}
+	}
 }

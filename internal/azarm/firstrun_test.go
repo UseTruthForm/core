@@ -439,6 +439,15 @@ func TestWhatAzureSetsIsNotCaptured(t *testing.T) {
 		{"Microsoft.KeyVault/vaults", map[string]any{"properties": map[string]any{"tenantId": "t", "vaultUri": "https://old.vault.azure.net/"}}, "vaultUri"},
 		{managedClusterType, map[string]any{"properties": map[string]any{"agentPoolProfiles": []any{map[string]any{"name": "p", "nodeImageVersion": "AKSUbuntu-2204-1"}}}}, "nodeImageVersion"},
 		{"Microsoft.Network/privateDnsZones/SOA", map[string]any{"properties": map[string]any{"soaRecord": map[string]any{"serialNumber": 7, "host": "h"}}}, "serialNumber"},
+		// A resumed restore of a real subscription read each of these, on what
+		// it had just created, as "already exists and differs".
+		{"Microsoft.Network/privateEndpoints/privateDnsZoneGroups", map[string]any{"properties": map[string]any{"privateDnsZoneConfigs": []any{
+			map[string]any{"name": "c", "etag": "W/\"1\"", "properties": map[string]any{"privateDnsZoneId": "z"}}}}}, "etag"},
+		{"Microsoft.Insights/dataCollectionEndpoints", map[string]any{"location": "eastus", "properties": map[string]any{"immutableId": "dce-0123"}}, "immutableId"},
+		{"Microsoft.Sql/servers/databases/transparentDataEncryption", map[string]any{"properties": map[string]any{"state": "Enabled", "scanState": "None"}}, "scanState"},
+		{"Microsoft.Authorization/policyAssignments", map[string]any{"properties": map[string]any{"metadata": map[string]any{"assignedBy": "Security Center", "createdBy": "x", "createdOn": "t"}}}, "createdBy"},
+		{"Microsoft.Authorization/policyAssignments", map[string]any{"properties": map[string]any{"metadata": map[string]any{"assignedBy": "Security Center", "createdOn": "t", "updatedBy": "x", "updatedOn": "t"}}}, "created"},
+		{"Microsoft.Authorization/policyAssignments", map[string]any{"properties": map[string]any{"metadata": map[string]any{"assignedBy": "Security Center", "updatedBy": "x"}}}, "updated"},
 	} {
 		s := schema(t, reg, tc.typ)
 		spec, _ := s.normalize(tc.body)
@@ -446,9 +455,14 @@ func TestWhatAzureSetsIsNotCaptured(t *testing.T) {
 			t.Errorf("%s keeps %s: %s", tc.typ, tc.gone, canon(spec))
 		}
 	}
+	// Who assigned a policy is the assignment's; who wrote it last is Azure's.
+	spec, _ := schema(t, reg, "Microsoft.Authorization/policyAssignments").normalize(map[string]any{"properties": map[string]any{"metadata": map[string]any{"assignedBy": "Security Center", "createdBy": "x"}}})
+	if !strings.Contains(canon(spec), "assignedBy") {
+		t.Errorf("an assignment's own metadata was taken: %s", canon(spec))
+	}
 	// By type: elsewhere these names are settings, and a diff could not see them go.
-	spec, _ := schema(t, reg, "Microsoft.Web/sites").normalize(map[string]any{"properties": map[string]any{"vaultUri": "https://mine/", "serialNumber": "1", "peeringState": "x"}})
-	for _, name := range []string{"vaultUri", "serialNumber", "peeringState"} {
+	spec, _ = schema(t, reg, "Microsoft.Web/sites").normalize(map[string]any{"properties": map[string]any{"vaultUri": "https://mine/", "serialNumber": "1", "peeringState": "x", "immutableId": "i", "scanState": "s"}})
+	for _, name := range []string{"vaultUri", "serialNumber", "peeringState", "immutableId", "scanState"} {
 		if !strings.Contains(canon(spec), name) {
 			t.Errorf("%s stripped from another type: %s", name, canon(spec))
 		}

@@ -247,6 +247,10 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 			return false, "depends on " + d + ", which was not restored (" + why + ")"
 		}
 	}
+	// Captured before capture skipped it, it is still not sent: Azure refuses it.
+	if why := madeWithParent(o, byKey); why != "" {
+		return true, NotSent + why
+	}
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	ver, _ := ann[annAPIVersion].(string)
 	if ver == "" {
@@ -278,8 +282,10 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	if missing != "" {
 		return false, missing
 	}
-	// A snapshot written before capture said so leaves it unset too.
+	// A snapshot written before capture said so leaves it unset too, and one
+	// written before capture dropped them holds what Azure sets.
 	defaultOutboundAsMeant(rid.Type, spec)
+	dropSetByAzureAt(rid.Type, spec)
 
 	existing, err := api.Get(ctx, id, ver)
 	var changed []string
@@ -498,6 +504,53 @@ func provisioningRunning(state string) bool {
 		return true
 	}
 	return strings.HasSuffix(s, "ing")
+}
+
+// NotSent begins the detail of an object a restore does not send because
+// Azure makes it.
+const NotSent = "not sent: "
+
+// madeWithParent is madeWith for a snapshot object, with its parent from the
+// snapshot.
+func madeWithParent(o snapshot.Object, byKey map[string]snapshot.Object) string {
+	kind, name := o.Kind(), o.Name()
+	i, j := strings.LastIndex(kind, "/"), strings.LastIndex(name, "/")
+	if strings.Count(kind, "/") < 2 || j < 0 {
+		return ""
+	}
+	parent := byKey[strings.ToLower(APIVersion+"|"+kind[:i]+"|"+o.Namespace()+"|"+name[:j])]
+	ps, _ := parent.Body["spec"].(map[string]any)
+	spec, _ := o.Body["spec"].(map[string]any)
+	item := map[string]any{"type": kind, "name": name, "location": spec["location"]}
+	return madeWith(ps, item)
+}
+
+// AsCapturedNow is s as this version captures: what Azure makes itself is
+// left out, and what it sets is taken out of each spec. A diff compares a
+// target, captured now, with a snapshot that may be older; without it a
+// snapshot from before a fix differed from every target on what the fix took
+// out.
+func AsCapturedNow(s snapshot.Snapshot) snapshot.Snapshot {
+	byKey := map[string]snapshot.Object{}
+	for _, o := range s.Objects {
+		byKey[strings.ToLower(o.Key())] = o
+	}
+	out := s
+	out.Objects = nil
+	for _, o := range s.Objects {
+		if madeWithParent(o, byKey) != "" {
+			continue
+		}
+		if spec, ok := o.Body["spec"].(map[string]any); ok {
+			body := deepCopy(o.Body)
+			spec = body["spec"].(map[string]any)
+			defaultOutboundAsMeant(o.Kind(), spec)
+			dropSetByAzureAt(o.Kind(), spec)
+			o = snapshot.Object{Body: body}
+		}
+		out.Objects = append(out.Objects, o)
+	}
+	return out
 }
 
 // parentCreated says whether this run created the object's parent, or

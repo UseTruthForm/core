@@ -128,3 +128,52 @@ func TestReportNamesPeeringsWithAClustersNetwork(t *testing.T) {
 		t.Errorf("report:\n%s", r)
 	}
 }
+
+// A restore beside its source was refused for a DNS zone's link to another
+// subscription's network, and nothing in the report had said the snapshot
+// reached outside its own subscription.
+func TestReportNamesReferencesToOtherSubscriptions(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "snap")
+	other := "33333333-3333-3333-3333-333333333333"
+	s := snapshot.Snapshot{Platform: "azure", Policy: "default",
+		Objects: []snapshot.Object{{Body: map[string]any{
+			"apiVersion": "azure.stackdna.org/v1", "kind": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+			"metadata": map[string]any{"name": "corp.example/office", "namespace": "rg", "annotations": map[string]any{
+				"stackdna.org/id":          "/subscriptions/{{stackdna|subscription}}/resourceGroups/rg/providers/Microsoft.Network/privateDnsZones/corp.example/virtualNetworkLinks/office",
+				"stackdna.org/api-version": "2024-06-01"}},
+			"spec": map[string]any{"location": "global", "properties": map[string]any{"virtualNetwork": map[string]any{
+				"id": "/subscriptions/" + other + "/resourceGroups/net/providers/Microsoft.Network/virtualNetworks/office"}}},
+		}}}}
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeReport(dir, s, "azure test"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "REPORT.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := string(b); !strings.Contains(r, "## References to other subscriptions: 1") || !strings.Contains(r, other) {
+		t.Errorf("the report does not name the reference:\n%s", r)
+	}
+}
+
+// --leave-out is read by Azure only; anywhere else it is refused, never
+// ignored, so a restore that sent what it was told to hold back cannot say it
+// held it back.
+func TestLeaveOutIsRefusedOffAzure(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "leave.yaml")
+	if err := os.WriteFile(f, []byte("- Kind/rg/name\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A snapshot that has the object, so only the platform can refuse it.
+	has := snapshot.Snapshot{Platform: "aws", Objects: []snapshot.Object{{Body: map[string]any{
+		"apiVersion": "v1", "kind": "Kind", "metadata": map[string]any{"name": "name", "namespace": "rg"}}}}}
+	if _, err := leftOut(f, "aws", has); err == nil {
+		t.Error("--leave-out was accepted for aws")
+	}
+	if _, err := leftOut(f, "azure", snapshot.Snapshot{Platform: "azure"}); err == nil || !strings.Contains(err.Error(), "not in the snapshot") {
+		t.Errorf("an entry naming nothing: %v", err)
+	}
+}

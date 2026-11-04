@@ -115,6 +115,14 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 			}
 			w("\n")
 		}
+		if other := azarm.OtherSubscriptions(s); len(other) > 0 {
+			w("## References to other subscriptions: %d\n\n", len(other))
+			w("A restore sends these IDs as they are: it needs access to those subscriptions, and what it makes reaches into them. A restore beside the source can be refused there (a network links to one private DNS zone of a name); `--leave-out` holds one back.\n\n")
+			for _, x := range other {
+				w("- %s\n", md(x))
+			}
+			w("\n")
+		}
 		if kept := azarm.KeptInManagedGroups(s); len(kept) > 0 {
 			w("## Captured from a managed resource group: %d resources\n\n", len(kept))
 			w("Nothing shows the manager made these, so they are in this snapshot and a restore applies them after it. If it did make one, a restore creates it beside the manager's own, and with `--update` sets it over one of the same name.\n\n")

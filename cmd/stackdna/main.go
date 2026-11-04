@@ -242,6 +242,7 @@ func restore(ctx context.Context, args []string) int {
 	update := fs.Bool("update", false, "aws, azure, gcp, github, cloudflare: also bring existing resources that differ in line with the snapshot (never replaces one); without it, restore only creates what is missing. Kubernetes restore always applies (server-side apply)")
 	values := fs.String("values", "", "aws, azure, github, cloudflare: YAML file of values the platform never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the platform, never written. Refused elsewhere")
 	rename := fs.String("rename", "", renameHelp)
+	leaveOut := fs.String("leave-out", "", leaveOutHelp)
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	var aws awsFlags
 	aws.register(fs)
@@ -268,6 +269,9 @@ func restore(ctx context.Context, args []string) int {
 	if err := samePlatform(snap, *platform); err != nil {
 		return fail(err)
 	}
+	if snap, err = leftOut(*leaveOut, *platform, snap); err != nil {
+		return fail(err)
+	}
 	names, snap, err := renamed(*rename, *platform, snap)
 	if err != nil {
 		return fail(err)
@@ -284,6 +288,7 @@ func restore(ctx context.Context, args []string) int {
 		return fail(fmt.Errorf("--types is not read by restore on --platform %s; nothing was restored", *platform))
 	}
 	warnGaps(snap)
+	warnOtherSubscriptions(snap, *platform)
 	switch *platform {
 	case "aws":
 		return restoreAWS(ctx, &aws, snap, *values, *update)
@@ -334,6 +339,7 @@ func diff(ctx context.Context, args []string) int {
 	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
 	config := fs.String("config", "", "environment file; diffs every target against --from/<target>")
 	rename := fs.String("rename", "", renameHelp)
+	leaveOut := fs.String("leave-out", "", leaveOutHelp)
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	var aws awsFlags
 	aws.register(fs)
@@ -350,8 +356,8 @@ func diff(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	if *config != "" && *from != "" {
-		if *rename != "" {
-			return fail(fmt.Errorf("diff: --rename is for a diff against one target, not --config"))
+		if *rename != "" || *leaveOut != "" {
+			return fail(fmt.Errorf("diff: --rename and --leave-out are for a diff against one target, not --config"))
 		}
 		return diffEnvironment(ctx, *config, *from)
 	}
@@ -367,10 +373,14 @@ func diff(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	warnGaps(want)
+	if want, err = leftOut(*leaveOut, *platform, want); err != nil {
+		return fail(err)
+	}
 	_, want, err = renamed(*rename, *platform, want)
 	if err != nil {
 		return fail(err)
 	}
+	warnOtherSubscriptions(want, *platform)
 	if want, err = withNewRoleIDs(*newRoleIDs, *platform, az.subscription, want); err != nil {
 		return fail(err)
 	}
@@ -608,6 +618,47 @@ func parseFlags(fs *flag.FlagSet, args []string) error {
 }
 
 const renameHelp = "azure: YAML file of new names for resources whose names are unique across Azure (storage accounts, key vaults, registries), 'Type/name: newname'; renames each one in every group that has it, its children and every reference to it, for a restore into another subscription while the source exists (give diff the same file)"
+
+const leaveOutHelp = "azure: YAML list of objects a restore leaves out and a diff does not expect, keyed 'Kind/resourceGroup/name' as --values is, with the names the snapshot has (before --rename); refused if anything left in still needs one (give diff the same file)"
+
+// leftOut applies --leave-out to a snapshot. Only Azure has it; elsewhere it
+// is refused, never ignored.
+func leftOut(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, error) {
+	if file == "" {
+		return s, nil
+	}
+	if platform != "azure" {
+		return s, fmt.Errorf("--leave-out is for --platform azure only")
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return s, err
+	}
+	var keys []string
+	if err := yaml.Unmarshal(b, &keys); err != nil {
+		return s, fmt.Errorf("%s: want a list of 'Kind/resourceGroup/name': %w", file, err)
+	}
+	out, err := azarm.LeaveOut(s, keys)
+	if err != nil {
+		return s, fmt.Errorf("%s: %w", file, err)
+	}
+	fmt.Fprintf(os.Stderr, "leave out: %d objects, as %s asks\n", len(s.Objects)-len(out.Objects), file)
+	return out, nil
+}
+
+// warnOtherSubscriptions says, before anything is sent or compared, which
+// objects name another subscription: a restore sends those IDs as they are.
+func warnOtherSubscriptions(s snapshot.Snapshot, platform string) {
+	if platform != "azure" {
+		return
+	}
+	if other := azarm.OtherSubscriptions(s); len(other) > 0 {
+		fmt.Fprintf(os.Stderr, "NOTE: %d objects name another subscription; a restore sends those IDs as they are, needs access there, and what it makes reaches there (--leave-out holds one back):\n", len(other))
+		for _, x := range other {
+			fmt.Fprintln(os.Stderr, "  ", x)
+		}
+	}
+}
 
 // renamed applies --rename to a snapshot. Only Azure has it; elsewhere it
 // is refused, never ignored.

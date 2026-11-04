@@ -98,14 +98,24 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 				check = append(check, sk.Resource+" "+sk.Name)
 			}
 		}
-		if len(check) > 0 {
+		later := azarm.KeptOnceAzureMakesIt(s)
+		if len(check)+len(later) > 0 {
 			sort.Strings(check)
-			w("## Check before relying on a restore: %d resources\n\n", len(check))
-			w("These were left out because something else manages them, and nothing shows it will recreate them. Something a person put there, or a data disk attached to a VM, will not come back. `--capture-managed` reads them.\n\n")
-			for _, x := range check {
-				w("- %s\n", md(x))
+			w("## Check before relying on a restore: %d resources\n\n", len(check)+len(later))
+			if len(check) > 0 {
+				w("These were left out because something else manages them, and nothing shows it will recreate them. Something a person put there, or a data disk attached to a VM, will not come back. `--capture-managed` reads them.\n\n")
+				for _, x := range check {
+					w("- %s\n", md(x))
+				}
+				w("\n")
 			}
-			w("\n")
+			if len(later) > 0 {
+				w("Azure makes these itself, when a diagnostic setting first sends to the workspace, and refuses a restore's PUT before. A restore does not send them, so their retention and plan are not kept until then: once data has arrived, run the restore again with `--update`.\n\n")
+				for _, x := range later {
+					w("- %s\n", md(x))
+				}
+				w("\n")
+			}
 		}
 		if across := azarm.PeeringsAcrossManagedGroups(s); len(across) > 0 {
 			w("## Peerings with a cluster's network: %d\n\n", len(across))

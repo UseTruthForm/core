@@ -248,7 +248,7 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 		}
 	}
 	// Captured before capture skipped it, it is still not sent: Azure refuses it.
-	if why := madeWithParent(o, byKey); why != "" {
+	if why := madeWithParent(o, byKey, opt.Values); why != "" {
 		return true, NotSent + why
 	}
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
@@ -284,8 +284,7 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	}
 	// A snapshot written before capture said so leaves it unset too, and one
 	// written before capture dropped them holds what Azure sets.
-	defaultOutboundAsMeant(rid.Type, spec)
-	dropSetByAzureAt(rid.Type, spec)
+	asCapturedNow(rid.Type, o.Name(), spec)
 
 	existing, err := api.Get(ctx, id, ver)
 	var changed []string
@@ -330,6 +329,10 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 		return false, "cannot check whether it exists: " + err.Error()
 	}
 
+	// Azure makes AzureDiagnostics, and refuses to; its settings go once it is there.
+	if err != nil && isDiagnosticsTable(rid.Type, o.Name()) {
+		return true, NotSent + DiagnosticsTableLater
+	}
 	desired := rewriteAll(deepCopy(spec), func(v string) string {
 		return strings.ReplaceAll(strings.ReplaceAll(v, tokSub, sub), tokTenant, tenant)
 	}).(map[string]any)
@@ -510,9 +513,31 @@ func provisioningRunning(state string) bool {
 // Azure makes it.
 const NotSent = "not sent: "
 
+// Pending says a result was not sent and its settings wait for Azure to make
+// it, so the restore has not kept them yet.
+func Pending(detail string) bool { return strings.HasPrefix(detail, NotSent+DiagnosticsTableLater) }
+
+// DiagnosticsTableLater is why a workspace's AzureDiagnostics table is not
+// sent, and what keeps its retention.
+const DiagnosticsTableLater = "Azure makes AzureDiagnostics when a diagnostic setting first sends to the workspace, and refuses to before; its retention and plan are not kept until then: once data has arrived, run the restore again with --update"
+
+// KeptOnceAzureMakesIt lists what s holds that a restore cannot make, whose
+// settings are kept only once Azure has made it: a workspace's AzureDiagnostics
+// table, and its retention.
+func KeptOnceAzureMakesIt(s snapshot.Snapshot) []string {
+	var out []string
+	for _, o := range s.Objects {
+		if isDiagnosticsTable(o.Kind(), o.Name()) {
+			out = append(out, o.Kind()+" "+o.Namespace()+"/"+o.Name())
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // madeWithParent is madeWith for a snapshot object, with its parent from the
-// snapshot.
-func madeWithParent(o snapshot.Object, byKey map[string]snapshot.Object) string {
+// snapshot as values sets it: a registry given another region is judged there.
+func madeWithParent(o snapshot.Object, byKey map[string]snapshot.Object, values map[string]map[string]any) string {
 	kind, name := o.Kind(), o.Name()
 	i, j := strings.LastIndex(kind, "/"), strings.LastIndex(name, "/")
 	if strings.Count(kind, "/") < 2 || j < 0 {
@@ -521,6 +546,14 @@ func madeWithParent(o snapshot.Object, byKey map[string]snapshot.Object) string 
 	parent := byKey[strings.ToLower(APIVersion+"|"+kind[:i]+"|"+o.Namespace()+"|"+name[:j])]
 	ps, _ := parent.Body["spec"].(map[string]any)
 	spec, _ := o.Body["spec"].(map[string]any)
+	if v := values[leaveOutKey(parent)]; v != nil && parent.Body != nil {
+		ps = deepCopy(ps)
+		merge(ps, deepCopy(v))
+	}
+	if v := values[leaveOutKey(o)]; v != nil {
+		spec = deepCopy(spec)
+		merge(spec, deepCopy(v))
+	}
 	item := map[string]any{"type": kind, "name": name, "location": spec["location"]}
 	return madeWith(ps, item)
 }
@@ -538,14 +571,13 @@ func AsCapturedNow(s snapshot.Snapshot) snapshot.Snapshot {
 	out := s
 	out.Objects = nil
 	for _, o := range s.Objects {
-		if madeWithParent(o, byKey) != "" {
+		if madeWithParent(o, byKey, nil) != "" {
 			continue
 		}
 		if spec, ok := o.Body["spec"].(map[string]any); ok {
 			body := deepCopy(o.Body)
 			spec = body["spec"].(map[string]any)
-			defaultOutboundAsMeant(o.Kind(), spec)
-			dropSetByAzureAt(o.Kind(), spec)
+			asCapturedNow(o.Kind(), o.Name(), spec)
 			o = snapshot.Object{Body: body}
 		}
 		out.Objects = append(out.Objects, o)

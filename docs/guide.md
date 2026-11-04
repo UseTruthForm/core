@@ -182,11 +182,16 @@ stackdna restore --platform aws --region us-east-2 --from snap/aws --values secr
   resource. A restore says which secrets it was not given. The same file can
   set any other property; a list it sets is replaced whole.
 - **VM sizes (Azure):** a restore and a diff warn of a size the target
-  subscription cannot have in that region, which Azure would refuse. Give
-  another with `--values`: for a cluster, its whole `agentPoolProfiles`.
+  subscription cannot have in that region or in the zones asked for, which
+  Azure would refuse, and say what they could not check and how many they
+  did (`vm_sizes` in `--json`). Give another size with `--values`: for a
+  cluster, its whole `agentPoolProfiles`.
 - **What Azure makes itself (Azure):** a registry's replication in its own
-  region and a workspace's AzureDiagnostics table are not captured, and a
-  restore of an older snapshot says NOT SENT for them.
+  region is not captured; a restore of an older snapshot says NOT SENT for it.
+  A workspace's AzureDiagnostics table is captured with its retention and
+  plan, and not sent until Azure has made it, when a diagnostic setting first
+  sends data: the restore says NOT SENT, is not complete (`pending` in
+  `--json`, exit 3), and keeps the retention when run again with `--update`.
 
 ## A whole environment
 

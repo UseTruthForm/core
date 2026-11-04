@@ -249,33 +249,21 @@ func childSkip(item map[string]any) string {
 // madeWith names a child Azure makes itself and refuses a PUT for, given its
 // parent's spec. A registry's replication in the registry's own region comes
 // with the registry ("Registry replication must specify a region different from
-// the home registry", HomeReplicationCannotBeOperated), and a workspace's
-// AzureDiagnostics table with the first diagnostic setting that sends to it
-// ("cannot create or migrate AzureDiagnostics table"). A real restore was
-// refused both.
+// the home registry", HomeReplicationCannotBeOperated): a real restore was
+// refused it.
 func madeWith(parent, item map[string]any) string {
 	typ, _ := item["type"].(string)
-	name, _ := item["name"].(string)
-	name = name[strings.LastIndex(name, "/")+1:]
-	switch strings.ToLower(typ) {
-	case "microsoft.containerregistry/registries/replications":
+	if strings.EqualFold(typ, "Microsoft.ContainerRegistry/registries/replications") {
 		home, _ := parent["location"].(string)
 		at, _ := item["location"].(string)
 		if home != "" && sameRegion(home, at) {
 			return homeReplication
 		}
-	case "microsoft.operationalinsights/workspaces/tables":
-		if strings.EqualFold(name, "AzureDiagnostics") {
-			return diagnosticsTable
-		}
 	}
 	return ""
 }
 
-const (
-	homeReplication  = "made with its registry, in the registry's own region; Azure refuses a PUT for it"
-	diagnosticsTable = "made by Azure when a diagnostic setting first sends to the workspace; Azure refuses a PUT for it"
-)
+const homeReplication = "made with its registry, in the registry's own region; Azure refuses a PUT for it"
 
 // sameRegion compares two spellings of a region: ARM returns "eastus"
 // in one place and "East US" in another.

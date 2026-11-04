@@ -20,11 +20,7 @@ var envelope = map[string]bool{"id": true, "name": true, "type": true, "systemDa
 // on subnets[0].properties.resourceGuid, which Azure returns but the subnet
 // definition (2026-03-01) does not declare. Any other undeclared field is
 // kept, see normalize.
-// An etag is ARM's version of what it is on, so it changes on every write: a
-// private endpoint's DNS zone group returns one in each zone config, which its
-// definition does not declare, and a resumed restore of a real subscription
-// reported all four groups it had just created as differing.
-var serverSet = map[string]bool{"provisioningState": true, "resourceGuid": true, "etag": true}
+var serverSet = map[string]bool{"provisioningState": true, "resourceGuid": true}
 
 // setByAzure are declared writable and are not configuration. A renamed key
 // vault kept its old vaultUri, so a diff showed it changed forever; a node image
@@ -48,14 +44,18 @@ var setByAzure = map[string]map[string]bool{
 	"microsoft.sql/servers/databases/transparentdataencryption": {"scanState": true},
 }
 
-// setByAzureAt are what setByAzure names, inside maps whose keys the definition
-// does not declare, so a walk with the definition cannot name them. A cluster's
-// extensionManager add-on is turned on by Azure when an extension is installed,
-// and refused on create ("Changing property 'AddonProfiles.ExtensionManager' is
-// not allowed"): a real restore could not make the cluster, nor the 22 objects
-// that needed it. A policy assignment's metadata says who made it and when.
+// setByAzureAt are what setByAzure names, by path, where the definition does
+// not declare them, so a walk with the definition cannot name them; [] is each
+// item of a list. A cluster's extensionManager add-on is turned on by Azure
+// when an extension is installed, and refused on create ("Changing property
+// 'AddonProfiles.ExtensionManager' is not allowed"): a real restore could not
+// make the cluster, nor the 22 objects that needed it. A policy assignment's
+// metadata says who made it and when. An etag is ARM's version of what it is
+// on, and a private endpoint's DNS zone group returns one in each zone config:
+// a resumed restore reported all four groups it had just created as differing.
 var setByAzureAt = map[string][]string{
-	"microsoft.containerservice/managedclusters": {"properties.addonProfiles.extensionManager"},
+	"microsoft.containerservice/managedclusters":              {"properties.addonProfiles.extensionManager"},
+	"microsoft.network/privateendpoints/privatednszonegroups": {"properties.privateDnsZoneConfigs[].etag"},
 	"microsoft.authorization/policyassignments": {
 		"properties.metadata.createdBy", "properties.metadata.createdOn",
 		"properties.metadata.updatedBy", "properties.metadata.updatedOn",
@@ -63,39 +63,95 @@ var setByAzureAt = map[string][]string{
 }
 
 // dropSetByAzureAt removes what setByAzureAt names for typ, matching each key
-// without regard to case, as ARM does. It runs on a capture and on a snapshot
-// about to be restored or compared: one captured before it still holds them.
+// without regard to case, as ARM does.
 func dropSetByAzureAt(typ string, spec map[string]any) {
 	for _, path := range setByAzureAt[strings.ToLower(typ)] {
-		keys := strings.Split(path, ".")
-		m := spec
-		for _, k := range keys[:len(keys)-1] {
-			m = valueFold(m, k)
-			if m == nil {
-				break
-			}
-		}
-		if m == nil {
+		dropPath(spec, strings.Split(path, "."))
+	}
+}
+
+func dropPath(v any, keys []string) {
+	m, _ := v.(map[string]any)
+	if m == nil {
+		return
+	}
+	k, list := strings.CutSuffix(keys[0], "[]")
+	for mk, mv := range m {
+		if !strings.EqualFold(mk, k) {
 			continue
 		}
-		last := keys[len(keys)-1]
-		for k := range m {
-			if strings.EqualFold(k, last) {
-				delete(m, k)
+		switch {
+		case len(keys) == 1:
+			delete(m, mk)
+		case list:
+			items, _ := mv.([]any)
+			for _, x := range items {
+				dropPath(x, keys[1:])
 			}
+		default:
+			dropPath(mv, keys[1:])
 		}
 	}
 }
 
-// valueFold is the map under k in m, matching k without regard to case.
-func valueFold(m map[string]any, k string) map[string]any {
-	for mk, v := range m {
-		if strings.EqualFold(mk, k) {
-			c, _ := v.(map[string]any)
-			return c
+// dropSetByAzure removes what setByAzure names for typ at any depth, as a
+// capture's walk does, from a spec captured before it named them.
+func dropSetByAzure(typ string, v any) {
+	names := setByAzure[strings.ToLower(typ)]
+	switch c := v.(type) {
+	case map[string]any:
+		for k, x := range c {
+			if names[k] {
+				delete(c, k)
+				continue
+			}
+			dropSetByAzure(typ, x)
+		}
+	case []any:
+		for _, x := range c {
+			dropSetByAzure(typ, x)
 		}
 	}
-	return nil
+}
+
+// AzureDiagnostics is the table Azure makes in a workspace when a diagnostic
+// setting first sends to it. Azure refuses to make it ("cannot create or
+// migrate AzureDiagnostics table", seen restoring a real estate), and its
+// columns are what has arrived. What a person sets on it is its retention and
+// plan, which Azure's documentation says a PUT of an existing table sets
+// (Configure table-level retention); a restore sends those once it exists.
+const tablesType = "Microsoft.OperationalInsights/workspaces/tables"
+
+var diagnosticsTableKeeps = []string{"retentionInDays", "totalRetentionInDays", "plan"}
+
+func isDiagnosticsTable(typ, name string) bool {
+	return strings.EqualFold(typ, tablesType) && strings.EqualFold(name[strings.LastIndex(name, "/")+1:], "AzureDiagnostics")
+}
+
+// diagnosticsTableOnly keeps what a person sets on AzureDiagnostics.
+func diagnosticsTableOnly(spec map[string]any) {
+	props, _ := spec["properties"].(map[string]any)
+	kept := map[string]any{}
+	for _, k := range diagnosticsTableKeeps {
+		if v, ok := props[k]; ok {
+			kept[k] = v
+		}
+	}
+	for k := range spec {
+		delete(spec, k)
+	}
+	spec["properties"] = kept
+}
+
+// asCapturedNow makes a spec, captured by any version, as this version
+// captures it.
+func asCapturedNow(typ, name string, spec map[string]any) {
+	defaultOutboundAsMeant(typ, spec)
+	dropSetByAzure(typ, spec)
+	dropSetByAzureAt(typ, spec)
+	if isDiagnosticsTable(typ, name) {
+		diagnosticsTableOnly(spec)
+	}
 }
 
 // defaultOutboundAccess unset on a subnet means it has Azure's default outbound
@@ -148,6 +204,7 @@ type split struct {
 func (s *Schema) normalize(body map[string]any) (map[string]any, split) {
 	sp := split{readOnly: map[string]any{}}
 	spec := deepCopy(body)
+	name, _ := body["name"].(string)
 	for k := range envelope {
 		delete(spec, k)
 	}
@@ -158,8 +215,7 @@ func (s *Schema) normalize(body map[string]any) (map[string]any, split) {
 	}
 	s.clean(spec, s.body, "", &sp)
 	spec = walkStrings(spec, canonicalNever).(map[string]any)
-	defaultOutboundAsMeant(s.Type, spec)
-	dropSetByAzureAt(s.Type, spec)
+	asCapturedNow(s.Type, name, spec)
 	sort.Strings(sp.secrets)
 	return spec, sp
 }

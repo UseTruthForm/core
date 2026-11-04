@@ -5,7 +5,9 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
+	"github.com/stackdna/core/internal/azarm"
 	"github.com/stackdna/core/internal/snapshot"
 )
 
@@ -82,9 +84,17 @@ func changesJSON(cs []snapshot.Change) []changeJSON {
 }
 
 func emitDiff(changes []snapshot.Change, from, target string) {
-	emit(map[string]any{"schema": jsonSchema, "command": command, "from": from, "target": target,
-		"differences": len(changes), "changes": changesJSON(changes), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()})
+	doc := map[string]any{"schema": jsonSchema, "command": command, "from": from, "target": target,
+		"differences": len(changes), "changes": changesJSON(changes), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
+	if sizeCheck != nil {
+		doc["vm_sizes"] = sizeCheck
+	}
+	emit(doc)
 }
+
+// sizeCheck is what the VM size check found, for the document of an Azure
+// restore or diff; nil where none ran.
+var sizeCheck *azarm.SizeCheck
 
 type resultJSON struct {
 	Key    string `json:"key"`
@@ -94,15 +104,29 @@ type resultJSON struct {
 
 func emitRestore(results []snapshot.Result, target string) {
 	out := make([]resultJSON, 0, len(results))
-	applied := 0
+	applied, pending := 0, 0
+	notSent := []resultJSON{}
 	for _, r := range results {
 		out = append(out, resultJSON{Key: r.Key, OK: r.OK, Detail: r.Detail})
 		if r.OK {
 			applied++
 		}
+		// Applied, since Azure makes them, and listed: not sent is not sent. One
+		// whose settings wait for Azure leaves the restore not complete.
+		if strings.HasPrefix(r.Detail, azarm.NotSent) {
+			notSent = append(notSent, resultJSON{Key: r.Key, OK: r.OK, Detail: strings.TrimPrefix(r.Detail, azarm.NotSent)})
+			if azarm.Pending(r.Detail) {
+				pending++
+			}
+		}
 	}
-	emit(map[string]any{"schema": jsonSchema, "command": "restore", "target": target,
-		"applied": applied, "total": len(results), "complete": applied == len(results), "results": out, "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()})
+	doc := map[string]any{"schema": jsonSchema, "command": "restore", "target": target,
+		"applied": applied, "total": len(results), "complete": applied == len(results) && pending == 0, "results": out,
+		"not_sent": notSent, "pending": pending, "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
+	if sizeCheck != nil {
+		doc["vm_sizes"] = sizeCheck
+	}
+	emit(doc)
 }
 
 // needElsewhere is what the snapshot restored or compared needs outside its

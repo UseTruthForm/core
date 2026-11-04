@@ -18,61 +18,126 @@ import (
 // were not made.
 const skusVersion = "2021-07-01"
 
-// sizeUse is a VM size one object asks for, where.
+// sizeUse is a VM size one object asks for, where, and in which zones.
 type sizeUse struct {
 	key, size, location, set string
+	zones                    []string
 }
 
-// sizesOf lists the VM sizes s uses: a cluster's pools, a pool on its own, a
-// VM and a scale set, as --values leaves them. set is the property --values
-// can override.
-func sizesOf(s snapshot.Snapshot, values map[string]map[string]any) []sizeUse {
+// SizeCheck is what SizesRefused found. Nothing in Refused is not the same as
+// every size being fine: NotChecked says what was not looked at.
+type SizeCheck struct {
+	Refused    []string `json:"refused"`
+	NotChecked []string `json:"not_checked"`
+	Sizes      int      `json:"sizes"`
+	Regions    int      `json:"regions"`
+}
+
+// sizeHolders are where each type keeps its VM size: its path, the zones it
+// asks for, and the property --values sets to change it. A child's region is
+// its parent's when it has none of its own.
+var sizeHolders = map[string]struct{ size, zones, set string }{
+	"microsoft.containerservice/managedclusters/agentpools": {"properties.vmSize", "properties.availabilityZones", "properties.vmSize"},
+	"microsoft.compute/virtualmachines":                     {"properties.hardwareProfile.vmSize", "zones", "properties.hardwareProfile.vmSize"},
+	"microsoft.compute/virtualmachinescalesets":             {"sku.name", "zones", "sku"},
+	"microsoft.servicefabric/managedclusters/nodetypes":     {"properties.vmSize", "properties.zones", "properties.vmSize"},
+}
+
+// sizesOf lists the VM sizes s uses, as --values leaves them, and what holds a
+// size it does not read.
+func sizesOf(s snapshot.Snapshot, values map[string]map[string]any) (uses []sizeUse, notChecked []string) {
 	byKey := map[string]snapshot.Object{}
 	for _, o := range s.Objects {
 		byKey[strings.ToLower(o.Key())] = o
 	}
-	var out []sizeUse
-	for _, o := range s.Objects {
+	specOf := func(o snapshot.Object) map[string]any {
 		spec, _ := o.Body["spec"].(map[string]any)
 		if v := values[leaveOutKey(o)]; v != nil {
 			spec = deepCopy(spec)
 			merge(spec, deepCopy(v))
 		}
+		return spec
+	}
+	for _, o := range s.Objects {
+		spec := specOf(o)
 		loc, _ := spec["location"].(string)
-		add := func(size any, set string) {
-			if v, _ := size.(string); v != "" && loc != "" {
-				out = append(out, sizeUse{leaveOutKey(o), v, loc, set})
+		if loc == "" {
+			kind, name := o.Kind(), o.Name()
+			if i, j := strings.LastIndex(kind, "/"), strings.LastIndex(name, "/"); strings.Count(kind, "/") > 1 && j > 0 {
+				parent := byKey[strings.ToLower(APIVersion+"|"+kind[:i]+"|"+o.Namespace()+"|"+name[:j])]
+				if parent.Body != nil {
+					loc, _ = specOf(parent)["location"].(string)
+				}
 			}
 		}
-		switch strings.ToLower(o.Kind()) {
-		case "microsoft.containerservice/managedclusters":
+		add := func(size, zones any, set string) {
+			v, _ := size.(string)
+			if v == "" {
+				return
+			}
+			if loc == "" {
+				notChecked = append(notChecked, fmt.Sprintf("%s uses %s, and its region is not in the snapshot", leaveOutKey(o), v))
+				return
+			}
+			u := sizeUse{key: leaveOutKey(o), size: v, location: loc, set: set}
+			zs, _ := zones.([]any)
+			for _, z := range zs {
+				u.zones = append(u.zones, fmt.Sprint(z))
+			}
+			uses = append(uses, u)
+		}
+		kind := strings.ToLower(o.Kind())
+		if kind == strings.ToLower(managedClusterType) {
 			pools, _ := lookupPath(spec, "properties.agentPoolProfiles").([]any)
 			for _, p := range pools {
-				add(lookupPath(p, "vmSize"), "properties.agentPoolProfiles, the whole list")
+				add(lookupPath(p, "vmSize"), lookupPath(p, "availabilityZones"), "properties.agentPoolProfiles, the whole list")
 			}
-		case "microsoft.containerservice/managedclusters/agentpools":
-			name := o.Name()
-			if i := strings.LastIndex(name, "/"); i > 0 {
-				cluster := byKey[strings.ToLower(APIVersion+"|"+managedClusterType+"|"+o.Namespace()+"|"+name[:i])]
-				cs, _ := cluster.Body["spec"].(map[string]any)
-				loc, _ = cs["location"].(string)
-			}
-			add(lookupPath(spec, "properties.vmSize"), "properties.vmSize")
-		case "microsoft.compute/virtualmachines":
-			add(lookupPath(spec, "properties.hardwareProfile.vmSize"), "properties.hardwareProfile.vmSize")
-		case "microsoft.compute/virtualmachinescalesets":
-			add(lookupPath(spec, "sku.name"), "sku")
+			continue
+		}
+		if h, ok := sizeHolders[kind]; ok {
+			add(lookupPath(spec, h.size), lookupPath(spec, h.zones), h.set)
+			continue
+		}
+		// Any other type that names a VM size (a Batch pool, a machine learning
+		// compute) is said, so a check that found nothing is not read as all clear.
+		if p := sizePath(spec, ""); p != "" {
+			notChecked = append(notChecked, fmt.Sprintf("%s has a VM size at %s, which is not checked", leaveOutKey(o), p))
 		}
 	}
-	return out
+	return uses, notChecked
+}
+
+// sizePath is the first path under v whose key names a VM size.
+func sizePath(v any, at string) string {
+	switch c := v.(type) {
+	case map[string]any:
+		for _, k := range sortedKeys(c) {
+			p := join(at, k)
+			if (strings.EqualFold(k, "vmSize") || strings.EqualFold(k, "vmSku")) && c[k] != nil {
+				return p
+			}
+			if q := sizePath(c[k], p); q != "" {
+				return q
+			}
+		}
+	case []any:
+		for _, x := range c {
+			if q := sizePath(x, at+"[]"); q != "" {
+				return q
+			}
+		}
+	}
+	return ""
 }
 
 // SizesRefused says which VM sizes s uses that api's subscription cannot have
-// where s uses them, with values as a restore applies them, and how to
-// restore at another size. A list that cannot be read is said too: nothing
-// was checked there.
-func SizesRefused(ctx context.Context, api ARM, s snapshot.Snapshot, values map[string]map[string]any) []string {
-	uses := sizesOf(s, values)
+// where s uses them, in the zones they ask for, with values as a restore applies
+// them, and how to restore at another size. What it could not check is said
+// too: a list that cannot be read, a size with no region, a type it does not
+// read.
+func SizesRefused(ctx context.Context, api ARM, s snapshot.Snapshot, values map[string]map[string]any) SizeCheck {
+	uses, notChecked := sizesOf(s, values)
+	out := SizeCheck{NotChecked: notChecked}
 	byLoc := map[string][]sizeUse{}
 	var locs []string
 	for _, u := range uses {
@@ -83,15 +148,15 @@ func SizesRefused(ctx context.Context, api ARM, s snapshot.Snapshot, values map[
 		byLoc[l] = append(byLoc[l], u)
 	}
 	sort.Strings(locs)
-	var out []string
 	for _, l := range locs {
 		path := "/subscriptions/" + api.Subscription() + "/providers/Microsoft.Compute/skus?$filter=" +
 			strings.ReplaceAll(url.QueryEscape("location eq '"+l+"'"), "+", "%20")
 		skus, err := api.List(ctx, path, skusVersion)
 		if err != nil {
-			out = append(out, fmt.Sprintf("cannot read the VM sizes offered in %s, so they were not checked: %v", l, err))
+			out.NotChecked = append(out.NotChecked, fmt.Sprintf("cannot read the VM sizes offered in %s, so %d uses there were not checked: %v", l, len(byLoc[l]), err))
 			continue
 		}
+		out.Regions++
 		offered := map[string]map[string]any{}
 		for _, k := range skus {
 			if t, _ := k["resourceType"].(string); strings.EqualFold(t, "virtualMachines") {
@@ -100,23 +165,25 @@ func SizesRefused(ctx context.Context, api ARM, s snapshot.Snapshot, values map[
 			}
 		}
 		for _, u := range byLoc[l] {
-			if why := refused(offered[strings.ToLower(u.size)]); why != "" {
-				out = append(out, fmt.Sprintf("%s uses %s in %s, where this subscription cannot have it: %s. Azure will refuse it; ask Azure to offer it, or give another size with --values (%s)", u.key, u.size, l, why, u.set))
+			out.Sizes++
+			if why := refused(offered[strings.ToLower(u.size)], u.zones); why != "" {
+				out.Refused = append(out.Refused, fmt.Sprintf("%s uses %s in %s, where this subscription cannot have it: %s. Azure will refuse it; ask Azure to offer it, or give another size with --values (%s)", u.key, u.size, l, why, u.set))
 			}
 		}
 	}
 	return out
 }
 
-// refused says why a size cannot be had: not offered, restricted in the
-// region, or restricted in some of its zones (a pool or VM pinned to one is
-// refused). "" when it can.
-func refused(sku map[string]any) string {
+// refused says why a size cannot be had in the zones asked for: not offered,
+// restricted in the region, or not offered in a zone asked for, whether
+// restricted there or not in the region's zones at all (a pool or VM pinned
+// to one is refused AvailabilityZoneNotSupported). "" when it can.
+func refused(sku map[string]any, asked []string) string {
 	if sku == nil {
 		return "it is not offered there"
 	}
 	rs, _ := sku["restrictions"].([]any)
-	var zones []string
+	restricted := map[string]bool{}
 	for _, r := range rs {
 		m, _ := r.(map[string]any)
 		code, _ := m["reasonCode"].(string)
@@ -127,13 +194,34 @@ func refused(sku map[string]any) string {
 			info, _ := m["restrictionInfo"].(map[string]any)
 			zs, _ := info["zones"].([]any)
 			for _, z := range zs {
-				zones = append(zones, fmt.Sprint(z))
+				restricted[fmt.Sprint(z)] = true
 			}
 		}
 	}
-	if len(zones) > 0 {
-		sort.Strings(zones)
-		return "Azure restricts it in zones " + strings.Join(zones, ", ")
+	offered := map[string]bool{}
+	infos, _ := sku["locationInfo"].([]any)
+	for _, x := range infos {
+		info, _ := x.(map[string]any)
+		zs, _ := info["zones"].([]any)
+		for _, z := range zs {
+			if !restricted[fmt.Sprint(z)] {
+				offered[fmt.Sprint(z)] = true
+			}
+		}
 	}
-	return ""
+	var missing []string
+	for _, z := range asked {
+		if !offered[z] {
+			missing = append(missing, z)
+		}
+	}
+	if len(missing) == 0 {
+		return ""
+	}
+	sort.Strings(missing)
+	have := sortedKeys(offered)
+	if len(have) == 0 {
+		return "it is asked for in zones " + strings.Join(missing, ", ") + ", and offered in no zone there"
+	}
+	return "it is asked for in zones " + strings.Join(missing, ", ") + ", and offered only in zones " + strings.Join(have, ", ")
 }

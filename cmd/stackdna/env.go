@@ -181,6 +181,10 @@ type TargetResult struct {
 
 // captureTarget captures one target with the same code the single-target
 // commands use, read-only.
+// envAzureDefinitions is where an environment's Azure targets read type
+// definitions; "" is Azure's published copy. A test points it at fixtures.
+var envAzureDefinitions string
+
 func captureTarget(ctx context.Context, t Target) (snapshot.Snapshot, error) {
 	switch t.Platform {
 	case "kubernetes":
@@ -203,7 +207,7 @@ func captureTarget(ctx context.Context, t Target) (snapshot.Snapshot, error) {
 		}
 		return ad.Capture(ctx)
 	case "azure":
-		a := azureFlags{subscription: t.Subscription, types: strings.Join(t.Types, ","), baseline: t.Baseline, managed: t.CaptureManaged, parallel: t.parallel()}
+		a := azureFlags{subscription: t.Subscription, types: strings.Join(t.Types, ","), baseline: t.Baseline, managed: t.CaptureManaged, parallel: t.parallel(), definitions: envAzureDefinitions}
 		ad, err := a.connect(true)
 		if err != nil {
 			return snapshot.Snapshot{}, err

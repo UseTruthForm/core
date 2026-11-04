@@ -233,6 +233,7 @@ func capture(ctx context.Context, args []string) int {
 }
 
 func restore(ctx context.Context, args []string) int {
+	sizeCheck = nil
 	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
 	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
 	kctx := fs.String("context", "", "kubeconfig context to restore into")
@@ -331,6 +332,7 @@ func restore(ctx context.Context, args []string) int {
 }
 
 func diff(ctx context.Context, args []string) int {
+	sizeCheck = nil
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
 	kctx := fs.String("context", "", "kubeconfig context to compare against")
@@ -435,7 +437,12 @@ func compare(args []string) int {
 	if a.Policy != b.Policy {
 		return fail(fmt.Errorf("snapshots use different capture policies (%s vs %s); the difference would be the policy, not drift", a.Policy, b.Policy))
 	}
-	return report(snapshot.Compare(a, b), args[0], args[1])
+	// Two Azure snapshots from different versions differ on what a fix took
+	// out of one: each is made as this version captures.
+	if a.Platform == "azure" && b.Platform == "azure" {
+		b = azarm.AsCapturedNow(b)
+	}
+	return report(compareTarget(a.Platform, a, b), args[0], args[1])
 }
 
 // schemaDiff shows what each API added or removed between two captures,

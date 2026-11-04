@@ -120,7 +120,7 @@ func TestOtherSubscriptionsAreNamed(t *testing.T) {
 // resource went unsaid.
 func TestOtherSubscriptionsAreNamedInsideAURL(t *testing.T) {
 	hook := obj("microsoft.insights/actionGroups", "rg", "ops", "/subscriptions/"+tokSub+"/resourceGroups/rg/providers/microsoft.insights/actionGroups/ops",
-		map[string]any{"properties": map[string]any{"uri": "https://example.test/run?resource=%2Fsubscriptions%2F" + otherSub + "%2FresourceGroups%2Fnet"}})
+		map[string]any{"properties": map[string]any{"uri": "https://example.test/run?resource=%2Fsubscriptions%2F" + otherSub + "%2FresourceGroups%2Fnet&note=100%"}})
 	got := OtherSubscriptions(snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{hook}})
 	if len(got) != 1 || !strings.Contains(got[0], otherSub) {
 		t.Errorf("got %v, want the action group naming %s", got, otherSub)

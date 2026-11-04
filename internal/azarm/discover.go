@@ -230,8 +230,11 @@ func childSkip(item map[string]any) string {
 	// snapshot skips the volume, since restoring the claim provisions a new
 	// one under a new name; restored here as well, the old share was left
 	// beside it with nothing using it.
-	if c, _ := md["createdBy"].(string); strings.EqualFold(c, "file.csi.azure.com") {
-		return csiShare
+	// Metadata names are not case sensitive.
+	for k, c := range md {
+		if c, _ := c.(string); strings.EqualFold(k, "createdBy") && strings.EqualFold(c, "file.csi.azure.com") {
+			return csiShare
+		}
 	}
 	return ""
 }
@@ -284,16 +287,18 @@ func issuerRefs(cs []*captured) {
 // collection the resource or type does not have is "none here", not an
 // error; any other failure is reported, so a gap is never silent.
 func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string, skip func(map[string]any) string) []found {
+	// A gap names the collection, not the query it was listed with.
+	listed, _, _ := strings.Cut(path, "?")
 	ver, err := v.pick(typ)
 	if err != nil {
 		if errors.Is(err, errNoVersion) {
 			return nil // the subscription does not offer the type
 		}
-		return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
+		return []found{{typ: typ, name: listed, reason: Unreadable + err.Error()}}
 	}
 	s, err := v.reg.Schema(typ, ver)
 	if err != nil {
-		return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
+		return []found{{typ: typ, name: listed, reason: Unreadable + err.Error()}}
 	}
 	if !s.Writable {
 		return nil // defined by Azure (defaultSecurityRules); no one can PUT it
@@ -311,7 +316,7 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 			if items, err = api.List(ctx, path, alt); !errors.Is(err, ErrAPIVersion) {
 				ver = alt
 				if s, err = v.reg.Schema(typ, ver); err != nil {
-					return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
+					return []found{{typ: typ, name: listed, reason: Unreadable + err.Error()}}
 				}
 				break
 			}
@@ -332,11 +337,11 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 	case errors.Is(err, ErrBadRequest) && !v.registered(typ):
 		return nil
 	case err != nil:
-		return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
+		return []found{{typ: typ, name: listed, reason: Unreadable + err.Error()}}
 	}
 	var out []found
 	for range generated {
-		out = append(out, found{typ: typ, name: path, reason: generatedEachRead, count: true})
+		out = append(out, found{typ: typ, name: listed, reason: generatedEachRead, count: true})
 	}
 	for _, item := range items {
 		id, _ := item["id"].(string)
@@ -392,7 +397,11 @@ func listByKind(ctx context.Context, api ARM, path, ver string, kinds []string, 
 	}
 	read := func(k string) ([]map[string]any, error) {
 		// %20, not +: an OData filter is not form data.
-		got, err := api.List(ctx, path+"?$filter="+strings.ReplaceAll(url.QueryEscape("kind eq '"+k+"'"), "+", "%20"), ver)
+		sep := "?"
+		if strings.Contains(path, "?") {
+			sep = "&" // a collection listed with its own query
+		}
+		got, err := api.List(ctx, path+sep+"$filter="+strings.ReplaceAll(url.QueryEscape("kind eq '"+k+"'"), "+", "%20"), ver)
 		switch {
 		case errors.Is(err, ErrNotFound), errors.Is(err, ErrNotApplicable), errors.Is(err, ErrNeedsKind),
 			unlisted && errors.Is(err, ErrBadRequest):

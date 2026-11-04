@@ -2,7 +2,6 @@ package azarm
 
 import (
 	"fmt"
-	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -145,14 +144,14 @@ func OtherSubscriptions(s snapshot.Snapshot) []string {
 	return out
 }
 
-// unescaped is v with URL escapes undone, or "" when it has none to undo.
+// unescaped is v with its escaped slashes undone, once or twice escaped
+// ("%2F", "%252F"), or "" when it has none. Only the slashes: undoing every
+// escape failed on a stray "%" ("100% sure"), and the ID beside it was missed.
 func unescaped(v string) string {
-	if !strings.Contains(strings.ToLower(v), "%2f") {
+	if !strings.Contains(strings.ToLower(v), "%2f") && !strings.Contains(strings.ToLower(v), "%252f") {
 		return ""
 	}
-	d, err := url.PathUnescape(v)
-	if err != nil {
-		return ""
-	}
-	return d
+	return slashEscapes.Replace(v)
 }
+
+var slashEscapes = strings.NewReplacer("%252F", "/", "%252f", "/", "%2F", "/", "%2f", "/")

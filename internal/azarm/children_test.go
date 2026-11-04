@@ -283,3 +283,25 @@ func TestATypesSpellingDoesNotDependOnMapOrder(t *testing.T) {
 		}
 	}
 }
+
+// Review of #63: matched by name in any case, or by its items' IDs, a
+// registered child collection that ARM also returns inline (an NSG's
+// securityRules) stopped being read on its own, and left every snapshot that
+// had it. Registered children are skipped only as before.
+func TestRegisteredChildrenAreReadAsBefore(t *testing.T) {
+	reg := fixtures(t)
+	f := NewWorld(reg).Subscription(srcSub, srcTenant)
+	put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})
+	nsg := id(srcSub, "shop-rg", "Microsoft.Network/networkSecurityGroups", "web")
+	rule := map[string]any{"access": "Allow", "direction": "Inbound", "priority": 100, "protocol": "Tcp",
+		"sourceAddressPrefix": "*", "sourcePortRange": "*", "destinationAddressPrefix": "*", "destinationPortRange": "443"}
+	// As ARM returns it: its rules inline, with their IDs.
+	f.SeedAzure(nsg, stable(reg, "Microsoft.Network/networkSecurityGroups"), map[string]any{"location": "eastus", "properties": map[string]any{
+		"securityRules": []any{map[string]any{"id": nsg + "/securityRules/https", "name": "https", "properties": rule}}}})
+	f.SeedAzure(nsg+"/securityRules/https", stable(reg, "Microsoft.Network/networkSecurityGroups/securityRules"), map[string]any{"properties": rule})
+
+	_, got := captureByKey(t, f, reg)
+	if _, ok := got["Microsoft.Network/networkSecurityGroups/securityRules|web/https"]; !ok {
+		t.Errorf("the rule is no longer its own object: %v", sortedKeys(got))
+	}
+}

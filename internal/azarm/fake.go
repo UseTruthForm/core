@@ -128,8 +128,9 @@ func (f *Fake) APIVersions(_ context.Context, namespace string) (map[string][]st
 // peerings and subnets. Offering them here let discovery find peerings as
 // children, which a real subscription never does, and hid their loss.
 // An AI Services account's model deployments and content filters are not
-// listed either, and its registration answers for neither.
+// listed either, and neither are a cluster's agent pools.
 var unregistered = map[string]bool{
+	"microsoft.containerservice/managedclusters/agentpools":    true,
 	"microsoft.network/virtualnetworks/virtualnetworkpeerings": true,
 	"microsoft.network/virtualnetworks/subnets":                true,
 	"microsoft.cognitiveservices/accounts/deployments":         true,

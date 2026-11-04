@@ -136,7 +136,21 @@ func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []
 			// A network's peerings are made their own objects from its
 			// GET: listed again, a failed list was a gap for what the
 			// snapshot held (review of #63).
-			if inlined[strings.ToLower(coll)] || strings.EqualFold(ct, vnetType+"/virtualNetworkPeerings") {
+			// A registered child is skipped only as it was before children
+			// came from definitions: its collection under its registered
+			// spelling. Matched more widely, ones read on their own before
+			// (an NSG's securityRules) would have left every snapshot that
+			// had them (review of #63).
+			if strings.EqualFold(ct, vnetType+"/virtualNetworkPeerings") {
+				continue
+			}
+			if v.registered(ct) {
+				if props, _ := parent.spec["properties"].(map[string]any); props != nil {
+					if _, inline := props[coll].([]any); inline {
+						continue
+					}
+				}
+			} else if inlined[strings.ToLower(coll)] {
 				continue
 			}
 			run(func() {

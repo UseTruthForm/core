@@ -216,3 +216,29 @@ func TestRenameMovesAnAccountsSubdomain(t *testing.T) {
 		}
 	}
 }
+
+// Review of #64: a rename can give a subdomain no host name can have, or one
+// another account in the snapshot already holds; both fail at the restore.
+func TestRenameWarnsAboutASubdomainThatCannotBe(t *testing.T) {
+	sub := "/subscriptions/" + tokSub
+	acct := func(name, subdomain string) snapshot.Object {
+		return obj("Microsoft.CognitiveServices/accounts", "rg", name, sub+"/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/"+name,
+			map[string]any{"properties": map[string]any{"customSubDomainName": subdomain}})
+	}
+	for name, tc := range map[string]struct {
+		objs  []snapshot.Object
+		names map[string]string
+		want  string
+	}{
+		"not a host name": {[]snapshot.Object{acct("chat", "chat")}, map[string]string{"Microsoft.CognitiveServices/accounts/chat": "chat_tst"}, "not a valid host name"},
+		"already held":    {[]snapshot.Object{acct("chat", "chat"), acct("other", "chat-tst")}, map[string]string{"Microsoft.CognitiveServices/accounts/chat": "chat-tst"}, "unique across Azure, so a restore fails"},
+	} {
+		_, warnings, err := Rename(snapshot.Snapshot{Objects: tc.objs}, tc.names)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(strings.Join(warnings, "\n"), tc.want) {
+			t.Errorf("%s: warnings %v, want %q", name, warnings, tc.want)
+		}
+	}
+}

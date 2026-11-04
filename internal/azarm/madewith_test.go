@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stackdna/core/internal/snapshot"
@@ -153,13 +154,17 @@ func TestAzureDiagnosticsKeepsItsRetentionOnceAzureMakesIt(t *testing.T) {
 		t.Errorf("listed to check: %v, with defaults only: %v", set, plain)
 	}
 
+	// PUTs run several at a time.
+	var mu sync.Mutex
 	sent := map[string]map[string]any{}
 	dst.PutError = func(id string, body map[string]any) error {
 		if strings.HasSuffix(id, "/tables/AzureDiagnostics") {
 			if dst.Stored(id) == nil {
 				return errors.New("InvalidParameter: cannot create or migrate AzureDiagnostics table")
 			}
+			mu.Lock()
 			sent[strings.Split(id, "/")[8]] = deepCopy(body)
+			mu.Unlock()
 		}
 		return nil
 	}

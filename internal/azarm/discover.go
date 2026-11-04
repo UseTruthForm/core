@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -290,6 +291,23 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 	// A gap names the collection, not the query it was listed with.
 	listed, _, _ := strings.Cut(path, "?")
 	ver, err := v.pick(typ)
+	// A child the registration does not list is read at its parent's
+	// versions. With none of those defined for it, it went unread with no
+	// word (review of beta.14): it is read at its own definitions, newest
+	// first, and a refusal of all of them is a gap. Made a gap at once,
+	// before the list, it was one even for a type no one can write and for
+	// a parent with none (second review). ARM refuses a version it does not
+	// serve with a plain 400 (NoRegisteredProviderFound, seen live), which
+	// for these is a refusal, not "none here" (third review).
+	var own []string
+	if errors.Is(err, errNoVersion) && !v.registered(typ) {
+		if own = byPreference(v.reg.Versions(typ)); len(own) > 0 {
+			ver, err = own[0], nil
+		}
+	}
+	refused := func(err error) bool {
+		return errors.Is(err, ErrAPIVersion) || (own != nil && errors.Is(err, ErrBadRequest))
+	}
 	if err != nil {
 		if errors.Is(err, errNoVersion) {
 			return nil // the subscription does not offer the type
@@ -308,15 +326,26 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 	// one that answers is the version these items are read and restored
 	// at. Before, the refusal read as "none here" and the subscription's
 	// diagnostic settings were never checked.
-	if errors.Is(err, ErrAPIVersion) {
-		for _, alt := range v.all(typ) {
+	if refused(err) {
+		alts := v.all(typ)
+		if own != nil {
+			alts = own
+		}
+		for _, alt := range alts {
 			if alt == ver {
 				continue
 			}
-			if items, err = api.List(ctx, path, alt); !errors.Is(err, ErrAPIVersion) {
+			if items, err = api.List(ctx, path, alt); !refused(err) {
+				// Its own error, not err: reusing err dropped the list's
+				// failure at this version (a 403, a 500), and the collection
+				// read as empty with no gap (third review of #67).
 				ver = alt
-				if s, err = v.reg.Schema(typ, ver); err != nil {
-					return []found{{typ: typ, name: listed, reason: Unreadable + err.Error()}}
+				var serr error
+				if s, serr = v.reg.Schema(typ, ver); serr != nil {
+					return []found{{typ: typ, name: listed, reason: Unreadable + serr.Error()}}
+				}
+				if !s.Writable {
+					return nil
 				}
 				break
 			}
@@ -330,6 +359,8 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 		items, generated, err = listByKind(ctx, api, path, ver, s.kinds(), !v.registered(typ))
 	}
 	switch {
+	case own != nil && refused(err):
+		return []found{{typ: typ, name: listed, reason: Unreadable + "no version its parent is offered at is defined for it, and each of its own (" + strings.Join(own, ", ") + ") was refused: " + err.Error()}}
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrNotApplicable):
 		return nil
 	// Read only because it has a definition: a 400 says this resource does
@@ -365,6 +396,22 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 		out = append(out, found{typ: typ, name: rid.LocalName(), c: process(api, tenant, rid, ver, s, item)})
 	}
 	return out
+}
+
+// byPreference orders versions as pick prefers them: stable ones newest
+// first, then previews newest first.
+func byPreference(vs []string) []string {
+	vs = slices.Clone(vs)
+	sort.Sort(sort.Reverse(sort.StringSlice(vs)))
+	var stable, preview []string
+	for _, x := range vs {
+		if strings.Contains(x, "preview") {
+			preview = append(preview, x)
+		} else {
+			stable = append(stable, x)
+		}
+	}
+	return append(stable, preview...)
 }
 
 // generatedEachRead is counted in coverage, not listed: the items have a new

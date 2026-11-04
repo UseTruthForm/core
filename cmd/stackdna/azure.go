@@ -34,8 +34,13 @@ func (a *azureFlags) from(aws *awsFlags, baseline string) {
 	a.types, a.managed, a.parallel, a.baseline = aws.types, aws.managed, aws.parallel, baseline
 }
 
+// azureAPI connects to a subscription; a test puts a fake in its place.
+var azureAPI = func(subscription string, readOnly bool) (azarm.ARM, error) {
+	return azarm.NewSDK(subscription, readOnly)
+}
+
 func (a *azureFlags) connect(readOnly bool) (*azarm.Adapter, error) {
-	api, err := azarm.NewSDK(a.subscription, readOnly)
+	api, err := azureAPI(a.subscription, readOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -199,6 +204,9 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 		}
 	}
 	fmt.Printf("applied %d of %d resources to subscription %s\n", ok, len(results), a.subscription)
+	if len(heldBack) > 0 {
+		fmt.Printf("left out %d (--leave-out): %s\n", len(heldBack), strings.Join(heldBack, ", "))
+	}
 	if ok != len(results) {
 		return 3
 	}

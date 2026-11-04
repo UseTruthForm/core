@@ -474,8 +474,12 @@ func report(changes []snapshot.Change, want, got string) int {
 	if jsonOut {
 		emitDiff(changes, want, got)
 	}
+	held := ""
+	if len(heldBack) > 0 {
+		held = fmt.Sprintf(", leaving out %d objects (--leave-out): %s", len(heldBack), strings.Join(heldBack, ", "))
+	}
 	if len(changes) == 0 {
-		fmt.Printf("no differences: %s matches %s\n", got, want)
+		fmt.Printf("no differences: %s matches %s%s\n", got, want, held)
 		return 0
 	}
 	for _, ch := range changes {
@@ -486,7 +490,7 @@ func report(changes []snapshot.Change, want, got string) int {
 			fmt.Printf("%-8s %s\n", ch.Kind, ch.Key)
 		}
 	}
-	fmt.Printf("%d differences between %s and %s\n", len(changes), want, got)
+	fmt.Printf("%d differences between %s and %s%s\n", len(changes), want, got, held)
 	return 2
 }
 
@@ -624,6 +628,7 @@ const leaveOutHelp = "azure: YAML list of objects a restore leaves out and a dif
 // leftOut applies --leave-out to a snapshot. Only Azure has it; elsewhere it
 // is refused, never ignored.
 func leftOut(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, error) {
+	heldBack = nil
 	if file == "" {
 		return s, nil
 	}
@@ -642,7 +647,22 @@ func leftOut(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, err
 	if err != nil {
 		return s, fmt.Errorf("%s: %w", file, err)
 	}
-	fmt.Fprintf(os.Stderr, "leave out: %d objects, as %s asks\n", len(s.Objects)-len(out.Objects), file)
+	// Each one is named, here and in what the diff or restore reports: a count
+	// alone let a diff say "no differences" with no word of what it skipped.
+	kept := map[string]bool{}
+	for _, o := range out.Objects {
+		kept[o.Key()] = true
+	}
+	for _, o := range s.Objects {
+		if !kept[o.Key()] {
+			heldBack = append(heldBack, o.Kind()+"/"+o.Namespace()+"/"+o.Name())
+		}
+	}
+	sort.Strings(heldBack)
+	fmt.Fprintf(os.Stderr, "leave out: %d objects, as %s asks:\n", len(heldBack), file)
+	for _, k := range heldBack {
+		fmt.Fprintln(os.Stderr, "  ", k)
+	}
 	return out, nil
 }
 

@@ -24,6 +24,9 @@ var (
 	// fail reported, for the document a failed run ends with.
 	emitted bool
 	lastErr error
+	// heldBack is what --leave-out took out of the snapshot, named in the
+	// diff and restore documents so "no differences" says what it skipped.
+	heldBack []string
 )
 
 // jsonCommands produce a document of their own.
@@ -80,7 +83,7 @@ func changesJSON(cs []snapshot.Change) []changeJSON {
 
 func emitDiff(changes []snapshot.Change, from, target string) {
 	emit(map[string]any{"schema": jsonSchema, "command": command, "from": from, "target": target,
-		"differences": len(changes), "changes": changesJSON(changes)})
+		"differences": len(changes), "changes": changesJSON(changes), "left_out": leftOutJSON()})
 }
 
 type resultJSON struct {
@@ -99,7 +102,12 @@ func emitRestore(results []snapshot.Result, target string) {
 		}
 	}
 	emit(map[string]any{"schema": jsonSchema, "command": "restore", "target": target,
-		"applied": applied, "total": len(results), "complete": applied == len(results), "results": out})
+		"applied": applied, "total": len(results), "complete": applied == len(results), "results": out, "left_out": leftOutJSON()})
+}
+
+// leftOutJSON is heldBack as a list, empty rather than null.
+func leftOutJSON() []string {
+	return append([]string{}, heldBack...)
 }
 
 func emitCapture(dir string, s snapshot.Snapshot, target string) {

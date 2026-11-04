@@ -179,3 +179,66 @@ func TestRenameWarnsAboutNamesInText(t *testing.T) {
 		t.Errorf("warnings %v", warnings)
 	}
 }
+
+// An AI Services account renamed for a restore beside its source kept its
+// customSubDomainName, its endpoint's host name and as unique across Azure as
+// its name: the rehearsal of a real restore planned an account that would
+// have collided with the source's. The subdomain follows the name it was.
+func TestRenameMovesAnAccountsSubdomain(t *testing.T) {
+	sub := "/subscriptions/" + tokSub
+	acctID := func(name string) string {
+		return sub + "/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/" + name
+	}
+	for _, tc := range []struct {
+		name, was, want string
+		warn            bool
+	}{
+		{"Assistant", "assistant", "assistant-tst", false},
+		{"assistant", "assistant", "assistant-tst", false},
+		{"Assistant", "Assistant", "Assistant-tst", false},
+		{"Assistant", "chat-prod", "chat-prod", true},
+	} {
+		acct := obj("Microsoft.CognitiveServices/accounts", "rg", tc.name, acctID(tc.name), map[string]any{"properties": map[string]any{"customSubDomainName": tc.was}})
+		renamed, warnings, err := Rename(snapshot.Snapshot{Objects: []snapshot.Object{acct}}, map[string]string{"Microsoft.CognitiveServices/accounts/" + tc.name: tc.name + "-tst"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		props := renamed.Objects[0].Body["spec"].(map[string]any)["properties"].(map[string]any)
+		if got := props["customSubDomainName"]; got != tc.want {
+			t.Errorf("%s with subdomain %s: became %v, want %s", tc.name, tc.was, got, tc.want)
+		}
+		warned := false
+		for _, w := range warnings {
+			warned = warned || strings.Contains(w, "customSubDomainName")
+		}
+		if warned != tc.warn {
+			t.Errorf("%s with subdomain %s: warned %v, want %v: %v", tc.name, tc.was, warned, tc.warn, warnings)
+		}
+	}
+}
+
+// Review of #64: a rename can give a subdomain no host name can have, or one
+// another account in the snapshot already holds; both fail at the restore.
+func TestRenameWarnsAboutASubdomainThatCannotBe(t *testing.T) {
+	sub := "/subscriptions/" + tokSub
+	acct := func(name, subdomain string) snapshot.Object {
+		return obj("Microsoft.CognitiveServices/accounts", "rg", name, sub+"/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/"+name,
+			map[string]any{"properties": map[string]any{"customSubDomainName": subdomain}})
+	}
+	for name, tc := range map[string]struct {
+		objs  []snapshot.Object
+		names map[string]string
+		want  string
+	}{
+		"not a host name": {[]snapshot.Object{acct("chat", "chat")}, map[string]string{"Microsoft.CognitiveServices/accounts/chat": "chat_tst"}, "not a valid host name"},
+		"already held":    {[]snapshot.Object{acct("chat", "chat"), acct("other", "chat-tst")}, map[string]string{"Microsoft.CognitiveServices/accounts/chat": "chat-tst"}, "unique across Azure, so a restore fails"},
+	} {
+		_, warnings, err := Rename(snapshot.Snapshot{Objects: tc.objs}, tc.names)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(strings.Join(warnings, "\n"), tc.want) {
+			t.Errorf("%s: warnings %v, want %q", name, warnings, tc.want)
+		}
+	}
+}

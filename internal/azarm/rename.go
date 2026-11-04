@@ -85,6 +85,9 @@ func Rename(s snapshot.Snapshot, names map[string]string) (snapshot.Snapshot, []
 				body[sect] = rewriteAll(v, func(v string) string { return renameText(v, m) })
 			}
 		}
+		if w := renameDerived(objectID(o, tokSub), body, m); w != "" {
+			warnings = append(warnings, w)
+		}
 		for k, v := range names {
 			old := k[strings.LastIndex(k, "/")+1:]
 			if mentions(body["spec"], old) {
@@ -129,8 +132,82 @@ func Rename(s snapshot.Snapshot, names map[string]string) (snapshot.Snapshot, []
 			warnings = append(warnings, fmt.Sprintf("%s: the new name %q is in more than one group (%s); a name unique across Azure cannot be", k, v, strings.Join(gs, ", ")))
 		}
 	}
+	warnings = append(warnings, derivedTaken(out)...)
 	sort.Strings(warnings)
 	return out, slicesCompact(warnings), nil
+}
+
+// derivedNames are properties that hold a name unique across Azure other than
+// the resource's own: an AI Services account's customSubDomainName is its
+// endpoint's host name. Renamed with the account, the subdomain stayed, and a
+// restore beside the source would have failed on it.
+var derivedNames = map[string][]string{
+	"microsoft.cognitiveservices/accounts": {"properties", "customSubDomainName"},
+}
+
+var subdomainRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
+
+// derivedTaken warns about a derived name two objects of a type now hold: a
+// rename to a subdomain another account already has (review of #64).
+func derivedTaken(s snapshot.Snapshot) []string {
+	held := map[string][]string{}
+	for _, o := range s.Objects {
+		path := derivedNames[strings.ToLower(o.Kind())]
+		if path == nil {
+			continue
+		}
+		spec, _ := o.Body["spec"].(map[string]any)
+		v, _ := lookup(spec, path)
+		if name, _ := v.(string); name != "" {
+			k := strings.ToLower(o.Kind() + "|" + name)
+			held[k] = append(held[k], o.Namespace()+"/"+o.Name())
+		}
+	}
+	var out []string
+	for _, k := range sortedKeys(held) {
+		if len(held[k]) > 1 {
+			typ, name, _ := strings.Cut(k, "|")
+			out = append(out, fmt.Sprintf("%s: %q is the %s of %s; it is unique across Azure, so a restore fails on all but one", typ, name, strings.Join(derivedNames[typ], "."), strings.Join(held[k], ", ")))
+		}
+	}
+	return out
+}
+
+// renameDerived gives a renamed resource's derived name its new name when it
+// was the old one (in the old one's case, lower or as written). One that was
+// something else cannot be guessed, and is warned about.
+func renameDerived(was ResourceID, body map[string]any, m map[string]string) string {
+	path := derivedNames[strings.ToLower(was.Type)]
+	if path == nil || was.ResourceGroup == "" || was.Scope != "" {
+		return ""
+	}
+	newName, ok := m[strings.ToLower(was.Type+"/"+was.Name)]
+	if !ok {
+		return ""
+	}
+	parent, _ := body["spec"].(map[string]any)
+	for _, k := range path[:len(path)-1] {
+		parent, _ = parent[k].(map[string]any)
+	}
+	key := path[len(path)-1]
+	cur, _ := parent[key].(string)
+	switch {
+	case cur == "":
+		return ""
+	case cur == strings.ToLower(was.Name), strings.EqualFold(cur, was.Name):
+		v := newName
+		if cur == strings.ToLower(was.Name) {
+			v = strings.ToLower(newName)
+		}
+		parent[key] = v
+		// An account's name may hold what a host name cannot (review of #64).
+		if !subdomainRE.MatchString(v) {
+			return fmt.Sprintf("%s %s: its %s became %q, which is not a valid host name (letters, digits and hyphens, not at either end); a restore fails on it", was.Type, was.Name, strings.Join(path, "."), v)
+		}
+	default:
+		return fmt.Sprintf("%s %s: its %s %q is unique across Azure too and is not its name, so it was not renamed; a restore beside the source fails on it", was.Type, was.Name, strings.Join(path, "."), cur)
+	}
+	return ""
 }
 
 // splitKey splits "Namespace/type[/child...]/name[/childname...]" into the

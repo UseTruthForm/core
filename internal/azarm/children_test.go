@@ -193,7 +193,7 @@ func (failingVersions) APIVersions(context.Context, string) (map[string][]string
 // Review of #63: with children found by definition, a network's peerings
 // were listed again beside the ones made from its GET, and a list that failed
 // was a gap for peerings the snapshot held.
-func TestAFailedPeeringListIsNoGap(t *testing.T) {
+func TestPeeringsComeFromTheirNetworkNotAList(t *testing.T) {
 	reg := fixtures(t)
 	f := NewWorld(reg).Subscription(srcSub, srcTenant)
 	put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})

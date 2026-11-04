@@ -3,6 +3,7 @@ package azarm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -321,9 +322,11 @@ func (o offeredOnly) APIVersions(context.Context, string) (map[string][]string, 
 // nothing said so. It is read at its own newest definition now, and only a
 // refusal of that version is a gap: made a gap before the list, it was one
 // for every alert rule's networkSecurityPerimeterConfigurations, which no one
-// can write, and for a parent with none (second review). A type the
-// registration lists with no version defined is still one the subscription
-// does not offer us.
+// can write, and for a parent with none (second review). ARM refuses such a
+// version with a plain 400, NoRegisteredProviderFound, seen live for an action
+// group's networkSecurityPerimeterConfigurations; read as "none here", the
+// child went silent again (third review). A type the registration lists with
+// no version defined is still one the subscription does not offer us.
 func TestAChildWithNoVersionOfItsParentsIsReadAtItsOwn(t *testing.T) {
 	reg := fixtures(t)
 	ctx := context.Background()
@@ -332,13 +335,15 @@ func TestAChildWithNoVersionOfItsParentsIsReadAtItsOwn(t *testing.T) {
 	for name, tc := range map[string]struct {
 		typ     string
 		offered map[string][]string
-		refuse  bool
+		refuse  error
 		want    string // "item", "gap" or "" for none
 	}{
-		"read at its own version":    {deployments, old, false, "item"},
-		"its own version is refused": {deployments, old, true, "gap"},
-		"no one can write it":        {"Microsoft.Network/networkSecurityGroups/defaultSecurityRules", map[string][]string{"microsoft.network/networksecuritygroups": {"2017-04-18"}}, false, ""},
-		"in the registration":        {deployments, map[string][]string{strings.ToLower(deployments): {"2017-04-18"}}, false, ""},
+		"read at its own version":               {deployments, old, nil, "item"},
+		"its own version is refused":            {deployments, old, fmt.Errorf("refused: %w", ErrAPIVersion), "gap"},
+		"refused with NoRegisteredProviderFound": {deployments, old, &armError{status: http.StatusBadRequest, code: "NoRegisteredProviderFound", msg: "No registered resource provider found for location 'global' and API version '2026-09-01'"}, "gap"},
+		"none at its own version":                {deployments, old, fmt.Errorf("%w: %v", ErrNotFound, &armError{status: http.StatusNotFound, code: "ResourceNotFound"}), ""},
+		"no one can write it":                   {"Microsoft.Network/networkSecurityGroups/defaultSecurityRules", map[string][]string{"microsoft.network/networksecuritygroups": {"2017-04-18"}}, nil, ""},
+		"in the registration":                   {deployments, map[string][]string{strings.ToLower(deployments): {"2017-04-18"}}, nil, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := NewWorld(reg).Subscription(srcSub, srcTenant)
@@ -346,8 +351,8 @@ func TestAChildWithNoVersionOfItsParentsIsReadAtItsOwn(t *testing.T) {
 			rawPut(t, f, acct+"/deployments/chat", deployments, map[string]any{
 				"sku":        map[string]any{"name": "GlobalStandard", "capacity": 50},
 				"properties": map[string]any{"model": map[string]any{"format": "OpenAI", "name": "gpt-4.1", "version": "2025-04-14"}}})
-			if tc.refuse {
-				f.RefuseVersion = func(string, string) bool { return true }
+			if tc.refuse != nil {
+				f.ListError = func(string) error { return tc.refuse }
 			}
 			api := offeredOnly{f, tc.offered}
 			v := &versions{api: api, reg: reg, ctx: ctx, cache: map[string]map[string][]string{}}

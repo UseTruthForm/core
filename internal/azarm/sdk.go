@@ -171,7 +171,8 @@ func (s *SDK) getOnce(ctx context.Context, u string, v any) error {
 		if resp.StatusCode == http.StatusBadRequest && code == "KindNotSpecified" {
 			return fmt.Errorf("%w: %v", ErrNeedsKind, ae)
 		}
-		if resp.StatusCode == http.StatusBadRequest && (code == "InvalidApiVersionParameter" || strings.Contains(strings.ToLower(err.Error()), "invalid api-version")) {
+		if resp.StatusCode == http.StatusBadRequest && (code == "InvalidApiVersionParameter" || strings.Contains(strings.ToLower(err.Error()), "invalid api-version")) ||
+			versionNotServed(resp.StatusCode, code) {
 			return fmt.Errorf("%w: %v", ErrAPIVersion, ae)
 		}
 		return ae
@@ -309,7 +310,18 @@ var unregisteredFeatureRE = regexp.MustCompile(`(?i)\bregister the [\w.-]+/[\w.-
 
 // notAnAbsence are 404 codes that say the request was wrong, not that the
 // thing is not there.
-var notAnAbsence = map[string]bool{"InvalidResourceType": true, "InvalidApiVersionParameter": true, "NoRegisteredProviderFound": true, "InvalidResourceNamespace": true}
+var notAnAbsence = map[string]bool{"InvalidResourceType": true, "InvalidApiVersionParameter": true, "NoRegisteredProviderFound": true, "InvalidResourceNamespace": true, "OperationNotFound": true}
+
+// versionNotServed is a 404 that refuses the API version, not the collection.
+// A resource's diagnostic settings listed at 2016-09-01 answer 404
+// OperationNotFound ("Path ... is not supported"), on every resource type
+// tried in a real subscription (2026-11-04); read as "none here", no
+// resource's diagnostic settings were ever captured, an AKS cluster's audit
+// log to an event hub among them, and nothing said so. The next version is
+// tried instead, as for a 400 InvalidApiVersionParameter.
+func versionNotServed(status int, code string) bool {
+	return status == http.StatusNotFound && code == "OperationNotFound"
+}
 
 // Tenant reads the subscription's tenant.
 func (s *SDK) Tenant(ctx context.Context) (string, error) {

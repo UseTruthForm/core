@@ -136,6 +136,8 @@ func TestClassifyARM(t *testing.T) {
 		{http.StatusNotFound, "", "", ErrNotFound},
 		{http.StatusBadRequest, "InvalidApiVersionParameter", "", nil},
 		{http.StatusNotFound, "InvalidResourceType", "", nil},
+		// Refuses the API version, not the collection (a resource's diagnostic settings at 2016-09-01).
+		{http.StatusNotFound, "OperationNotFound", "", nil},
 		{http.StatusBadRequest, "", "", nil},
 		// A preview child type the subscription has not registered.
 		{http.StatusBadRequest, "BadRequest", "Agent fabric membership is not available in subscription s. Please register the Microsoft.ContainerService/EnableAgentFabricPreview feature.", ErrNotApplicable},

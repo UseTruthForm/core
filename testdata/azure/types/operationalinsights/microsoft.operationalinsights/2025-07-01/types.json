@@ -1317,5 +1317,712 @@
   "name": "Microsoft.OperationalInsights/workspaces/dataSources@2025-07-01",
   "readableScopes": 8,
   "writableScopes": 8
+ },
+ {
+  "$type": "StringType",
+  "maxLength": 63,
+  "minLength": 4,
+  "pattern": "^[A-Za-z0-9-_]+$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.OperationalInsights/workspaces/tables"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-07-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.OperationalInsights/workspaces/tables",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/126"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/124"
+    }
+   },
+   "properties": {
+    "description": "Table's properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/128"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/125"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "TableProperties",
+  "properties": {
+   "archiveRetentionInDays": {
+    "description": "The tables long-term retention in days. Calculated as (totalRetentionInDays-retentionInDays).",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "lastPlanModifiedDate": {
+    "description": "The timestamp that table plan was last modified (UTC).",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "plan": {
+    "description": "Instruct the system how to handle and charge the logs ingested to this table.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/137"
+    }
+   },
+   "provisioningState": {
+    "description": "Table's current provisioning state. If set to 'updating', indicates a resource lock due to ongoing operation, forbidding any update to the table until the ongoing operation is concluded.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/175"
+    }
+   },
+   "restoredLogs": {
+    "description": "Parameters of the restore operation that initiated this table.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/132"
+    }
+   },
+   "resultStatistics": {
+    "description": "Search job execution statistics.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/133"
+    }
+   },
+   "retentionInDays": {
+    "description": "In Analytics table: the tables analytics retention in days, between 4 and 730. Setting this property to -1 will default to the workspace retention. In Basic and Auxiliary table: read only property.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/129"
+    }
+   },
+   "retentionInDaysAsDefault": {
+    "description": "True - Value originates from workspace retention in days, False - Customer specific.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "schema": {
+    "description": "Table schema.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/138"
+    }
+   },
+   "searchResults": {
+    "description": "Parameters of the search job that initiated this table.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/131"
+    }
+   },
+   "totalRetentionInDays": {
+    "description": "The table total retention in days, between 4 and 4383. Setting this property to -1 will default to retentionInDays.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/130"
+    }
+   },
+   "totalRetentionInDaysAsDefault": {
+    "description": "True - Value originates from retention in days, False - Customer specific.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "IntegerType",
+  "maxValue": 730,
+  "minValue": 4
+ },
+ {
+  "$type": "IntegerType",
+  "maxValue": 4383,
+  "minValue": 4
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SearchResults",
+  "properties": {
+   "azureAsyncOperationId": {
+    "description": "Search results table async operation id.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "description": {
+    "description": "Search job Description.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "endSearchTime": {
+    "description": "The timestamp to end the search by (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "limit": {
+    "description": "Limit the search job to return up to specified number of rows.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "query": {
+    "description": "Search job query.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "sourceTable": {
+    "description": "The table used in the search job.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "startSearchTime": {
+    "description": "The timestamp to start the search from (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RestoredLogs",
+  "properties": {
+   "azureAsyncOperationId": {
+    "description": "Search results table async operation id.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "endRestoreTime": {
+    "description": "The timestamp to end the restore by (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "sourceTable": {
+    "description": "The table to restore data from.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "startRestoreTime": {
+    "description": "The timestamp to start the restore from (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResultStatistics",
+  "properties": {
+   "ingestedRecords": {
+    "description": "The number of rows that were returned by the search job.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "progress": {
+    "description": "Search job completion percentage.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "scannedGb": {
+    "description": "Search job: Amount of scanned data.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Basic"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Analytics"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Auxiliary"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/134"
+   },
+   {
+    "$ref": "#/135"
+   },
+   {
+    "$ref": "#/136"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Schema",
+  "properties": {
+   "categories": {
+    "description": "Table category.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/156"
+    }
+   },
+   "columns": {
+    "description": "A list of table custom columns.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/154"
+    }
+   },
+   "description": {
+    "description": "Table description.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "displayName": {
+    "description": "Table display name.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "labels": {
+    "description": "Table labels.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/157"
+    }
+   },
+   "name": {
+    "description": "Table name.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "solutions": {
+    "description": "List of solutions the table is affiliated with",
+    "flags": 2,
+    "type": {
+     "$ref": "#/170"
+    }
+   },
+   "source": {
+    "description": "Table's creator.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/160"
+    }
+   },
+   "standardColumns": {
+    "description": "A list of table standard columns.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/155"
+    }
+   },
+   "tableSubType": {
+    "description": "The subtype describes what APIs can be used to interact with the table, and what features are available against it.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/169"
+    }
+   },
+   "tableType": {
+    "description": "Table's creator.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/165"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Column",
+  "properties": {
+   "dataTypeHint": {
+    "description": "Column data type logical hint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/153"
+    }
+   },
+   "description": {
+    "description": "Column description.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "displayName": {
+    "description": "Column display name. Can be set at creation time; after creation, updates must either match column name or set to null/empty. If not provided, defaults to column name.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "isDefaultDisplay": {
+    "description": "Is displayed by default.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "isHidden": {
+    "description": "Is column hidden.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "name": {
+    "description": "Column name.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "type": {
+    "description": "Column data type.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/148"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "string"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "int"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "long"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "real"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "boolean"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "dateTime"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "guid"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "dynamic"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/140"
+   },
+   {
+    "$ref": "#/141"
+   },
+   {
+    "$ref": "#/142"
+   },
+   {
+    "$ref": "#/143"
+   },
+   {
+    "$ref": "#/144"
+   },
+   {
+    "$ref": "#/145"
+   },
+   {
+    "$ref": "#/146"
+   },
+   {
+    "$ref": "#/147"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "uri"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "guid"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "armPath"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ip"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/149"
+   },
+   {
+    "$ref": "#/150"
+   },
+   {
+    "$ref": "#/151"
+   },
+   {
+    "$ref": "#/152"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/139"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/139"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "microsoft"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "customer"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/158"
+   },
+   {
+    "$ref": "#/159"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "CustomLog"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RestoredLogs"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SearchResults"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/161"
+   },
+   {
+    "$ref": "#/162"
+   },
+   {
+    "$ref": "#/163"
+   },
+   {
+    "$ref": "#/164"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Any"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Classic"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "DataCollectionRuleBased"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/166"
+   },
+   {
+    "$ref": "#/167"
+   },
+   {
+    "$ref": "#/168"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "InProgress"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/171"
+   },
+   {
+    "$ref": "#/172"
+   },
+   {
+    "$ref": "#/173"
+   },
+   {
+    "$ref": "#/174"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/127"
+  },
+  "name": "Microsoft.OperationalInsights/workspaces/tables@2025-07-01",
+  "readableScopes": 8,
+  "writableScopes": 8
  }
 ]

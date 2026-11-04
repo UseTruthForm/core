@@ -59,6 +59,12 @@ type Fake struct {
 	// as a resource answers for a child type it has a definition for and
 	// does not serve, or any other refusal.
 	ListError func(path string) error
+	// PutError refuses a PUT as Azure would for its own reasons, ones the
+	// definitions do not say: a property Azure sets itself, a child it makes.
+	PutError func(id string, body map[string]any) error
+	// SKUs are the VM sizes the subscription is offered, by region in lower
+	// case, as Microsoft.Compute/skus lists them.
+	SKUs map[string][]map[string]any
 	// PutDelay makes each PUT take this long, outside the lock, so PUTs
 	// running at once overlap as ARM's long-running ones do.
 	PutDelay time.Duration
@@ -231,6 +237,11 @@ func (f *Fake) Put(_ context.Context, id, version string, body map[string]any) (
 	}
 	if !s.Writable {
 		return nil, fmt.Errorf("InvalidResourceType: %s is defined by Azure and cannot be written", rid.Type)
+	}
+	if f.PutError != nil {
+		if err := f.PutError(rid.String(), body); err != nil {
+			return nil, err
+		}
 	}
 	time.Sleep(f.PutDelay)
 	f.w.mu.Lock()
@@ -462,6 +473,14 @@ func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any
 		}
 	}
 	path, query, _ := strings.Cut(path, "?")
+	if strings.HasSuffix(strings.ToLower(path), "/providers/microsoft.compute/skus") {
+		q, _ := url.ParseQuery(query)
+		m := skuFilterRE.FindStringSubmatch(q.Get("$filter"))
+		if m == nil {
+			return nil, fmt.Errorf("%s: %w: a location filter is required", path, ErrBadRequest)
+		}
+		return f.SKUs[strings.ToLower(m[1])], nil
+	}
 	if f.RefuseVersion != nil && f.RefuseVersion(path, version) {
 		return nil, fmt.Errorf("%s: %w: Invalid api-version query string value", path, ErrAPIVersion)
 	}
@@ -515,6 +534,8 @@ func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any
 }
 
 var kindFilterRE = regexp.MustCompile(`(?i)^kind eq '([^']+)'$`)
+
+var skuFilterRE = regexp.MustCompile(`(?i)^location eq '([^']+)'$`)
 
 // SeedAzure stores what Azure itself creates, bypassing validation (an
 // NSG's default rules, which no caller can PUT).

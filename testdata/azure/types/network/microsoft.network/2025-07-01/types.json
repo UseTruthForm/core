@@ -8151,6 +8151,100 @@
  },
  {
   "$type": "StringLiteralType",
+  "value": "Microsoft.Network/privateEndpoints"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-07-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/privateEndpoints",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/610"
+    }
+   },
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "extendedLocation": {
+    "description": "The extended location of the load balancer.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/132"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the private endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/96"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/612"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/609"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "ResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/611"
+  },
+  "name": "Microsoft.Network/privateEndpoints@2025-07-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
   "value": "Microsoft.Network/virtualNetworks"
  },
  {
@@ -8165,7 +8259,7 @@
     "description": "The resource api version",
     "flags": 10,
     "type": {
-     "$ref": "#/610"
+     "$ref": "#/615"
     }
    },
    "etag": {
@@ -8214,14 +8308,14 @@
     "description": "Resource tags.",
     "flags": 0,
     "type": {
-     "$ref": "#/612"
+     "$ref": "#/617"
     }
    },
    "type": {
     "description": "The resource type",
     "flags": 10,
     "type": {
-     "$ref": "#/609"
+     "$ref": "#/614"
     }
    }
   }
@@ -8237,7 +8331,7 @@
  {
   "$type": "ResourceType",
   "body": {
-   "$ref": "#/611"
+   "$ref": "#/616"
   },
   "name": "Microsoft.Network/virtualNetworks@2025-07-01",
   "readableScopes": 8,
@@ -8259,7 +8353,7 @@
     "description": "The resource api version",
     "flags": 10,
     "type": {
-     "$ref": "#/615"
+     "$ref": "#/620"
     }
    },
    "etag": {
@@ -8294,7 +8388,7 @@
     "description": "The resource type",
     "flags": 10,
     "type": {
-     "$ref": "#/614"
+     "$ref": "#/619"
     }
    }
   }
@@ -8302,9 +8396,300 @@
  {
   "$type": "ResourceType",
   "body": {
-   "$ref": "#/616"
+   "$ref": "#/621"
   },
   "name": "Microsoft.Network/networkSecurityGroups/securityRules@2025-07-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-07-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/624"
+    }
+   },
+   "etag": {
+    "description": "A unique read-only string that changes whenever the resource is updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the private dns zone group.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/626"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/623"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateDnsZoneGroupPropertiesFormat",
+  "properties": {
+   "privateDnsZoneConfigs": {
+    "description": "A collection of private dns zone configurations of the private dns zone group.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/646"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the private dns zone group resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/633"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/627"
+   },
+   {
+    "$ref": "#/628"
+   },
+   {
+    "$ref": "#/629"
+   },
+   {
+    "$ref": "#/630"
+   },
+   {
+    "$ref": "#/631"
+   },
+   {
+    "$ref": "#/632"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateDnsZoneConfig",
+  "properties": {
+   "name": {
+    "description": "Name of the resource that is unique within a resource group. This name can be used to access the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "Properties of the private dns zone configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/635"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateDnsZonePropertiesFormat",
+  "properties": {
+   "privateDnsZoneId": {
+    "description": "The resource id of the private dns zone.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "recordSets": {
+    "description": "A collection of information regarding a recordSet, holding information to identify private resources.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/645"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RecordSet",
+  "properties": {
+   "fqdn": {
+    "description": "Fqdn that resolves to private endpoint ip address.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "ipAddresses": {
+    "description": "The private ip address of the private endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/644"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the recordset.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/643"
+    }
+   },
+   "recordSetName": {
+    "description": "Recordset name.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "recordType": {
+    "description": "Resource record type.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "ttl": {
+    "description": "Recordset time to live.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/637"
+   },
+   {
+    "$ref": "#/638"
+   },
+   {
+    "$ref": "#/639"
+   },
+   {
+    "$ref": "#/640"
+   },
+   {
+    "$ref": "#/641"
+   },
+   {
+    "$ref": "#/642"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/636"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/634"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/625"
+  },
+  "name": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2025-07-01",
   "readableScopes": 8,
   "writableScopes": 8
  },
@@ -8324,7 +8709,7 @@
     "description": "The resource api version",
     "flags": 10,
     "type": {
-     "$ref": "#/619"
+     "$ref": "#/649"
     }
    },
    "etag": {
@@ -8359,7 +8744,7 @@
     "description": "The resource type",
     "flags": 10,
     "type": {
-     "$ref": "#/618"
+     "$ref": "#/648"
     }
    }
   }
@@ -8367,7 +8752,7 @@
  {
   "$type": "ResourceType",
   "body": {
-   "$ref": "#/620"
+   "$ref": "#/650"
   },
   "name": "Microsoft.Network/virtualNetworks/subnets@2025-07-01",
   "readableScopes": 8,
@@ -8389,7 +8774,7 @@
     "description": "The resource api version",
     "flags": 10,
     "type": {
-     "$ref": "#/623"
+     "$ref": "#/653"
     }
    },
    "etag": {
@@ -8424,7 +8809,7 @@
     "description": "The resource type",
     "flags": 10,
     "type": {
-     "$ref": "#/622"
+     "$ref": "#/652"
     }
    }
   }
@@ -8432,7 +8817,7 @@
  {
   "$type": "ResourceType",
   "body": {
-   "$ref": "#/624"
+   "$ref": "#/654"
   },
   "name": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2025-07-01",
   "readableScopes": 8,
@@ -8454,7 +8839,7 @@
     "description": "The resource api version",
     "flags": 10,
     "type": {
-     "$ref": "#/627"
+     "$ref": "#/657"
     }
    },
    "etag": {
@@ -8489,7 +8874,7 @@
     "description": "The resource type",
     "flags": 10,
     "type": {
-     "$ref": "#/626"
+     "$ref": "#/656"
     }
    }
   }
@@ -8497,7 +8882,7 @@
  {
   "$type": "ResourceType",
   "body": {
-   "$ref": "#/628"
+   "$ref": "#/658"
   },
   "name": "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2025-07-01",
   "readableScopes": 8,

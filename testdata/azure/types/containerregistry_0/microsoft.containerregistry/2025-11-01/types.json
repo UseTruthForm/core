@@ -1,0 +1,1554 @@
+[
+ {
+  "$type": "StringType",
+  "maxLength": 50,
+  "minLength": 5,
+  "pattern": "^[a-zA-Z0-9]*$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.ContainerRegistry/registries"
+ },
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-11-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.ContainerRegistry/registries",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "identity": {
+    "description": "The identity of the container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/107"
+    }
+   },
+   "location": {
+    "description": "The geo-location where the resource lives",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The properties of the container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "sku": {
+    "description": "The SKU of the container registry.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/96"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/72"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/115"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/1"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RegistryProperties",
+  "properties": {
+   "adminUserEnabled": {
+    "description": "The value that indicates whether the admin user is enabled.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "anonymousPullEnabled": {
+    "description": "Enables registry-wide pull from unauthenticated clients.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "creationDate": {
+    "description": "The creation date of the container registry in ISO8601 format.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "dataEndpointEnabled": {
+    "description": "Enable a single data endpoint per region for serving data.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "dataEndpointHostNames": {
+    "description": "List of host names that will serve data when dataEndpointEnabled is true.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/52"
+    }
+   },
+   "encryption": {
+    "description": "The encryption settings of container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/47"
+    }
+   },
+   "loginServer": {
+    "description": "The URL that can be used to log into the container registry.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "networkRuleBypassAllowedForTasks": {
+    "description": "Whether or not Tasks allowed to bypass the network rules for this container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "networkRuleBypassOptions": {
+    "description": "Whether to allow trusted Azure services to access a network restricted registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/89"
+    }
+   },
+   "networkRuleSet": {
+    "description": "The network rule set for a container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/15"
+    }
+   },
+   "policies": {
+    "description": "The policies for a container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/23"
+    }
+   },
+   "privateEndpointConnections": {
+    "description": "List of private endpoint connections for a container registry.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/83"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of the container registry at the time the operation was called.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/12"
+    }
+   },
+   "publicNetworkAccess": {
+    "description": "Whether or not public network access is allowed for the container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/86"
+    }
+   },
+   "roleAssignmentMode": {
+    "description": "Determines registry role assignment mode.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/95"
+    }
+   },
+   "status": {
+    "description": "The status of the container registry at the time the operation was called.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "zoneRedundancy": {
+    "description": "Whether or not zone redundancy is enabled for this container registry",
+    "flags": 0,
+    "type": {
+     "$ref": "#/92"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/6"
+   },
+   {
+    "$ref": "#/7"
+   },
+   {
+    "$ref": "#/8"
+   },
+   {
+    "$ref": "#/9"
+   },
+   {
+    "$ref": "#/10"
+   },
+   {
+    "$ref": "#/11"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Status",
+  "properties": {
+   "displayStatus": {
+    "description": "The short label for the status.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "message": {
+    "description": "The detailed message for the status, including alerts and error messages.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "timestamp": {
+    "description": "The timestamp when the status was changed to the current value.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "BooleanType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkRuleSet",
+  "properties": {
+   "defaultAction": {
+    "description": "The default action of allow or deny when no other rules match.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/18"
+    }
+   },
+   "ipRules": {
+    "description": "The IP ACL rules.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/22"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Allow"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deny"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/16"
+   },
+   {
+    "$ref": "#/17"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IPRule",
+  "properties": {
+   "action": {
+    "description": "The action of IP ACL rule.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/21"
+    }
+   },
+   "value": {
+    "description": "Specifies the IP or IP range in CIDR format. Only IPV4 address is allowed.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Allow"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/20"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/19"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Policies",
+  "properties": {
+   "azureADAuthenticationAsArmPolicy": {
+    "description": "The policy for using Azure Resource Manager audience token for a container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/43"
+    }
+   },
+   "exportPolicy": {
+    "description": "The export policy for a container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/39"
+    }
+   },
+   "quarantinePolicy": {
+    "description": "The quarantine policy for a container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/24"
+    }
+   },
+   "retentionPolicy": {
+    "description": "The retention policy for a container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/34"
+    }
+   },
+   "trustPolicy": {
+    "description": "The content trust policy for a container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/28"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "QuarantinePolicy",
+  "properties": {
+   "status": {
+    "description": "The value that indicates whether the policy is enabled or not.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/27"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/25"
+   },
+   {
+    "$ref": "#/26"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "TrustPolicy",
+  "properties": {
+   "status": {
+    "description": "The value that indicates whether the policy is enabled or not.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/33"
+    }
+   },
+   "type": {
+    "description": "The type of trust policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/30"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Notary"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/29"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/31"
+   },
+   {
+    "$ref": "#/32"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RetentionPolicy",
+  "properties": {
+   "days": {
+    "description": "The number of days to retain an untagged manifest after which it gets purged.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/35"
+    }
+   },
+   "lastUpdatedTime": {
+    "description": "The timestamp when the policy was last updated.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "status": {
+    "description": "The value that indicates whether the policy is enabled or not.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/38"
+    }
+   }
+  }
+ },
+ {
+  "$type": "IntegerType"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/36"
+   },
+   {
+    "$ref": "#/37"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ExportPolicy",
+  "properties": {
+   "status": {
+    "description": "The value that indicates whether the policy is enabled or not.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/42"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/40"
+   },
+   {
+    "$ref": "#/41"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "AzureADAuthenticationAsArmPolicy",
+  "properties": {
+   "status": {
+    "description": "The value that indicates whether the policy is enabled or not.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/46"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/44"
+   },
+   {
+    "$ref": "#/45"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "EncryptionProperty",
+  "properties": {
+   "keyVaultProperties": {
+    "description": "Key vault properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/51"
+    }
+   },
+   "status": {
+    "description": "Indicates whether or not the encryption is enabled for container registry.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/50"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/48"
+   },
+   {
+    "$ref": "#/49"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "KeyVaultProperties",
+  "properties": {
+   "identity": {
+    "description": "The client id of the identity which will be used to access key vault.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "keyIdentifier": {
+    "description": "Key vault uri to access the encryption key.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "keyRotationEnabled": {
+    "description": "Auto key rotation status for a CMK enabled registry.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "lastKeyRotationTimestamp": {
+    "description": "Timestamp of the last successful key rotation.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "versionedKeyIdentifier": {
+    "description": "The fully qualified key identifier that includes the version of the key that is actually used for encryption.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/2"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointConnection",
+  "properties": {
+   "id": {
+    "description": "Fully qualified resource ID for the resource. E.g. \"/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/{resourceProviderNamespace}/{resourceType}/{resourceName}\"",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The name of the resource",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "properties": {
+    "description": "The properties of a private endpoint connection.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/54"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/72"
+    }
+   },
+   "type": {
+    "description": "The type of the resource. E.g. \"Microsoft.Compute/virtualMachines\" or \"Microsoft.Storage/storageAccounts\"",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointConnectionProperties",
+  "properties": {
+   "privateEndpoint": {
+    "description": "The resource of private endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/55"
+    }
+   },
+   "privateLinkServiceConnectionState": {
+    "description": "A collection of information about the state of the connection between service consumer and provider.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/56"
+    }
+   },
+   "provisioningState": {
+    "description": "The provisioning state of private endpoint connection resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/71"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpoint",
+  "properties": {
+   "id": {
+    "description": "This is private endpoint resource created with Microsoft.Network resource provider.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServiceConnectionState",
+  "properties": {
+   "actionsRequired": {
+    "description": "A message indicating if changes on the service provider require any updates on the consumer.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/64"
+    }
+   },
+   "description": {
+    "description": "The description for connection status. For example if connection is rejected it can indicate reason for rejection.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "status": {
+    "description": "The private link service connection status.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/61"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Approved"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Pending"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Rejected"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disconnected"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/57"
+   },
+   {
+    "$ref": "#/58"
+   },
+   {
+    "$ref": "#/59"
+   },
+   {
+    "$ref": "#/60"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Recreate"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/62"
+   },
+   {
+    "$ref": "#/63"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/65"
+   },
+   {
+    "$ref": "#/66"
+   },
+   {
+    "$ref": "#/67"
+   },
+   {
+    "$ref": "#/68"
+   },
+   {
+    "$ref": "#/69"
+   },
+   {
+    "$ref": "#/70"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SystemData",
+  "properties": {
+   "createdAt": {
+    "description": "The timestamp of resource creation (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "createdBy": {
+    "description": "The identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "createdByType": {
+    "description": "The type of identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/77"
+    }
+   },
+   "lastModifiedAt": {
+    "description": "The timestamp of resource last modification (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "lastModifiedBy": {
+    "description": "The identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "lastModifiedByType": {
+    "description": "The type of identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/82"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/73"
+   },
+   {
+    "$ref": "#/74"
+   },
+   {
+    "$ref": "#/75"
+   },
+   {
+    "$ref": "#/76"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/78"
+   },
+   {
+    "$ref": "#/79"
+   },
+   {
+    "$ref": "#/80"
+   },
+   {
+    "$ref": "#/81"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/53"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/84"
+   },
+   {
+    "$ref": "#/85"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AzureServices"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/87"
+   },
+   {
+    "$ref": "#/88"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/90"
+   },
+   {
+    "$ref": "#/91"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AbacRepositoryPermissions"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "LegacyRegistryPermissions"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/93"
+   },
+   {
+    "$ref": "#/94"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Sku",
+  "properties": {
+   "name": {
+    "description": "The SKU name of the container registry. Required for registry creation.",
+    "flags": 1,
+    "type": {
+     "$ref": "#/101"
+    }
+   },
+   "tier": {
+    "description": "The SKU tier based on the SKU name.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/106"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Classic"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Basic"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Premium"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/97"
+   },
+   {
+    "$ref": "#/98"
+   },
+   {
+    "$ref": "#/99"
+   },
+   {
+    "$ref": "#/100"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Classic"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Basic"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Premium"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/102"
+   },
+   {
+    "$ref": "#/103"
+   },
+   {
+    "$ref": "#/104"
+   },
+   {
+    "$ref": "#/105"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IdentityProperties",
+  "properties": {
+   "principalId": {
+    "description": "The principal ID of resource identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "tenantId": {
+    "description": "The tenant ID of resource.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "type": {
+    "description": "The identity type.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/112"
+    }
+   },
+   "userAssignedIdentities": {
+    "description": "The list of user identities associated with the resource. The user identity\ndictionary key references will be ARM resource ids in the form:\n'/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/\nproviders/Microsoft.ManagedIdentity/userAssignedIdentities/{identityName}'.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/114"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SystemAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "UserAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SystemAssigned, UserAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/108"
+   },
+   {
+    "$ref": "#/109"
+   },
+   {
+    "$ref": "#/110"
+   },
+   {
+    "$ref": "#/111"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "UserIdentityProperties",
+  "properties": {
+   "clientId": {
+    "description": "The client id of user assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "principalId": {
+    "description": "The principal id of user assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/113"
+  },
+  "name": "IdentityPropertiesUserAssignedIdentities",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "TrackedResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/4"
+  },
+  "name": "Microsoft.ContainerRegistry/registries@2025-11-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.ContainerRegistry/registries/replications"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-11-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.ContainerRegistry/registries/replications",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/118"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "location": {
+    "description": "The geo-location where the resource lives",
+    "flags": 1,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "description": "The properties of the replication.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/120"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/72"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/131"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/117"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ReplicationProperties",
+  "properties": {
+   "provisioningState": {
+    "description": "The provisioning state of the replication at the time the operation was called.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/127"
+    }
+   },
+   "regionEndpointEnabled": {
+    "description": "Specifies whether the replication's regional endpoint is enabled. Requests will not be routed to a replication whose regional endpoint is disabled, however its data will continue to be synced with other replications.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/14"
+    }
+   },
+   "status": {
+    "description": "The status of the replication at the time the operation was called.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "zoneRedundancy": {
+    "description": "Whether or not zone redundancy is enabled for this container registry replication",
+    "flags": 0,
+    "type": {
+     "$ref": "#/130"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/121"
+   },
+   {
+    "$ref": "#/122"
+   },
+   {
+    "$ref": "#/123"
+   },
+   {
+    "$ref": "#/124"
+   },
+   {
+    "$ref": "#/125"
+   },
+   {
+    "$ref": "#/126"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/128"
+   },
+   {
+    "$ref": "#/129"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "TrackedResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/119"
+  },
+  "name": "Microsoft.ContainerRegistry/registries/replications@2025-11-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ }
+]

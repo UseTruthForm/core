@@ -110,6 +110,9 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 	if line := checkLine(skips, out); line != "" {
 		fmt.Println(line)
 	}
+	if later, _ := azarm.KeptOnceAzureMakesIt(snap); len(later) > 0 {
+		fmt.Printf("CHECK: %d resources Azure makes itself are kept only once it has (their retention, plan and custom columns); see %s/REPORT.md\n", len(later), out)
+	}
 	for _, r := range topReasons(skips, 8) {
 		fmt.Println("  skipped:", r)
 	}
@@ -174,11 +177,12 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 	}
 	// The values file is written with the snapshot's names.
 	ad.Options.Values = azarm.RenameValues(ad.Options.Values, names)
+	warnSizes(ctx, ad.API, snap, ad.Options.Values)
 	results := ad.Restore(ctx, snap)
 	if jsonOut {
 		defer emitRestore(results, "azure "+a.subscription)
 	}
-	ok := 0
+	ok, notSent, pending := 0, 0, 0
 	var partial []string
 	for _, r := range results {
 		if !r.OK {
@@ -186,6 +190,13 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 			continue
 		}
 		ok++
+		if strings.HasPrefix(r.Detail, azarm.NotSent) {
+			fmt.Printf("NOT SENT %s: %s\n", r.Key, strings.TrimPrefix(r.Detail, azarm.NotSent))
+			notSent++
+			if azarm.Pending(r.Detail) {
+				pending++
+			}
+		}
 		// An update changed something live; each one is said.
 		if strings.HasPrefix(r.Detail, "updated") {
 			fmt.Printf("UPDATED %s: %s\n", r.Key, r.Detail)
@@ -204,10 +215,18 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 		}
 	}
 	fmt.Printf("applied %d of %d resources to subscription %s\n", ok, len(results), a.subscription)
+	// Counted as applied, since Azure makes them; said, so applied is not read
+	// as sent. One whose settings wait for Azure leaves the restore unfinished.
+	if notSent > 0 {
+		fmt.Printf("of those, %d not sent (NOT SENT above): Azure makes them\n", notSent)
+	}
+	if pending > 0 {
+		fmt.Printf("not finished: %d wait for Azure to make them, and their settings are not kept until then; run the restore again with --update once data has arrived\n", pending)
+	}
 	if len(heldBack) > 0 {
 		fmt.Printf("left out %d (--leave-out): %s\n", len(heldBack), strings.Join(heldBack, ", "))
 	}
-	if ok != len(results) {
+	if ok != len(results) || pending > 0 {
 		return 3
 	}
 	return 0
@@ -221,9 +240,41 @@ func diffAzure(ctx context.Context, a *azureFlags, want snapshot.Snapshot, from 
 	if ad.Policy.Name() != want.Policy {
 		return fail(fmt.Errorf("snapshot was captured with policy %q but this diff would use %q; pass the same --types, --baseline and --capture-managed", want.Policy, ad.Policy.Name()))
 	}
+	warnSizes(ctx, ad.API, want, nil)
 	got, err := ad.Capture(ctx)
 	if err != nil {
 		return fail(err)
 	}
-	return report(snapshot.Compare(want, got), from, "azure "+a.subscription)
+	return report(compareTarget("azure", want, got), from, "azure "+a.subscription)
+}
+
+// compareTarget compares a snapshot with a capture of its target now. An Azure
+// snapshot is first made as this version captures: one from before a fix held
+// what the fix took out, and every diff and nightly showed it as drift.
+func compareTarget(platform string, want, got snapshot.Snapshot) []snapshot.Change {
+	if platform == "azure" {
+		want = azarm.AsCapturedNow(want)
+	}
+	return snapshot.Compare(want, got)
+}
+
+// warnSizes says, before a restore or with a diff, which VM sizes the target
+// cannot have, with the restore's --values applied, what it could not check,
+// and how much it did: silence is not read as all clear.
+func warnSizes(ctx context.Context, api azarm.ARM, s snapshot.Snapshot, values map[string]map[string]any) {
+	c := azarm.SizesRefused(ctx, api, s, values)
+	sizeCheck = &c
+	if len(c.Refused) > 0 {
+		fmt.Fprintf(os.Stderr, "WARNING: %d VM sizes this subscription cannot have:\n", len(c.Refused))
+		for _, x := range c.Refused {
+			fmt.Fprintln(os.Stderr, "  ", x)
+		}
+	}
+	if len(c.NotChecked) > 0 {
+		fmt.Fprintf(os.Stderr, "NOTE: %d VM sizes were not checked:\n", len(c.NotChecked))
+		for _, x := range c.NotChecked {
+			fmt.Fprintln(os.Stderr, "  ", x)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "VM sizes: checked %d in %d regions\n", c.Sizes, c.Regions)
 }

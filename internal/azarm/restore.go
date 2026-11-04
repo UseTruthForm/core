@@ -247,6 +247,10 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 			return false, "depends on " + d + ", which was not restored (" + why + ")"
 		}
 	}
+	// Captured before capture skipped it, it is still not sent: Azure refuses it.
+	if why := madeWithParent(o, byKey, opt.Values); why != "" {
+		return true, NotSent + why
+	}
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	ver, _ := ann[annAPIVersion].(string)
 	if ver == "" {
@@ -278,8 +282,9 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	if missing != "" {
 		return false, missing
 	}
-	// A snapshot written before capture said so leaves it unset too.
-	defaultOutboundAsMeant(rid.Type, spec)
+	// A snapshot written before capture said so leaves it unset too, and one
+	// written before capture dropped them holds what Azure sets.
+	asCapturedNow(rid.Type, o.Name(), spec)
 
 	existing, err := api.Get(ctx, id, ver)
 	var changed []string
@@ -324,6 +329,16 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 		return false, "cannot check whether it exists: " + err.Error()
 	}
 
+	// Azure makes AzureDiagnostics, and refuses to; its settings go once it is there.
+	if err != nil && isDiagnosticsTable(rid.Type, o.Name()) {
+		if diagnosticsTableFlagless(spec) {
+			return true, NotSent + DiagnosticsTableLater + DiagnosticsTableFlagless
+		}
+		if diagnosticsTableSet(spec) {
+			return true, NotSent + DiagnosticsTableLater
+		}
+		return true, NotSent + DiagnosticsTableDefault
+	}
 	desired := rewriteAll(deepCopy(spec), func(v string) string {
 		return strings.ReplaceAll(strings.ReplaceAll(v, tokSub, sub), tokTenant, tenant)
 	}).(map[string]any)
@@ -333,6 +348,9 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	}
 	vals := opt.Values[ref]
 	merge(desired, deepCopy(vals))
+	if isDiagnosticsTable(rid.Type, o.Name()) {
+		diagnosticsTableBody(desired)
+	}
 	var unsupplied []string
 	if s, _ := ann[annSecrets].(string); s != "" {
 		for _, p := range strings.Split(s, ",") {
@@ -498,6 +516,102 @@ func provisioningRunning(state string) bool {
 		return true
 	}
 	return strings.HasSuffix(s, "ing")
+}
+
+// NotSent begins the detail of an object a restore does not send because
+// Azure makes it.
+const NotSent = "not sent: "
+
+// Pending says a result was not sent and its settings wait for Azure to make
+// it, so the restore has not kept them yet.
+func Pending(detail string) bool { return strings.HasPrefix(detail, NotSent+DiagnosticsTableLater) }
+
+// DiagnosticsTableLater is why a workspace's AzureDiagnostics table is not
+// sent, and what keeps its retention.
+const DiagnosticsTableLater = "Azure makes AzureDiagnostics when a diagnostic setting first sends to the workspace, and refuses to before; its retention, plan and custom columns are not kept until then: once data has arrived, run the restore again with --update"
+
+// DiagnosticsTableFlagless follows DiagnosticsTableLater for a snapshot that
+// cannot tell a retention set by a person from the workspace's default, and is
+// read as set: an older one waited on every run, with nothing to say why.
+const DiagnosticsTableFlagless = "; this snapshot predates StackDNA keeping whether its retention is the workspace's default, so it is taken as set: capture the source again with this version, and if nothing was set on it, it no longer waits"
+
+// DiagnosticsTableDefault is why one holding only the workspace's defaults is
+// not sent: the table Azure makes has them too, so there is nothing to wait
+// for. It may never come: no diagnostic setting may send it data.
+const DiagnosticsTableDefault = "Azure makes AzureDiagnostics when a diagnostic setting first sends to the workspace, and refuses to before; it has only the workspace's default retention and plan, which the table Azure makes has too, so nothing waits for it"
+
+// KeptOnceAzureMakesIt lists what s holds that a restore cannot make, by
+// whether a person set something on it: a workspace's AzureDiagnostics table.
+// The first are kept only once Azure has made it; the second hold the
+// workspace's defaults, which the table Azure makes has too.
+func KeptOnceAzureMakesIt(s snapshot.Snapshot) (set, defaults []string) {
+	for _, o := range s.Objects {
+		if !isDiagnosticsTable(o.Kind(), o.Name()) {
+			continue
+		}
+		k := o.Kind() + " " + o.Namespace() + "/" + o.Name()
+		if spec, _ := o.Body["spec"].(map[string]any); diagnosticsTableSet(spec) {
+			if diagnosticsTableFlagless(spec) {
+				k += " (this snapshot predates StackDNA keeping whether its retention is the workspace's default, so it is taken as set: capture the source again with this version, and if nothing was set on it, it no longer waits)"
+			}
+			set = append(set, k)
+		} else {
+			defaults = append(defaults, k)
+		}
+	}
+	sort.Strings(set)
+	sort.Strings(defaults)
+	return set, defaults
+}
+
+// madeWithParent is madeWith for a snapshot object, with its parent from the
+// snapshot as values sets it: a registry given another region is judged there.
+func madeWithParent(o snapshot.Object, byKey map[string]snapshot.Object, values map[string]map[string]any) string {
+	kind, name := o.Kind(), o.Name()
+	i, j := strings.LastIndex(kind, "/"), strings.LastIndex(name, "/")
+	if strings.Count(kind, "/") < 2 || j < 0 {
+		return ""
+	}
+	parent := byKey[strings.ToLower(APIVersion+"|"+kind[:i]+"|"+o.Namespace()+"|"+name[:j])]
+	ps, _ := parent.Body["spec"].(map[string]any)
+	spec, _ := o.Body["spec"].(map[string]any)
+	if v := values[leaveOutKey(parent)]; v != nil && parent.Body != nil {
+		ps = deepCopy(ps)
+		merge(ps, deepCopy(v))
+	}
+	if v := values[leaveOutKey(o)]; v != nil {
+		spec = deepCopy(spec)
+		merge(spec, deepCopy(v))
+	}
+	item := map[string]any{"type": kind, "name": name, "location": spec["location"]}
+	return madeWith(ps, item)
+}
+
+// AsCapturedNow is s as this version captures: what Azure makes itself is
+// left out, and what it sets is taken out of each spec. A diff compares a
+// target, captured now, with a snapshot that may be older; without it a
+// snapshot from before a fix differed from every target on what the fix took
+// out.
+func AsCapturedNow(s snapshot.Snapshot) snapshot.Snapshot {
+	byKey := map[string]snapshot.Object{}
+	for _, o := range s.Objects {
+		byKey[strings.ToLower(o.Key())] = o
+	}
+	out := s
+	out.Objects = nil
+	for _, o := range s.Objects {
+		if madeWithParent(o, byKey, nil) != "" {
+			continue
+		}
+		if spec, ok := o.Body["spec"].(map[string]any); ok {
+			body := deepCopy(o.Body)
+			spec = body["spec"].(map[string]any)
+			asCapturedNow(o.Kind(), o.Name(), spec)
+			o = snapshot.Object{Body: body}
+		}
+		out.Objects = append(out.Objects, o)
+	}
+	return out
 }
 
 // parentCreated says whether this run created the object's parent, or

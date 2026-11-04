@@ -36,6 +36,210 @@ var setByAzure = map[string]map[string]bool{
 	"microsoft.network/privatednszones/soa":                    {"serialNumber": true},
 	"microsoft.network/dnszones/soa":                           {"serialNumber": true},
 	"microsoft.network/virtualnetworks/virtualnetworkpeerings": {"peeringState": true, "peeringSyncLevel": true, "remoteAddressSpace": true, "remoteVirtualNetworkAddressSpace": true},
+	// Each new data collection endpoint gets its own, and a transparent data
+	// encryption's scan state is how far Azure's last scan got. Both are
+	// declared writable, so a resumed restore of a real subscription read the
+	// ones it had just created as differing.
+	"microsoft.insights/datacollectionendpoints":                {"immutableId": true},
+	"microsoft.sql/servers/databases/transparentdataencryption": {"scanState": true},
+}
+
+// setByAzureAt are what setByAzure names, by path, where the definition does
+// not declare them, so a walk with the definition cannot name them; [] is each
+// item of a list. A cluster's extensionManager add-on is turned on by Azure
+// when an extension is installed, and refused on create ("Changing property
+// 'AddonProfiles.ExtensionManager' is not allowed"): a real restore could not
+// make the cluster, nor the 22 objects that needed it. A policy assignment's
+// metadata says who made it and when. An etag is ARM's version of what it is
+// on, and a private endpoint's DNS zone group returns one in each zone config:
+// a resumed restore reported all four groups it had just created as differing.
+var setByAzureAt = map[string][]string{
+	"microsoft.containerservice/managedclusters":              {"properties.addonProfiles.extensionManager"},
+	"microsoft.network/privateendpoints/privatednszonegroups": {"properties.privateDnsZoneConfigs[].etag"},
+	"microsoft.authorization/policyassignments": {
+		"properties.metadata.createdBy", "properties.metadata.createdOn",
+		"properties.metadata.updatedBy", "properties.metadata.updatedOn",
+	},
+}
+
+// dropSetByAzureAt removes what setByAzureAt names for typ, matching each key
+// without regard to case, as ARM does.
+func dropSetByAzureAt(typ string, spec map[string]any) {
+	for _, path := range setByAzureAt[strings.ToLower(typ)] {
+		dropPath(spec, strings.Split(path, "."))
+	}
+}
+
+func dropPath(v any, keys []string) {
+	m, _ := v.(map[string]any)
+	if m == nil {
+		return
+	}
+	k, list := strings.CutSuffix(keys[0], "[]")
+	for mk, mv := range m {
+		if !strings.EqualFold(mk, k) {
+			continue
+		}
+		switch {
+		case len(keys) == 1:
+			delete(m, mk)
+		case list:
+			items, _ := mv.([]any)
+			for _, x := range items {
+				dropPath(x, keys[1:])
+			}
+		default:
+			dropPath(mv, keys[1:])
+		}
+	}
+}
+
+// setByAzurePaths are where setByAzure's names are, by type, for a spec read
+// without its definition: a snapshot from before capture dropped them. Only
+// there: a walk of the whole spec took a tag named after one (a cluster's
+// "nodeImageVersion" tag) out of the capture, the PUT and the diff (review of
+// #72). TestSetByAzureHasItsPaths keeps the two tables together.
+var setByAzurePaths = map[string][]string{
+	"microsoft.keyvault/vaults":                                 {"properties.vaultUri"},
+	"microsoft.containerservice/managedclusters":                {"properties.agentPoolProfiles[].nodeImageVersion"},
+	"microsoft.containerservice/managedclusters/agentpools":     {"properties.nodeImageVersion"},
+	"microsoft.network/privatednszones/soa":                     {"properties.soaRecord.serialNumber"},
+	"microsoft.network/dnszones/soa":                            {"properties.soaRecord.serialNumber"},
+	"microsoft.network/virtualnetworks/virtualnetworkpeerings":  {"properties.peeringState", "properties.peeringSyncLevel", "properties.remoteAddressSpace", "properties.remoteVirtualNetworkAddressSpace"},
+	"microsoft.insights/datacollectionendpoints":                {"properties.immutableId"},
+	"microsoft.sql/servers/databases/transparentdataencryption": {"properties.scanState"},
+}
+
+func dropSetByAzurePaths(typ string, spec map[string]any) {
+	for _, path := range setByAzurePaths[strings.ToLower(typ)] {
+		dropPath(spec, strings.Split(path, "."))
+	}
+}
+
+// AzureDiagnostics is the table Azure makes in a workspace when a diagnostic
+// setting first sends to it. Azure refuses to make it ("cannot create or
+// migrate AzureDiagnostics table", seen restoring a real estate), and its
+// standard columns are what has arrived. What a person sets on it is its
+// retention, its plan and custom columns (_CF), which Azure's documentation
+// says a PUT of the existing table sets (Configure table-level retention; Add
+// or delete a custom column: a PUT's columns replace the custom ones). Whether
+// each retention is the workspace's default (the *AsDefault flags) is kept, so
+// a restore does not pin an inherited value, and does not wait for a table
+// that holds nothing a person set.
+const tablesType = "Microsoft.OperationalInsights/workspaces/tables"
+
+var diagnosticsTableKeeps = []string{"retentionInDays", "totalRetentionInDays", "plan", "retentionInDaysAsDefault", "totalRetentionInDaysAsDefault"}
+
+func isDiagnosticsTable(typ, name string) bool {
+	return strings.EqualFold(typ, tablesType) && strings.EqualFold(name[strings.LastIndex(name, "/")+1:], "AzureDiagnostics")
+}
+
+// diagnosticsTableOnly keeps what a person sets on AzureDiagnostics, with
+// the read-only *AsDefault flags from readOnly (a capture) or the spec (a
+// snapshot that has them).
+func diagnosticsTableOnly(spec map[string]any, readOnly map[string]any) {
+	props, _ := spec["properties"].(map[string]any)
+	kept := map[string]any{}
+	for _, k := range diagnosticsTableKeeps {
+		if v, ok := props[k]; ok {
+			kept[k] = v
+		} else if v, ok := readOnly["properties."+k]; ok {
+			kept[k] = v
+		}
+	}
+	schema, _ := props["schema"].(map[string]any)
+	cols, _ := schema["columns"].([]any)
+	var custom []any
+	for _, c := range cols {
+		if n, _ := c.(map[string]any)["name"].(string); strings.HasSuffix(strings.ToUpper(n), "_CF") {
+			custom = append(custom, c)
+		}
+	}
+	if len(custom) > 0 {
+		sc := map[string]any{"columns": custom}
+		if n, ok := schema["name"].(string); ok && n != "" {
+			sc["name"] = n
+		}
+		kept["schema"] = sc
+	}
+	for k := range spec {
+		delete(spec, k)
+	}
+	spec["properties"] = kept
+}
+
+// diagnosticsTableFlagless says the snapshot predates the *AsDefault flags
+// (one captured before #72), so whether its retention is the workspace's
+// default cannot be told.
+func diagnosticsTableFlagless(spec map[string]any) bool {
+	props, _ := spec["properties"].(map[string]any)
+	_, a := props["retentionInDaysAsDefault"]
+	_, b := props["totalRetentionInDaysAsDefault"]
+	return !a && !b
+}
+
+// diagnosticsTableSet says a person set something on the table: a retention
+// that is not the workspace's default, a plan other than Analytics, or a
+// custom column. One whose flags are not in the snapshot is taken as set.
+func diagnosticsTableSet(spec map[string]any) bool {
+	props, _ := spec["properties"].(map[string]any)
+	if props["retentionInDaysAsDefault"] != true || props["totalRetentionInDaysAsDefault"] != true {
+		return true
+	}
+	if p, _ := props["plan"].(string); p != "" && !strings.EqualFold(p, "Analytics") {
+		return true
+	}
+	_, custom := props["schema"]
+	return custom
+}
+
+// diagnosticsTableBody is what a PUT of the table sends: not the read-only
+// flags, and not a retention that is the workspace's default, which a PUT
+// leaves to the workspace when it is not given.
+func diagnosticsTableBody(desired map[string]any) {
+	props, _ := desired["properties"].(map[string]any)
+	if props == nil {
+		return
+	}
+	if props["retentionInDaysAsDefault"] == true {
+		delete(props, "retentionInDays")
+	}
+	if props["totalRetentionInDaysAsDefault"] == true {
+		delete(props, "totalRetentionInDays")
+	}
+	delete(props, "retentionInDaysAsDefault")
+	delete(props, "totalRetentionInDaysAsDefault")
+	dropNulls(props)
+}
+
+// dropNulls removes keys whose value is null, at any depth: a table's schema
+// with no name was sent as "name": null.
+func dropNulls(m map[string]any) {
+	for k, v := range m {
+		switch c := v.(type) {
+		case nil:
+			delete(m, k)
+		case map[string]any:
+			dropNulls(c)
+		case []any:
+			for _, x := range c {
+				if xm, ok := x.(map[string]any); ok {
+					dropNulls(xm)
+				}
+			}
+		}
+	}
+}
+
+// asCapturedNow makes a spec, captured by any version, as this version
+// captures it.
+func asCapturedNow(typ, name string, spec map[string]any) {
+	defaultOutboundAsMeant(typ, spec)
+	dropSetByAzurePaths(typ, spec)
+	dropSetByAzureAt(typ, spec)
+	if isDiagnosticsTable(typ, name) {
+		diagnosticsTableOnly(spec, nil)
+	}
 }
 
 // defaultOutboundAccess unset on a subnet means it has Azure's default outbound
@@ -88,6 +292,7 @@ type split struct {
 func (s *Schema) normalize(body map[string]any) (map[string]any, split) {
 	sp := split{readOnly: map[string]any{}}
 	spec := deepCopy(body)
+	name, _ := body["name"].(string)
 	for k := range envelope {
 		delete(spec, k)
 	}
@@ -99,6 +304,10 @@ func (s *Schema) normalize(body map[string]any) (map[string]any, split) {
 	s.clean(spec, s.body, "", &sp)
 	spec = walkStrings(spec, canonicalNever).(map[string]any)
 	defaultOutboundAsMeant(s.Type, spec)
+	dropSetByAzureAt(s.Type, spec)
+	if isDiagnosticsTable(s.Type, name) {
+		diagnosticsTableOnly(spec, sp.readOnly)
+	}
 	sort.Strings(sp.secrets)
 	return spec, sp
 }

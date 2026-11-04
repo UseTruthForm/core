@@ -1,0 +1,798 @@
+[
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SystemData",
+  "properties": {
+   "createdAt": {
+    "description": "The timestamp of resource creation (UTC).",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createdBy": {
+    "description": "The identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "createdByType": {
+    "description": "The type of identity that created the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/6"
+    }
+   },
+   "lastModifiedAt": {
+    "description": "The timestamp of resource last modification (UTC)",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "lastModifiedBy": {
+    "description": "The identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "lastModifiedByType": {
+    "description": "The type of identity that last modified the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/11"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/2"
+   },
+   {
+    "$ref": "#/3"
+   },
+   {
+    "$ref": "#/4"
+   },
+   {
+    "$ref": "#/5"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/7"
+   },
+   {
+    "$ref": "#/8"
+   },
+   {
+    "$ref": "#/9"
+   },
+   {
+    "$ref": "#/10"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Insights/dataCollectionEndpoints"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2024-03-11"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Insights/dataCollectionEndpoints",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/13"
+    }
+   },
+   "etag": {
+    "description": "Resource entity tag (ETag).",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "identity": {
+    "description": "Managed service identity of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/54"
+    }
+   },
+   "kind": {
+    "description": "The kind of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/46"
+    }
+   },
+   "location": {
+    "description": "The geo-location where the resource lives",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "properties": {
+    "flags": 0,
+    "type": {
+     "$ref": "#/15"
+    }
+   },
+   "sku": {
+    "description": "The SKU of the resource.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/47"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "tags": {
+    "description": "Resource tags.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/12"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DataCollectionEndpointResourceProperties",
+  "properties": {
+   "configurationAccess": {
+    "description": "The endpoint used by clients to access their configuration.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/16"
+    }
+   },
+   "description": {
+    "description": "Description of the data collection endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "failoverConfiguration": {
+    "description": "Metadata for the resource. This property can only be updated by Log Analytics Control Plane for Data Collection Endpoint with Log Analytics Destination.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/33"
+    }
+   },
+   "immutableId": {
+    "description": "The immutable ID of this data collection endpoint resource. This property is READ-ONLY.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "logsIngestion": {
+    "description": "The endpoint used by clients to ingest logs.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/17"
+    }
+   },
+   "metadata": {
+    "description": "Metadata for the resource. This property can only be updated by Log Analytics Control Plane for Data Collection Endpoint with Log Analytics Destination.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/43"
+    }
+   },
+   "metricsIngestion": {
+    "description": "The endpoint used by clients to ingest metrics.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/18"
+    }
+   },
+   "networkAcls": {
+    "description": "Network access control rules for the endpoints.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/19"
+    }
+   },
+   "privateLinkScopedResources": {
+    "description": "List of Azure Monitor Private Link Scope Resources to which this data collection endpoint resource is associated. This property is READ-ONLY.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/32"
+    }
+   },
+   "provisioningState": {
+    "description": "The resource provisioning state. This property is READ-ONLY.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/30"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DataCollectionEndpointConfigurationAccess",
+  "properties": {
+   "endpoint": {
+    "description": "The endpoint. This property is READ-ONLY.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DataCollectionEndpointLogsIngestion",
+  "properties": {
+   "endpoint": {
+    "description": "The endpoint. This property is READ-ONLY.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DataCollectionEndpointMetricsIngestion",
+  "properties": {
+   "endpoint": {
+    "description": "The endpoint. This property is READ-ONLY.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DataCollectionEndpointNetworkAcls",
+  "properties": {
+   "publicNetworkAccess": {
+    "description": "The configuration to set whether network access from public internet to the endpoints are allowed.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/23"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Enabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disabled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SecuredByPerimeter"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/20"
+   },
+   {
+    "$ref": "#/21"
+   },
+   {
+    "$ref": "#/22"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/24"
+   },
+   {
+    "$ref": "#/25"
+   },
+   {
+    "$ref": "#/26"
+   },
+   {
+    "$ref": "#/27"
+   },
+   {
+    "$ref": "#/28"
+   },
+   {
+    "$ref": "#/29"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkScopedResource",
+  "properties": {
+   "resourceId": {
+    "description": "The resourceId of the Azure Monitor Private Link Scope Scoped Resource through which this DCE is associated with a Azure Monitor Private Link Scope.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "scopeId": {
+    "description": "The immutableId of the Azure Monitor Private Link Scope Resource to which the association is.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/31"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DataCollectionEndpointFailoverConfiguration",
+  "properties": {
+   "activeLocation": {
+    "description": "Active location where data flow will occur.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "locations": {
+    "description": "Locations that are configured for failover.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/42"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "LocationSpec",
+  "properties": {
+   "location": {
+    "description": "Name of location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "provisioningStatus": {
+    "description": "The resource provisioning state in this location.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/41"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/35"
+   },
+   {
+    "$ref": "#/36"
+   },
+   {
+    "$ref": "#/37"
+   },
+   {
+    "$ref": "#/38"
+   },
+   {
+    "$ref": "#/39"
+   },
+   {
+    "$ref": "#/40"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/34"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DataCollectionEndpointMetadata",
+  "properties": {
+   "provisionedBy": {
+    "description": "Azure offering managing this resource on-behalf-of customer.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "provisionedByImmutableId": {
+    "description": "Immutable Id of azure offering managing this resource on-behalf-of customer.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "provisionedByResourceId": {
+    "description": "Resource Id of azure offering managing this resource on-behalf-of customer.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Linux"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Windows"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/44"
+   },
+   {
+    "$ref": "#/45"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DataCollectionEndpointResourceSku",
+  "properties": {
+   "capacity": {
+    "description": "If the SKU supports scale out/in then the capacity integer should be included. If scale out/in is not possible for the resource this may be omitted.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/53"
+    }
+   },
+   "family": {
+    "description": "If the service has different generations of hardware, for the same SKU, then that can be captured here.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The name of the SKU. E.g. P3. It is typically a letter+number code",
+    "flags": 1,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "size": {
+    "description": "The SKU size. When the name field is the combination of tier and some other value, this would be the standalone code.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "tier": {
+    "description": "This field is required to be implemented by the Resource Provider if the service has more than one tier, but is not required on a PUT.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/52"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Free"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Basic"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Premium"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/48"
+   },
+   {
+    "$ref": "#/49"
+   },
+   {
+    "$ref": "#/50"
+   },
+   {
+    "$ref": "#/51"
+   }
+  ]
+ },
+ {
+  "$type": "IntegerType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "DataCollectionEndpointResourceIdentity",
+  "properties": {
+   "principalId": {
+    "description": "The service principal ID of the system assigned identity. This property will only be provided for a system assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/55"
+    }
+   },
+   "tenantId": {
+    "description": "The tenant ID of the system assigned identity. This property will only be provided for a system assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/55"
+    }
+   },
+   "type": {
+    "description": "Type of managed service identity (where both SystemAssigned and UserAssigned types are allowed).",
+    "flags": 1,
+    "type": {
+     "$ref": "#/60"
+    }
+   },
+   "userAssignedIdentities": {
+    "description": "The set of user assigned identities associated with the resource. The userAssignedIdentities dictionary keys will be ARM resource ids in the form: '/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identityName}. The dictionary values can be empty objects ({}) in requests.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/62"
+    }
+   }
+  }
+ },
+ {
+  "$type": "StringType",
+  "maxLength": 36,
+  "minLength": 36,
+  "pattern": "^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SystemAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "UserAssigned"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SystemAssigned,UserAssigned"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/56"
+   },
+   {
+    "$ref": "#/57"
+   },
+   {
+    "$ref": "#/58"
+   },
+   {
+    "$ref": "#/59"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "UserAssignedIdentity",
+  "properties": {
+   "clientId": {
+    "description": "The client ID of the assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/55"
+    }
+   },
+   "principalId": {
+    "description": "The principal ID of the assigned identity.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/55"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/61"
+  },
+  "name": "UserAssignedIdentities",
+  "properties": {}
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/0"
+  },
+  "name": "TrackedResourceTags",
+  "properties": {}
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/14"
+  },
+  "name": "Microsoft.Insights/dataCollectionEndpoints@2024-03-11",
+  "readableScopes": 8,
+  "writableScopes": 8
+ }
+]

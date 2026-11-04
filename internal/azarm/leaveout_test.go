@@ -26,19 +26,22 @@ func linkSnapshot() snapshot.Snapshot {
 
 func TestLeaveOutHoldsBackALinkToAnotherSubscription(t *testing.T) {
 	s := linkSnapshot()
+	// A lock goes after everything in a restore, which is order, not need.
+	s.Objects = append(s.Objects, obj("Microsoft.Authorization/locks", "rg", "providers/Microsoft.Authorization/locks/keep",
+		"/subscriptions/"+tokSub+"/resourceGroups/rg/providers/Microsoft.Authorization/locks/keep", map[string]any{"properties": map[string]any{"level": "CanNotDelete"}}))
 	out, err := LeaveOut(s, []string{"Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Objects) != 2 {
-		t.Fatalf("left %d objects, want 2", len(out.Objects))
+	if len(out.Objects) != 3 {
+		t.Fatalf("left %d objects, want 3", len(out.Objects))
 	}
 	for _, o := range out.Objects {
 		if o.Kind() == "Microsoft.Network/privateDnsZones/virtualNetworkLinks" {
 			t.Error("the link is still there")
 		}
 	}
-	if len(s.Objects) != 3 {
+	if len(s.Objects) != 4 {
 		t.Error("the snapshot it was given changed")
 	}
 }
@@ -56,16 +59,31 @@ func TestLeaveOutRefusesWhatIsStillNeeded(t *testing.T) {
 	waits := obj("Microsoft.Storage/storageAccounts", "rg", "after", sub+"Microsoft.Storage/storageAccounts/after", map[string]any{})
 	waits.Body["metadata"].(map[string]any)["annotations"].(map[string]any)[annAfter] = zoneID
 	zone := "Microsoft.Network/privateDnsZones/rg/corp.example"
+	// Review of #65: an ID at subscription scope, which no group-scoped
+	// pattern sees, and a grant a cluster needs and does not name.
+	defID := "/subscriptions/" + tokSub + "/providers/Microsoft.Authorization/policyDefinitions/mine"
+	policyDef := obj("Microsoft.Authorization/policyDefinitions", "", "providers/Microsoft.Authorization/policyDefinitions/mine", defID, map[string]any{"properties": map[string]any{"policyType": "Custom"}})
+	policyAssign := obj("Microsoft.Authorization/policyAssignments", "", "providers/Microsoft.Authorization/policyAssignments/use-mine", "/subscriptions/"+tokSub+"/providers/Microsoft.Authorization/policyAssignments/use-mine",
+		map[string]any{"properties": map[string]any{"policyDefinitionId": defID}})
+	idID := sub + "Microsoft.ManagedIdentity/userAssignedIdentities/aks-id"
+	identity := obj("Microsoft.ManagedIdentity/userAssignedIdentities", "rg", "aks-id", idID, map[string]any{"location": "eastus"})
+	grant := obj("Microsoft.Authorization/roleAssignments", "rg", "providers/Microsoft.Authorization/roleAssignments/g1", sub+"Microsoft.Network/privateDnsZones/corp.example/providers/Microsoft.Authorization/roleAssignments/g1",
+		map[string]any{"properties": map[string]any{"principalId": "{{stackdna|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|aks-id|properties.principalId}}"}})
+	grantKey := "Microsoft.Authorization/roleAssignments/rg/providers/Microsoft.Authorization/roleAssignments/g1"
+	cluster := obj(managedClusterType, "rg", "aks", sub+managedClusterType+"/aks", map[string]any{"identity": map[string]any{"type": "UserAssigned", "userAssignedIdentities": map[string]any{idID: map[string]any{}}}})
+	clusterAndGrant := []snapshot.Object{identity, grant, cluster}
 	for name, tc := range map[string]struct {
 		extra []snapshot.Object
 		keys  []string
 		want  string
 	}{
-		"its child":         {nil, []string{zone}, "virtualNetworkLinks/rg/corp.example/office needs " + zone},
-		"an ID in a spec":   {[]snapshot.Object{pe}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "privateDnsZoneGroups/rg/pe/default needs " + zone},
-		"a reference":       {[]snapshot.Object{byRef}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "privateEndpoints/rg/pe2 needs " + zone},
-		"what it waits for": {[]snapshot.Object{waits}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "storageAccounts/rg/after needs " + zone},
-		"a name not in it":  {nil, []string{"Microsoft.Network/privateDnsZones/rg/missing.example"}, "not in the snapshot: microsoft.network/privatednszones/rg/missing.example"},
+		"its child":                          {nil, []string{zone}, "virtualNetworkLinks/rg/corp.example/office needs " + zone},
+		"an ID in a spec":                    {[]snapshot.Object{pe}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "privateDnsZoneGroups/rg/pe/default needs " + zone},
+		"a reference":                        {[]snapshot.Object{byRef}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "privateEndpoints/rg/pe2 needs " + zone},
+		"what it waits for":                  {[]snapshot.Object{waits}, []string{zone, "Microsoft.Network/privateDnsZones/virtualNetworkLinks/rg/corp.example/office"}, "storageAccounts/rg/after needs " + zone},
+		"a definition at subscription scope": {[]snapshot.Object{policyDef, policyAssign}, []string{"Microsoft.Authorization/policyDefinitions//providers/Microsoft.Authorization/policyDefinitions/mine"}, "policyAssignments//providers/Microsoft.Authorization/policyAssignments/use-mine needs Microsoft.Authorization/policyDefinitions//providers/Microsoft.Authorization/policyDefinitions/mine"},
+		"a cluster's identity's grant":       {clusterAndGrant, []string{grantKey}, "managedClusters/rg/aks needs " + grantKey},
+		"a name not in it":                   {nil, []string{"Microsoft.Network/privateDnsZones/rg/missing.example"}, "not in the snapshot: microsoft.network/privatednszones/rg/missing.example"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			in := s

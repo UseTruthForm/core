@@ -30,26 +30,42 @@ func LeaveOut(s snapshot.Snapshot, keys []string) (snapshot.Snapshot, error) {
 	out := s
 	out.Objects = nil
 	var gone []snapshot.Object
+	found := map[string]bool{}
 	for _, o := range s.Objects {
 		if k := strings.ToLower(leaveOutKey(o)); want[k] {
-			delete(want, k)
+			found[k] = true
 			gone = append(gone, o)
 			continue
 		}
 		out.Objects = append(out.Objects, o)
 	}
-	if len(want) > 0 {
-		return s, fmt.Errorf("leave out: not in the snapshot: %s", strings.Join(sortedKeys(want), ", "))
+	var unknown []string
+	for k := range want {
+		if !found[k] {
+			unknown = append(unknown, k)
+		}
 	}
-	ids, refs := map[string]string{}, map[string]string{}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return s, fmt.Errorf("leave out: not in the snapshot: %s", strings.Join(unknown, ", "))
+	}
+	// What a restore orders by is what it needs: references and parents
+	// (deps), any left-out ID written anywhere in a spec (a policy
+	// assignment's policyDefinitionId, at subscription scope), and a
+	// cluster's grants to its identity, which nothing in the cluster names.
+	// Ordering alone (a lock last, credentials one at a time) is not a need.
+	byKey := map[string]snapshot.Object{}
+	for _, o := range s.Objects {
+		byKey[strings.ToLower(o.Key())] = o
+	}
+	goneKeys, goneIDs := map[string]string{}, map[string]string{}
 	for _, o := range gone {
-		rid := objectID(o, tokSub)
-		ids[strings.ToLower(rid.String())] = leaveOutKey(o)
-		refs[strings.ToLower(o.Kind()+"|"+o.Namespace()+"|"+o.Name())] = leaveOutKey(o)
+		goneKeys[strings.ToLower(o.Key())] = leaveOutKey(o)
+		goneIDs[strings.ToLower(objectID(o, tokSub).String())] = leaveOutKey(o)
 	}
 	var needed []string
 	for _, o := range out.Objects {
-		for _, by := range needs(o, ids, refs) {
+		for _, by := range needs(o, goneKeys, goneIDs, byKey) {
 			needed = append(needed, leaveOutKey(o)+" needs "+by)
 		}
 	}
@@ -65,39 +81,29 @@ func leaveOutKey(o snapshot.Object) string {
 	return o.Kind() + "/" + o.Namespace() + "/" + o.Name()
 }
 
-// needs lists the left-out objects o depends on: by ID (its own, as a child or
-// an extension, or in its spec), by reference, or as what it waits for.
-func needs(o snapshot.Object, ids, refs map[string]string) []string {
+// needs lists the left-out objects o needs, as restoreGraph orders by them:
+// its own ID below one (a child, an extension), deps, an ID in its spec, and
+// for a cluster, its identity's grants.
+func needs(o snapshot.Object, goneKeys, goneIDs map[string]string, byKey map[string]snapshot.Object) []string {
 	var out []string
 	self := strings.ToLower(objectID(o, tokSub).String())
-	for id, k := range ids {
-		if strings.HasPrefix(self, id+"/") {
+	spec := strings.ToLower(canon(o.Body["spec"]))
+	for id, k := range goneIDs {
+		if strings.HasPrefix(self, id+"/") || strings.Contains(spec, id+`"`) || strings.Contains(spec, id+"/") {
 			out = append(out, k)
 		}
 	}
-	look := func(v string) string {
-		for _, m := range anyIDRE.FindAllString(v, -1) {
-			m = strings.ToLower(m)
-			for id, k := range ids {
-				if m == id || strings.HasPrefix(m, id+"/") {
-					out = append(out, k)
-				}
-			}
+	for _, d := range deps(o) {
+		if k, ok := goneKeys[d]; ok {
+			out = append(out, k)
 		}
-		for _, g := range refAnyRE.FindAllStringSubmatch(v, -1) {
-			if k, ok := refs[strings.ToLower(g[1]+"|"+g[2]+"|"+g[3])]; ok {
+	}
+	if strings.EqualFold(o.Kind(), managedClusterType) {
+		for _, d := range grantsToIdentitiesOf(strings.ToLower(o.Key()), spec, byKey) {
+			if k, ok := goneKeys[d]; ok {
 				out = append(out, k)
 			}
 		}
-		return v
-	}
-	if spec, ok := o.Body["spec"].(map[string]any); ok {
-		rewriteAll(deepCopy(spec), look)
-	}
-	md, _ := o.Body["metadata"].(map[string]any)
-	ann, _ := md["annotations"].(map[string]any)
-	if after, _ := ann[annAfter].(string); after != "" {
-		look(after)
 	}
 	sort.Strings(out)
 	return slicesCompact(out)

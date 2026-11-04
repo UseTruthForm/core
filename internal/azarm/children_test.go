@@ -305,3 +305,40 @@ func TestRegisteredChildrenAreReadAsBefore(t *testing.T) {
 		t.Errorf("the rule is no longer its own object: %v", sortedKeys(got))
 	}
 }
+
+// offeredOnly answers the provider registration with the versions it is given.
+type offeredOnly struct {
+	*Fake
+	offered map[string][]string
+}
+
+func (o offeredOnly) APIVersions(context.Context, string) (map[string][]string, error) {
+	return o.offered, nil
+}
+
+// Review of beta.14: a child the registration does not list is read at its
+// parent's versions. With none of them defined for it, nothing was read and
+// nothing said so. A type the registration lists with no version defined is
+// still one the subscription does not offer us.
+func TestAChildWithNoVersionOfItsParentsIsAGap(t *testing.T) {
+	reg := fixtures(t)
+	deployments := accountType + "/deployments"
+	path := id(srcSub, "rg", accountType, "assistant") + "/deployments"
+	for name, tc := range map[string]struct {
+		offered map[string][]string
+		gap     bool
+	}{
+		"not in the registration": {map[string][]string{strings.ToLower(accountType): {"2017-04-18"}}, true},
+		"in the registration":     {map[string][]string{strings.ToLower(deployments): {"2017-04-18"}}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := offeredOnly{NewWorld(reg).Subscription(srcSub, srcTenant), tc.offered}
+			v := &versions{api: api, reg: reg, ctx: context.Background(), cache: map[string]map[string][]string{}}
+			got := listOf(context.Background(), api, v, srcTenant, deployments, path, nil)
+			gap := len(got) == 1 && strings.HasPrefix(got[0].reason, Unreadable+"no API version")
+			if gap != tc.gap || (!tc.gap && len(got) != 0) {
+				t.Errorf("got %+v, want gap %v", got, tc.gap)
+			}
+		})
+	}
+}

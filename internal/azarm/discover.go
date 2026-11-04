@@ -266,8 +266,13 @@ func issuerRefs(cs []*captured) {
 func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string, skip func(map[string]any) string) []found {
 	ver, err := v.pick(typ)
 	if err != nil {
-		if errors.Is(err, errNoVersion) {
-			return nil // the subscription does not offer the type
+		// A type the registration offers, with no version defined, is one
+		// the subscription does not offer us. A child it does not list is
+		// read at its parent's versions; with none of those defined for it,
+		// it went unread with no word, beside a parent that may have some
+		// (review of beta.14).
+		if errors.Is(err, errNoVersion) && v.registered(typ) {
+			return nil
 		}
 		return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
 	}

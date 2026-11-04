@@ -83,7 +83,7 @@ func changesJSON(cs []snapshot.Change) []changeJSON {
 
 func emitDiff(changes []snapshot.Change, from, target string) {
 	emit(map[string]any{"schema": jsonSchema, "command": command, "from": from, "target": target,
-		"differences": len(changes), "changes": changesJSON(changes), "left_out": leftOutJSON()})
+		"differences": len(changes), "changes": changesJSON(changes), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()})
 }
 
 type resultJSON struct {
@@ -102,7 +102,16 @@ func emitRestore(results []snapshot.Result, target string) {
 		}
 	}
 	emit(map[string]any{"schema": jsonSchema, "command": "restore", "target": target,
-		"applied": applied, "total": len(results), "complete": applied == len(results), "results": out, "left_out": leftOutJSON()})
+		"applied": applied, "total": len(results), "complete": applied == len(results), "results": out, "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()})
+}
+
+// needElsewhere is what the snapshot restored or compared needs outside its
+// target (azarm.AccessElsewhere), for the document.
+var needElsewhere []string
+
+// elsewhereJSON is needElsewhere as a list, empty rather than null.
+func elsewhereJSON() []string {
+	return append([]string{}, needElsewhere...)
 }
 
 // leftOutJSON is heldBack as a list, empty rather than null.

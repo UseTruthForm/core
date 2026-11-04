@@ -250,7 +250,10 @@ change with its `kind` (missing, extra, changed, not working) and `fields`; a
 restore's lists each resource with `ok` and `detail`. A diff against one
 target and a restore list under `left_out` the objects `--leave-out` held
 back, so a clean diff says what it did not compare (`compare` has no
-`--leave-out`, and its list is empty).
+`--leave-out`, and its list is empty). On Azure, both also list under
+`access_elsewhere` each action a restore needs outside its target, with the
+resource it is needed on (an event hub rule's keys for a diagnostic setting
+that sends there), as the report does.
 
 ```sh
 stackdna diff --platform aws --region us-east-2 --from snap/aws --json | jq '.differences'

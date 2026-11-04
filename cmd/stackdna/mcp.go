@@ -52,6 +52,8 @@ capture and diff only read (the read-only guard refuses any write). They use the
 
 Setting up access: permissions gives the template and every command to grant StackDNA access, with the person's values filled in; check_access then shows who StackDNA runs as and what it can read. Neither grants anything. Follow docs/agents.md: look at what is there before granting, let the person run the grant, never hand over a command with a placeholder in it, and verify with check_access, not with the grant's exit code.
 
+Planning a restore: report and a diff into the target, with --json, say what it needs. Read the report's sections on what will not come back, references to other subscriptions and access a restore needs outside its target (access_elsewhere in the diff document), and follow "Planning a restore" in docs/agents.md. The person decides each grant, each object left out and when the restore runs.
+
 For building and changing resources, use the platform's own MCP server alongside this one; platforms lists them.`
 
 // companions are the platforms' own MCP servers, checked 2026-10-22 on

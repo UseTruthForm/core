@@ -5,6 +5,9 @@ to their AWS account, Azure subscription, Google Cloud project, Kubernetes
 cluster, GitHub organisation or Cloudflare account. The MCP server
 (`stackdna mcp`) points agents here.
 
+It also covers planning a restore, at the end. The person runs the restore;
+you prepare it.
+
 The tools do the exact parts: `permissions` says what to grant and gives
 every command, and `check_access` shows what a grant actually allows. This
 page is the judgement around them. Every rule here comes from a mistake
@@ -124,3 +127,85 @@ are. The common ones:
   organisation's settings without `repo` and `admin:org`, which both
   write. Fine-grained tokens may need the organisation's approval.
 - **Cloudflare.** Not yet run against a real account. Say so.
+
+## Planning a restore
+
+There is no restore tool. The person runs a restore from the CLI, and every
+write before or after it: the grants, repointing what the restore cannot
+change, the teardown. Your part is the plan: what will happen, what it
+needs, and what the person must decide. What you run is read-only.
+
+### What to read
+
+1. **The snapshot's report** (`report`). Read it all, and pass these
+   sections on as they are:
+   - *Check before relying on a restore*: what was skipped and may not come
+     back.
+   - *References to other subscriptions*: IDs a restore sends as they are,
+     into another subscription. A restore needs access there for each of
+     them.
+   - *Access a restore needs outside its target*: the action and the
+     resource for each reference whose check StackDNA knows. It is not
+     every grant: a reference listed only under *References to other
+     subscriptions* (a network interface in another subscription's subnet,
+     an identity from another subscription) needs access too, and which
+     access is for you to find in the platform's documentation and say you
+     did.
+   - Anything the capture could not read. A gap in the snapshot is a gap in
+     the restore.
+2. **A diff into the target** (`diff`, with the same `--rename` and
+   `--leave-out` the restore will use). A target that should be empty shows
+   everything as missing. Anything extra already exists there, and is not
+   the snapshot's to change. The `--json` document lists `left_out` and
+   `access_elsewhere`.
+3. **What already holds access in the target.** Look before suggesting any
+   role assignment: the target's own administrators are usually there
+   already, and a restored assignment of the same role to the same
+   principal is refused.
+
+### What the person decides
+
+Put each of these to the person as a decision, with your suggestion and
+why. Don't settle any of them yourself.
+
+- **Who restores, and with what.** Suggest a separate restore identity
+  (`permissions` with `access: restore`), scoped to the target, and removed
+  afterwards. Running as the person works, but the restore then has all of
+  their rights.
+- **Each grant outside the target.** Every line under *Access a restore
+  needs outside its target* is a grant in another subscription, and so may
+  be every line under *References to other subscriptions*. Each one is the
+  person's to make, or the object goes in `--leave-out`. The actions come
+  from Azure's documentation, not from a StackDNA restore: say so.
+- **Each role assignment.** List the source's assignments by principal and
+  role, and suggest one of: *leave out* (the target already has it, or the
+  principal would gain write access it should not have there: a deploy
+  identity, a pipeline, the source's own capture identity), *restore*, or
+  *the person's call* (people and groups). Assignments that name a restored
+  resource (a cluster's identities) follow it.
+- **Names.** Global names (storage accounts, registries, DNS labels) must
+  be new, through `--rename`. Check each new name is free before the
+  restore, not during it.
+- **Secrets.** `--values` supplies what capture withheld. You never see or
+  print those values.
+
+### What a restore cannot change
+
+- **A plain value that names something.** An event hub name in a diagnostic
+  setting, or a hostname in an app setting, is a value, not a reference.
+  `--rename` doesn't touch it, so the restored copy still points where the
+  source did. Find these in the plan, for example a log destination shared
+  with the source. Say how the person will repoint them after the restore,
+  and that until then the target's data goes where the source's does.
+- **What something else manages.** A cluster's node resources, and what a
+  driver made for a claim, come from the cluster, not the snapshot.
+
+### After the restore
+
+- Diff again. Expect no differences except what was left out, and report
+  anything else as it is.
+- Give the person the commands to repoint the plain values from the plan,
+  then diff once more.
+- Give the person the teardown, as you would undo steps for access: the
+  restored resources, the restore identity and its grants, including those
+  outside the target.

@@ -35,6 +35,8 @@ var fixtureTypes = []string{
 	"Microsoft.Insights/diagnosticSettings@2021-05-01-preview",
 	"Microsoft.Storage/storageAccounts/blobServices@2025-08-01",
 	"Microsoft.Storage/storageAccounts/blobServices/containers@2025-08-01",
+	"Microsoft.Storage/storageAccounts/fileServices@2025-08-01",
+	"Microsoft.Storage/storageAccounts/fileServices/shares@2025-08-01",
 	"Microsoft.Network/virtualNetworks/subnets@2025-07-01",
 	"Microsoft.Network/networkSecurityGroups/securityRules@2025-07-01",
 	// Azure creates these with every NSG and no one can PUT them

@@ -305,3 +305,40 @@ func TestRegisteredChildrenAreReadAsBefore(t *testing.T) {
 		t.Errorf("the rule is no longer its own object: %v", sortedKeys(got))
 	}
 }
+
+// A real capture held two file shares AKS's Azure Files driver made for
+// volume claims. The cluster's snapshot skips their volumes, since restoring a
+// claim provisions a new one, so restoring the shares as well left them beside
+// it unused. A share list returns no metadata unless asked, so who made a share
+// was never seen, and neither was metadata someone set.
+func TestSharesAKSMadeForAClaimAreSkipped(t *testing.T) {
+	reg := fixtures(t)
+	f := NewWorld(reg).Subscription(srcSub, srcTenant)
+	put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})
+	acct := put(t, f, "shop-rg", "Microsoft.Storage/storageAccounts", "shopdata", map[string]any{"location": "eastus", "kind": "StorageV2", "sku": map[string]any{"name": "Standard_LRS"}})
+	shares := "Microsoft.Storage/storageAccounts/fileServices/shares"
+	rawPut(t, f, acct+"/fileServices/default", "Microsoft.Storage/storageAccounts/fileServices", map[string]any{"properties": map[string]any{}})
+	rawPut(t, f, acct+"/fileServices/default/shares/pvc-1", shares, map[string]any{"properties": map[string]any{"shareQuota": 2, "metadata": map[string]any{"createdBy": "file.csi.azure.com"}}})
+	rawPut(t, f, acct+"/fileServices/default/shares/reports", shares, map[string]any{"properties": map[string]any{"shareQuota": 5, "metadata": map[string]any{"team": "finance"}}})
+
+	s, got := captureByKey(t, f, reg)
+	if _, ok := got[shares+"|shopdata/default/pvc-1"]; ok {
+		t.Error("the share AKS made for a claim was captured")
+	}
+	skipped := false
+	for _, sk := range s.Skips {
+		skipped = skipped || (sk.Reason == csiShare && strings.HasSuffix(sk.Name, "pvc-1"))
+	}
+	if !skipped {
+		t.Errorf("not said: %+v", s.Skips)
+	}
+	o, ok := got[shares+"|shopdata/default/reports"]
+	if !ok {
+		t.Fatalf("a share someone made was lost: %v", sortedKeys(got))
+	}
+	spec, _ := o.Body["spec"].(map[string]any)
+	props, _ := spec["properties"].(map[string]any)
+	if md, _ := props["metadata"].(map[string]any); md["team"] != "finance" {
+		t.Errorf("its metadata was not captured: %v", props)
+	}
+}

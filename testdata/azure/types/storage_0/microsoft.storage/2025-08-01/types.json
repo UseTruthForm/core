@@ -4129,6 +4129,738 @@
  },
  {
   "$type": "StringLiteralType",
+  "value": "default"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Storage/storageAccounts/fileServices"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-08-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Storage/storageAccounts/fileServices",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/307"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/305"
+    }
+   },
+   "properties": {
+    "description": "The properties of File services in storage account.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/309"
+    }
+   },
+   "sku": {
+    "description": "Sku name and tier.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/189"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/306"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "FileServicePropertiesProperties",
+  "properties": {
+   "cors": {
+    "description": "Specifies CORS rules for the File service. You can include up to five CorsRule elements in the request. If no CorsRule elements are included in the request body, all CORS rules will be deleted, and CORS will be disabled for the File service.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/235"
+    }
+   },
+   "protocolSettings": {
+    "description": "Protocol settings for file service",
+    "flags": 0,
+    "type": {
+     "$ref": "#/310"
+    }
+   },
+   "shareDeleteRetentionPolicy": {
+    "description": "The file service properties for share soft delete.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/253"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ProtocolSettings",
+  "properties": {
+   "nfs": {
+    "description": "Setting for NFS protocol",
+    "flags": 0,
+    "type": {
+     "$ref": "#/314"
+    }
+   },
+   "smb": {
+    "description": "Setting for SMB protocol",
+    "flags": 0,
+    "type": {
+     "$ref": "#/311"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SmbSetting",
+  "properties": {
+   "authenticationMethods": {
+    "description": "SMB authentication methods supported by server. Valid values are NTLMv2, Kerberos. Should be passed as a string with delimiter ';'.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "channelEncryption": {
+    "description": "SMB channel encryption supported by server. Valid values are AES-128-CCM, AES-128-GCM, AES-256-GCM. Should be passed as a string with delimiter ';'.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "encryptionInTransit": {
+    "description": "Encryption in transit setting.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/313"
+    }
+   },
+   "kerberosTicketEncryption": {
+    "description": "Kerberos ticket encryption supported by server. Valid values are RC4-HMAC, AES-256. Should be passed as a string with delimiter ';'",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "multichannel": {
+    "description": "Multichannel setting. Applies to Premium FileStorage only.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/312"
+    }
+   },
+   "versions": {
+    "description": "SMB protocol versions supported by server. Valid values are SMB2.1, SMB3.0, SMB3.1.1. Should be passed as a string with delimiter ';'.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Multichannel",
+  "properties": {
+   "enabled": {
+    "description": "Indicates whether multichannel is enabled",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "EncryptionInTransit",
+  "properties": {
+   "required": {
+    "description": "Indicates whether encryption in transit is required",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NfsSetting",
+  "properties": {
+   "encryptionInTransit": {
+    "description": "Encryption in transit setting.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/313"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/308"
+  },
+  "name": "Microsoft.Storage/storageAccounts/fileServices@2025-08-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Storage/storageAccounts/fileServices/shares"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2025-08-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Storage/storageAccounts/fileServices/shares",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/317"
+    }
+   },
+   "etag": {
+    "description": "Resource Etag.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/263"
+    }
+   },
+   "properties": {
+    "description": "Properties of the file share.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/319"
+    }
+   },
+   "systemData": {
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/189"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/316"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "FileShareProperties",
+  "properties": {
+   "accessTier": {
+    "description": "Access tier for specific share. GpV2 account can choose between TransactionOptimized (default), Hot, and Cool. FileStorage account can choose Premium.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/332"
+    }
+   },
+   "accessTierChangeTime": {
+    "description": "Indicates the last modification time for share access tier.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "accessTierStatus": {
+    "description": "Indicates if there is a pending transition for access tier.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "deleted": {
+    "description": "Indicates whether the share was deleted.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "deletedTime": {
+    "description": "The deleted time if the share was deleted.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "enabledProtocols": {
+    "description": "The authentication protocol that is used for the file share. Can only be specified when creating a share.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/323"
+    }
+   },
+   "fileSharePaidBursting": {
+    "description": "File Share Paid Bursting properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/348"
+    }
+   },
+   "includedBurstIops": {
+    "description": "The calculated burst IOPS of the share. This property is only for file shares created under Files Provisioned v2 account type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "lastModifiedTime": {
+    "description": "Returns the date and time the share was last modified.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "leaseDuration": {
+    "description": "Specifies whether the lease on a share is of infinite or fixed duration, only when the share is leased.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/344"
+    }
+   },
+   "leaseState": {
+    "description": "Lease state of the share.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/341"
+    }
+   },
+   "leaseStatus": {
+    "description": "The lease status of the share.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/335"
+    }
+   },
+   "maxBurstCreditsForIops": {
+    "description": "The calculated maximum burst credits for the share. This property is only for file shares created under Files Provisioned v2 account type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "metadata": {
+    "description": "A name-value pair to associate with the share as metadata.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/320"
+    }
+   },
+   "nextAllowedProvisionedBandwidthDowngradeTime": {
+    "description": "Returns the next allowed provisioned bandwidth downgrade time for the share. This property is only for file shares created under Files Provisioned v2 account type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "nextAllowedProvisionedIopsDowngradeTime": {
+    "description": "Returns the next allowed provisioned IOPS downgrade time for the share. This property is only for file shares created under Files Provisioned v2 account type.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "nextAllowedQuotaDowngradeTime": {
+    "description": "Returns the next allowed provisioned storage size downgrade time for the share. This property is only for file shares created under Files Provisioned v1 SSD and Files Provisioned v2 account type",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "provisionedBandwidthMibps": {
+    "description": "The provisioned bandwidth of the share, in mebibytes per second. This property is only for file shares created under Files Provisioned v2 account type. Please refer to the GetFileServiceUsage API response for the minimum and maximum allowed value for provisioned bandwidth.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "provisionedIops": {
+    "description": "The provisioned IOPS of the share. This property is only for file shares created under Files Provisioned v2 account type. Please refer to the GetFileServiceUsage API response for the minimum and maximum allowed value for provisioned IOPS.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "remainingRetentionDays": {
+    "description": "Remaining retention days for share that was soft deleted.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "rootSquash": {
+    "description": "The property is for NFS share only. The default is NoRootSquash.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/327"
+    }
+   },
+   "shareQuota": {
+    "description": "The provisioned size of the share, in gibibytes. Must be greater than 0, and less than or equal to 5TB (5120). For Large File Shares, the maximum size is 102400. For file shares created under Files Provisioned v2 account type, please refer to the GetFileServiceUsage API response for the minimum and maximum allowed provisioned storage size.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "shareUsageBytes": {
+    "description": "The approximate size of the data stored on the share. Note that this value may not include all recently created or recently resized files.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "signedIdentifiers": {
+    "description": "List of stored access policies specified on the share.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/347"
+    }
+   },
+   "snapshotTime": {
+    "description": "Creation time of share snapshot returned in the response of list shares with expand param \"snapshots\".",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "version": {
+    "description": "The version of the share.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "additionalProperties": {
+   "$ref": "#/2"
+  },
+  "name": "FileSharePropertiesMetadata",
+  "properties": {}
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "SMB"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "NFS"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/321"
+   },
+   {
+    "$ref": "#/322"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "NoRootSquash"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RootSquash"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AllSquash"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/324"
+   },
+   {
+    "$ref": "#/325"
+   },
+   {
+    "$ref": "#/326"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "TransactionOptimized"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Hot"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Cool"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Premium"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/328"
+   },
+   {
+    "$ref": "#/329"
+   },
+   {
+    "$ref": "#/330"
+   },
+   {
+    "$ref": "#/331"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Locked"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Unlocked"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/333"
+   },
+   {
+    "$ref": "#/334"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Available"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Leased"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Expired"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Breaking"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Broken"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/336"
+   },
+   {
+    "$ref": "#/337"
+   },
+   {
+    "$ref": "#/338"
+   },
+   {
+    "$ref": "#/339"
+   },
+   {
+    "$ref": "#/340"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Infinite"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Fixed"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/342"
+   },
+   {
+    "$ref": "#/343"
+   },
+   {
+    "$ref": "#/2"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SignedIdentifier",
+  "properties": {
+   "accessPolicy": {
+    "description": "Access policy",
+    "flags": 0,
+    "type": {
+     "$ref": "#/346"
+    }
+   },
+   "id": {
+    "description": "An unique identifier of the stored access policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "AccessPolicy",
+  "properties": {
+   "expiryTime": {
+    "description": "Expiry time of the access policy",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "permission": {
+    "description": "List of abbreviated permissions.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   },
+   "startTime": {
+    "description": "Start time of the access policy",
+    "flags": 0,
+    "type": {
+     "$ref": "#/2"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/345"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "FileSharePropertiesFileSharePaidBursting",
+  "properties": {
+   "paidBurstingEnabled": {
+    "description": "Indicates whether paid bursting is enabled for the share. This property is only for file shares created under Files Provisioned v1 SSD account type.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/63"
+    }
+   },
+   "paidBurstingMaxBandwidthMibps": {
+    "description": "The maximum paid bursting bandwidth for the share, in mebibytes per second. This property is only for file shares created under Files Provisioned v1 SSD account type. The maximum allowed value is 10340 which is the maximum allowed bandwidth for a share.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/61"
+    }
+   },
+   "paidBurstingMaxIops": {
+    "description": "The maximum paid bursting IOPS for the share. This property is only for file shares created under Files Provisioned v1 SSD account type. The maximum allowed value is 102400 which is the maximum allowed IOPS for a share.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/61"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/318"
+  },
+  "name": "Microsoft.Storage/storageAccounts/fileServices/shares@2025-08-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
   "value": "Microsoft.Storage/storageAccounts/privateEndpointConnections"
  },
  {
@@ -4143,7 +4875,7 @@
     "description": "The resource api version",
     "flags": 10,
     "type": {
-     "$ref": "#/306"
+     "$ref": "#/351"
     }
    },
    "id": {
@@ -4178,7 +4910,7 @@
     "description": "The resource type",
     "flags": 10,
     "type": {
-     "$ref": "#/305"
+     "$ref": "#/350"
     }
    }
   }
@@ -4186,7 +4918,7 @@
  {
   "$type": "ResourceType",
   "body": {
-   "$ref": "#/307"
+   "$ref": "#/352"
   },
   "name": "Microsoft.Storage/storageAccounts/privateEndpointConnections@2025-08-01",
   "readableScopes": 8,

@@ -153,8 +153,12 @@ func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []
 			} else if inlined[strings.ToLower(coll)] {
 				continue
 			}
+			path := parent.rid.String() + "/" + coll
+			if q := listQuery[strings.ToLower(ct)]; q != "" {
+				path += "?" + q
+			}
 			run(func() {
-				for _, f := range listOf(ctx, api, v, tenant, ct, parent.rid.String()+"/"+coll, childSkip) {
+				for _, f := range listOf(ctx, api, v, tenant, ct, path, childSkip) {
 					// Left out as what something else manages, and reached
 					// again as a child: a SQL server's master database was
 					// skipped and captured both, with its own children.
@@ -222,7 +226,23 @@ func childSkip(item map[string]any) string {
 	if c, _ := md["creator"].(string); strings.HasPrefix(c, "created by private endpoint ") {
 		return "written by a private endpoint's DNS zone group, which writes it again with the new address"
 	}
+	// A share AKS's Azure Files driver made for a volume claim. The cluster's
+	// snapshot skips the volume, since restoring the claim provisions a new
+	// one under a new name; restored here as well, the old share was left
+	// beside it with nothing using it.
+	if c, _ := md["createdBy"].(string); strings.EqualFold(c, "file.csi.azure.com") {
+		return csiShare
+	}
 	return ""
+}
+
+const csiShare = "made by AKS's Azure Files driver for a volume claim; restoring the claim makes a new one. Its data is not captured"
+
+// listQuery is what a child collection's list needs to return what its GET
+// does: a file share list leaves out each share's metadata unless asked, and
+// without it neither the metadata nor who made the share was captured.
+var listQuery = map[string]string{
+	"microsoft.storage/storageaccounts/fileservices/shares": "$expand=metadata",
 }
 
 const systemManaged = "Azure's own, made with its parent"

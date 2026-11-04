@@ -495,6 +495,8 @@ func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any
 	}
 	f.w.mu.Unlock()
 	sort.Slice(ids, func(i, j int) bool { return ids[i].id > ids[j].id })
+	// As ARM lists file shares: without $expand=metadata, none has its metadata.
+	bare := strings.HasSuffix(lower, "/shares") && !strings.Contains(strings.ToLower(query), "expand=metadata")
 	var out []map[string]any
 	for _, r := range ids {
 		b, err := f.Get(ctx, r.id, r.version)
@@ -503,6 +505,9 @@ func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any
 		}
 		if bk, _ := b["kind"].(string); kind != "" && !strings.EqualFold(bk, kind) {
 			continue
+		}
+		if p, _ := b["properties"].(map[string]any); bare && p != nil {
+			delete(p, "metadata")
 		}
 		out = append(out, b)
 	}

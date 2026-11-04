@@ -99,8 +99,14 @@
   "Microsoft.Storage/storageAccounts/blobServices@2025-08-01": {
    "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/262"
   },
+  "Microsoft.Storage/storageAccounts/fileServices/shares@2025-08-01": {
+   "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/349"
+  },
+  "Microsoft.Storage/storageAccounts/fileServices@2025-08-01": {
+   "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/315"
+  },
   "Microsoft.Storage/storageAccounts/privateEndpointConnections@2025-08-01": {
-   "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/308"
+   "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/353"
   },
   "Microsoft.Storage/storageAccounts@2025-08-01": {
    "$ref": "storage_0/microsoft.storage/2025-08-01/types.json#/229"

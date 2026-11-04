@@ -819,6 +819,12 @@ func toObject(c *captured) map[string]any {
 
 var subRE = regexp.MustCompile(`(?i)/subscriptions/[0-9a-f-]{36}`)
 
+// encodedSubRE is a subscription in an ID escaped inside a URL, once or twice
+// ("%2F", "%252F"), as OtherSubscriptions reads them. Left as it was, a
+// restore sent the source's own subscription to the target, and the report
+// named it as another one (reviews of #68).
+var encodedSubRE = regexp.MustCompile(`(?i)%(?:25)?2Fsubscriptions%(?:25)?2F[0-9a-f-]{36}`)
+
 // tokenize makes a spec portable across subscriptions and tenants: the
 // subscription in every resource ID, and the tenant wherever it appears,
 // become tokens restore fills in for the target. Resource group and
@@ -832,6 +838,12 @@ func tokenizeString(s, sub, tenant string) string {
 	s = subRE.ReplaceAllStringFunc(s, func(m string) string {
 		if strings.EqualFold(m[len("/subscriptions/"):], sub) {
 			return "/subscriptions/" + tokSub
+		}
+		return m
+	})
+	s = encodedSubRE.ReplaceAllStringFunc(s, func(m string) string {
+		if prefix := len(m) - len(sub); strings.EqualFold(m[prefix:], sub) {
+			return m[:prefix] + tokSub
 		}
 		return m
 	})

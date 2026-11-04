@@ -409,3 +409,95 @@ func TestAFailureAtTheNextVersionIsAGap(t *testing.T) {
 		})
 	}
 }
+
+// A real capture held two file shares AKS's Azure Files driver made for
+// volume claims. The cluster's snapshot skips their volumes, since restoring a
+// claim provisions a new one, so restoring the shares as well left them beside
+// it unused. A share list returns no metadata unless asked, so who made a share
+// was never seen, and neither was metadata someone set.
+func TestSharesAKSMadeForAClaimAreSkipped(t *testing.T) {
+	reg := fixtures(t)
+	f := NewWorld(reg).Subscription(srcSub, srcTenant)
+	put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})
+	acct := put(t, f, "shop-rg", "Microsoft.Storage/storageAccounts", "shopdata", map[string]any{"location": "eastus", "kind": "StorageV2", "sku": map[string]any{"name": "Standard_LRS"}})
+	shares := "Microsoft.Storage/storageAccounts/fileServices/shares"
+	rawPut(t, f, acct+"/fileServices/default", "Microsoft.Storage/storageAccounts/fileServices", map[string]any{"properties": map[string]any{}})
+	rawPut(t, f, acct+"/fileServices/default/shares/pvc-1", shares, map[string]any{"properties": map[string]any{"shareQuota": 2, "metadata": map[string]any{"createdBy": "file.csi.azure.com"}}})
+	rawPut(t, f, acct+"/fileServices/default/shares/reports", shares, map[string]any{"properties": map[string]any{"shareQuota": 5, "metadata": map[string]any{"team": "finance"}}})
+	// Metadata names are not case sensitive (review of #68).
+	rawPut(t, f, acct+"/fileServices/default/shares/pvc-2", shares, map[string]any{"properties": map[string]any{"shareQuota": 2, "metadata": map[string]any{"createdby": "file.csi.azure.com"}}})
+
+	s, got := captureByKey(t, f, reg)
+	for _, pvc := range []string{"pvc-1", "pvc-2"} {
+		if _, ok := got[shares+"|shopdata/default/"+pvc]; ok {
+			t.Errorf("the share AKS made for a claim was captured: %s", pvc)
+		}
+	}
+	skipped := false
+	for _, sk := range s.Skips {
+		skipped = skipped || (sk.Reason == csiShare && strings.HasSuffix(sk.Name, "pvc-1"))
+	}
+	if !skipped {
+		t.Errorf("not said: %+v", s.Skips)
+	}
+	o, ok := got[shares+"|shopdata/default/reports"]
+	if !ok {
+		t.Fatalf("a share someone made was lost: %v", sortedKeys(got))
+	}
+	spec, _ := o.Body["spec"].(map[string]any)
+	props, _ := spec["properties"].(map[string]any)
+	if md, _ := props["metadata"].(map[string]any); md["team"] != "finance" {
+		t.Errorf("its metadata was not captured: %v", props)
+	}
+}
+
+// Review of #68: the query a collection is listed with went into the name of
+// its gap ("…/shares?$expand=metadata").
+func TestAGapNamesTheCollectionNotItsQuery(t *testing.T) {
+	reg := fixtures(t)
+	f := NewWorld(reg).Subscription(srcSub, srcTenant)
+	put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})
+	acct := put(t, f, "shop-rg", "Microsoft.Storage/storageAccounts", "shopdata", map[string]any{"location": "eastus", "kind": "StorageV2", "sku": map[string]any{"name": "Standard_LRS"}})
+	rawPut(t, f, acct+"/fileServices/default", "Microsoft.Storage/storageAccounts/fileServices", map[string]any{"properties": map[string]any{}})
+	f.ListError = func(p string) error {
+		if strings.Contains(strings.ToLower(p), "/shares") {
+			return &armError{url: p, status: http.StatusServiceUnavailable}
+		}
+		return nil
+	}
+	s, _ := captureByKey(t, f, reg)
+	gap := false
+	for _, sk := range s.Skips {
+		if strings.HasPrefix(sk.Reason, Unreadable) && strings.Contains(sk.Name, "/shares") {
+			gap = true
+			if strings.Contains(sk.Name, "?") {
+				t.Errorf("the gap names the query: %s", sk.Name)
+			}
+		}
+	}
+	if !gap {
+		t.Errorf("no gap for the shares: %+v", s.Skips)
+	}
+}
+
+// Review of #68: capture made the source's own subscription a placeholder
+// only where written plainly, so one escaped in a URL was restored as the
+// source's and named as another subscription's.
+func TestTheSourcesOwnSubscriptionInAURLIsAPlaceholder(t *testing.T) {
+	reg := fixtures(t)
+	f := NewWorld(reg).Subscription(srcSub, srcTenant)
+	put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})
+	link := "https://portal.example/#resource=%2Fsubscriptions%2F" + srcSub + "%2FresourceGroups%2Fshop-rg&back=%252Fsubscriptions%252F" + srcSub
+	put(t, f, "shop-rg", "Microsoft.Storage/storageAccounts", "shopdata", map[string]any{"location": "eastus", "kind": "StorageV2", "sku": map[string]any{"name": "Standard_LRS"}, "tags": map[string]any{"dashboard": link}})
+	s, got := captureByKey(t, f, reg)
+	spec, _ := got["Microsoft.Storage/storageAccounts|shopdata"].Body["spec"].(map[string]any)
+	tags, _ := spec["tags"].(map[string]any)
+	for _, want := range []string{"%2Fsubscriptions%2F" + tokSub + "%2F", "%252Fsubscriptions%252F" + tokSub} {
+		if !strings.Contains(fmt.Sprint(tags["dashboard"]), want) {
+			t.Errorf("tag %q, want %q in it", tags["dashboard"], want)
+		}
+	}
+	if other := OtherSubscriptions(s); len(other) != 0 {
+		t.Errorf("the source's own subscription named as another: %v", other)
+	}
+}

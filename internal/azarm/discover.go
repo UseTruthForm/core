@@ -154,8 +154,12 @@ func discover(ctx context.Context, api ARM, v *versions, tenant string, roots []
 			} else if inlined[strings.ToLower(coll)] {
 				continue
 			}
+			path := parent.rid.String() + "/" + coll
+			if q := listQuery[strings.ToLower(ct)]; q != "" {
+				path += "?" + q
+			}
 			run(func() {
-				for _, f := range listOf(ctx, api, v, tenant, ct, parent.rid.String()+"/"+coll, childSkip) {
+				for _, f := range listOf(ctx, api, v, tenant, ct, path, childSkip) {
 					// Left out as what something else manages, and reached
 					// again as a child: a SQL server's master database was
 					// skipped and captured both, with its own children.
@@ -223,7 +227,26 @@ func childSkip(item map[string]any) string {
 	if c, _ := md["creator"].(string); strings.HasPrefix(c, "created by private endpoint ") {
 		return "written by a private endpoint's DNS zone group, which writes it again with the new address"
 	}
+	// A share AKS's Azure Files driver made for a volume claim. The cluster's
+	// snapshot skips the volume, since restoring the claim provisions a new
+	// one under a new name; restored here as well, the old share was left
+	// beside it with nothing using it.
+	// Metadata names are not case sensitive.
+	for k, c := range md {
+		if c, _ := c.(string); strings.EqualFold(k, "createdBy") && strings.EqualFold(c, "file.csi.azure.com") {
+			return csiShare
+		}
+	}
 	return ""
+}
+
+const csiShare = "made by AKS's Azure Files driver for a volume claim; restoring the claim makes a new one. Its data is not captured"
+
+// listQuery is what a child collection's list needs to return what its GET
+// does: a file share list leaves out each share's metadata unless asked, and
+// without it neither the metadata nor who made the share was captured.
+var listQuery = map[string]string{
+	"microsoft.storage/storageaccounts/fileservices/shares": "$expand=metadata",
 }
 
 const systemManaged = "Azure's own, made with its parent"
@@ -265,6 +288,8 @@ func issuerRefs(cs []*captured) {
 // collection the resource or type does not have is "none here", not an
 // error; any other failure is reported, so a gap is never silent.
 func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string, skip func(map[string]any) string) []found {
+	// A gap names the collection, not the query it was listed with.
+	listed, _, _ := strings.Cut(path, "?")
 	ver, err := v.pick(typ)
 	// A child the registration does not list is read at its parent's
 	// versions. With none of those defined for it, it went unread with no
@@ -287,11 +312,11 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 		if errors.Is(err, errNoVersion) {
 			return nil // the subscription does not offer the type
 		}
-		return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
+		return []found{{typ: typ, name: listed, reason: Unreadable + err.Error()}}
 	}
 	s, err := v.reg.Schema(typ, ver)
 	if err != nil {
-		return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
+		return []found{{typ: typ, name: listed, reason: Unreadable + err.Error()}}
 	}
 	if !s.Writable {
 		return nil // defined by Azure (defaultSecurityRules); no one can PUT it
@@ -317,7 +342,7 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 				ver = alt
 				var serr error
 				if s, serr = v.reg.Schema(typ, ver); serr != nil {
-					return []found{{typ: typ, name: path, reason: Unreadable + serr.Error()}}
+					return []found{{typ: typ, name: listed, reason: Unreadable + serr.Error()}}
 				}
 				if !s.Writable {
 					return nil
@@ -335,7 +360,7 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 	}
 	switch {
 	case own != nil && refused(err):
-		return []found{{typ: typ, name: path, reason: Unreadable + "no version its parent is offered at is defined for it, and each of its own (" + strings.Join(own, ", ") + ") was refused: " + err.Error()}}
+		return []found{{typ: typ, name: listed, reason: Unreadable + "no version its parent is offered at is defined for it, and each of its own (" + strings.Join(own, ", ") + ") was refused: " + err.Error()}}
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrNotApplicable):
 		return nil
 	// Read only because it has a definition: a 400 says this resource does
@@ -343,11 +368,11 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 	case errors.Is(err, ErrBadRequest) && !v.registered(typ):
 		return nil
 	case err != nil:
-		return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
+		return []found{{typ: typ, name: listed, reason: Unreadable + err.Error()}}
 	}
 	var out []found
 	for range generated {
-		out = append(out, found{typ: typ, name: path, reason: generatedEachRead, count: true})
+		out = append(out, found{typ: typ, name: listed, reason: generatedEachRead, count: true})
 	}
 	for _, item := range items {
 		id, _ := item["id"].(string)
@@ -419,7 +444,11 @@ func listByKind(ctx context.Context, api ARM, path, ver string, kinds []string, 
 	}
 	read := func(k string) ([]map[string]any, error) {
 		// %20, not +: an OData filter is not form data.
-		got, err := api.List(ctx, path+"?$filter="+strings.ReplaceAll(url.QueryEscape("kind eq '"+k+"'"), "+", "%20"), ver)
+		sep := "?"
+		if strings.Contains(path, "?") {
+			sep = "&" // a collection listed with its own query
+		}
+		got, err := api.List(ctx, path+sep+"$filter="+strings.ReplaceAll(url.QueryEscape("kind eq '"+k+"'"), "+", "%20"), ver)
 		switch {
 		case errors.Is(err, ErrNotFound), errors.Is(err, ErrNotApplicable), errors.Is(err, ErrNeedsKind),
 			unlisted && errors.Is(err, ErrBadRequest):

@@ -154,8 +154,12 @@ func OtherSubscriptions(s snapshot.Snapshot) []string {
 		}
 		subs := map[string]bool{}
 		rewriteAll(deepCopy(spec), func(v string) string {
-			for _, g := range otherSubRE.FindAllStringSubmatch(v, -1) {
-				subs[strings.ToLower(g[1])] = true
+			// An ID inside a URL is escaped ("%2Fsubscriptions%2F…"), and
+			// read only as written it was not seen (review of beta.14).
+			for _, text := range []string{v, unescaped(v)} {
+				for _, g := range otherSubRE.FindAllStringSubmatch(text, -1) {
+					subs[strings.ToLower(g[1])] = true
+				}
 			}
 			return v
 		})
@@ -166,3 +170,15 @@ func OtherSubscriptions(s snapshot.Snapshot) []string {
 	sort.Strings(out)
 	return out
 }
+
+// unescaped is v with its escaped slashes undone, once or twice escaped
+// ("%2F", "%252F"), or "" when it has none. Only the slashes: undoing every
+// escape failed on a stray "%" ("100% sure"), and the ID beside it was missed.
+func unescaped(v string) string {
+	if !strings.Contains(strings.ToLower(v), "%2f") && !strings.Contains(strings.ToLower(v), "%252f") {
+		return ""
+	}
+	return slashEscapes.Replace(v)
+}
+
+var slashEscapes = strings.NewReplacer("%252F", "/", "%252f", "/", "%2F", "/", "%2f", "/")

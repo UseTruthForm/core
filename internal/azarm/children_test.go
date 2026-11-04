@@ -3,6 +3,7 @@ package azarm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -303,5 +304,108 @@ func TestRegisteredChildrenAreReadAsBefore(t *testing.T) {
 	_, got := captureByKey(t, f, reg)
 	if _, ok := got["Microsoft.Network/networkSecurityGroups/securityRules|web/https"]; !ok {
 		t.Errorf("the rule is no longer its own object: %v", sortedKeys(got))
+	}
+}
+
+// offeredOnly answers the provider registration with the versions it is given.
+type offeredOnly struct {
+	*Fake
+	offered map[string][]string
+}
+
+func (o offeredOnly) APIVersions(context.Context, string) (map[string][]string, error) {
+	return o.offered, nil
+}
+
+// Review of beta.14: a child the registration does not list is read at its
+// parent's versions. With none of them defined for it, nothing was read and
+// nothing said so. It is read at its own newest definition now, and only a
+// refusal of that version is a gap: made a gap before the list, it was one
+// for every alert rule's networkSecurityPerimeterConfigurations, which no one
+// can write, and for a parent with none (second review). ARM refuses such a
+// version with a plain 400, NoRegisteredProviderFound, seen live for an action
+// group's networkSecurityPerimeterConfigurations; read as "none here", the
+// child went silent again (third review). A type the registration lists with
+// no version defined is still one the subscription does not offer us.
+func TestAChildWithNoVersionOfItsParentsIsReadAtItsOwn(t *testing.T) {
+	reg := fixtures(t)
+	ctx := context.Background()
+	deployments := accountType + "/deployments"
+	old := map[string][]string{strings.ToLower(accountType): {"2017-04-18"}}
+	for name, tc := range map[string]struct {
+		typ     string
+		offered map[string][]string
+		refuse  error
+		want    string // "item", "gap" or "" for none
+	}{
+		"read at its own version":                {deployments, old, nil, "item"},
+		"its own version is refused":             {deployments, old, fmt.Errorf("refused: %w", ErrAPIVersion), "gap"},
+		"refused with NoRegisteredProviderFound": {deployments, old, &armError{status: http.StatusBadRequest, code: "NoRegisteredProviderFound", msg: "No registered resource provider found for location 'global' and API version '2026-09-01'"}, "gap"},
+		"none at its own version":                {deployments, old, fmt.Errorf("%w: %v", ErrNotFound, &armError{status: http.StatusNotFound, code: "ResourceNotFound"}), ""},
+		"no one can write it":                    {"Microsoft.Network/networkSecurityGroups/defaultSecurityRules", map[string][]string{"microsoft.network/networksecuritygroups": {"2017-04-18"}}, nil, ""},
+		"in the registration":                    {deployments, map[string][]string{strings.ToLower(deployments): {"2017-04-18"}}, nil, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := NewWorld(reg).Subscription(srcSub, srcTenant)
+			acct := seedAccount(t, f)
+			rawPut(t, f, acct+"/deployments/chat", deployments, map[string]any{
+				"sku":        map[string]any{"name": "GlobalStandard", "capacity": 50},
+				"properties": map[string]any{"model": map[string]any{"format": "OpenAI", "name": "gpt-4.1", "version": "2025-04-14"}}})
+			if tc.refuse != nil {
+				f.ListError = func(string) error { return tc.refuse }
+			}
+			api := offeredOnly{f, tc.offered}
+			v := &versions{api: api, reg: reg, ctx: ctx, cache: map[string]map[string][]string{}}
+			path := acct + "/deployments"
+			if tc.typ != deployments {
+				path = id(srcSub, "shop-rg", "Microsoft.Network/networkSecurityGroups", "web") + "/defaultSecurityRules"
+			}
+			got := listOf(ctx, api, v, srcTenant, tc.typ, path, nil)
+			kind := ""
+			if len(got) == 1 && got[0].c != nil {
+				kind = "item"
+			} else if len(got) == 1 && strings.HasPrefix(got[0].reason, Unreadable+"no version its parent is offered at") {
+				kind = "gap"
+			}
+			if kind != tc.want || (tc.want == "" && len(got) != 0) {
+				t.Errorf("got %+v, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// failsAt refuses a list at one version and fails it otherwise.
+type failsAt struct {
+	*Fake
+	refused string
+	err     error
+}
+
+func (f failsAt) List(_ context.Context, path, version string) ([]map[string]any, error) {
+	if version == f.refused {
+		return nil, fmt.Errorf("%w: %s", ErrAPIVersion, path)
+	}
+	return nil, f.err
+}
+
+// Third review of #67, a fault already on main: when the preferred version
+// was refused and the next one failed (a 403, a 500), the next one's error was
+// overwritten by its schema lookup, and the collection read as empty with no
+// gap. #67 tries more versions, so it was met more often.
+func TestAFailureAtTheNextVersionIsAGap(t *testing.T) {
+	reg := fixtures(t)
+	for name, fail := range map[string]error{
+		"403": &armError{status: http.StatusForbidden, code: "AuthorizationFailed"},
+		"500": &armError{status: http.StatusInternalServerError, code: "InternalServerError"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := failsAt{NewWorld(reg).Subscription(srcSub, srcTenant), "2016-09-01", fail}
+			v := &versions{api: api, reg: reg, ctx: context.Background(), cache: map[string]map[string][]string{}}
+			path := id(srcSub, "shop-rg", "Microsoft.KeyVault/vaults", "kv") + "/providers/" + diagnosticType
+			got := listOf(context.Background(), api, v, srcTenant, diagnosticType, path, nil)
+			if len(got) != 1 || !strings.HasPrefix(got[0].reason, Unreadable) {
+				t.Errorf("got %+v, want a gap", got)
+			}
+		})
 	}
 }

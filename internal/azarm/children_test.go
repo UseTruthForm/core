@@ -338,12 +338,12 @@ func TestAChildWithNoVersionOfItsParentsIsReadAtItsOwn(t *testing.T) {
 		refuse  error
 		want    string // "item", "gap" or "" for none
 	}{
-		"read at its own version":               {deployments, old, nil, "item"},
-		"its own version is refused":            {deployments, old, fmt.Errorf("refused: %w", ErrAPIVersion), "gap"},
+		"read at its own version":                {deployments, old, nil, "item"},
+		"its own version is refused":             {deployments, old, fmt.Errorf("refused: %w", ErrAPIVersion), "gap"},
 		"refused with NoRegisteredProviderFound": {deployments, old, &armError{status: http.StatusBadRequest, code: "NoRegisteredProviderFound", msg: "No registered resource provider found for location 'global' and API version '2026-09-01'"}, "gap"},
 		"none at its own version":                {deployments, old, fmt.Errorf("%w: %v", ErrNotFound, &armError{status: http.StatusNotFound, code: "ResourceNotFound"}), ""},
-		"no one can write it":                   {"Microsoft.Network/networkSecurityGroups/defaultSecurityRules", map[string][]string{"microsoft.network/networksecuritygroups": {"2017-04-18"}}, nil, ""},
-		"in the registration":                   {deployments, map[string][]string{strings.ToLower(deployments): {"2017-04-18"}}, nil, ""},
+		"no one can write it":                    {"Microsoft.Network/networkSecurityGroups/defaultSecurityRules", map[string][]string{"microsoft.network/networksecuritygroups": {"2017-04-18"}}, nil, ""},
+		"in the registration":                    {deployments, map[string][]string{strings.ToLower(deployments): {"2017-04-18"}}, nil, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := NewWorld(reg).Subscription(srcSub, srcTenant)

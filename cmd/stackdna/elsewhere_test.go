@@ -12,9 +12,10 @@ import (
 )
 
 // Before a restore, nothing said which grants it needed outside its target:
-// a diagnostic setting to another subscription's event hub needed that rule's
-// keys, found only when Azure refused it. The report, the note before a diff
-// or restore, and the JSON document now name each action and where.
+// a diagnostic setting to another subscription's event hub needs that rule's
+// keys, and nothing said so until Azure refused it. The report, the note
+// before a diff or restore, and the JSON documents now name each action and
+// where.
 func TestWhatARestoreNeedsElsewhereIsSaid(t *testing.T) {
 	reg, err := azarm.LoadDefinitions(leaveDefs)
 	if err != nil {
@@ -65,5 +66,14 @@ func TestWhatARestoreNeedsElsewhereIsSaid(t *testing.T) {
 	d := asJSON(t, func() { diff(ctx, args) })
 	if got, _ := d["access_elsewhere"].([]any); len(got) != 1 || !strings.HasSuffix(got[0].(string), need) {
 		t.Errorf("access_elsewhere: %v", d["access_elsewhere"])
+	}
+	r := asJSON(t, func() { emitRestore(nil, "azure x") })
+	if got, _ := r["access_elsewhere"].([]any); len(got) != 1 || !strings.HasSuffix(got[0].(string), need) {
+		t.Errorf("the restore document: %v", r["access_elsewhere"])
+	}
+	// A later run on another platform starts with none (review of #71).
+	warnOtherSubscriptions(s, "aws", "")
+	if needElsewhere != nil {
+		t.Errorf("kept from before: %v", needElsewhere)
 	}
 }

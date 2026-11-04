@@ -288,7 +288,7 @@ func restore(ctx context.Context, args []string) int {
 		return fail(fmt.Errorf("--types is not read by restore on --platform %s; nothing was restored", *platform))
 	}
 	warnGaps(snap)
-	warnOtherSubscriptions(snap, *platform)
+	warnOtherSubscriptions(snap, *platform, az.subscription)
 	switch *platform {
 	case "aws":
 		return restoreAWS(ctx, &aws, snap, *values, *update)
@@ -380,7 +380,7 @@ func diff(ctx context.Context, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	warnOtherSubscriptions(want, *platform)
+	warnOtherSubscriptions(want, *platform, az.subscription)
 	if want, err = withNewRoleIDs(*newRoleIDs, *platform, az.subscription, want); err != nil {
 		return fail(err)
 	}
@@ -669,12 +669,12 @@ func leftOut(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, err
 // warnOtherSubscriptions says, before anything is sent or compared, which
 // objects name another subscription: a restore sends those IDs as they are.
 // It also says what access a restore needs there, which Azure checks.
-func warnOtherSubscriptions(s snapshot.Snapshot, platform string) {
+func warnOtherSubscriptions(s snapshot.Snapshot, platform, target string) {
 	needElsewhere = nil
 	if platform != "azure" {
 		return
 	}
-	if need := azarm.AccessElsewhere(s); len(need) > 0 {
+	if need := azarm.AccessElsewhere(s, target); len(need) > 0 {
 		needElsewhere = need
 		fmt.Fprintf(os.Stderr, "NOTE: a restore needs %d actions outside its target; grant them to the identity that restores, or --leave-out the object:\n", len(need))
 		for _, x := range need {

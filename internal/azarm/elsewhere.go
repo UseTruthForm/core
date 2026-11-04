@@ -30,8 +30,11 @@ var accessRules = []accessRule{
 // only that a restore "needs access there"; which access was found when Azure
 // refused the write, after the rest had been sent (a diagnostic setting to
 // another subscription's event hub needs its rule's keys). A reference with
-// no known check is in OtherSubscriptions only.
-func AccessElsewhere(s snapshot.Snapshot) []string {
+// no known check is in OtherSubscriptions only. Only the checks StackDNA
+// knows are listed: any other reference may need access there too. A
+// reference to target, the subscription restored into, is not elsewhere
+// ("" when it is not known, as for a report).
+func AccessElsewhere(s snapshot.Snapshot, target string) []string {
 	var out []string
 	for _, o := range s.Objects {
 		spec, ok := o.Body["spec"].(map[string]any)
@@ -43,7 +46,8 @@ func AccessElsewhere(s snapshot.Snapshot) []string {
 				continue
 			}
 			v, _ := lookupPath(spec, r.path).(string)
-			if g := otherSubRE.FindString(v); g != "" && g == v {
+			m := otherSubRE.FindStringSubmatch(v)
+			if m != nil && m[0] == v && !strings.EqualFold(m[1], target) {
 				out = append(out, leaveOutKey(o)+": "+r.action+" on "+v)
 			}
 		}

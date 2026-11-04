@@ -85,14 +85,29 @@ func leaveOutWorld(t *testing.T) (dir, leave string, dst *azarm.Fake) {
 		t.Fatal(err)
 	}
 	old := azureAPI
-	azureAPI = func(sub string, _ bool) (azarm.ARM, error) {
+	azureAPI = func(sub string, readOnly bool) (azarm.ARM, error) {
+		connected = true
 		if sub != leaveDst {
 			return nil, errors.New("only the fake target")
 		}
+		// As NewSDK does, so the capture-only build sends no PUT here either.
+		if readOnly {
+			return readOnlyFake{dst}, nil
+		}
 		return dst, nil
 	}
-	t.Cleanup(func() { azureAPI = old; heldBack = nil })
+	t.Cleanup(func() { azureAPI = old; heldBack = nil; connected = false })
 	return dir, leave, dst
+}
+
+// connected is set when a command connects to the target.
+var connected bool
+
+// readOnlyFake refuses every PUT, as the SDK does when read-only.
+type readOnlyFake struct{ *azarm.Fake }
+
+func (readOnlyFake) Put(context.Context, string, string, map[string]any) (map[string]any, error) {
+	return nil, errors.New("read-only")
 }
 
 // Review of beta.14: restore and diff read --leave-out, warn about other
@@ -113,6 +128,9 @@ func TestLeaveOutReachesRestoreAndDiff(t *testing.T) {
 		t.Errorf("diff does not say a zone names another subscription:\n%s", errOut)
 	}
 
+	if captureOnly {
+		return // restore is refused in the capture-only build
+	}
 	code, out, errOut = output(t, func() int { return restore(ctx, append(target, "--leave-out", leave)) })
 	if code != 0 {
 		t.Fatalf("restore: exit %d\n%s%s", code, out, errOut)
@@ -141,12 +159,13 @@ func TestLeaveOutReachesRestoreAndDiff(t *testing.T) {
 		t.Errorf("the diff document does not list it: %v", d["left_out"])
 	}
 
-	// --config diffs every target, and one file of keys cannot be for all.
-	puts := dst.Puts
+	// --config diffs every target, and one file of keys cannot be for all:
+	// refused before any target is reached.
+	connected = false
 	code, _, errOut = output(t, func() int {
 		return diff(ctx, []string{"--config", filepath.Join(dir, "env.yaml"), "--from", dir, "--leave-out", leave})
 	})
-	if code != 1 || !strings.Contains(errOut, "not --config") || dst.Puts != puts {
+	if code != 1 || !strings.Contains(errOut, "not --config") || connected {
 		t.Errorf("--leave-out with --config: exit %d\n%s", code, errOut)
 	}
 }

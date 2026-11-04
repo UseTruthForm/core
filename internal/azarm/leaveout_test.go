@@ -121,3 +121,27 @@ func TestOtherSubscriptionsAreNamed(t *testing.T) {
 		t.Errorf("unexpected entries: %v", got)
 	}
 }
+
+// Review of #66: a name may go on in a non-ASCII letter or in "@*~+", and
+// taken as an ending there, a longer name read as the left-out one's ID, so a
+// valid --leave-out was refused as still needed.
+func TestNamesIDKnowsWhereANameEnds(t *testing.T) {
+	rg := "/subscriptions/" + tokSub + "/resourcegroups/rg"
+	for _, tc := range []struct {
+		text string
+		want bool
+	}{
+		{`"` + rg + `"`, true},
+		{rg + "/providers/x", true},
+		{rg + "," + rg + "2", true},
+		{rg + " and more", true},
+		{rg + "é/providers/x", false},
+		{rg + "@x", false},
+		{rg + "~x", false},
+		{rg + "-2", false},
+	} {
+		if got := namesID(tc.text, rg); got != tc.want {
+			t.Errorf("namesID(%q) = %v, want %v", tc.text, got, tc.want)
+		}
+	}
+}

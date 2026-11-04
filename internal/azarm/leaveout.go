@@ -127,9 +127,13 @@ func namesID(text, id string) bool {
 	}
 }
 
-// nameByte is a byte an Azure resource name can hold.
+// nameByte is a byte an Azure resource name can hold: ASCII letters, digits
+// and "-_.()", any byte of a non-ASCII letter (a group may be named "rgé"),
+// and the "@*~+" some types allow (a DNS zone's "@" record). Counted wrongly
+// as an ending, a longer name was taken for the left-out one and a valid
+// --leave-out refused (review of #66).
 func nameByte(b byte) bool {
-	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || strings.IndexByte("-_.()", b) >= 0
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b >= 0x80 || strings.IndexByte("-_.()@*~+", b) >= 0
 }
 
 // otherSubRE is a resource ID in a subscription named outright: capture writes

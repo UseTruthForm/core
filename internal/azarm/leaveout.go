@@ -2,6 +2,7 @@ package azarm
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -127,8 +128,12 @@ func OtherSubscriptions(s snapshot.Snapshot) []string {
 		}
 		subs := map[string]bool{}
 		rewriteAll(deepCopy(spec), func(v string) string {
-			for _, g := range otherSubRE.FindAllStringSubmatch(v, -1) {
-				subs[strings.ToLower(g[1])] = true
+			// An ID inside a URL is escaped ("%2Fsubscriptions%2F…"), and
+			// read only as written it was not seen (review of beta.14).
+			for _, text := range []string{v, unescaped(v)} {
+				for _, g := range otherSubRE.FindAllStringSubmatch(text, -1) {
+					subs[strings.ToLower(g[1])] = true
+				}
 			}
 			return v
 		})
@@ -138,4 +143,16 @@ func OtherSubscriptions(s snapshot.Snapshot) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// unescaped is v with URL escapes undone, or "" when it has none to undo.
+func unescaped(v string) string {
+	if !strings.Contains(strings.ToLower(v), "%2f") {
+		return ""
+	}
+	d, err := url.PathUnescape(v)
+	if err != nil {
+		return ""
+	}
+	return d
 }

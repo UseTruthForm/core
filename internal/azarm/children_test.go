@@ -384,13 +384,15 @@ func TestTheSourcesOwnSubscriptionInAURLIsAPlaceholder(t *testing.T) {
 	reg := fixtures(t)
 	f := NewWorld(reg).Subscription(srcSub, srcTenant)
 	put(t, f, "", groupType, "shop-rg", map[string]any{"location": "eastus"})
-	link := "https://portal.example/#resource=%2Fsubscriptions%2F" + srcSub + "%2FresourceGroups%2Fshop-rg"
+	link := "https://portal.example/#resource=%2Fsubscriptions%2F" + srcSub + "%2FresourceGroups%2Fshop-rg&back=%252Fsubscriptions%252F" + srcSub
 	put(t, f, "shop-rg", "Microsoft.Storage/storageAccounts", "shopdata", map[string]any{"location": "eastus", "kind": "StorageV2", "sku": map[string]any{"name": "Standard_LRS"}, "tags": map[string]any{"dashboard": link}})
 	s, got := captureByKey(t, f, reg)
 	spec, _ := got["Microsoft.Storage/storageAccounts|shopdata"].Body["spec"].(map[string]any)
 	tags, _ := spec["tags"].(map[string]any)
-	if want := "%2Fsubscriptions%2F" + tokSub + "%2F"; !strings.Contains(fmt.Sprint(tags["dashboard"]), want) {
-		t.Errorf("tag %q, want %q in it", tags["dashboard"], want)
+	for _, want := range []string{"%2Fsubscriptions%2F" + tokSub + "%2F", "%252Fsubscriptions%252F" + tokSub} {
+		if !strings.Contains(fmt.Sprint(tags["dashboard"]), want) {
+			t.Errorf("tag %q, want %q in it", tags["dashboard"], want)
+		}
 	}
 	if other := OtherSubscriptions(s); len(other) != 0 {
 		t.Errorf("the source's own subscription named as another: %v", other)

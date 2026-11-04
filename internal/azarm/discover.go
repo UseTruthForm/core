@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -265,14 +266,21 @@ func issuerRefs(cs []*captured) {
 // error; any other failure is reported, so a gap is never silent.
 func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string, skip func(map[string]any) string) []found {
 	ver, err := v.pick(typ)
+	// A child the registration does not list is read at its parent's
+	// versions. With none of those defined for it, it went unread with no
+	// word (review of beta.14): it is read at its own newest definition, and
+	// a refusal of that version is a gap. Made a gap at once, before the
+	// list, it was one even for a type no one can write and for a parent
+	// with none (second review).
+	own := false
+	if errors.Is(err, errNoVersion) && !v.registered(typ) {
+		if ver = newestDefined(v.reg.Versions(typ)); ver != "" {
+			own, err = true, nil
+		}
+	}
 	if err != nil {
-		// A type the registration offers, with no version defined, is one
-		// the subscription does not offer us. A child it does not list is
-		// read at its parent's versions; with none of those defined for it,
-		// it went unread with no word, beside a parent that may have some
-		// (review of beta.14).
-		if errors.Is(err, errNoVersion) && v.registered(typ) {
-			return nil
+		if errors.Is(err, errNoVersion) {
+			return nil // the subscription does not offer the type
 		}
 		return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
 	}
@@ -310,6 +318,8 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 		items, generated, err = listByKind(ctx, api, path, ver, s.kinds(), !v.registered(typ))
 	}
 	switch {
+	case own && errors.Is(err, ErrAPIVersion):
+		return []found{{typ: typ, name: path, reason: Unreadable + "no version its parent is offered at is defined for it, and its own (" + ver + ") was refused: " + err.Error()}}
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrNotApplicable):
 		return nil
 	// Read only because it has a definition: a 400 says this resource does
@@ -345,6 +355,22 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 		out = append(out, found{typ: typ, name: rid.LocalName(), c: process(api, tenant, rid, ver, s, item)})
 	}
 	return out
+}
+
+// newestDefined is the newest of a type's defined versions, stable before
+// preview, or "" when it has none.
+func newestDefined(vs []string) string {
+	vs = slices.Clone(vs)
+	sort.Sort(sort.Reverse(sort.StringSlice(vs)))
+	for _, x := range vs {
+		if !strings.Contains(x, "preview") {
+			return x
+		}
+	}
+	if len(vs) > 0 {
+		return vs[0]
+	}
+	return ""
 }
 
 // generatedEachRead is counted in coverage, not listed: the items have a new

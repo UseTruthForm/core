@@ -318,26 +318,52 @@ func (o offeredOnly) APIVersions(context.Context, string) (map[string][]string, 
 
 // Review of beta.14: a child the registration does not list is read at its
 // parent's versions. With none of them defined for it, nothing was read and
-// nothing said so. A type the registration lists with no version defined is
-// still one the subscription does not offer us.
-func TestAChildWithNoVersionOfItsParentsIsAGap(t *testing.T) {
+// nothing said so. It is read at its own newest definition now, and only a
+// refusal of that version is a gap: made a gap before the list, it was one
+// for every alert rule's networkSecurityPerimeterConfigurations, which no one
+// can write, and for a parent with none (second review). A type the
+// registration lists with no version defined is still one the subscription
+// does not offer us.
+func TestAChildWithNoVersionOfItsParentsIsReadAtItsOwn(t *testing.T) {
 	reg := fixtures(t)
+	ctx := context.Background()
 	deployments := accountType + "/deployments"
-	path := id(srcSub, "rg", accountType, "assistant") + "/deployments"
+	old := map[string][]string{strings.ToLower(accountType): {"2017-04-18"}}
 	for name, tc := range map[string]struct {
+		typ     string
 		offered map[string][]string
-		gap     bool
+		refuse  bool
+		want    string // "item", "gap" or "" for none
 	}{
-		"not in the registration": {map[string][]string{strings.ToLower(accountType): {"2017-04-18"}}, true},
-		"in the registration":     {map[string][]string{strings.ToLower(deployments): {"2017-04-18"}}, false},
+		"read at its own version":    {deployments, old, false, "item"},
+		"its own version is refused": {deployments, old, true, "gap"},
+		"no one can write it":        {"Microsoft.Network/networkSecurityGroups/defaultSecurityRules", map[string][]string{"microsoft.network/networksecuritygroups": {"2017-04-18"}}, false, ""},
+		"in the registration":        {deployments, map[string][]string{strings.ToLower(deployments): {"2017-04-18"}}, false, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
-			api := offeredOnly{NewWorld(reg).Subscription(srcSub, srcTenant), tc.offered}
-			v := &versions{api: api, reg: reg, ctx: context.Background(), cache: map[string]map[string][]string{}}
-			got := listOf(context.Background(), api, v, srcTenant, deployments, path, nil)
-			gap := len(got) == 1 && strings.HasPrefix(got[0].reason, Unreadable+"no API version")
-			if gap != tc.gap || (!tc.gap && len(got) != 0) {
-				t.Errorf("got %+v, want gap %v", got, tc.gap)
+			f := NewWorld(reg).Subscription(srcSub, srcTenant)
+			acct := seedAccount(t, f)
+			rawPut(t, f, acct+"/deployments/chat", deployments, map[string]any{
+				"sku":        map[string]any{"name": "GlobalStandard", "capacity": 50},
+				"properties": map[string]any{"model": map[string]any{"format": "OpenAI", "name": "gpt-4.1", "version": "2025-04-14"}}})
+			if tc.refuse {
+				f.RefuseVersion = func(string, string) bool { return true }
+			}
+			api := offeredOnly{f, tc.offered}
+			v := &versions{api: api, reg: reg, ctx: ctx, cache: map[string]map[string][]string{}}
+			path := acct + "/deployments"
+			if tc.typ != deployments {
+				path = id(srcSub, "shop-rg", "Microsoft.Network/networkSecurityGroups", "web") + "/defaultSecurityRules"
+			}
+			got := listOf(ctx, api, v, srcTenant, tc.typ, path, nil)
+			kind := ""
+			if len(got) == 1 && got[0].c != nil {
+				kind = "item"
+			} else if len(got) == 1 && strings.HasPrefix(got[0].reason, Unreadable+"no version its parent is offered at") {
+				kind = "gap"
+			}
+			if kind != tc.want || (tc.want == "" && len(got) != 0) {
+				t.Errorf("got %+v, want %q", got, tc.want)
 			}
 		})
 	}

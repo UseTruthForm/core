@@ -127,8 +127,14 @@ func newRegistry(load func(string) ([]byte, error)) (*Registry, error) {
 	r := &Registry{index: map[string]string{}, names: map[string]string{}, load: load, files: map[string][]entry{}, sums: map[string]string{}}
 	for k, v := range idx.Resources {
 		r.index[strings.ToLower(k)] = v.Ref
+		// One type can be spelled two ways across versions
+		// (authorizationRules, AuthorizationRules); the first in sort order
+		// is kept, not whichever the map gave last, so a snapshot's kinds
+		// do not change between runs (review of #63).
 		if t, _, ok := strings.Cut(k, "@"); ok {
-			r.names[strings.ToLower(t)] = t
+			if cur, seen := r.names[strings.ToLower(t)]; !seen || t < cur {
+				r.names[strings.ToLower(t)] = t
+			}
 		}
 	}
 	return r, nil
@@ -145,6 +151,22 @@ func (r *Registry) Versions(resourceType string) []string {
 		}
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(out)))
+	return out
+}
+
+// Children lists the immediate child types with a definition, as Azure
+// spells them. A provider's registration does not list every child it serves:
+// Microsoft.CognitiveServices/accounts/deployments has a definition and
+// answers a list, and the registration names no such type.
+func (r *Registry) Children(resourceType string) []string {
+	prefix := strings.ToLower(resourceType) + "/"
+	var out []string
+	for k, t := range r.names {
+		if strings.HasPrefix(k, prefix) && !strings.Contains(k[len(prefix):], "/") {
+			out = append(out, t)
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 

@@ -606,7 +606,7 @@ func (v *versions) pick(typ string) (string, error) {
 		have[x] = true
 	}
 	var both []string
-	for _, x := range offered[strings.ToLower(typ)] {
+	for _, x := range offeredFor(offered, typ) {
 		if have[strings.ToLower(x)] {
 			both = append(both, x)
 		}
@@ -621,7 +621,25 @@ func (v *versions) pick(typ string) (string, error) {
 		return both[0], nil
 	}
 	return "", fmt.Errorf("%w: no API version the subscription offers (%d) has a published definition (%d)",
-		errNoVersion, len(offered[strings.ToLower(typ)]), len(have))
+		errNoVersion, len(offeredFor(offered, typ)), len(have))
+}
+
+// offeredFor is the versions offered for a type, or, for a child type the
+// registration does not list, those of its nearest parent that it does: ARM
+// serves such a child at its parent's versions, as an AI Services account's
+// deployments are served at the account's.
+func offeredFor(offered map[string][]string, typ string) []string {
+	t := strings.ToLower(typ)
+	for {
+		if vs, ok := offered[t]; ok {
+			return vs
+		}
+		i := strings.LastIndex(t, "/")
+		if i < 0 || strings.Count(t, "/") < 2 {
+			return nil
+		}
+		t = t[:i]
+	}
 }
 
 // all lists every version both offered and defined, the stable ones first
@@ -640,7 +658,7 @@ func (v *versions) all(typ string) []string {
 		have[x] = true
 	}
 	var stable, preview []string
-	for _, x := range offered[strings.ToLower(typ)] {
+	for _, x := range offeredFor(offered, typ) {
 		if !have[strings.ToLower(x)] {
 			continue
 		}

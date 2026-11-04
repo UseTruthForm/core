@@ -54,6 +54,16 @@ var fixtureTypes = []string{
 	"Microsoft.Storage/storageAccounts/privateEndpointConnections@2025-08-01",
 	"Microsoft.Authorization/policyDefinitions@2026-07-01",
 	"Microsoft.Authorization/policySetDefinitions@2026-07-01",
+	// Children the provider registration does not list, found only through
+	// their definitions, and what that finds: Azure's own content filters, a
+	// cluster's agent pools also in its spec, and a retired view of SQL
+	// auditing.
+	"Microsoft.CognitiveServices/accounts@2026-09-01",
+	"Microsoft.CognitiveServices/accounts/deployments@2026-09-01",
+	"Microsoft.CognitiveServices/accounts/raiPolicies@2026-09-01",
+	"Microsoft.ContainerService/managedClusters/agentPools@2026-08-01",
+	"Microsoft.Sql/servers@2025-01-01",
+	"Microsoft.Sql/servers/auditingPolicies@2014-04-01",
 }
 
 const fixtureDir = "../../testdata/azure/types"

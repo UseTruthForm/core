@@ -144,6 +144,10 @@ func TestClassifyARM(t *testing.T) {
 		// so is the same answer under another status.
 		{http.StatusBadRequest, "BadRequest", "The feature flag in the request body is invalid.", nil},
 		{http.StatusConflict, "Conflict", "Please register the Microsoft.ContainerService/EnableAgentFabricPreview feature.", nil},
+		// An AI Services account's costControls, behind a feature the
+		// subscription has not registered, answer 502 with a code that says so.
+		{http.StatusBadGateway, "FeatureNotRegistered", "Subscription is not registered for feature 'Microsoft.CognitiveServices/CostControls'.", ErrNotApplicable},
+		{http.StatusBadGateway, "", "", nil},
 	} {
 		if got := classifyARM(c.status, c.code, c.msg); !errors.Is(got, c.want) || (c.want == nil && got != nil) {
 			t.Errorf("%d %s %q: got %v, want %v", c.status, c.code, c.msg, got, c.want)
@@ -307,7 +311,7 @@ func TestListByKindKeepsOnlyWhatIsThereEveryRead(t *testing.T) {
 		reads:  map[string]int{},
 	}
 	kinds := []string{"ApplicationInsights", "ChangeTrackingDefaultRegistry", "ChangeTrackingRegistry", "Office365", "WindowsEvent"}
-	got, generated, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds)
+	got, generated, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,10 +324,10 @@ func TestListByKindKeepsOnlyWhatIsThereEveryRead(t *testing.T) {
 	api.reads = map[string]int{}
 	api.lagged = nil
 	api.refuse["WindowsEvent"] = errors.New("500 InternalServerError")
-	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds); err == nil || !strings.Contains(err.Error(), "kind WindowsEvent") {
+	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", kinds, false); err == nil || !strings.Contains(err.Error(), "kind WindowsEvent") {
 		t.Errorf("a kind that fails must fail the collection, naming the kind: %v", err)
 	}
-	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", nil); !errors.Is(err, ErrNeedsKind) {
+	if _, _, err := listByKind(context.Background(), api, "/x/dataSources", "v", nil, false); !errors.Is(err, ErrNeedsKind) {
 		t.Errorf("no kinds named: %v", err)
 	}
 }

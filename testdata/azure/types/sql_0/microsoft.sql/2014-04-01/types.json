@@ -1,0 +1,181 @@
+[
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "StringType",
+  "maxLength": 36,
+  "minLength": 36,
+  "pattern": "^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "default"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/2"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Sql/servers/auditingPolicies"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2014-04-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Sql/servers/auditingPolicies",
+  "properties": {
+   "apiVersion": {
+    "description": "The resource api version",
+    "flags": 10,
+    "type": {
+     "$ref": "#/5"
+    }
+   },
+   "id": {
+    "description": "The resource id",
+    "flags": 10,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "kind": {
+    "description": "Resource kind.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "location": {
+    "description": "Resource location.",
+    "flags": 2,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "name": {
+    "description": "The resource name",
+    "flags": 9,
+    "type": {
+     "$ref": "#/3"
+    }
+   },
+   "properties": {
+    "description": "Resource properties.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/7"
+    }
+   },
+   "type": {
+    "description": "The resource type",
+    "flags": 10,
+    "type": {
+     "$ref": "#/4"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ServerTableAuditingPolicyProperties",
+  "properties": {
+   "auditLogsTableName": {
+    "description": "The audit logs table name.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "auditingState": {
+    "description": "The state of the policy.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "eventTypesToAudit": {
+    "description": "Comma-separated list of event types to audit.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "fullAuditLogsTableName": {
+    "description": "The full audit logs table name.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "retentionDays": {
+    "description": "The number of days to keep in the audit logs.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "storageAccountKey": {
+    "description": "The key of the auditing storage account.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "storageAccountName": {
+    "description": "The table storage account name",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "storageAccountResourceGroupName": {
+    "description": "The table storage account resource group name",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "storageAccountSecondaryKey": {
+    "description": "The secondary key of the auditing storage account.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   },
+   "storageAccountSubscriptionId": {
+    "description": "The table storage subscription Id.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/1"
+    }
+   },
+   "storageTableEndpoint": {
+    "description": "The storage table endpoint.",
+    "flags": 0,
+    "type": {
+     "$ref": "#/0"
+    }
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "body": {
+   "$ref": "#/6"
+  },
+  "name": "Microsoft.Sql/servers/auditingPolicies@2014-04-01",
+  "readableScopes": 8,
+  "writableScopes": 8
+ }
+]

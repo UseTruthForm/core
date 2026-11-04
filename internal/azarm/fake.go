@@ -55,6 +55,10 @@ type Fake struct {
 	// RefuseVersion refuses a list at an API version, as ARM refuses the
 	// subscription's diagnostic settings at their newest stable version.
 	RefuseVersion func(path, version string) bool
+	// ListError fails a list, given its path with any query: a plain 400,
+	// as a resource answers for a child type it has a definition for and
+	// does not serve, or any other refusal.
+	ListError func(path string) error
 	// PutDelay makes each PUT take this long, outside the lock, so PUTs
 	// running at once overlap as ARM's long-running ones do.
 	PutDelay time.Duration
@@ -123,9 +127,14 @@ func (f *Fake) APIVersions(_ context.Context, namespace string) (map[string][]st
 // registration does not list, seen on two real subscriptions: a network's
 // peerings and subnets. Offering them here let discovery find peerings as
 // children, which a real subscription never does, and hid their loss.
+// An AI Services account's model deployments and content filters are not
+// listed either, and neither are a cluster's agent pools.
 var unregistered = map[string]bool{
+	"microsoft.containerservice/managedclusters/agentpools":    true,
 	"microsoft.network/virtualnetworks/virtualnetworkpeerings": true,
 	"microsoft.network/virtualnetworks/subnets":                true,
+	"microsoft.cognitiveservices/accounts/deployments":         true,
+	"microsoft.cognitiveservices/accounts/raipolicies":         true,
 }
 
 // Get returns the resource without its secrets.
@@ -447,6 +456,11 @@ func tracked(rid ResourceID) bool {
 // List serves the collections capture reads: an extension type across the
 // subscription, a resource's diagnostic settings, or a child collection.
 func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any, error) {
+	if f.ListError != nil {
+		if err := f.ListError(path); err != nil {
+			return nil, err
+		}
+	}
 	path, query, _ := strings.Cut(path, "?")
 	if f.RefuseVersion != nil && f.RefuseVersion(path, version) {
 		return nil, fmt.Errorf("%s: %w: Invalid api-version query string value", path, ErrAPIVersion)

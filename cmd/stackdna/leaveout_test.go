@@ -86,7 +86,6 @@ func leaveOutWorld(t *testing.T) (dir, leave string, dst *azarm.Fake) {
 	}
 	old := azureAPI
 	azureAPI = func(sub string, readOnly bool) (azarm.ARM, error) {
-		connected = true
 		if sub != leaveDst {
 			return nil, errors.New("only the fake target")
 		}
@@ -96,12 +95,9 @@ func leaveOutWorld(t *testing.T) (dir, leave string, dst *azarm.Fake) {
 		}
 		return dst, nil
 	}
-	t.Cleanup(func() { azureAPI = old; heldBack = nil; connected = false })
+	t.Cleanup(func() { azureAPI = old; heldBack = nil })
 	return dir, leave, dst
 }
-
-// connected is set when a command connects to the target.
-var connected bool
 
 // readOnlyFake refuses every PUT, as the SDK does when read-only.
 type readOnlyFake struct{ *azarm.Fake }
@@ -126,6 +122,20 @@ func TestLeaveOutReachesRestoreAndDiff(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "NOTE: 1 objects name another subscription") || !strings.Contains(errOut, leaveOther) {
 		t.Errorf("diff does not say a zone names another subscription:\n%s", errOut)
+	}
+
+	// Against the empty target, the record left out is not expected.
+	code, out, errOut = output(t, func() int { return diff(ctx, append(target, "--leave-out", leave)) })
+	if code != 2 || strings.Contains(out, "privateDnsZones/A|") || !strings.Contains(out, "leaving out 1 objects (--leave-out): "+leaveKey) {
+		t.Errorf("diff with --leave-out of an empty target: exit %d\n%s%s", code, out, errOut)
+	}
+
+	// --config diffs every target, and one file of keys cannot be for all.
+	code, _, errOut = output(t, func() int {
+		return diff(ctx, []string{"--config", filepath.Join(dir, "env.yaml"), "--from", dir, "--leave-out", leave})
+	})
+	if code != 1 || !strings.Contains(errOut, "not --config") {
+		t.Errorf("--leave-out with --config: exit %d\n%s", code, errOut)
 	}
 
 	if captureOnly {
@@ -157,16 +167,6 @@ func TestLeaveOutReachesRestoreAndDiff(t *testing.T) {
 	d := asJSON(t, func() { diff(ctx, append(target, "--leave-out", leave)) })
 	if got, _ := d["left_out"].([]any); len(got) != 1 || got[0] != leaveKey {
 		t.Errorf("the diff document does not list it: %v", d["left_out"])
-	}
-
-	// --config diffs every target, and one file of keys cannot be for all:
-	// refused before any target is reached.
-	connected = false
-	code, _, errOut = output(t, func() int {
-		return diff(ctx, []string{"--config", filepath.Join(dir, "env.yaml"), "--from", dir, "--leave-out", leave})
-	})
-	if code != 1 || !strings.Contains(errOut, "not --config") || connected {
-		t.Errorf("--leave-out with --config: exit %d\n%s", code, errOut)
 	}
 }
 

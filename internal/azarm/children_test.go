@@ -373,3 +373,39 @@ func TestAChildWithNoVersionOfItsParentsIsReadAtItsOwn(t *testing.T) {
 		})
 	}
 }
+
+// failsAt refuses a list at one version and fails it otherwise.
+type failsAt struct {
+	*Fake
+	refused string
+	err     error
+}
+
+func (f failsAt) List(_ context.Context, path, version string) ([]map[string]any, error) {
+	if version == f.refused {
+		return nil, fmt.Errorf("%w: %s", ErrAPIVersion, path)
+	}
+	return nil, f.err
+}
+
+// Third review of #67, a fault already on main: when the preferred version
+// was refused and the next one failed (a 403, a 500), the next one's error was
+// overwritten by its schema lookup, and the collection read as empty with no
+// gap. #67 tries more versions, so it was met more often.
+func TestAFailureAtTheNextVersionIsAGap(t *testing.T) {
+	reg := fixtures(t)
+	for name, fail := range map[string]error{
+		"403": &armError{status: http.StatusForbidden, code: "AuthorizationFailed"},
+		"500": &armError{status: http.StatusInternalServerError, code: "InternalServerError"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			api := failsAt{NewWorld(reg).Subscription(srcSub, srcTenant), "2016-09-01", fail}
+			v := &versions{api: api, reg: reg, ctx: context.Background(), cache: map[string]map[string][]string{}}
+			path := id(srcSub, "shop-rg", "Microsoft.KeyVault/vaults", "kv") + "/providers/" + diagnosticType
+			got := listOf(context.Background(), api, v, srcTenant, diagnosticType, path, nil)
+			if len(got) != 1 || !strings.HasPrefix(got[0].reason, Unreadable) {
+				t.Errorf("got %+v, want a gap", got)
+			}
+		})
+	}
+}

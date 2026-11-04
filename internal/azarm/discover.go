@@ -311,9 +311,16 @@ func listOf(ctx context.Context, api ARM, v *versions, tenant, typ, path string,
 				continue
 			}
 			if items, err = api.List(ctx, path, alt); !refused(err) {
+				// Its own error, not err: reusing err dropped the list's
+				// failure at this version (a 403, a 500), and the collection
+				// read as empty with no gap (third review of #67).
 				ver = alt
-				if s, err = v.reg.Schema(typ, ver); err != nil {
-					return []found{{typ: typ, name: path, reason: Unreadable + err.Error()}}
+				var serr error
+				if s, serr = v.reg.Schema(typ, ver); serr != nil {
+					return []found{{typ: typ, name: path, reason: Unreadable + serr.Error()}}
+				}
+				if !s.Writable {
+					return nil
 				}
 				break
 			}

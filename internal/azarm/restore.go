@@ -285,6 +285,19 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	// A snapshot written before capture said so leaves it unset too, and one
 	// written before capture dropped them holds what Azure sets.
 	asCapturedNow(rid.Type, o.Name(), spec)
+	// What --values gives is what would be sent, so the comparison sees it
+	// too; secrets aside, which Azure never returns. Compared without it,
+	// the first real restore reported a cluster whose node size --values
+	// had set as differing on every run after.
+	if v := opt.Values[valuesRef(o, rid)]; v != nil {
+		given := rewriteAll(deepCopy(v), func(s string) string { return tokenizeString(s, sub, tenant) }).(map[string]any)
+		if secrets, _ := ann[annSecrets].(string); secrets != "" {
+			for _, p := range strings.Split(secrets, ",") {
+				dropPath(given, strings.Split(p, "."))
+			}
+		}
+		merge(spec, given)
+	}
 
 	existing, err := api.Get(ctx, id, ver)
 	var changed []string
@@ -342,13 +355,9 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	desired := rewriteAll(deepCopy(spec), func(v string) string {
 		return strings.ReplaceAll(strings.ReplaceAll(v, tokSub, sub), tokTenant, tenant)
 	}).(map[string]any)
-	ref := o.Kind() + "/" + rid.ResourceGroup + "/" + o.Name()
-	if strings.EqualFold(o.Kind(), groupType) {
-		ref = o.Kind() + "/" + o.Name()
-	}
-	vals := opt.Values[ref]
+	vals := opt.Values[valuesRef(o, rid)]
 	merge(desired, deepCopy(vals))
-	if isDiagnosticsTable(rid.Type, o.Name()) {
+	if isAzureTable(rid.Type, o.Name()) {
 		diagnosticsTableBody(desired)
 	}
 	var unsupplied []string
@@ -403,25 +412,39 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 			return false, "cannot check whether this role already exists in the tenant: " + err.Error()
 		}
 	}
-	// Azure now makes a backup vault only with soft delete and enhanced
-	// security AlwaysON, and an older vault keeps Enabled from before. In the
-	// first real restore of one, the create was accepted and then failed
-	// (BMSUserErrorSoftDeleteStateNotSetToAlwaysON, found only in the activity
-	// log: the operation's own status answered not found). Refused at
-	// 2026-11-01 and 2026-07-01; 2025-02-01 refuses the newer body itself. So
-	// the restore says it, rather than send what Azure refuses.
-	if changed == nil && strings.EqualFold(rid.Type, vaultType) {
-		if s := softDeleteNotAlwaysOn(desired); s != "" {
-			return false, "Azure makes a new backup vault only with soft delete and enhanced security AlwaysON, and this one has " + s + ". AlwaysON cannot be turned off again. To restore it, give properties.securitySettings.softDeleteSettings.softDeleteState and .enhancedSecurityState as AlwaysON with --values, or leave it out"
-		}
-	}
 	if _, err := api.Put(ctx, id, ver, desired); err != nil {
 		// The same principal, role and scope under another name: AKS grants
 		// its own identities as it makes a cluster, so in the first real
 		// restore of one the snapshot's grant was refused as already there.
 		// The access is what the snapshot holds; only the name differs.
+		// The code says only that principal, role and scope match; a
+		// condition or description may not (review of #73), so the grant
+		// there is read and compared before it counts.
 		if strings.EqualFold(rid.Type, "Microsoft.Authorization/roleAssignments") && strings.Contains(err.Error(), "RoleAssignmentExists") {
-			return true, "already granted under another name (Azure made it, or someone did): " + existingAssignment(err.Error())
+			name := existingAssignment(err.Error())
+			if name == "" {
+				return false, err.Error()
+			}
+			other := id[:strings.LastIndex(id, "/")+1] + name
+			got, gerr := api.Get(ctx, other, ver)
+			if gerr != nil {
+				return false, "Azure says the same grant is there as " + name + ", and it cannot be read: " + gerr.Error()
+			}
+			if differ := grantDiffers(desired, got); len(differ) > 0 {
+				return false, "Azure has the same principal, role and scope as " + name + ", with another " + strings.Join(differ, ", ") + "; not changed. Delete that one and run the restore again, or leave this one out"
+			}
+			return true, "already granted as " + name + " (Azure made it, or someone did); a diff shows this name missing and that one extra"
+		}
+		// A backup vault not AlwaysON was accepted and then failed in the
+		// first real restore of one (BMSUserErrorSoftDeleteStateNotSetToAlwaysON,
+		// found only in the activity log; the operation's status answered not
+		// found), at 2026-11-01 and 2026-07-01; 2025-02-01 refused the newer
+		// body itself. Microsoft does not document the rule, so the vault is
+		// sent as captured, and a refusal says what that subscription asked.
+		if changed == nil && strings.EqualFold(rid.Type, vaultType) {
+			if not := softDeleteNotAlwaysOn(desired); not != "" {
+				return false, err.Error() + "; a subscription has refused a new backup vault without soft delete and enhanced security AlwaysON (this one has " + not + "), and its activity log says so (BMSUserErrorSoftDeleteStateNotSetToAlwaysON). AlwaysON cannot be turned off again. To restore it so, give properties.securitySettings.softDeleteSettings.softDeleteState and .enhancedSecurityState as AlwaysON with --values"
+			}
 		}
 		return false, err.Error()
 	}
@@ -437,6 +460,15 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 }
 
 const roleDefinitionType = "Microsoft.Authorization/roleDefinitions"
+
+// valuesRef is an object's key in --values: Kind/resourceGroup/name, or
+// Kind/name for a resource group.
+func valuesRef(o snapshot.Object, rid ResourceID) string {
+	if strings.EqualFold(o.Kind(), groupType) {
+		return o.Kind() + "/" + o.Name()
+	}
+	return o.Kind() + "/" + rid.ResourceGroup + "/" + o.Name()
+}
 
 const vaultType = "Microsoft.RecoveryServices/vaults"
 
@@ -461,12 +493,42 @@ func softDeleteNotAlwaysOn(spec map[string]any) string {
 var existingRE = regexp.MustCompile(`(?i)ID of the existing role assignment is ([0-9a-f-]{32,36})`)
 
 // existingAssignment names the grant Azure says is already there, from its
-// refusal; "" when it does not say.
+// refusal, as a GUID with its dashes (Azure gives it without); "" when it does
+// not say.
 func existingAssignment(msg string) string {
-	if m := existingRE.FindStringSubmatch(msg); m != nil {
-		return m[1]
+	m := existingRE.FindStringSubmatch(msg)
+	if m == nil {
+		return ""
 	}
-	return "(Azure did not say which)"
+	h := strings.ReplaceAll(strings.ToLower(m[1]), "-", "")
+	if len(h) != 32 {
+		return ""
+	}
+	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
+}
+
+// grantFields are what two grants of one principal, role and scope can still
+// differ in.
+var grantFields = []string{"condition", "conditionVersion", "description", "delegatedManagedIdentityResourceId"}
+
+// grantDiffers names the grantFields in which want and got differ.
+func grantDiffers(want, got map[string]any) []string {
+	w, _ := want["properties"].(map[string]any)
+	g, _ := got["properties"].(map[string]any)
+	var out []string
+	for _, k := range grantFields {
+		a, b := w[k], g[k]
+		if a == "" {
+			a = nil
+		}
+		if b == "" {
+			b = nil
+		}
+		if !strings.EqualFold(fmt.Sprint(a), fmt.Sprint(b)) {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // sharedRole says a role found here can also be assigned outside this
@@ -768,15 +830,17 @@ func deps(o snapshot.Object) []string {
 	for _, m := range idRE.FindAllString(canon(o.Body["spec"]), -1) {
 		if rid, err := ParseID(trimToResource(m)); err == nil {
 			addWithParents(rid)
-			// What the ID names may not be in the snapshot, made by something
-			// else in its group: a cluster's own network, in its node resource
-			// group. The group waits for its manager, so this waits too. In
-			// the first real restore of a cluster, a peering to that network and
-			// a DNS link to it were sent while the cluster was still being made,
-			// and refused for a network not found.
-			if rid.ResourceGroup != "" && !strings.EqualFold(rid.ResourceGroup, o.Namespace()) {
-				add(ResourceID{ResourceGroup: rid.ResourceGroup, Type: groupType, Name: rid.ResourceGroup})
-			}
+		}
+	}
+	return out
+}
+
+// namedGroups are the resource groups o is in or names an ID in, lower case.
+func namedGroups(o snapshot.Object) []string {
+	out := []string{strings.ToLower(o.Namespace())}
+	for _, m := range idRE.FindAllString(canon(o.Body["spec"]), -1) {
+		if rid, err := ParseID(trimToResource(m)); err == nil && rid.ResourceGroup != "" {
+			out = append(out, strings.ToLower(rid.ResourceGroup))
 		}
 	}
 	return out
@@ -859,6 +923,15 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 	}
 	keys := sortedKeys(by)
 	extra := map[string][]string{}
+	nodeGroups := map[string]string{} // lower(node resource group) -> its cluster's key
+	for _, k := range keys {
+		if strings.EqualFold(by[k].Kind(), managedClusterType) {
+			props, _ := by[k].Body["spec"].(map[string]any)["properties"].(map[string]any)
+			if g, _ := props["nodeResourceGroup"].(string); g != "" {
+				nodeGroups[strings.ToLower(g)] = k
+			}
+		}
+	}
 	for _, k := range keys {
 		spec := strings.ToLower(canon(by[k].Body["spec"]))
 		for id, other := range ids {
@@ -868,6 +941,20 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 			// (review, 2026-10-22).
 			if other != k && strings.Contains(spec, id+`"`) {
 				extra[k] = append(extra[k], other)
+			}
+		}
+		// What names something in a cluster's node resource group waits for the
+		// cluster, which makes that group and what is in it. Capture skips the
+		// group and what AKS made there (its network), so nothing in the
+		// snapshot stood between them: in the first real restore of a cluster,
+		// a peering to its network and a DNS link to it were sent while the
+		// cluster was being made, and refused. On the cluster, which names its
+		// own node group (its kubelet identity), this is a wait on itself,
+		// which the order below ignores; a wait on the group made a cycle
+		// (review of #73).
+		for _, g := range namedGroups(by[k]) {
+			if c, ok := nodeGroups[g]; ok {
+				extra[k] = append(extra[k], c)
 			}
 		}
 		// An AKS cluster with its own identity needs what that identity was

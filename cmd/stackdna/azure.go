@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -176,19 +175,24 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 			return fail(fmt.Errorf("%s: %w", valuesFile, err))
 		}
 	}
-	// The values file is written with the snapshot's names.
-	ad.Options.Values = azarm.RenameValues(ad.Options.Values, names)
-	// What --leave-out holds back is not in the snapshot by now, and a
-	// value for it is not a mistake.
-	var bad []string
-	for _, k := range azarm.UnmatchedValues(snap, ad.Options.Values) {
-		if !slices.Contains(heldBack, k) {
-			bad = append(bad, k)
+	// The values file is written with the snapshot's names, before --rename,
+	// as --leave-out is. What --leave-out holds back is not in the snapshot by
+	// now, and a value for it is not a mistake; a held-back resource group is
+	// written Kind//name there and Kind/name here (third review of #73).
+	held := map[string]bool{}
+	for _, k := range heldBack {
+		held[strings.Replace(k, "Microsoft.Resources/resourceGroups//", "Microsoft.Resources/resourceGroups/", 1)] = true
+	}
+	check := map[string]map[string]any{}
+	for k, v := range ad.Options.Values {
+		if !held[k] {
+			check[k] = v
 		}
 	}
-	if len(bad) > 0 {
+	if bad := azarm.UnmatchedValues(snap, azarm.RenameValues(check, names)); len(bad) > 0 {
 		return fail(fmt.Errorf("--values: nothing in the snapshot has %s (keys are Kind/resourceGroup/name, as the snapshot spells them); nothing was restored", strings.Join(bad, ", ")))
 	}
+	ad.Options.Values = azarm.RenameValues(ad.Options.Values, names)
 	warnSizes(ctx, ad.API, snap, ad.Options.Values)
 	results := ad.Restore(ctx, snap)
 	if jsonOut {

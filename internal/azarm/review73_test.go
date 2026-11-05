@@ -197,3 +197,55 @@ func TestAValuesKeyThatMatchesNothingIsSaid(t *testing.T) {
 		t.Errorf("UnmatchedValues = %q, want %q", got, want)
 	}
 }
+
+// Third review of #73: the cluster waits for what its identity is granted, and
+// a grant to that identity (user-assigned, as the ones it waits for are)
+// scoped at the node group named the node group, so it
+// also waited for the cluster: a cycle. Through a capture, with the cluster's
+// identity tokenized in the grant as it is in a real snapshot.
+func TestAGrantToTheClustersIdentityAtItsNodeGroupMakesNoCycle(t *testing.T) {
+	reg, src, _ := worlds(t)
+	clusterWithNodeGroup(t, src, reg)
+	cluster := id(srcSub, "rg", managedClusterType, "aks")
+	nodes := "/subscriptions/" + srcSub + "/resourceGroups/nodes"
+	cp := id(srcSub, "rg", "Microsoft.ManagedIdentity/userAssignedIdentities", "cp")
+	src.SeedAzure(cp, stable(reg, "Microsoft.ManagedIdentity/userAssignedIdentities"), map[string]any{"location": "eastus", "properties": map[string]any{"principalId": "33333333-3333-3333-3333-333333333333", "tenantId": "tenant"}})
+	b, _ := src.Get(context.Background(), cluster, stable(reg, managedClusterType))
+	b["identity"] = map[string]any{"type": "UserAssigned", "userAssignedIdentities": map[string]any{cp: map[string]any{}}}
+	src.SeedAzure(cluster, stable(reg, managedClusterType), b)
+	src.SeedAzure(nodes+"/providers/Microsoft.Authorization/roleAssignments/44444444-4444-4444-4444-444444444444", stable(reg, "Microsoft.Authorization/roleAssignments"), map[string]any{"properties": map[string]any{
+		"principalId": "33333333-3333-3333-3333-333333333333", "principalType": "ServicePrincipal", "scope": nodes,
+		"roleDefinitionId": "/subscriptions/" + srcSub + "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"}})
+	snap, err := Capture(context.Background(), src, reg, Policy{CaptureManaged: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var grant snapshot.Object
+	for _, o := range snap.Objects {
+		if strings.HasSuffix(o.Name(), "44444444-4444-4444-4444-444444444444") {
+			grant = o
+		}
+	}
+	if grant.Body == nil || !strings.Contains(canon(grant.Body["spec"]), "userAssignedIdentities|rg|cp|properties.principalId") {
+		t.Fatalf("the grant to the cluster's identity is not captured as a ref: %v", grant.Body)
+	}
+	// Capture keeps a grant's scope out of its spec (it is read-only), so a
+	// real capture does not name the node group here; a snapshot that holds it
+	// (written by hand, or by another tool) does, as the review's did.
+	grant.Body["spec"].(map[string]any)["properties"].(map[string]any)["scope"] = "/subscriptions/" + tokSub + "/resourceGroups/nodes"
+	order, cyclic, depIdx := restoreGraph(snap.Objects)
+	if len(cyclic) != 0 {
+		t.Fatalf("cycle: %v", cyclic)
+	}
+	for i, o := range order {
+		if o.Kind() == managedClusterType {
+			waits := false
+			for _, j := range depIdx[i] {
+				waits = waits || strings.HasSuffix(order[j].Name(), "44444444-4444-4444-4444-444444444444")
+			}
+			if !waits {
+				t.Error("the cluster no longer waits for its identity's grant")
+			}
+		}
+	}
+}

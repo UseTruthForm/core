@@ -209,3 +209,28 @@ func TestRestoreRefusesAValuesKeyThatMatchesNothing(t *testing.T) {
 		t.Errorf("a value for what is left out was refused: exit %d\n%s%s", code, out, errOut)
 	}
 }
+
+// A held-back resource group is written Kind//name by --leave-out and
+// Kind/name in --values; a value for it was refused as matching nothing (third
+// review of #73).
+func TestAValueForAHeldBackGroupIsNotRefused(t *testing.T) {
+	if captureOnly {
+		t.Skip("restore is refused in the capture-only build")
+	}
+	dir, _, _ := leaveOutWorld(t)
+	ctx := context.Background()
+	leave := filepath.Join(t.TempDir(), "leave.yaml")
+	vals := filepath.Join(t.TempDir(), "values.yaml")
+	if err := os.WriteFile(leave, []byte("- Microsoft.Resources/resourceGroups//rg\n- Microsoft.Network/privateDnsZones/rg/corp.example\n- "+leaveKey+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(vals, []byte("Microsoft.Resources/resourceGroups/rg:\n  tags: {a: b}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := output(t, func() int {
+		return restore(ctx, []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--from", dir, "--leave-out", leave, "--values", vals})
+	})
+	if strings.Contains(errOut, "--values: nothing in the snapshot has") {
+		t.Errorf("a value for a held-back group was refused: exit %d\n%s%s", code, out, errOut)
+	}
+}

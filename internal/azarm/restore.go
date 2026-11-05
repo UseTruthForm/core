@@ -975,22 +975,6 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 				extra[k] = append(extra[k], other)
 			}
 		}
-		// What names something in a cluster's node resource group waits for the
-		// cluster, which makes that group and what is in it. Capture skips the
-		// group and what AKS made there (its network), so nothing in the
-		// snapshot stood between them: in the first real restore of a cluster,
-		// a peering to its network and a DNS link to it were sent while the
-		// cluster was being made, and refused. Only by what an object names, not
-		// where it is: what sits in the node group (the kubelet identity,
-		// captured with --capture-managed) and the cluster, which names it,
-		// each waited for the other (re-review of #73). On the cluster, which
-		// names its own node group, this is a wait on itself, which the order
-		// below ignores; a wait on the group made a cycle (review of #73).
-		for _, g := range namedGroups(by[k]) {
-			if c, ok := nodeGroups[g]; ok {
-				extra[k] = append(extra[k], c)
-			}
-		}
 		// An AKS cluster with its own identity needs what that identity was
 		// granted before it starts: with a custom private DNS zone, Azure
 		// refuses the create without it. Nothing in the cluster names the grant.
@@ -1004,6 +988,25 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 				if !strings.EqualFold(by[other].Kind(), "Microsoft.Authorization/locks") {
 					extra[k] = append(extra[k], other)
 				}
+			}
+		}
+	}
+	// What names something in a cluster's node resource group waits for the
+	// cluster, which makes that group and what is in it. Capture skips the
+	// group and what AKS made there (its network), so nothing in the
+	// snapshot stood between them: in the first real restore of a cluster, a
+	// peering to its network and a DNS link to it were sent while the cluster
+	// was being made, and refused. Only by what an object names, not where it
+	// is: what sits in the node group (the kubelet identity, captured with
+	// --capture-managed) and the cluster, which names it, each waited for the
+	// other (re-review of #73). Not what the cluster already waits for: a grant
+	// to its identity scoped at its node group made a cycle (third review of
+	// #73). On the cluster, which names its own node group, this is a wait on
+	// itself, which the order below ignores.
+	for _, k := range keys {
+		for _, g := range namedGroups(by[k]) {
+			if c, ok := nodeGroups[g]; ok && !slices.Contains(extra[c], k) {
+				extra[k] = append(extra[k], c)
 			}
 		}
 	}

@@ -398,3 +398,85 @@ func TestAzuresExtensionManagerIsNotSentOrCompared(t *testing.T) {
 		t.Errorf("a resumed restore: %s", r.Detail)
 	}
 }
+
+// AKS grants its own identities as it makes a cluster. In the first real
+// restore of one, the snapshot's grant to the same identity, role and scope was
+// refused as RoleAssignmentExists, under another name, and reported as not
+// applied. The access is there: it counts as applied, and says under which name.
+func TestAGrantAzureAlreadyMadeIsApplied(t *testing.T) {
+	reg, src, dst := worlds(t)
+	ctx := context.Background()
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	put(t, src, "rg", "Microsoft.Authorization/roleAssignments", "11111111-1111-1111-1111-111111111111", map[string]any{"properties": map[string]any{
+		"principalId":      "22222222-2222-2222-2222-222222222222",
+		"principalType":    "ServicePrincipal",
+		"roleDefinitionId": "/subscriptions/" + src.sub + "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7",
+	}})
+	snap := capture(t, src, reg)
+	dst.PutError = func(id string, body map[string]any) error {
+		if strings.Contains(id, "/roleAssignments/") {
+			return errors.New("RESPONSE 409: RoleAssignmentExists: The role assignment already exists. The ID of the existing role assignment is 3333444455554666877788889999aaaa.")
+		}
+		return nil
+	}
+	rs := Restore(ctx, dst, reg, snap, RestoreOptions{})
+	allApplied(t, rs)
+	r := resultFor(t, rs, "roleAssignments")
+	if !strings.Contains(r.Detail, "already granted") || !strings.Contains(r.Detail, "3333444455554666877788889999aaaa") {
+		t.Errorf("does not say it is already granted, and as what: %s", r.Detail)
+	}
+	// Any other refusal of a grant is still one.
+	dst.PutError = func(id string, body map[string]any) error {
+		if strings.Contains(id, "/roleAssignments/") {
+			return errors.New("RESPONSE 403: AuthorizationFailed")
+		}
+		return nil
+	}
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "roleAssignments"); r.OK {
+		t.Errorf("another refusal of a grant counted as applied: %s", r.Detail)
+	}
+}
+
+// Azure makes a new backup vault only with soft delete and enhanced security
+// AlwaysON; an older one keeps Enabled. In the first real restore of one, the
+// create was accepted and then failed, and the restore said only "not found".
+// It says what Azure requires and how to give it, and sends it once given.
+func TestABackupVaultSaysAzureWantsAlwaysOn(t *testing.T) {
+	reg, src, dst := worlds(t)
+	ctx := context.Background()
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	put(t, src, "rg", vaultType, "vlt", map[string]any{"location": "eastus", "sku": map[string]any{"name": "RS0", "tier": "Standard"},
+		"properties": map[string]any{"securitySettings": map[string]any{"softDeleteSettings": map[string]any{"softDeleteState": "Enabled", "enhancedSecurityState": "Enabled", "softDeleteRetentionPeriodInDays": 14}}}})
+	snap := capture(t, src, reg)
+	r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "|vlt")
+	if r.OK || !strings.Contains(r.Detail, "AlwaysON") || !strings.Contains(r.Detail, "softDeleteState Enabled, enhancedSecurityState Enabled") || !strings.Contains(r.Detail, "--values") {
+		t.Errorf("a vault Azure will refuse: %v %s", r.OK, r.Detail)
+	}
+	always := map[string]map[string]any{"Microsoft.RecoveryServices/vaults/rg/vlt": {"properties": map[string]any{"securitySettings": map[string]any{"softDeleteSettings": map[string]any{"softDeleteState": "AlwaysON", "enhancedSecurityState": "AlwaysON"}}}}}
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{Values: always}), "|vlt"); !r.OK {
+		t.Errorf("given AlwaysON, the vault is not sent: %s", r.Detail)
+	}
+}
+
+// AKS gives every cluster a windowsProfile, and refuses to make one without its
+// admin password, though no pool runs Windows. In the first real restore of a
+// cluster, Azure's answer was only "the value of parameter
+// windowsProfile.adminPassword is invalid". The restore says what to give, and
+// sends the cluster once it is given.
+func TestAClusterSaysItNeedsItsWindowsPassword(t *testing.T) {
+	reg, src, dst := worlds(t)
+	ctx := context.Background()
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	src.SeedAzure(id(srcSub, "rg", managedClusterType, "aks"), stable(reg, managedClusterType), map[string]any{"location": "eastus", "properties": map[string]any{
+		"dnsPrefix": "aks", "windowsProfile": map[string]any{"adminUsername": "azureuser"},
+		"agentPoolProfiles": []any{map[string]any{"name": "sys", "mode": "System", "count": 1, "vmSize": "Standard_D2s_v5"}}}})
+	snap := capture(t, src, reg)
+	r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "|aks")
+	if r.OK || !strings.Contains(r.Detail, "properties.windowsProfile.adminPassword with --values") {
+		t.Errorf("a cluster Azure will refuse: %v %s", r.OK, r.Detail)
+	}
+	pw := map[string]map[string]any{managedClusterType + "/rg/aks": {"properties": map[string]any{"windowsProfile": map[string]any{"adminPassword": "Zz9!" + strings.Repeat("x", 20)}}}}
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{Values: pw}), "|aks"); !r.OK {
+		t.Errorf("given its password, the cluster is not sent: %s", r.Detail)
+	}
+}

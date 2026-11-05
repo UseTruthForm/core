@@ -47,6 +47,8 @@ var fixtureTypes = []string{
 	"Microsoft.OperationalInsights/workspaces/dataSources@2025-07-01",
 	// What a restore of a real estate meets that the fake's first types do not.
 	"Microsoft.ContainerService/managedClusters@2026-08-01",
+	// Azure makes a new backup vault only with soft delete AlwaysON.
+	"Microsoft.RecoveryServices/vaults@2026-11-01",
 	"Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31",
 	"Microsoft.KeyVault/vaults@2026-05-15",
 	"Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2025-07-01",

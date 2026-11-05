@@ -1385,3 +1385,34 @@ func TestRoleWithNoTypeIsCaptured(t *testing.T) {
 		t.Error("a role with no type was dropped")
 	}
 }
+
+// In the first real restore of a cluster, a peering to the cluster's own
+// network and a DNS link to it were sent while the cluster was being made, and
+// refused: the network, made by AKS in its node resource group, is not in the
+// snapshot, so nothing made them wait. They wait for that group, which waits
+// for the cluster that manages it.
+func TestWhatNamesAClustersNetworkWaitsForTheCluster(t *testing.T) {
+	sub := "/subscriptions/" + tokSub
+	cluster := clusterObj(sub + "/resourceGroups/rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/cp")
+	clusterID := sub + "/resourceGroups/rg/providers/" + managedClusterType + "/aks"
+	nodes := obj(groupType, "", "nodes", sub+"/resourceGroups/nodes", map[string]any{"managedBy": clusterID})
+	peering := obj("Microsoft.Network/virtualNetworks/virtualNetworkPeerings", "rg", "hub/to-aks", sub+"/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/hub/virtualNetworkPeerings/to-aks",
+		map[string]any{"properties": map[string]any{"remoteVirtualNetwork": map[string]any{"id": sub + "/resourceGroups/nodes/providers/Microsoft.Network/virtualNetworks/aks-vnet"}}})
+	order, cyclic, depIdx := restoreGraph([]snapshot.Object{peering, nodes, cluster})
+	if len(cyclic) != 0 {
+		t.Fatalf("cycle: %v", cyclic)
+	}
+	at := map[string]int{}
+	for i, o := range order {
+		at[o.Kind()] = i
+	}
+	waitsForGroup := false
+	for _, j := range depIdx[at[peering.Kind()]] {
+		if order[j].Kind() == groupType && order[j].Name() == "nodes" {
+			waitsForGroup = true
+		}
+	}
+	if !waitsForGroup || at[managedClusterType] > at[peering.Kind()] {
+		t.Errorf("the peering to the cluster's network does not wait for the cluster: %v, order %v", depIdx[at[peering.Kind()]], at)
+	}
+}

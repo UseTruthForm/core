@@ -62,6 +62,13 @@ func TestASizeTheTargetCannotHaveIsSaid(t *testing.T) {
 			"properties": map[string]any{"properties": map[string]any{"virtualMachineSize": "Standard_DS3_v2"}}}),
 		obj("Microsoft.Storage/storageAccounts", "rg", "sa", sub+"Microsoft.Storage/storageAccounts/sa", map[string]any{
 			"location": "eastus", "sku": map[string]any{"name": "Standard_LRS"}, "tags": map[string]any{"size": "Standard_D2s_v5"}}),
+		// A GPU size names its accelerator (post-merge review of #72: missed).
+		obj("Microsoft.MachineLearningServices/workspaces/computes", "rg", "ml/a100", sub+"Microsoft.MachineLearningServices/workspaces/ml/computes/a100", map[string]any{
+			"properties": map[string]any{"properties": map[string]any{"nodeSize": "Standard_NC24ads_A100_v4"}}}),
+		obj("Microsoft.MachineLearningServices/workspaces/computes", "rg", "ml/t4", sub+"Microsoft.MachineLearningServices/workspaces/ml/computes/t4", map[string]any{
+			"properties": map[string]any{"properties": map[string]any{"nodeSize": "Standard_NC4as_T4_v3"}}}),
+		obj("Microsoft.MachineLearningServices/workspaces/computes", "rg", "ml/a10", sub+"Microsoft.MachineLearningServices/workspaces/ml/computes/a10", map[string]any{
+			"properties": map[string]any{"properties": map[string]any{"nodeSize": "Standard_NV36ads_A10_v5"}}}),
 		// Spelled like a size and not one (review of #72): a gateway's SKU and
 		// tier, a Web PubSub unit, and free text that begins with a size.
 		obj("Microsoft.Network/applicationGateways", "rg", "agw", sub+"Microsoft.Network/applicationGateways/agw", map[string]any{
@@ -94,6 +101,9 @@ func TestASizeTheTargetCannotHaveIsSaid(t *testing.T) {
 		"Microsoft.ContainerService/managedClusters/agentPools/rg/elsewhere/p uses Standard_D4s_v5, and its region is not in the snapshot",
 		"Microsoft.Batch/batchAccounts/pools/rg/b/p has a VM size at properties.vmSize, which is not checked",
 		"Microsoft.MachineLearningServices/workspaces/computes/rg/ml/c has a VM size at properties.properties.virtualMachineSize, which is not checked",
+		"Microsoft.MachineLearningServices/workspaces/computes/rg/ml/a100 has a VM size at properties.properties.nodeSize, which is not checked",
+		"Microsoft.MachineLearningServices/workspaces/computes/rg/ml/t4 has a VM size at properties.properties.nodeSize, which is not checked",
+		"Microsoft.MachineLearningServices/workspaces/computes/rg/ml/a10 has a VM size at properties.properties.nodeSize, which is not checked",
 	} {
 		if !strings.Contains(unchecked, want) {
 			t.Errorf("not said as unchecked: %q in:\n%s", want, unchecked)

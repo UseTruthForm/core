@@ -102,6 +102,9 @@
   "Microsoft.OperationalInsights/workspaces@2025-07-01": {
    "$ref": "operationalinsights/microsoft.operationalinsights/2025-07-01/types.json#/84"
   },
+  "Microsoft.RecoveryServices/vaults@2026-11-01": {
+   "$ref": "recoveryservices/microsoft.recoveryservices/2026-11-01/types.json#/180"
+  },
   "Microsoft.Resources/resourceGroups@2024-11-01": {
    "$ref": "resources_11/microsoft.resources/2024-11-01/types.json#/7"
   },

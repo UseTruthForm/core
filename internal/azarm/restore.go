@@ -359,6 +359,16 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 			}
 		}
 	}
+	// A cluster with a windowsProfile is refused without its admin password,
+	// though it has no Windows pool: AKS gives every cluster one. In the first
+	// real restore of a cluster, Azure answered "The value of parameter
+	// windowsProfile.adminPassword is invalid" after the size and add-on were
+	// fixed. Said here, with how to give it.
+	if changed == nil && strings.EqualFold(rid.Type, managedClusterType) && slices.Contains(unsupplied, "properties.windowsProfile.adminPassword") {
+		if props, _ := desired["properties"].(map[string]any); props["windowsProfile"] != nil {
+			return false, "Azure makes a cluster with a windowsProfile only with its admin password, even with no Windows pool; it is never returned, so give properties.windowsProfile.adminPassword with --values (any password AKS accepts: 14 to 123 characters, three of lower, upper, digit and symbol)"
+		}
+	}
 	// A PUT replaces the whole configuration, and a secret Azure never
 	// returns is not in the snapshot: updating without it would send the
 	// resource without its credential.
@@ -393,7 +403,26 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 			return false, "cannot check whether this role already exists in the tenant: " + err.Error()
 		}
 	}
+	// Azure now makes a backup vault only with soft delete and enhanced
+	// security AlwaysON, and an older vault keeps Enabled from before. In the
+	// first real restore of one, the create was accepted and then failed
+	// (BMSUserErrorSoftDeleteStateNotSetToAlwaysON, found only in the activity
+	// log: the operation's own status answered not found). Refused at
+	// 2026-11-01 and 2026-07-01; 2025-02-01 refuses the newer body itself. So
+	// the restore says it, rather than send what Azure refuses.
+	if changed == nil && strings.EqualFold(rid.Type, vaultType) {
+		if s := softDeleteNotAlwaysOn(desired); s != "" {
+			return false, "Azure makes a new backup vault only with soft delete and enhanced security AlwaysON, and this one has " + s + ". AlwaysON cannot be turned off again. To restore it, give properties.securitySettings.softDeleteSettings.softDeleteState and .enhancedSecurityState as AlwaysON with --values, or leave it out"
+		}
+	}
 	if _, err := api.Put(ctx, id, ver, desired); err != nil {
+		// The same principal, role and scope under another name: AKS grants
+		// its own identities as it makes a cluster, so in the first real
+		// restore of one the snapshot's grant was refused as already there.
+		// The access is what the snapshot holds; only the name differs.
+		if strings.EqualFold(rid.Type, "Microsoft.Authorization/roleAssignments") && strings.Contains(err.Error(), "RoleAssignmentExists") {
+			return true, "already granted under another name (Azure made it, or someone did): " + existingAssignment(err.Error())
+		}
 		return false, err.Error()
 	}
 	out.markCreated(strings.ToLower(o.Key()))
@@ -408,6 +437,37 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 }
 
 const roleDefinitionType = "Microsoft.Authorization/roleDefinitions"
+
+const vaultType = "Microsoft.RecoveryServices/vaults"
+
+// softDeleteNotAlwaysOn names a vault's soft-delete settings that are not
+// AlwaysON, as "softDeleteState Enabled"; "" when both are.
+func softDeleteNotAlwaysOn(spec map[string]any) string {
+	sd, _ := lookup(spec, strings.Split("properties.securitySettings.softDeleteSettings", "."))
+	m, _ := sd.(map[string]any)
+	var not []string
+	for _, k := range []string{"softDeleteState", "enhancedSecurityState"} {
+		if v, _ := m[k].(string); !strings.EqualFold(v, "AlwaysON") {
+			if v == "" {
+				v = "unset"
+			}
+			not = append(not, k+" "+v)
+		}
+	}
+	return strings.Join(not, ", ")
+}
+
+// existingRE is the name Azure gives in its refusal of a grant already there.
+var existingRE = regexp.MustCompile(`(?i)ID of the existing role assignment is ([0-9a-f-]{32,36})`)
+
+// existingAssignment names the grant Azure says is already there, from its
+// refusal; "" when it does not say.
+func existingAssignment(msg string) string {
+	if m := existingRE.FindStringSubmatch(msg); m != nil {
+		return m[1]
+	}
+	return "(Azure did not say which)"
+}
 
 // sharedRole says a role found here can also be assigned outside this
 // subscription, so the source's own scope in the snapshot is not a difference:
@@ -708,6 +768,15 @@ func deps(o snapshot.Object) []string {
 	for _, m := range idRE.FindAllString(canon(o.Body["spec"]), -1) {
 		if rid, err := ParseID(trimToResource(m)); err == nil {
 			addWithParents(rid)
+			// What the ID names may not be in the snapshot, made by something
+			// else in its group: a cluster's own network, in its node resource
+			// group. The group waits for its manager, so this waits too. In
+			// the first real restore of a cluster, a peering to that network and
+			// a DNS link to it were sent while the cluster was still being made,
+			// and refused for a network not found.
+			if rid.ResourceGroup != "" && !strings.EqualFold(rid.ResourceGroup, o.Namespace()) {
+				add(ResourceID{ResourceGroup: rid.ResourceGroup, Type: groupType, Name: rid.ResourceGroup})
+			}
 		}
 	}
 	return out

@@ -117,6 +117,32 @@ func UnmatchedTypes(s snapshot.Snapshot, types []string) []string {
 	return out
 }
 
+// UnmatchedValues lists the --values keys no object in the snapshot has, each
+// with the key it was probably meant for when one differs only in case. Such a
+// key was ignored, and the restore said "created" with the snapshot's value
+// (re-review of #73; keys are matched exactly, as they are looked up).
+func UnmatchedValues(s snapshot.Snapshot, values map[string]map[string]any) []string {
+	have := map[string]string{}
+	for _, o := range s.Objects {
+		k := valuesRef(o, objectID(o, tokSub))
+		have[k] = k
+		have[strings.ToLower(k)] = k
+	}
+	var out []string
+	for k := range values {
+		if _, ok := have[k]; ok && have[k] == k {
+			continue
+		}
+		if near, ok := have[strings.ToLower(k)]; ok {
+			out = append(out, k+" (the snapshot has "+near+")")
+			continue
+		}
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Restore creates every snapshot object missing from the subscription, in
 // dependency order: resource groups, then parents before children, then
 // every resource after the resources its IDs point at. It never modifies or
@@ -524,7 +550,13 @@ func grantDiffers(want, got map[string]any) []string {
 		if b == "" {
 			b = nil
 		}
-		if !strings.EqualFold(fmt.Sprint(a), fmt.Sprint(b)) {
+		// A condition's values can be case-sensitive (re-review of #73);
+		// the rest are IDs and versions, which are not.
+		same := strings.EqualFold(fmt.Sprint(a), fmt.Sprint(b))
+		if k == "condition" {
+			same = fmt.Sprint(a) == fmt.Sprint(b)
+		}
+		if !same {
 			out = append(out, k)
 		}
 	}
@@ -835,9 +867,9 @@ func deps(o snapshot.Object) []string {
 	return out
 }
 
-// namedGroups are the resource groups o is in or names an ID in, lower case.
+// namedGroups are the resource groups o names an ID in, lower case.
 func namedGroups(o snapshot.Object) []string {
-	out := []string{strings.ToLower(o.Namespace())}
+	var out []string
 	for _, m := range idRE.FindAllString(canon(o.Body["spec"]), -1) {
 		if rid, err := ParseID(trimToResource(m)); err == nil && rid.ResourceGroup != "" {
 			out = append(out, strings.ToLower(rid.ResourceGroup))
@@ -948,10 +980,12 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 		// group and what AKS made there (its network), so nothing in the
 		// snapshot stood between them: in the first real restore of a cluster,
 		// a peering to its network and a DNS link to it were sent while the
-		// cluster was being made, and refused. On the cluster, which names its
-		// own node group (its kubelet identity), this is a wait on itself,
-		// which the order below ignores; a wait on the group made a cycle
-		// (review of #73).
+		// cluster was being made, and refused. Only by what an object names, not
+		// where it is: what sits in the node group (the kubelet identity,
+		// captured with --capture-managed) and the cluster, which names it,
+		// each waited for the other (re-review of #73). On the cluster, which
+		// names its own node group, this is a wait on itself, which the order
+		// below ignores; a wait on the group made a cycle (review of #73).
 		for _, g := range namedGroups(by[k]) {
 			if c, ok := nodeGroups[g]; ok {
 				extra[k] = append(extra[k], c)

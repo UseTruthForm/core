@@ -90,9 +90,9 @@ func TestNamesHeldByDeletedResourcesAreSaid(t *testing.T) {
 	}}
 	dst.Deleted = map[string][]map[string]any{
 		"/providers/microsoft.sql/locations/westeurope/deletedservers": {{"name": "db1"}},
-		"/providers/microsoft.sql/locations/eastus/deletedservers":        {{"name": "other"}},
-		"/providers/microsoft.cognitiveservices/deletedaccounts":          {{"id": "/subscriptions/s/providers/Microsoft.CognitiveServices/locations/eastus/resourceGroups/rg/deletedAccounts/ai"}},
-		"/providers/microsoft.keyvault/deletedvaults":                     {},
+		"/providers/microsoft.sql/locations/eastus/deletedservers":     {{"name": "other"}},
+		"/providers/microsoft.cognitiveservices/deletedaccounts":       {{"id": "/subscriptions/s/providers/Microsoft.CognitiveServices/locations/eastus/resourceGroups/rg/deletedAccounts/ai"}},
+		"/providers/microsoft.keyvault/deletedvaults":                  {},
 	}
 	held, unread := NamesHeld(context.Background(), dst, snap)
 	got := strings.Join(held, "\n")

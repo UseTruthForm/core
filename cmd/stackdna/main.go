@@ -342,6 +342,7 @@ func diff(ctx context.Context, args []string) int {
 	config := fs.String("config", "", "environment file; diffs every target against --from/<target>")
 	rename := fs.String("rename", "", renameHelp)
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
+	values := fs.String("values", "", "azure: the --values file the restore was given; what it sets is compared as it was sent, secrets aside, and a key that matches nothing is refused")
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	var aws awsFlags
 	aws.register(fs)
@@ -357,9 +358,12 @@ func diff(ctx context.Context, args []string) int {
 		}
 		return fail(err)
 	}
+	if *values != "" && *platform != "azure" {
+		return fail(fmt.Errorf("diff: --values is for --platform azure"))
+	}
 	if *config != "" && *from != "" {
-		if *rename != "" || *leaveOut != "" {
-			return fail(fmt.Errorf("diff: --rename and --leave-out are for a diff against one target, not --config"))
+		if *rename != "" || *leaveOut != "" || *values != "" {
+			return fail(fmt.Errorf("diff: --rename, --leave-out and --values are for a diff against one target, not --config"))
 		}
 		return diffEnvironment(ctx, *config, *from)
 	}
@@ -378,7 +382,11 @@ func diff(ctx context.Context, args []string) int {
 	if want, err = leftOut(*leaveOut, *platform, want); err != nil {
 		return fail(err)
 	}
-	_, want, err = renamed(*rename, *platform, want)
+	names, want, err := renamed(*rename, *platform, want)
+	if err != nil {
+		return fail(err)
+	}
+	vals, err := readValues(*values, want, names)
 	if err != nil {
 		return fail(err)
 	}
@@ -392,7 +400,7 @@ func diff(ctx context.Context, args []string) int {
 		return diffAWS(ctx, &aws, want, *from)
 	case "azure":
 		az.from(&aws, *baseline)
-		return diffAzure(ctx, &az, want, *from)
+		return diffAzure(ctx, &az, want, *from, vals)
 	case "gcp":
 		g.from(&aws, *baseline)
 		return diffGCP(ctx, &g, want, *from)

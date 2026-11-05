@@ -89,12 +89,24 @@ func emitDiff(changes []snapshot.Change, from, target string) {
 	if sizeCheck != nil {
 		doc["vm_sizes"] = sizeCheck
 	}
+	if namesHeld != nil {
+		doc["names_held"] = namesHeld
+	}
 	emit(doc)
 }
 
 // sizeCheck is what the VM size check found, for the document of an Azure
 // restore or diff; nil where none ran.
 var sizeCheck *azarm.SizeCheck
+
+// namesHeld is what the check for names held by deleted resources found, for
+// the document of an Azure restore or diff; nil where none ran.
+var namesHeld *heldJSON
+
+type heldJSON struct {
+	Held   []string `json:"held"`
+	Unread []string `json:"unread"`
+}
 
 type resultJSON struct {
 	Key    string `json:"key"`
@@ -125,6 +137,9 @@ func emitRestore(results []snapshot.Result, target string) {
 		"not_sent": notSent, "pending": pending, "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
 	if sizeCheck != nil {
 		doc["vm_sizes"] = sizeCheck
+	}
+	if namesHeld != nil {
+		doc["names_held"] = namesHeld
 	}
 	emit(doc)
 }

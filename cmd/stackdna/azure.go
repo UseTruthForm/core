@@ -299,9 +299,6 @@ func compareTarget(platform string, want, got snapshot.Snapshot) []snapshot.Chan
 	return snapshot.Compare(want, got)
 }
 
-// warnSizes says, before a restore or with a diff, which VM sizes the target
-// cannot have, with the restore's --values applied, what it could not check,
-// and how much it did: silence is not read as all clear.
 // warnHeld says, before a restore or with a diff, which of the snapshot's
 // names a deleted resource holds in the target, and how to free each: a drill
 // lost a run to two SQL servers held this way.
@@ -317,8 +314,15 @@ func warnHeld(ctx context.Context, api azarm.ARM, s snapshot.Snapshot) {
 	for _, x := range unread {
 		fmt.Fprintln(os.Stderr, "NOTE: could not read the deleted resources at", x)
 	}
+	if azarm.HeldElsewhere(s) {
+		fmt.Fprintln(os.Stderr, "NOTE: names held: only deleted resources in this subscription are seen; a deleted key vault, API Management service, App Configuration store or Cognitive Services account in another subscription holds its name too")
+		namesHeld.OnlyThisSubscription = true
+	}
 }
 
+// warnSizes says, before a restore or with a diff, which VM sizes the target
+// cannot have, with the restore's --values applied, what it could not check,
+// and how much it did: silence is not read as all clear.
 func warnSizes(ctx context.Context, api azarm.ARM, s snapshot.Snapshot, values map[string]map[string]any) {
 	c := azarm.SizesRefused(ctx, api, s, values)
 	sizeCheck = &c

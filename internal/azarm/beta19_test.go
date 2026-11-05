@@ -23,11 +23,12 @@ func TestWhatNoOneChangedIsNotADifference(t *testing.T) {
 	}
 	p := func(m map[string]any) map[string]any { return map[string]any{"properties": m} }
 	for _, tc := range []c{
-		{"a default the source never set", "Microsoft.Storage/storageAccounts", p(map[string]any{}), p(map[string]any{"allowCrossTenantDelegationSas": false}), true},
+		{"a default the source never set", "Microsoft.KeyVault/vaults", p(map[string]any{}), p(map[string]any{"enabledForDiskEncryption": false}), true},
 		{"a default in another case", "Microsoft.ServiceBus/namespaces", p(map[string]any{}), p(map[string]any{"dnsNamePolicy": "standard"}), true},
 		{"two defaults", "Microsoft.KeyVault/vaults", p(map[string]any{}), p(map[string]any{"enabledForDiskEncryption": false, "enabledForTemplateDeployment": false}), true},
-		{"a default under a map the source has empty", "Microsoft.ContainerService/managedClusters", p(map[string]any{"autoUpgradeProfile": map[string]any{}}), p(map[string]any{"autoUpgradeProfile": map[string]any{"nodeOSUpgradeChannel": "NodeImage"}}), true},
-		{"a default under a map the source does not have", "Microsoft.ContainerService/managedClusters", p(map[string]any{}), p(map[string]any{"autoUpgradeProfile": map[string]any{"nodeOSUpgradeChannel": "NodeImage"}}), true},
+		// The source cluster had no OS updates; its copy reimages its nodes.
+		{"an AKS OS upgrade channel Azure gave the copy", "Microsoft.ContainerService/managedClusters", p(map[string]any{"autoUpgradeProfile": map[string]any{}}), p(map[string]any{"autoUpgradeProfile": map[string]any{"nodeOSUpgradeChannel": "NodeImage"}}), false},
+		{"a storage account's cross-tenant SAS, not known to mean false unset", "Microsoft.Storage/storageAccounts", p(map[string]any{}), p(map[string]any{"allowCrossTenantDelegationSas": false}), false},
 		{"not the default", "Microsoft.Storage/storageAccounts", p(map[string]any{}), p(map[string]any{"allowCrossTenantDelegationSas": true}), false},
 		{"set by the source to other than the target", "Microsoft.Storage/storageAccounts", p(map[string]any{"allowCrossTenantDelegationSas": true}), p(map[string]any{"allowCrossTenantDelegationSas": false}), false},
 		{"set by the source to the default", "Microsoft.Storage/storageAccounts", p(map[string]any{"allowCrossTenantDelegationSas": false}), p(map[string]any{"allowCrossTenantDelegationSas": false}), true},
@@ -46,9 +47,9 @@ func TestWhatNoOneChangedIsNotADifference(t *testing.T) {
 		}
 	}
 	// Copies: neither side is changed.
-	got := one("Microsoft.Storage/storageAccounts", "x", p(map[string]any{"allowCrossTenantDelegationSas": false}))
-	ForCompare(one("Microsoft.Storage/storageAccounts", "x", p(map[string]any{})), got)
-	if !strings.Contains(canon(got.Objects[0].Body["spec"]), "allowCrossTenantDelegationSas") {
+	got := one("Microsoft.KeyVault/vaults", "x", p(map[string]any{"enabledForDiskEncryption": false}))
+	ForCompare(one("Microsoft.KeyVault/vaults", "x", p(map[string]any{})), got)
+	if !strings.Contains(canon(got.Objects[0].Body["spec"]), "enabledForDiskEncryption") {
 		t.Error("ForCompare changed what it was given")
 	}
 }
@@ -60,17 +61,18 @@ func TestAResumedRestoreFindsWhatItMadeIdentical(t *testing.T) {
 	reg, src, dst := worlds(t)
 	ctx := context.Background()
 	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
-	put(t, src, "rg", "Microsoft.Storage/storageAccounts", "acct", map[string]any{"location": "eastus", "kind": "StorageV2", "sku": map[string]any{"name": "Standard_LRS"}})
+	kv := "Microsoft.KeyVault/vaults"
+	put(t, src, "rg", kv, "kv", map[string]any{"location": "eastus", "properties": map[string]any{"tenantId": "00000000-0000-0000-0000-000000000000", "sku": map[string]any{"family": "A", "name": "standard"}, "accessPolicies": []any{}}})
 	snap := capture(t, src, reg)
-	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "|acct"); !r.OK {
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "|kv"); !r.OK {
 		t.Fatalf("first run: %s", r.Detail)
 	}
 	// Azure fills in its default.
-	acct := id(dst.sub, "rg", "Microsoft.Storage/storageAccounts", "acct")
-	b, _ := dst.Get(ctx, acct, stable(reg, "Microsoft.Storage/storageAccounts"))
-	b["properties"].(map[string]any)["allowCrossTenantDelegationSas"] = false
-	dst.SeedAzure(acct, stable(reg, "Microsoft.Storage/storageAccounts"), b)
-	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "|acct"); !r.OK || !strings.Contains(r.Detail, "identical") {
+	vault := id(dst.sub, "rg", kv, "kv")
+	b, _ := dst.Get(ctx, vault, stable(reg, kv))
+	b["properties"].(map[string]any)["enabledForDiskEncryption"] = false
+	dst.SeedAzure(vault, stable(reg, kv), b)
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "|kv"); !r.OK || !strings.Contains(r.Detail, "identical") {
 		t.Errorf("a resumed run: %v %s", r.OK, r.Detail)
 	}
 }
@@ -92,20 +94,32 @@ func TestNamesHeldByDeletedResourcesAreSaid(t *testing.T) {
 		"/providers/microsoft.sql/locations/westeurope/deletedservers": {{"name": "db1"}},
 		"/providers/microsoft.sql/locations/eastus/deletedservers":     {{"name": "other"}},
 		"/providers/microsoft.cognitiveservices/deletedaccounts":       {{"id": "/subscriptions/s/providers/Microsoft.CognitiveServices/locations/eastus/resourceGroups/rg/deletedAccounts/ai"}},
-		"/providers/microsoft.keyvault/deletedvaults":                  {},
+		"/providers/microsoft.keyvault/deletedvaults":                  {{"name": "kv", "properties": map[string]any{"purgeProtectionEnabled": true, "scheduledPurgeDate": "2026-12-01T00:00:00Z"}}},
 	}
 	held, unread := NamesHeld(context.Background(), dst, snap)
 	got := strings.Join(held, "\n")
 	for _, want := range []string{
 		"Microsoft.Sql/servers/rg/db1: the name is held by a deleted one; Azure frees it when its retention ends, and no purge does",
 		"Microsoft.CognitiveServices/accounts/rg/Ai: the name is held by a deleted one; purge it (az cognitiveservices account purge --name Ai --resource-group rg --location eastus)",
+		// Purge protection: no purge frees it before its date (review of #75).
+		"Microsoft.KeyVault/vaults/rg/kv: the name is held by a deleted one; it has purge protection, so no purge frees it: rename it with --rename, or wait until 2026-12-01T00:00:00Z",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}
 	}
-	if len(held) != 2 || len(unread) != 0 {
+	if len(held) != 3 || len(unread) != 0 {
 		t.Errorf("held %v, unread %v", held, unread)
+	}
+	// Without purge protection, a vault can be purged.
+	dst.Deleted["/providers/microsoft.keyvault/deletedvaults"] = []map[string]any{{"name": "kv"}}
+	if held, _ := NamesHeld(context.Background(), dst, snap); !strings.Contains(strings.Join(held, "\n"), "purge it (az keyvault purge --name kv)") {
+		t.Errorf("a vault without purge protection: %v", held)
+	}
+	// Names unique across Azure can be held from another subscription, which
+	// this check cannot see.
+	if !HeldElsewhere(snap) || HeldElsewhere(snapshot.Snapshot{Objects: snap.Objects[:2]}) {
+		t.Error("HeldElsewhere")
 	}
 	// A list that cannot be read is said, not taken as empty.
 	dst.ListError = func(path string) error {

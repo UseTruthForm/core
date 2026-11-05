@@ -6,18 +6,20 @@ import (
 	"github.com/stackdna/core/internal/snapshot"
 )
 
-// unsetDefaults are what Azure answers for a property a snapshot does not set:
-// a source made before the property existed has none, and its restored copy
-// has Azure's default. A destroy-and-restore drill of a real estate showed each
-// as a difference on every diff and every resumed restore. Only for comparing:
-// what a restore sends is unchanged, and leaves the property to Azure as the
-// source does.
+// unsetDefaults are what Azure answers for a property a snapshot does not set,
+// where not setting it behaves as that value: a source made before the
+// property existed has none, and its restored copy has Azure's default. A
+// destroy-and-restore drill of a real estate showed each as a difference on
+// every diff and every resumed restore; the source read at the same API
+// version returned none of them. Only these two are known to behave as their
+// default when unset (Key Vault's enabledFor* are false unless set; Service
+// Bus's dnsNamePolicy is Standard unless set). Not AKS's nodeOSUpgradeChannel:
+// the source cluster had none and so no OS updates, and its copy got
+// NodeImage, which reimages its nodes; that is a difference (review of #75).
+// Only for comparing: what a restore sends is unchanged.
 var unsetDefaults = map[string]map[string]any{
-	"microsoft.storage/storageaccounts":          {"properties.allowCrossTenantDelegationSas": false},
-	"microsoft.servicebus/namespaces":            {"properties.dnsNamePolicy": "Standard"},
-	"microsoft.cognitiveservices/accounts":       {"properties.a365LoggingEnabled": true, "properties.a365Status": "Enabled"},
-	"microsoft.keyvault/vaults":                  {"properties.enabledForDiskEncryption": false, "properties.enabledForTemplateDeployment": false},
-	"microsoft.containerservice/managedclusters": {"properties.autoUpgradeProfile.nodeOSUpgradeChannel": "NodeImage"},
+	"microsoft.servicebus/namespaces": {"properties.dnsNamePolicy": "Standard"},
+	"microsoft.keyvault/vaults":       {"properties.enabledForDiskEncryption": false, "properties.enabledForTemplateDeployment": false},
 }
 
 // ForCompare makes want and got comparable: what Azure set and the snapshot

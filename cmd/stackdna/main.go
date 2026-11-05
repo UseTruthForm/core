@@ -233,7 +233,7 @@ func capture(ctx context.Context, args []string) int {
 }
 
 func restore(ctx context.Context, args []string) int {
-	sizeCheck = nil
+	sizeCheck, namesHeld = nil, nil
 	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
 	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
 	kctx := fs.String("context", "", "kubeconfig context to restore into")
@@ -332,7 +332,7 @@ func restore(ctx context.Context, args []string) int {
 }
 
 func diff(ctx context.Context, args []string) int {
-	sizeCheck = nil
+	sizeCheck, namesHeld = nil, nil
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
 	kctx := fs.String("context", "", "kubeconfig context to compare against")

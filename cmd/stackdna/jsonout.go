@@ -106,6 +106,9 @@ var namesHeld *heldJSON
 type heldJSON struct {
 	Held   []string `json:"held"`
 	Unread []string `json:"unread"`
+	// OnlyThisSubscription: the snapshot has names a deleted resource in
+	// another subscription can hold, which the check cannot see.
+	OnlyThisSubscription bool `json:"only_this_subscription"`
 }
 
 type resultJSON struct {

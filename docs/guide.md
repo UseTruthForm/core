@@ -180,7 +180,26 @@ stackdna restore --platform aws --region us-east-2 --from snap/aws --values secr
   each other are created together (`--parallel`, 8 by default).
 - **Secrets** come from a YAML file given with `--values`, keyed by
   resource. A restore says which secrets it was not given. The same file can
-  set any other property; a list it sets is replaced whole.
+  set any other property; a list it sets is replaced whole. Give `diff` the
+  same file (Azure), so what it set is compared as it was sent, not shown as
+  drift. A key that matches nothing in the snapshot is refused by both.
+- **Names held by deleted resources (Azure):** a deleted key vault, Cognitive
+  Services account, SQL server, API Management service or App Configuration
+  store keeps its name for a time, and Azure refuses a new one by that name. A
+  restore and a diff say which of the snapshot's names are held, and how to
+  free each (`names_held` in `--json`). A deleted SQL server cannot be purged,
+  nor a key vault with purge protection before its date: rename it with
+  `--rename`, or wait. Only the target subscription is checked: a key vault,
+  API Management service, App Configuration store or Cognitive Services
+  account deleted in another subscription holds its name too, and is not seen
+  (`only_this_subscription`).
+- **What no one changed (Azure):** a diff, and a restore checking what exists,
+  do not count Azure's default for a property the snapshot does not set where
+  unset behaves as that default (Key Vault's `enabledFor*`, Service Bus's
+  `dnsNamePolicy`), a pool's node count its autoscaler sets, or an auditing
+  setting's details when it is off on both sides. What a restore sends is
+  unchanged. Other defaults Azure gives a restored copy (an AKS cluster's
+  node OS upgrade channel, for one) are differences, and shown.
 - **VM sizes (Azure):** a restore and a diff warn of a size the target
   subscription cannot have in that region or in the zones asked for, which
   Azure would refuse, and say what they could not check and how many they

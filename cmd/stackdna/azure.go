@@ -166,34 +166,13 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 	if bad := azarm.UnmatchedTypes(snap, ad.Policy.Types); len(bad) > 0 {
 		return fail(fmt.Errorf("--types: nothing in the snapshot matches %s; nothing was restored", strings.Join(bad, ", ")))
 	}
-	if valuesFile != "" {
-		b, err := os.ReadFile(valuesFile)
-		if err != nil {
-			return fail(err)
-		}
-		if err := yaml.Unmarshal(b, &ad.Options.Values); err != nil {
-			return fail(fmt.Errorf("%s: %w", valuesFile, err))
-		}
+	vals, err := readValues(valuesFile, snap, names)
+	if err != nil {
+		return fail(err)
 	}
-	// The values file is written with the snapshot's names, before --rename,
-	// as --leave-out is. What --leave-out holds back is not in the snapshot by
-	// now, and a value for it is not a mistake; a held-back resource group is
-	// written Kind//name there and Kind/name here (third review of #73).
-	held := map[string]bool{}
-	for _, k := range heldBack {
-		held[strings.Replace(k, "Microsoft.Resources/resourceGroups//", "Microsoft.Resources/resourceGroups/", 1)] = true
-	}
-	check := map[string]map[string]any{}
-	for k, v := range ad.Options.Values {
-		if !held[k] {
-			check[k] = v
-		}
-	}
-	if bad := azarm.UnmatchedValues(snap, azarm.RenameValues(check, names)); len(bad) > 0 {
-		return fail(fmt.Errorf("--values: nothing in the snapshot has %s (keys are Kind/resourceGroup/name, as the snapshot spells them); nothing was restored", strings.Join(bad, ", ")))
-	}
-	ad.Options.Values = azarm.RenameValues(ad.Options.Values, names)
+	ad.Options.Values = vals
 	warnSizes(ctx, ad.API, snap, ad.Options.Values)
+	warnHeld(ctx, ad.API, snap)
 	results := ad.Restore(ctx, snap)
 	if jsonOut {
 		defer emitRestore(results, "azure "+a.subscription)
@@ -248,15 +227,60 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 	return 0
 }
 
-func diffAzure(ctx context.Context, a *azureFlags, want snapshot.Snapshot, from string) int {
+// readValues reads a --values file, written with the snapshot's names before
+// --rename as --leave-out is, and gives it the names the snapshot has now. A
+// key that matches nothing is refused: it was ignored, and the restore said
+// "created" with the snapshot's value (re-review of #73). What --leave-out
+// holds back is not in the snapshot by now, and a value for it is not a
+// mistake; a held-back resource group is written Kind//name there and
+// Kind/name here (third review of #73).
+func readValues(file string, snap snapshot.Snapshot, names map[string]string) (map[string]map[string]any, error) {
+	if file == "" {
+		return nil, nil
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	var vals map[string]map[string]any
+	if err := yaml.Unmarshal(b, &vals); err != nil {
+		return nil, fmt.Errorf("%s: %w", file, err)
+	}
+	held := map[string]bool{}
+	for _, k := range heldBack {
+		held[strings.Replace(k, "Microsoft.Resources/resourceGroups//", "Microsoft.Resources/resourceGroups/", 1)] = true
+	}
+	check := map[string]map[string]any{}
+	for k, v := range vals {
+		if !held[k] {
+			check[k] = v
+		}
+	}
+	if bad := azarm.UnmatchedValues(snap, azarm.RenameValues(check, names)); len(bad) > 0 {
+		return nil, fmt.Errorf("--values: nothing in the snapshot has %s (keys are Kind/resourceGroup/name, as the snapshot spells them); nothing was restored", strings.Join(bad, ", "))
+	}
+	return azarm.RenameValues(vals, names), nil
+}
+
+func diffAzure(ctx context.Context, a *azureFlags, want snapshot.Snapshot, from string, vals map[string]map[string]any) int {
 	ad, err := a.connect(true)
 	if err != nil {
 		return fail(err)
 	}
+	// What --values sets is what a restore sent, so it is compared too:
+	// without it, every value a restore was given read as drift.
+	if len(vals) > 0 {
+		tenant, err := ad.API.Tenant(ctx)
+		if err != nil {
+			return fail(err)
+		}
+		want = azarm.WithValues(want, vals, ad.API.Subscription(), tenant)
+	}
 	if ad.Policy.Name() != want.Policy {
 		return fail(fmt.Errorf("snapshot was captured with policy %q but this diff would use %q; pass the same --types, --baseline and --capture-managed", want.Policy, ad.Policy.Name()))
 	}
-	warnSizes(ctx, ad.API, want, nil)
+	warnSizes(ctx, ad.API, want, vals)
+	warnHeld(ctx, ad.API, want)
 	got, err := ad.Capture(ctx)
 	if err != nil {
 		return fail(err)
@@ -270,8 +294,30 @@ func diffAzure(ctx context.Context, a *azureFlags, want snapshot.Snapshot, from 
 func compareTarget(platform string, want, got snapshot.Snapshot) []snapshot.Change {
 	if platform == "azure" {
 		want = azarm.AsCapturedNow(want)
+		want, got = azarm.ForCompare(want, got)
 	}
 	return snapshot.Compare(want, got)
+}
+
+// warnHeld says, before a restore or with a diff, which of the snapshot's
+// names a deleted resource holds in the target, and how to free each: a drill
+// lost a run to two SQL servers held this way.
+func warnHeld(ctx context.Context, api azarm.ARM, s snapshot.Snapshot) {
+	held, unread := azarm.NamesHeld(ctx, api, s)
+	namesHeld = &heldJSON{Held: append([]string{}, held...), Unread: append([]string{}, unread...)}
+	if len(held) > 0 {
+		fmt.Fprintf(os.Stderr, "WARNING: %d names are held by deleted resources, and Azure will refuse them:\n", len(held))
+		for _, x := range held {
+			fmt.Fprintln(os.Stderr, "  ", x)
+		}
+	}
+	for _, x := range unread {
+		fmt.Fprintln(os.Stderr, "NOTE: could not read the deleted resources at", x)
+	}
+	if azarm.HeldElsewhere(s) {
+		fmt.Fprintln(os.Stderr, "NOTE: names held: only deleted resources in this subscription are seen; a deleted key vault, API Management service, App Configuration store or Cognitive Services account in another subscription holds its name too")
+		namesHeld.OnlyThisSubscription = true
+	}
 }
 
 // warnSizes says, before a restore or with a diff, which VM sizes the target

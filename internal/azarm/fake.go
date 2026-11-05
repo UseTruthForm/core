@@ -65,6 +65,10 @@ type Fake struct {
 	// SKUs are the VM sizes the subscription is offered, by region in lower
 	// case, as Microsoft.Compute/skus lists them.
 	SKUs map[string][]map[string]any
+	// Deleted are the soft-deleted resources a provider lists, by the list's
+	// path below the subscription in lower case (/providers/microsoft.keyvault/
+	// deletedvaults).
+	Deleted map[string][]map[string]any
 	// PutDelay makes each PUT take this long, outside the lock, so PUTs
 	// running at once overlap as ARM's long-running ones do.
 	PutDelay time.Duration
@@ -473,6 +477,9 @@ func (f *Fake) List(ctx context.Context, path, version string) ([]map[string]any
 		}
 	}
 	path, query, _ := strings.Cut(path, "?")
+	if rest, ok := strings.CutPrefix(strings.ToLower(path), "/subscriptions/"+strings.ToLower(f.sub)); ok && strings.Contains(rest, "/deleted") {
+		return f.Deleted[rest], nil
+	}
 	if strings.HasSuffix(strings.ToLower(path), "/providers/microsoft.compute/skus") {
 		q, _ := url.ParseQuery(query)
 		m := skuFilterRE.FindStringSubmatch(q.Get("$filter"))

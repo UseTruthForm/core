@@ -316,13 +316,7 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 	// the first real restore reported a cluster whose node size --values
 	// had set as differing on every run after.
 	if v := opt.Values[valuesRef(o, rid)]; v != nil {
-		given := rewriteAll(deepCopy(v), func(s string) string { return tokenizeString(s, sub, tenant) }).(map[string]any)
-		if secrets, _ := ann[annSecrets].(string); secrets != "" {
-			for _, p := range strings.Split(secrets, ",") {
-				dropPath(given, strings.Split(p, "."))
-			}
-		}
-		merge(spec, given)
+		mergeGiven(spec, v, ann, sub, tenant)
 	}
 
 	existing, err := api.Get(ctx, id, ver)
@@ -346,8 +340,12 @@ func restoreOne(ctx context.Context, api ARM, reg *Registry, o snapshot.Object, 
 		if strings.EqualFold(rid.Type, vnetType) {
 			keepAttached(spec, got, byKey)
 		}
-		ch := snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{{Body: map[string]any{"apiVersion": APIVersion, "kind": o.Kind(), "metadata": o.Body["metadata"], "spec": spec}}}},
-			snapshot.Snapshot{Objects: []snapshot.Object{{Body: map[string]any{"apiVersion": APIVersion, "kind": o.Kind(), "metadata": o.Body["metadata"], "spec": got}}}})
+		// Compared as a diff compares (ForCompare), on copies: what is sent
+		// is the spec as it is.
+		cw, cg := deepCopy(spec), deepCopy(got)
+		comparable(o.Kind(), cw, cg)
+		ch := snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{{Body: map[string]any{"apiVersion": APIVersion, "kind": o.Kind(), "metadata": o.Body["metadata"], "spec": cw}}}},
+			snapshot.Snapshot{Objects: []snapshot.Object{{Body: map[string]any{"apiVersion": APIVersion, "kind": o.Kind(), "metadata": o.Body["metadata"], "spec": cg}}}})
 		if len(ch) == 0 {
 			return true, "already present and identical"
 		}

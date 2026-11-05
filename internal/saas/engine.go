@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/oauth2"
+
 	"github.com/stackdna/core/internal/readonly"
 	"github.com/stackdna/core/internal/snapshot"
 )
@@ -40,8 +42,11 @@ type Client struct {
 	Spec    *Spec
 	Account string
 	Token   string
-	HTTP    *http.Client
-	pace    *pacer // shared by copies, so one budget is kept for the account; NewClient sets it
+	// Tokens, when set, gives each request its token instead of Token: a
+	// sign-in that refreshes during a long run.
+	Tokens oauth2.TokenSource
+	HTTP   *http.Client
+	pace   *pacer // shared by copies, so one budget is kept for the account; NewClient sets it
 }
 
 // NewClient connects to an account. readOnly puts every request behind
@@ -141,8 +146,16 @@ func (c *Client) send(ctx context.Context, method, path string, body any) (any, 
 		req.Header.Set(k, v)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
+	token := c.Token
+	if c.Tokens != nil {
+		t, err := c.Tokens.Token()
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		token = t.AccessToken
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {

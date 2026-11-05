@@ -33,6 +33,9 @@ type Provider struct {
 	Headers map[string]string
 	// TokenEnv is the environment variable holding the API token.
 	TokenEnv string
+	// OAuth is the provider's sign-in for a person, used when TokenEnv is
+	// not set; nil where only a token works.
+	OAuth *OAuth
 	// Unavailable are messages with which the provider refuses a feature
 	// the account's plan does not include. Such a collection is recorded
 	// as not available, not as a failed read: GitHub answers rulesets on a
@@ -143,11 +146,21 @@ var GitHub = Provider{
 	},
 }
 
+// CloudflareClientID is StackDNA's registered Cloudflare OAuth client. It
+// is public (PKCE, no secret); a build without it signs in by token only.
+var CloudflareClientID = ""
+
 // Cloudflare is the descriptor for a Cloudflare account's zones and DNS.
 var Cloudflare = Provider{
 	Name: "cloudflare", Spec: "cloudflare.json", Base: "https://api.cloudflare.com/client/v4", Envelope: "result", Paging: "page", PageSize: 50,
 	SpecURL: "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
 	Account: "account", TokenEnv: "CLOUDFLARE_API_TOKEN",
+	OAuth: &OAuth{ClientID: CloudflareClientID,
+		AuthURL: "https://dash.cloudflare.com/oauth2/auth", TokenURL: "https://dash.cloudflare.com/oauth2/token",
+		// What capture, diff and restore of zones and DNS records need, and
+		// a refresh token so a sign-in outlives its hour.
+		Scopes: []string{"zone:read", "dns_records:read", "dns_records:edit", "offline_access"},
+		Ports:  []int{8976, 8977}},
 	Collections: []Collection{
 		{Kind: "cloudflare/zone", List: "/zones", Create: "/zones", Update: "/zones/{zone_id}", ListQuery: map[string]string{"account.id": "account"},
 			Bind: map[string]string{"zone_id": "item:id"}, Name: []string{"name"}},

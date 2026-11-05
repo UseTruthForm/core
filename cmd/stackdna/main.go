@@ -49,7 +49,9 @@ GCP (Cloud Asset Inventory and each API's Discovery document):
   stackdna restore --platform gcp --project <id> --from <dir> [--update]
   stackdna diff    --platform gcp --project <id> --from <dir> [--types <patterns>] [--baseline <dir>]
 
-SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN):
+SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN, or Cloudflare's sign-in):
+  stackdna login cloudflare [--no-browser]     sign in once in a browser; kept in the OS keychain
+  stackdna logout cloudflare
   stackdna capture --platform github --account <org> --out <dir>
   stackdna capture --platform cloudflare --account <account-id> --out <dir>
   stackdna restore --platform github --account <org> --from <dir> [--values <file>] [--update]
@@ -132,6 +134,10 @@ func main() {
 		code = checkCmd(ctx, args)
 	case "permissions":
 		code = permissionsCmd(args)
+	case "login":
+		code = loginCmd(ctx, args)
+	case "logout":
+		code = logoutCmd(args)
 	case "version", "--version", "-version":
 		fmt.Println(versionString())
 	default:

@@ -108,6 +108,11 @@ func Allowed(req *http.Request) (bool, string) {
 	if (host == "signin.aws.amazon.com" || strings.HasSuffix(host, ".signin.aws.amazon.com")) && req.Method == http.MethodPost && req.URL.Path == "/v1/token" {
 		return true, ""
 	}
+	// A Cloudflare sign-in refreshes at the dashboard's token endpoint;
+	// nothing else on that host is let through.
+	if host == "dash.cloudflare.com" && req.Method == http.MethodPost && req.URL.Path == "/oauth2/token" {
+		return true, ""
+	}
 	// The EC2 instance metadata service: a PUT for its session token.
 	if host == "169.254.169.254" && req.Method == http.MethodPut && req.URL.Path == "/latest/api/token" {
 		return true, ""

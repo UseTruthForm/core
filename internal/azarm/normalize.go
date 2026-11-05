@@ -134,6 +134,21 @@ func isDiagnosticsTable(typ, name string) bool {
 	return strings.EqualFold(typ, tablesType) && strings.EqualFold(name[strings.LastIndex(name, "/")+1:], "AzureDiagnostics")
 }
 
+// isAzureTable is a workspace table Azure defines (tableType Microsoft), not
+// one a person made: custom tables end in _CL, search results in _SRCH and
+// restored logs in _RST. Its schema is Azure's, as AzureDiagnostics' is, so
+// only what a person sets on it is kept. Captured whole, a first real restore
+// diffed one (AcsCallAutomationStreamingUsage) as changed: Azure gave the new
+// workspace's copy another display name and an empty column list. Read from the
+// name, since tableType is read-only and an older snapshot does not hold it.
+func isAzureTable(typ, name string) bool {
+	if !strings.EqualFold(typ, tablesType) {
+		return false
+	}
+	n := strings.ToUpper(name[strings.LastIndex(name, "/")+1:])
+	return !strings.HasSuffix(n, "_CL") && !strings.HasSuffix(n, "_SRCH") && !strings.HasSuffix(n, "_RST")
+}
+
 // diagnosticsTableOnly keeps what a person sets on AzureDiagnostics, with
 // the read-only *AsDefault flags from readOnly (a capture) or the spec (a
 // snapshot that has them).
@@ -237,7 +252,7 @@ func asCapturedNow(typ, name string, spec map[string]any) {
 	defaultOutboundAsMeant(typ, spec)
 	dropSetByAzurePaths(typ, spec)
 	dropSetByAzureAt(typ, spec)
-	if isDiagnosticsTable(typ, name) {
+	if isAzureTable(typ, name) {
 		diagnosticsTableOnly(spec, nil)
 	}
 }
@@ -305,7 +320,7 @@ func (s *Schema) normalize(body map[string]any) (map[string]any, split) {
 	spec = walkStrings(spec, canonicalNever).(map[string]any)
 	defaultOutboundAsMeant(s.Type, spec)
 	dropSetByAzureAt(s.Type, spec)
-	if isDiagnosticsTable(s.Type, name) {
+	if isAzureTable(s.Type, name) {
 		diagnosticsTableOnly(spec, sp.readOnly)
 	}
 	sort.Strings(sp.secrets)

@@ -109,12 +109,15 @@ func sizesOf(s snapshot.Snapshot, values map[string]map[string]any) (uses []size
 }
 
 // vmSizeRE is a value spelled as a VM size is, the whole value
-// (Standard_D2s_v5, Standard_DS3_v2), not a storage or network SKU
+// (Standard_D2s_v5, Standard_DS3_v2, and a GPU size that names its
+// accelerator, Standard_NC24ads_A100_v4, a confidential one,
+// Standard_DC2ads_cc_v5, and a constrained-vCPU one, Standard_M128-64ms), not a
+// storage or network SKU
 // (Standard_LRS, Standard). notVMSizeRE are SKUs spelled like one: an
 // application gateway's Standard_v2 and WAF_v2, a SignalR or Web PubSub
 // Standard_S1, a Premium_P1 (review of #72).
 var (
-	vmSizeRE    = regexp.MustCompile(`(?i)^(standard|basic)_[a-z]{1,4}\d+[a-z]*(_v\d+)?$`)
+	vmSizeRE    = regexp.MustCompile(`(?i)^(standard|basic)_[a-z]{1,4}\d+(-\d+)?[a-z]*(_[a-z]+\d*)?(_v\d+)?$`)
 	notVMSizeRE = regexp.MustCompile(`(?i)^([a-z]+_v\d+|(standard|premium|basic)_[sp]\d+)$`)
 )
 

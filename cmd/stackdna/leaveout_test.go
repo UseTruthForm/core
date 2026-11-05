@@ -179,3 +179,58 @@ func TestRestoreDocumentListsWhatWasLeftOut(t *testing.T) {
 		t.Errorf("left_out: %v", r["left_out"])
 	}
 }
+
+// A --values key that matches nothing was ignored, and the restore said
+// "created" with the snapshot's value (re-review of #73). It is refused before
+// anything is sent; a value for what --leave-out holds back is not a mistake.
+func TestRestoreRefusesAValuesKeyThatMatchesNothing(t *testing.T) {
+	if captureOnly {
+		t.Skip("restore is refused in the capture-only build")
+	}
+	dir, leave, dst := leaveOutWorld(t)
+	ctx := context.Background()
+	vals := filepath.Join(t.TempDir(), "values.yaml")
+	target := []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--from", dir, "--values", vals}
+	write := func(s string) {
+		if err := os.WriteFile(vals, []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("microsoft.network/privatednszones/rg/corp.example:\n  tags: {a: b}\n")
+	code, out, errOut := output(t, func() int { return restore(ctx, target) })
+	if code != 1 || !strings.Contains(errOut, "--values: nothing in the snapshot has microsoft.network/privatednszones/rg/corp.example (the snapshot has Microsoft.Network/privateDnsZones/rg/corp.example)") {
+		t.Errorf("a key in the wrong case: exit %d\n%s%s", code, out, errOut)
+	}
+	if _, err := dst.Get(ctx, "/subscriptions/"+leaveDst+"/resourceGroups/rg", "2024-11-01"); err == nil {
+		t.Error("something was restored before the refusal")
+	}
+	write(leaveKey + ":\n  properties: {ttl: 60}\n")
+	if code, out, errOut := output(t, func() int { return restore(ctx, append(target, "--leave-out", leave)) }); code != 0 {
+		t.Errorf("a value for what is left out was refused: exit %d\n%s%s", code, out, errOut)
+	}
+}
+
+// A held-back resource group is written Kind//name by --leave-out and
+// Kind/name in --values; a value for it was refused as matching nothing (third
+// review of #73).
+func TestAValueForAHeldBackGroupIsNotRefused(t *testing.T) {
+	if captureOnly {
+		t.Skip("restore is refused in the capture-only build")
+	}
+	dir, _, _ := leaveOutWorld(t)
+	ctx := context.Background()
+	leave := filepath.Join(t.TempDir(), "leave.yaml")
+	vals := filepath.Join(t.TempDir(), "values.yaml")
+	if err := os.WriteFile(leave, []byte("- Microsoft.Resources/resourceGroups//rg\n- Microsoft.Network/privateDnsZones/rg/corp.example\n- "+leaveKey+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(vals, []byte("Microsoft.Resources/resourceGroups/rg:\n  tags: {a: b}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := output(t, func() int {
+		return restore(ctx, []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--from", dir, "--leave-out", leave, "--values", vals})
+	})
+	if strings.Contains(errOut, "--values: nothing in the snapshot has") {
+		t.Errorf("a value for a held-back group was refused: exit %d\n%s%s", code, out, errOut)
+	}
+}

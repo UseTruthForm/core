@@ -398,3 +398,258 @@ func TestAzuresExtensionManagerIsNotSentOrCompared(t *testing.T) {
 		t.Errorf("a resumed restore: %s", r.Detail)
 	}
 }
+
+// AKS grants its own identities as it makes a cluster. In the first real
+// restore of one, the snapshot's grant to the same identity, role and scope was
+// refused as RoleAssignmentExists, under another name, and reported as not
+// applied. The access is there: it counts as applied, and says under which
+// name, once the grant there is read and matches in what the code does not
+// promise (review of #73: a condition or description may differ).
+func TestAGrantAzureAlreadyMadeIsApplied(t *testing.T) {
+	reg, src, dst := worlds(t)
+	ctx := context.Background()
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	props := func(f *Fake, desc string) map[string]any {
+		return map[string]any{"properties": map[string]any{
+			"principalId":      "22222222-2222-2222-2222-222222222222",
+			"principalType":    "ServicePrincipal",
+			"roleDefinitionId": "/subscriptions/" + f.sub + "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7",
+			"description":      desc,
+		}}
+	}
+	put(t, src, "rg", "Microsoft.Authorization/roleAssignments", "11111111-1111-1111-1111-111111111111", props(src, "pull"))
+	snap := capture(t, src, reg)
+	put(t, dst, "", groupType, "rg", map[string]any{"location": "eastus"})
+	refuse := func(why string) {
+		dst.PutError = func(id string, body map[string]any) error {
+			if strings.Contains(id, "/roleAssignments/11111111") {
+				return errors.New(why)
+			}
+			return nil
+		}
+	}
+	exists := "RESPONSE 409: RoleAssignmentExists: The role assignment already exists. The ID of the existing role assignment is 3333444455554666877788889999aaaa."
+	refuse("")
+	put(t, dst, "rg", "Microsoft.Authorization/roleAssignments", "33334444-5555-4666-8777-88889999aaaa", props(dst, "pull"))
+	refuse(exists)
+	rs := Restore(ctx, dst, reg, snap, RestoreOptions{})
+	allApplied(t, rs)
+	if r := resultFor(t, rs, "roleAssignments|rg|1111"); !strings.Contains(r.Detail, "already granted as 33334444-5555-4666-8777-88889999aaaa") {
+		t.Errorf("does not say it is already granted, and as what: %s", r.Detail)
+	}
+	// The same principal, role and scope, described otherwise: not the same.
+	refuse("")
+	put(t, dst, "rg", "Microsoft.Authorization/roleAssignments", "33334444-5555-4666-8777-88889999aaaa", props(dst, "something else"))
+	refuse(exists)
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "roleAssignments|rg|1111"); r.OK || !strings.Contains(r.Detail, "description") {
+		t.Errorf("a grant that differs counted as applied: %v %s", r.OK, r.Detail)
+	}
+	// Any other refusal of a grant is still one.
+	refuse("RESPONSE 403: AuthorizationFailed")
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "roleAssignments|rg|1111"); r.OK {
+		t.Errorf("another refusal of a grant counted as applied: %s", r.Detail)
+	}
+}
+
+// A new backup vault without soft delete and enhanced security AlwaysON was
+// accepted and then failed in the first real restore of one, and the restore
+// said only "not found". Microsoft does not document the rule (review of #73),
+// so it is sent as captured; a refusal says what to look for and how to give
+// AlwaysON, and given it, the vault is sent so.
+func TestABackupVaultSaysAzureWantsAlwaysOn(t *testing.T) {
+	reg, src, dst := worlds(t)
+	ctx := context.Background()
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	put(t, src, "rg", vaultType, "vlt", map[string]any{"location": "eastus", "sku": map[string]any{"name": "RS0", "tier": "Standard"},
+		"properties": map[string]any{"securitySettings": map[string]any{"softDeleteSettings": map[string]any{"softDeleteState": "Enabled", "enhancedSecurityState": "Enabled", "softDeleteRetentionPeriodInDays": 14}}}})
+	snap := capture(t, src, reg)
+	// Azure that takes it: sent as captured.
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "|vlt"); !r.OK {
+		t.Fatalf("a vault Azure takes was not sent: %s", r.Detail)
+	}
+	_, _, dst = worlds(t)
+	var sent string
+	dst.PutError = func(id string, body map[string]any) error {
+		if strings.HasSuffix(id, "/vaults/vlt") {
+			sent = canon(body)
+			if !strings.Contains(sent, `"softDeleteState":"AlwaysON"`) {
+				return errors.New("RESPONSE 404: ResourceNotFound")
+			}
+		}
+		return nil
+	}
+	r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "|vlt")
+	if r.OK || !strings.Contains(r.Detail, "ResourceNotFound") || !strings.Contains(r.Detail, "softDeleteState Enabled, enhancedSecurityState Enabled") || !strings.Contains(r.Detail, "BMSUserErrorSoftDeleteStateNotSetToAlwaysON") || !strings.Contains(r.Detail, "--values") {
+		t.Errorf("a refused vault: %v %s", r.OK, r.Detail)
+	}
+	always := map[string]map[string]any{"Microsoft.RecoveryServices/vaults/rg/vlt": {"properties": map[string]any{"securitySettings": map[string]any{"softDeleteSettings": map[string]any{"softDeleteState": "AlwaysON", "enhancedSecurityState": "AlwaysON"}}}}}
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{Values: always}), "|vlt"); !r.OK || !strings.Contains(sent, `"enhancedSecurityState":"AlwaysON"`) {
+		t.Errorf("given AlwaysON, the vault is not sent so: %s %s", r.Detail, sent)
+	}
+	// Another refusal of a vault that is AlwaysON says nothing of it.
+	dst.PutError = func(id string, body map[string]any) error {
+		if strings.HasSuffix(id, "/vaults/vlt") {
+			return errors.New("RESPONSE 400: BadRequest")
+		}
+		return nil
+	}
+	_, _, fresh := worlds(t)
+	fresh.PutError = dst.PutError
+	if r := resultFor(t, Restore(ctx, fresh, reg, snap, RestoreOptions{Values: always}), "|vlt"); strings.Contains(r.Detail, "BMSUserError") {
+		t.Errorf("an AlwaysON vault's refusal blames AlwaysON: %s", r.Detail)
+	}
+}
+
+// AKS gives every cluster a windowsProfile, and refuses to make one without its
+// admin password, though no pool runs Windows. In the first real restore of a
+// cluster, Azure's answer was only "the value of parameter
+// windowsProfile.adminPassword is invalid". The restore says what to give, and
+// sends the cluster once it is given.
+func TestAClusterSaysItNeedsItsWindowsPassword(t *testing.T) {
+	reg, src, dst := worlds(t)
+	ctx := context.Background()
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	src.SeedAzure(id(srcSub, "rg", managedClusterType, "aks"), stable(reg, managedClusterType), map[string]any{"location": "eastus", "properties": map[string]any{
+		"dnsPrefix": "aks", "windowsProfile": map[string]any{"adminUsername": "azureuser"},
+		"agentPoolProfiles": []any{map[string]any{"name": "sys", "mode": "System", "count": 1, "vmSize": "Standard_D2s_v5"}}}})
+	snap := capture(t, src, reg)
+	r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "|aks")
+	if r.OK || !strings.Contains(r.Detail, "properties.windowsProfile.adminPassword with --values") {
+		t.Errorf("a cluster Azure will refuse: %v %s", r.OK, r.Detail)
+	}
+	pw := map[string]map[string]any{managedClusterType + "/rg/aks": {"properties": map[string]any{"windowsProfile": map[string]any{"adminPassword": "Zz9!" + strings.Repeat("x", 20)}}}}
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{Values: pw}), "|aks"); !r.OK {
+		t.Errorf("given its password, the cluster is not sent: %s", r.Detail)
+	}
+}
+
+// What --values sets is sent, so a resumed restore with the same --values
+// must find it identical. In the first real restore of a cluster, the node size
+// --values set was compared against the snapshot alone and reported as
+// differing on every run after. A secret given the same way is not compared:
+// Azure never returns it.
+func TestWhatValuesSetIsNotADifferenceOnTheNextRun(t *testing.T) {
+	reg, src, dst := worlds(t)
+	ctx := context.Background()
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	src.SeedAzure(id(srcSub, "rg", managedClusterType, "aks"), stable(reg, managedClusterType), map[string]any{"location": "eastus", "properties": map[string]any{
+		"dnsPrefix": "aks", "windowsProfile": map[string]any{"adminUsername": "azureuser"},
+		"agentPoolProfiles": []any{map[string]any{"name": "sys", "mode": "System", "count": 1, "vmSize": "Standard_D2s_v5"}}}})
+	snap := capture(t, src, reg)
+	vals := map[string]map[string]any{managedClusterType + "/rg/aks": {"properties": map[string]any{
+		"windowsProfile":    map[string]any{"adminPassword": "Zz9!" + strings.Repeat("x", 20)},
+		"agentPoolProfiles": []any{map[string]any{"name": "sys", "mode": "System", "count": 1, "vmSize": "Standard_D4s_v5"}}}}}
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{Values: vals}), "|aks"); !r.OK {
+		t.Fatalf("first run: %s", r.Detail)
+	}
+	r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{Values: vals}), "|aks")
+	if !r.OK || !strings.Contains(r.Detail, "identical") {
+		t.Errorf("a resumed run with the same --values: %v %s", r.OK, r.Detail)
+	}
+	// Without the --values, the size it set is a difference.
+	if r := resultFor(t, Restore(ctx, dst, reg, snap, RestoreOptions{}), "|aks"); r.OK || !strings.Contains(r.Detail, "vmSize") {
+		t.Errorf("without --values the set size is not a difference: %v %s", r.OK, r.Detail)
+	}
+}
+
+// A table Azure defines has Azure's schema, as AzureDiagnostics does. Captured
+// whole, a first real restore diffed one (AcsCallAutomationStreamingUsage) as
+// changed: Azure gave the new workspace's copy another display name and an empty
+// column list. Only what a person sets on it is kept; a custom table (_CL) keeps
+// its whole schema, which a person made.
+func TestATableAzureDefinesKeepsOnlyWhatAPersonSets(t *testing.T) {
+	reg, src, dst := worlds(t)
+	ctx := context.Background()
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	w := put(t, src, "rg", "Microsoft.OperationalInsights/workspaces", "law", map[string]any{"location": "eastus"})
+	retention := func(schema map[string]any) map[string]any {
+		return map[string]any{"properties": map[string]any{"retentionInDays": 90, "retentionInDaysAsDefault": false, "totalRetentionInDays": 90, "totalRetentionInDaysAsDefault": true, "plan": "Analytics", "schema": schema}}
+	}
+	src.SeedAzure(w+"/tables/AppTraces", stable(reg, tablesType), retention(map[string]any{"name": "AppTraces", "displayName": "AppTraces", "columns": []any{}}))
+	src.SeedAzure(w+"/tables/Orders_CL", stable(reg, tablesType), retention(map[string]any{"name": "Orders_CL", "columns": []any{map[string]any{"name": "OrderId", "type": "string"}}}))
+	snap := capture(t, src, reg)
+	specs := map[string]string{}
+	for _, o := range snap.Objects {
+		specs[o.Name()] = canon(o.Body["spec"])
+	}
+	if got := specs["law/AppTraces"]; strings.Contains(got, "displayName") || strings.Contains(got, "schema") || !strings.Contains(got, `"retentionInDays":90`) {
+		t.Errorf("Azure's table: %s", got)
+	}
+	if got := specs["law/Orders_CL"]; !strings.Contains(got, "OrderId") {
+		t.Errorf("a custom table lost its schema: %s", got)
+	}
+	// Another workspace's copy, as Azure gives it: the display name in other
+	// case and no columns. Not a difference.
+	put(t, dst, "", groupType, "rg", map[string]any{"location": "eastus"})
+	dw := put(t, dst, "rg", "Microsoft.OperationalInsights/workspaces", "law", map[string]any{"location": "eastus"})
+	dst.SeedAzure(dw+"/tables/AppTraces", stable(reg, tablesType), retention(map[string]any{"name": "AppTraces", "displayName": "APPTraces"}))
+	dst.SeedAzure(dw+"/tables/Orders_CL", stable(reg, tablesType), retention(map[string]any{"name": "Orders_CL", "columns": []any{map[string]any{"name": "OrderId", "type": "string"}}}))
+	for _, ch := range snapshot.Compare(snap, capture(t, dst, reg)) {
+		if strings.Contains(ch.Key, "/tables|") || strings.Contains(ch.Key, "law/") {
+			t.Errorf("a difference Azure made: %s %v", ch.Key, ch.Fields)
+		}
+	}
+	// An older snapshot holds the whole schema, and is compared as captured now.
+	old := snap
+	old.Objects = nil
+	for _, o := range snap.Objects {
+		if o.Name() == "law/AppTraces" {
+			o = snapshot.Object{Body: deepCopy(o.Body)}
+			o.Body["spec"].(map[string]any)["properties"].(map[string]any)["schema"] = map[string]any{"name": "AppTraces", "displayName": "AppTraces"}
+		}
+		old.Objects = append(old.Objects, o)
+	}
+	for _, ch := range snapshot.Compare(AsCapturedNow(old), capture(t, dst, reg)) {
+		if strings.Contains(ch.Key, "AppTraces") {
+			t.Errorf("an older snapshot's Azure table: %v", ch.Fields)
+		}
+	}
+	_ = ctx
+}
+
+// In the first real restore of a cluster, a peering to the cluster's own
+// network and a DNS link to it were sent while the cluster was being made, and
+// refused: capture skips the node resource group and the network AKS made in
+// it, so nothing stood between them (review of #73: a wait on the group did
+// nothing under the default capture). What names the node group waits for the
+// cluster; the cluster, which names its own node group, does not wait for
+// itself (review of #73: a cycle).
+func TestWhatNamesAClustersNetworkWaitsForTheCluster(t *testing.T) {
+	reg, src, _ := worlds(t)
+	ctx := context.Background()
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	cluster := id(srcSub, "rg", managedClusterType, "aks")
+	nodes := "/subscriptions/" + srcSub + "/resourceGroups/nodes"
+	src.SeedAzure(nodes, stable(reg, groupType), map[string]any{"location": "eastus"})
+	src.ManagedBy[strings.ToLower(nodes)] = cluster
+	src.SeedAzure(nodes+"/providers/Microsoft.Network/virtualNetworks/aks-vnet", stable(reg, vnetType), map[string]any{"location": "eastus", "tags": map[string]any{"aks-managed-cluster-name": "aks"}, "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.224.0.0/12"}}}})
+	src.SeedAzure(cluster, stable(reg, managedClusterType), map[string]any{"location": "eastus", "properties": map[string]any{
+		"dnsPrefix": "aks", "nodeResourceGroup": "nodes",
+		"identityProfile":   map[string]any{"kubeletidentity": map[string]any{"resourceId": nodes + "/providers/Microsoft.ManagedIdentity/userAssignedIdentities/aks-agentpool"}},
+		"agentPoolProfiles": []any{map[string]any{"name": "sys", "mode": "System", "count": 1, "vmSize": "Standard_D2s_v5"}}}})
+	hub := put(t, src, "rg", vnetType, "hub", map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.0.0.0/16"}}}})
+	src.SeedAzure(hub+"/virtualNetworkPeerings/to-aks", stable(reg, "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"), map[string]any{"properties": map[string]any{
+		"remoteVirtualNetwork": map[string]any{"id": nodes + "/providers/Microsoft.Network/virtualNetworks/aks-vnet"}}})
+	snap := capture(t, src, reg)
+	for _, o := range snap.Objects {
+		if strings.EqualFold(o.Namespace(), "nodes") || o.Name() == "nodes" {
+			t.Fatalf("the default capture took the node group's %s; the test needs it skipped", o.Key())
+		}
+	}
+	order, cyclic, depIdx := restoreGraph(snap.Objects)
+	if len(cyclic) != 0 {
+		t.Fatalf("cycle: %v", cyclic)
+	}
+	waits := false
+	for i, o := range order {
+		if o.Name() == "hub/to-aks" {
+			for _, j := range depIdx[i] {
+				waits = waits || order[j].Kind() == managedClusterType
+			}
+		}
+	}
+	if !waits {
+		t.Error("the peering to the cluster's network does not wait for the cluster")
+	}
+	_ = ctx
+}

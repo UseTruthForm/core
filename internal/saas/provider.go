@@ -159,7 +159,7 @@ var Cloudflare = Provider{
 		AuthURL: "https://dash.cloudflare.com/oauth2/auth", TokenURL: "https://dash.cloudflare.com/oauth2/token",
 		// What capture, diff and restore of zones and DNS records need, and
 		// a refresh token so a sign-in outlives its hour.
-		Scopes: []string{"zone:read", "dns_records:read", "dns_records:edit", "offline_access"},
+		Scopes: []string{"zone.read", "dns.read", "dns.write", "offline_access"},
 		Ports:  []int{8976, 8977}},
 	Collections: []Collection{
 		{Kind: "cloudflare/zone", List: "/zones", Create: "/zones", Update: "/zones/{zone_id}", ListQuery: map[string]string{"account.id": "account"},

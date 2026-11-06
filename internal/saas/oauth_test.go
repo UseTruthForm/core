@@ -283,3 +283,12 @@ func TestTheGuardPassesOnlyTheCloudflareTokenEndpoint(t *testing.T) {
 		}
 	}
 }
+
+// Cloudflare's scope IDs are dotted (zone.read); it refuses colon-delimited
+// names, so a sign-in asking for them never reaches the consent screen.
+func TestCloudflareAsksForItsOwnScopeIDs(t *testing.T) {
+	want := []string{"zone.read", "dns.read", "dns.write", "offline_access"}
+	if got := Providers["cloudflare"].OAuth.Scopes; strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("scopes = %v, want %v", got, want)
+	}
+}

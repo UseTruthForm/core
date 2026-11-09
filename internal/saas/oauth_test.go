@@ -382,3 +382,28 @@ func TestASignInAnswersOnTheIPv6Loopback(t *testing.T) {
 		t.Fatalf("token %v, err %v", tok, err)
 	}
 }
+
+// The snapshot says so too: a capture over a spec without the envelope
+// writes the gap on each object, rather than leaving it looking checked.
+func TestACaptureWritesTheUncheckedGap(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"result":[{"name":"a","ttl":1}],"result_info":{"total_pages":1}}`)
+	}))
+	defer api.Close()
+	sp := &Spec{doc: map[string]any{"paths": map[string]any{
+		"/things": map[string]any{
+			"get":  map[string]any{"responses": map[string]any{"200": map[string]any{"content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"items": map[string]any{"type": "array"}}}}}}}},
+			"post": map[string]any{"requestBody": map[string]any{"content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"ttl": map[string]any{"type": "integer"}}}}}}},
+		},
+	}}}
+	p := Provider{Name: "t", Base: api.URL, Envelope: "result", Collections: []Collection{{Kind: "t/thing", List: "/things", Create: "/things", Name: []string{"name"}}}}
+	c := &Client{P: p, Spec: sp, HTTP: http.DefaultClient, pace: &pacer{}, Tokens: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "t"})}
+	snap, err := (&Adapter{Client: c}).Capture(context.Background())
+	if err != nil || len(snap.Objects) != 1 {
+		t.Fatalf("capture: %v, %d objects", err, len(snap.Objects))
+	}
+	ann, _ := snap.Objects[0].Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+	if why, _ := ann[annUnchecked].(string); !strings.Contains(why, `no "result" envelope`) {
+		t.Fatalf("annotations %v, want the unchecked gap", ann)
+	}
+}

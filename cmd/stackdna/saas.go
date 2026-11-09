@@ -10,6 +10,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/stackdna/core/internal/readonly"
 	"github.com/stackdna/core/internal/saas"
 	"github.com/stackdna/core/internal/snapshot"
 )
@@ -25,7 +26,8 @@ func (s *saasFlags) register(fs *flag.FlagSet) {
 }
 
 // connect builds a client. The token comes from the provider's environment
-// variable (GITHUB_TOKEN, CLOUDFLARE_API_TOKEN) and is never written.
+// variable (GITHUB_TOKEN, CLOUDFLARE_API_TOKEN), else from the person's
+// sign-in (stackdna login cloudflare); it is never written to a snapshot.
 func (s *saasFlags) connect(platform string, readOnly bool) (*saas.Adapter, error) {
 	p, ok := saas.Providers[platform]
 	if !ok {
@@ -34,12 +36,14 @@ func (s *saasFlags) connect(platform string, readOnly bool) (*saas.Adapter, erro
 	if s.account == "" {
 		return nil, fmt.Errorf("--account is required for --platform %s (capture and restore never guess their target)", platform)
 	}
-	token := os.Getenv(p.TokenEnv)
-	if token == "" {
-		return nil, fmt.Errorf("%s is not set; %s needs an API token", p.TokenEnv, platform)
+	// The environment's token, else the person's sign-in. A refresh goes
+	// behind the read-only guard, which lets the token endpoint through.
+	tokens, how, err := saas.Tokens(p, keychain, readonly.Client())
+	if err != nil {
+		return nil, err
 	}
+	tokenNote(platform, how)
 	var spec *saas.Spec
-	var err error
 	if s.specDir != "" {
 		spec, err = saas.LoadSpec(filepath.Join(s.specDir, p.Spec))
 	} else {
@@ -51,7 +55,9 @@ func (s *saasFlags) connect(platform string, readOnly bool) (*saas.Adapter, erro
 	if err != nil {
 		return nil, err
 	}
-	return &saas.Adapter{Client: saas.NewClient(p, spec, s.account, token, readOnly)}, nil
+	c := saas.NewClient(p, spec, s.account, "", readOnly)
+	c.Tokens = tokens
+	return &saas.Adapter{Client: c}, nil
 }
 
 func captureSaaS(ctx context.Context, platform string, s *saasFlags, out string) int {

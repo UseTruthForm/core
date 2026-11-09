@@ -277,3 +277,16 @@ func TestCloudflareACMEChallengeIsTransient(t *testing.T) {
 		t.Error("the _acme-challenge CNAME delegation is configuration and must be kept")
 	}
 }
+
+// Cloudflare wraps each read in its result envelope. A record's fields are
+// read inside it, so a snapshot that holds a record's TTL and proxy status
+// does not also claim the read never returns them.
+func TestCloudflareReadsItsFieldsInsideTheEnvelope(t *testing.T) {
+	c := &Client{P: Cloudflare, Spec: spec(t, "cloudflare.json")}
+	for i := range Cloudflare.Collections {
+		col := &Cloudflare.Collections[i]
+		if u := c.unreadable(col); len(u) > 0 {
+			t.Errorf("%s: claims the read never returns %v", col.Kind, u)
+		}
+	}
+}

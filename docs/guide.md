@@ -46,6 +46,27 @@ is not a permission, and the same capture run later, or with a lower
 `--parallel`, reads it. It exits 3 when anything is denied, throttled or
 failed.
 
+### Signing in to Cloudflare
+
+No token to make: `stackdna login cloudflare` opens Cloudflare's sign-in
+in a browser, you approve StackDNA, and the sign-in is kept in the OS
+keychain (Secret Service, macOS Keychain, Windows Credential Manager) and
+refreshed as it expires. It asks for zone read and DNS read, plus DNS
+write in the full edition only: the capture-only edition's sign-in grants
+no write at all. Capture, diff and restore then use it; a restore needs a
+sign-in made with the full edition.
+
+- `CLOUDFLARE_API_TOKEN`, when set, comes first, for CI and machines with
+  no browser; a run says which one it used.
+- Without a keychain (a bare server), login says so and stores nothing;
+  set the token instead. No file is written in its place.
+- `stackdna logout cloudflare` forgets the sign-in on this machine; revoke
+  StackDNA in the Cloudflare dashboard to end the grant itself.
+- A capture-only build signs in too: its read-only guard lets
+  Cloudflare's token endpoint through and nothing else on that host.
+- `STACKDNA_CLOUDFLARE_CLIENT_ID` signs in as another registered OAuth
+  client, such as your organisation's own, in place of StackDNA's.
+
 ## Capture
 
 ```sh

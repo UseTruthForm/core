@@ -126,7 +126,10 @@ are. The common ones:
 - **GitHub.** Use a fine-grained token. A classic token cannot read an
   organisation's settings without `repo` and `admin:org`, which both
   write. Fine-grained tokens may need the organisation's approval.
-- **Cloudflare.** Not yet run against a real account. Say so.
+- **Cloudflare.** Not yet run against a real account. Say so. A person
+  signs in with `stackdna login cloudflare` (browser, kept in the OS
+  keychain); never ask them to make or paste a token. CI sets
+  `CLOUDFLARE_API_TOKEN`.
 
 ## Planning a restore
 

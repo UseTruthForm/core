@@ -41,7 +41,7 @@ for target in $TARGETS; do
     mkdir -p "$OUT/$name"
     # ${tags[@]+...}: an empty array under set -u aborts macOS's bash 3.2.
     CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath ${tags[@]+"${tags[@]}"} \
-      -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.built=$BUILT" \
+      -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.built=$BUILT -X github.com/stackdna/core/internal/saas.CloudflareClientID=${STACKDNA_CLOUDFLARE_CLIENT_ID:-}" \
       -o "$OUT/$name/$exe" ./cmd/stackdna
     # The customer's README and guides, not the repository's README: that
     # one is for StackDNA's developers (the dev loop, Tilt ports, internal

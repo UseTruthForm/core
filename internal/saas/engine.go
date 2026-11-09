@@ -285,11 +285,11 @@ func (c *Client) unreadable(col *Collection) []string {
 	var read *Fields
 	if col.Get != "" {
 		if r := c.Spec.ResponseSchema(col.Get, "get"); r != nil {
-			read = c.Spec.fields(r, 0)
+			read = c.enveloped(c.Spec.fields(r, 0))
 		}
 	} else if r := c.Spec.ResponseSchema(col.List, "get"); r != nil {
-		read = c.Spec.fields(r, 0)
-		if !col.Singleton {
+		read = c.enveloped(c.Spec.fields(r, 0))
+		if read != nil && !col.Singleton {
 			if col.Array != "" && read.Children[col.Array] != nil {
 				read = read.Children[col.Array]
 			}
@@ -314,6 +314,15 @@ func (c *Client) unreadable(col *Collection) []string {
 		}
 	}
 	return out
+}
+
+// enveloped is a response's fields inside the provider's envelope
+// (Cloudflare's result), where the item is; without one, the response.
+func (c *Client) enveloped(f *Fields) *Fields {
+	if c.P.Envelope == "" || f == nil {
+		return f
+	}
+	return f.Children[c.P.Envelope]
 }
 
 func hasString(list []string, s string) bool {

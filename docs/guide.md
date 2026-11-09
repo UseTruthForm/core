@@ -235,6 +235,41 @@ stackdna restore --platform aws --region us-east-2 --from snap/aws --values secr
   exit 3) and keeps it when run again with `--update`; a retention inherited
   from the workspace is left to the workspace. One with only the workspace's
   defaults does not hold the restore up.
+- **`--dry-run` (GitHub, Cloudflare)** reads the target and prints each
+  write the restore would make (`would create`, `would update`), and makes
+  none: its client refuses every write.
+
+### A second environment's DNS in the same zone (Cloudflare)
+
+```sh
+stackdna restore --platform cloudflare --account <id> --from snap/cloudflare \
+  --subdomain test.example.com --address 192.0.2.1=198.51.100.7 --dry-run
+```
+
+`--subdomain` restores one zone's records a level down, beside the
+originals: `example.com` becomes `test.example.com`, `www.example.com`
+becomes `www.test.example.com`, and a CNAME to a name in the zone follows.
+
+- **Only names under the subdomain are written.** The zone is used as it is
+  and never created or changed; other zones in the snapshot are left out.
+- **Each record it writes carries the comment `stackdna: test.example.com`.**
+  Only a record with that comment is StackDNA's to change, with `--update`.
+- **It reads the zone first and stops before writing anything** when a
+  record it did not make is at a name it would write, when the subdomain is
+  delegated or a zone of its own, or when an A or AAAA record would keep the
+  source's address. Name each target address with `--address
+  <source-ip>=<target-ip>`: the source's would send the new names to the
+  source's servers.
+- **Mail, delegations and ACME records stay out:** MX, SPF, DKIM, DMARC,
+  MTA-STS and autodiscovery records, NS records, `_acme-challenge`.
+- **It warns of a wildcard above the subdomain** (`*.example.com`). Today it
+  answers for `test.example.com` and every name below it. Once any of those
+  names exists, it no longer does, and a name there the restore does not
+  create stops resolving.
+- **A record made by an earlier run that the snapshot no longer has** is
+  reported and left in place; nothing is deleted.
+- `diff --subdomain test.example.com` (with the same `--address`) compares
+  the records under the subdomain with the snapshot as the restore put it.
 
 ## A whole environment
 

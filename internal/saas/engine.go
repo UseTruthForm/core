@@ -560,6 +560,16 @@ type RestoreOptions struct {
 	// Update brings an existing item that differs in line with the
 	// snapshot, through its update operation (or the PUT that creates it).
 	Update bool
+	// DryRun reads the target and reports each write the restore would
+	// make ("would create", "would update"), and makes none.
+	DryRun bool
+	// Present lists kinds the restore only finds in the target (the zone a
+	// subdomain restore writes records into): one there is used as it is,
+	// never changed, and one missing is not made.
+	Present map[string]bool
+	// Allow, when set, is asked before every write, with the item the
+	// write would change (nil for a create); a reason refuses the write.
+	Allow func(o snapshot.Object, existing map[string]any) string
 }
 
 // Restore creates what is missing, parents first. An item that exists is
@@ -648,6 +658,12 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 			listed[lk][itemName(col, raw)] = it
 		}
 	}
+	if ex, ok := listed[lk][own]; ok && opt.Present[col.Kind] {
+		targets[col.Kind+"|"+full] = ex.raw
+		return true, "present; used as it is"
+	} else if !ok && opt.Present[col.Kind] {
+		return false, "not in the target, and this restore does not make one"
+	}
 	if ex, ok := listed[lk][own]; ok {
 		targets[col.Kind+"|"+full] = ex.raw
 		if canon(ex.spec) == canon(spec) {
@@ -662,6 +678,14 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		newParent := col.Parent != "" && made[col.Parent+"|"+parentName]
 		if !opt.Update && !(col.Singleton && newParent) {
 			return false, "already exists and differs (" + strings.Join(changed, ", ") + "); not modified (--update modifies it)"
+		}
+		if opt.Allow != nil {
+			if why := opt.Allow(o, ex.raw); why != "" {
+				return false, "already exists and differs (" + strings.Join(changed, ", ") + "); not modified: " + why
+			}
+		}
+		if opt.DryRun {
+			return true, "would update (" + strings.Join(changed, ", ") + ")"
 		}
 		if !col.Singleton {
 			return c.update(ctx, col, o, ex, spec, parentRaw, changed, targets, opt)
@@ -700,6 +724,16 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 	path, ok := expand(col.Create, col.Bind, c.Account, parentRaw, desired)
 	if !ok {
 		return false, "cannot fill " + col.Create
+	}
+	if opt.Allow != nil {
+		if why := opt.Allow(o, nil); why != "" {
+			return false, "not created: " + why
+		}
+	}
+	if opt.DryRun {
+		targets[col.Kind+"|"+full] = desired
+		made[col.Kind+"|"+full] = true
+		return true, "would create"
 	}
 	created, _, err := c.do(ctx, col.createMethod(), path, body)
 	if err != nil {

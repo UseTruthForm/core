@@ -54,7 +54,12 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN, or C
   stackdna logout cloudflare
   stackdna capture --platform github --account <org> --out <dir>
   stackdna capture --platform cloudflare --account <account-id> --out <dir>
-  stackdna restore --platform github --account <org> --from <dir> [--values <file>] [--update]
+  stackdna restore --platform github --account <org> --from <dir> [--values <file>] [--update] [--dry-run]
+  stackdna restore --platform cloudflare --account <account-id> --from <dir> [--update] [--dry-run]
+      [--subdomain test.example.com [--address <source-ip>=<target-ip>,...] [--target <source-host>=<target-host>,...]]
+      the zone's records one level down (www.example.com -> www.test.example.com), marked as StackDNA's;
+      checks the zone first and stops on any conflict, before it writes
+  stackdna diff    --platform cloudflare --account <account-id> --from <dir> [--subdomain test.example.com [--address ...] [--target ...]]
 
 Machine-readable: add --json to capture, diff, restore, compare, check or permissions; stdout is then
 one JSON document (everything else goes to stderr) and the exit code is unchanged.
@@ -251,6 +256,7 @@ func restore(ctx context.Context, args []string) int {
 	rename := fs.String("rename", "", renameHelp)
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
+	dryRun := fs.Bool("dry-run", false, "github, cloudflare: read the target and print every write the restore would make; make none")
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
@@ -259,10 +265,17 @@ func restore(ctx context.Context, args []string) int {
 	g.register(fs)
 	var sf saasFlags
 	sf.register(fs)
+	sf.registerSubdomain(fs, true)
 	if err := parseFlags(fs, args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
 		}
+		return fail(err)
+	}
+	if err := dryRunAccepted(*platform, *dryRun); err != nil {
+		return fail(err)
+	}
+	if err := sf.subdomainAccepted(*platform); err != nil {
 		return fail(err)
 	}
 	if *from == "" || (*kctx == "" && *platform == "kubernetes") {
@@ -306,7 +319,7 @@ func restore(ctx context.Context, args []string) int {
 		g.from(&aws, "")
 		return restoreGCP(ctx, &g, snap, *update)
 	case "github", "cloudflare":
-		return restoreSaaS(ctx, *platform, &sf, snap, *values, *update)
+		return restoreSaaS(ctx, *platform, &sf, snap, *values, *update, *dryRun)
 	}
 	c, err := kube.Connect(*kubeconfig, *kctx, captureOnly)
 	if err != nil {
@@ -358,10 +371,14 @@ func diff(ctx context.Context, args []string) int {
 	g.register(fs)
 	var sf saasFlags
 	sf.register(fs)
+	sf.registerSubdomain(fs, false)
 	if err := parseFlags(fs, args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
 		}
+		return fail(err)
+	}
+	if err := sf.subdomainAccepted(*platform); err != nil {
 		return fail(err)
 	}
 	if *values != "" && *platform != "azure" {
@@ -606,6 +623,15 @@ func warnGaps(s snapshot.Snapshot) {
 	if g := gaps(s); len(g) > 0 {
 		fmt.Printf("INCOMPLETE SNAPSHOT: its capture could not read %d things, and neither restore nor diff can see them; see REPORT.md\n", len(g))
 	}
+}
+
+// dryRunAccepted refuses --dry-run where the restore would not honour it:
+// elsewhere it would apply everything it was meant to only list.
+func dryRunAccepted(platform string, dryRun bool) error {
+	if dryRun && platform != "github" && platform != "cloudflare" {
+		return fmt.Errorf("--dry-run is for --platform github or cloudflare; nothing was restored")
+	}
+	return nil
 }
 
 // valuesAccepted refuses --values where nothing reads it. A restore that

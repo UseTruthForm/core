@@ -48,7 +48,8 @@ func TestLoginKeepsTheSignInAndLogoutForgetsIt(t *testing.T) {
 
 	p := saas.Providers["cloudflare"]
 	saved := p
-	p.OAuth = &saas.OAuth{ClientID: "client", AuthURL: auth.URL + "/oauth2/auth", TokenURL: auth.URL + "/oauth2/token", Ports: []int{port}}
+	p.OAuth = &saas.OAuth{ClientID: "client", AuthURL: auth.URL + "/oauth2/auth", TokenURL: auth.URL + "/oauth2/token", Ports: []int{port},
+		Scopes: []string{"zone.read"}, WriteScopes: []string{"dns.write"}}
 	saas.Providers["cloudflare"] = p
 	defer func() { saas.Providers["cloudflare"] = saved }()
 	keychain = &memKeychain{m: map[string]string{}}
@@ -77,6 +78,12 @@ func TestLoginKeepsTheSignInAndLogoutForgetsIt(t *testing.T) {
 	}
 	if !strings.Contains(opened, "code_challenge_method=S256") {
 		t.Fatalf("opened %q, want a PKCE sign-in", opened)
+	}
+	// The capture-only edition asks for no write: the token it keeps grants
+	// none to anything that later reads it from the keychain.
+	u, _ := url.Parse(opened)
+	if got, want := u.Query().Get("scope"), map[bool]string{true: "zone.read", false: "zone.read dns.write"}[captureOnly]; got != want {
+		t.Fatalf("captureOnly=%v asked for scope %q, want %q", captureOnly, got, want)
 	}
 	src, how, err := saas.Tokens(saas.Providers["cloudflare"], keychain, http.DefaultClient)
 	if err != nil || how != "sign-in" {

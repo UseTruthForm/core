@@ -51,8 +51,10 @@ failed.
 No token to make: `stackdna login cloudflare` opens Cloudflare's sign-in
 in a browser, you approve StackDNA, and the sign-in is kept in the OS
 keychain (Secret Service, macOS Keychain, Windows Credential Manager) and
-refreshed as it expires. It asks for zone read and DNS record read and
-edit, nothing else. Capture, diff and restore then use it.
+refreshed as it expires. It asks for zone read and DNS read, plus DNS
+write in the full edition only: the capture-only edition's sign-in grants
+no write at all. Capture, diff and restore then use it; a restore needs a
+sign-in made with the full edition.
 
 - `CLOUDFLARE_API_TOKEN`, when set, comes first, for CI and machines with
   no browser; a run says which one it used.

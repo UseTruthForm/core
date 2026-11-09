@@ -6,9 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -136,7 +138,7 @@ func TestASignInIsAPKCECodeExchange(t *testing.T) {
 	a := newAuthServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	tok, err := a.oauth(freePort(t)).Login(ctx, http.DefaultClient, browser(t))
+	tok, err := a.oauth(freePort(t)).Login(ctx, http.DefaultClient, browser(t), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +170,7 @@ func TestASignInRefusesAnotherState(t *testing.T) {
 			}
 			browser(t)(u)
 		}()
-	})
+	}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,10 +288,11 @@ func TestTheGuardPassesOnlyTheCloudflareTokenEndpoint(t *testing.T) {
 
 // Cloudflare's scope IDs are dotted (zone.read); it refuses colon-delimited
 // names, so a sign-in asking for them never reaches the consent screen.
+// DNS write is a write scope, asked for only by a build that can write.
 func TestCloudflareAsksForItsOwnScopeIDs(t *testing.T) {
-	want := []string{"zone.read", "dns.read", "dns.write", "offline_access"}
-	if got := Providers["cloudflare"].OAuth.Scopes; strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("scopes = %v, want %v", got, want)
+	o := Providers["cloudflare"].OAuth
+	if got := strings.Join(o.Scopes, " ") + " | " + strings.Join(o.WriteScopes, " "); got != "zone.read dns.read offline_access | dns.write" {
+		t.Fatalf("scopes | write scopes = %s", got)
 	}
 }
 
@@ -302,10 +305,80 @@ func TestTheEnvironmentNamesTheClient(t *testing.T) {
 	t.Setenv("STACKDNA_TEST_CLIENT_ID", "from-env")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := o.Login(ctx, http.DefaultClient, browser(t)); err != nil {
+	if _, err := o.Login(ctx, http.DefaultClient, browser(t), true); err != nil {
 		t.Fatal(err)
 	}
 	if got := a.exchanged[0].Get("client_id"); got != "from-env" {
 		t.Fatalf("client_id = %q, want the environment's", got)
+	}
+}
+
+// A sign-in keeps the tokens and their expiry and nothing else: Windows
+// Credential Manager holds at most 2560 bytes.
+func TestASignInKeepsOnlyTheTokens(t *testing.T) {
+	store := &memStore{}
+	tok := (&oauth2.Token{AccessToken: strings.Repeat("a", 1000), RefreshToken: strings.Repeat("r", 1000), TokenType: "bearer",
+		Expiry: time.Now().Add(time.Hour), ExpiresIn: 3600}).WithExtra(map[string]any{"scope": strings.Repeat("s ", 400)})
+	if err := Save(store, "p", tok); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := store.Get("p")
+	var kept map[string]any
+	_ = json.Unmarshal([]byte(s), &kept)
+	var keys []string
+	for k := range kept {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if strings.Join(keys, ",") != "access_token,expiry,refresh_token,token_type" || len(s) > 2560 {
+		t.Fatalf("kept %v in %d bytes", keys, len(s))
+	}
+}
+
+// Without the envelope the provider puts items in, the check could not
+// look; that is said, not reported as nothing unreadable.
+func TestAMissingEnvelopeIsAGapNotAClearCheck(t *testing.T) {
+	sp := &Spec{doc: map[string]any{"paths": map[string]any{
+		"/things": map[string]any{
+			"get":  map[string]any{"responses": map[string]any{"200": map[string]any{"content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"items": map[string]any{"type": "array"}}}}}}}},
+			"post": map[string]any{"requestBody": map[string]any{"content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"ttl": map[string]any{"type": "integer"}}}}}}},
+		},
+	}}}
+	c := &Client{P: Provider{Envelope: "result"}, Spec: sp}
+	if u, why := c.unreadableChecked(&Collection{List: "/things", Create: "/things"}); len(u) != 0 || !strings.Contains(why, `no "result" envelope`) {
+		t.Fatalf("unreadable %v, why %q", u, why)
+	}
+}
+
+// The redirect names localhost, which a browser may send to ::1; the
+// sign-in answers there too.
+func TestASignInAnswersOnTheIPv6Loopback(t *testing.T) {
+	if l, err := net.Listen("tcp", "[::1]:0"); err != nil {
+		t.Skip("no IPv6 loopback here")
+	} else {
+		l.Close()
+	}
+	a := newAuthServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	tok, err := a.oauth(freePort(t)).Login(ctx, http.DefaultClient, func(u string) {
+		go func() {
+			resp, err := noFollow.Get(u)
+			if err != nil {
+				t.Errorf("auth: %v", err)
+				return
+			}
+			resp.Body.Close()
+			back := strings.Replace(resp.Header.Get("Location"), "//localhost:", "//[::1]:", 1)
+			if r, err := http.Get(back); err != nil {
+				t.Errorf("callback on ::1: %v", err)
+			} else {
+				r.Body.Close()
+			}
+		}()
+	}, true)
+	if err != nil || tok.AccessToken != "access-1" {
+		t.Fatalf("token %v, err %v", tok, err)
 	}
 }

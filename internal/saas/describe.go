@@ -85,8 +85,10 @@ func (c *Client) Describe(kind string, maxDepth int) (describe.Type, error) {
 			t.Fields = append(t.Fields, describe.Field{Path: k, ReadOnly: true})
 		}
 	}
-	if u := c.unreadable(col); len(u) > 0 {
+	if u, why := c.unreadableChecked(col); len(u) > 0 {
 		t.Notes = append(t.Notes, "Accepted on write but never read back in that form, so no snapshot holds them: "+strings.Join(u, ", ")+".")
+	} else if why != "" {
+		t.Notes = append(t.Notes, "Not checked for fields the read never returns: "+why+".")
 	}
 	if col.Singleton {
 		t.Notes = append(t.Notes, "A setting, not a list: captured as one item named \"settings\".")

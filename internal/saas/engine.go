@@ -33,7 +33,10 @@ const (
 	// protection_rules; without this the timer was dropped silently and a
 	// restore read as complete.
 	annUnreadable = "stackdna.org/unreadable"
-	tokAccount    = "{{stackdna|account}}"
+	// annUnchecked says the unreadable check could not look: the response
+	// schema has no envelope where the provider puts the item.
+	annUnchecked = "stackdna.org/unreadable-unchecked"
+	tokAccount   = "{{stackdna|account}}"
 )
 
 // Client is one account of one provider.
@@ -282,14 +285,25 @@ func (it *item) fullName() string {
 // With no response schema nothing is claimed: absence of evidence is not
 // reported as a gap.
 func (c *Client) unreadable(col *Collection) []string {
+	u, _ := c.unreadableChecked(col)
+	return u
+}
+
+// unreadableChecked is unreadable, and why the check could not look when
+// a response schema exists but lacks the provider's envelope: that is not
+// the same as nothing unreadable, and is said so.
+func (c *Client) unreadableChecked(col *Collection) ([]string, string) {
 	var read *Fields
+	path := col.List
 	if col.Get != "" {
-		if r := c.Spec.ResponseSchema(col.Get, "get"); r != nil {
-			read = c.enveloped(c.Spec.fields(r, 0))
+		path = col.Get
+	}
+	if r := c.Spec.ResponseSchema(path, "get"); r != nil {
+		f := c.Spec.fields(r, 0)
+		if read = c.enveloped(f); read == nil && f != nil && !f.Any {
+			return nil, fmt.Sprintf("the read's response schema (%s) has no %q envelope, so which fields it returns was not checked", path, c.P.Envelope)
 		}
-	} else if r := c.Spec.ResponseSchema(col.List, "get"); r != nil {
-		read = c.enveloped(c.Spec.fields(r, 0))
-		if read != nil && !col.Singleton {
+		if read != nil && col.Get == "" && !col.Singleton {
 			if col.Array != "" && read.Children[col.Array] != nil {
 				read = read.Children[col.Array]
 			}
@@ -302,7 +316,7 @@ func (c *Client) unreadable(col *Collection) []string {
 		u = c.Spec.RequestFields(col.Update, col.updateMethod())
 	}
 	if read == nil || read.Any || w == nil {
-		return nil
+		return nil, ""
 	}
 	var out []string
 	for _, k := range sortedKeys(w.Children) {
@@ -313,7 +327,7 @@ func (c *Client) unreadable(col *Collection) []string {
 			out = append(out, k)
 		}
 	}
-	return out
+	return out, ""
 }
 
 // enveloped is a response's fields inside the provider's envelope
@@ -509,8 +523,10 @@ func (c *Client) Capture(ctx context.Context) (snapshot.Snapshot, error) {
 		if it.parent != nil {
 			ann[annParent] = it.parent.fullName()
 		}
-		if u := c.unreadable(it.col); len(u) > 0 {
+		if u, why := c.unreadableChecked(it.col); len(u) > 0 {
 			ann[annUnreadable] = strings.Join(u, ",")
+		} else if why != "" {
+			ann[annUnchecked] = why
 		}
 		if len(ann) > 0 {
 			meta["annotations"] = ann

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
@@ -26,6 +27,10 @@ type OAuth struct {
 	IDEnv             string
 	AuthURL, TokenURL string
 	Scopes            []string
+	// WriteScopes are asked for only by a build that can write: the
+	// capture-only edition's sign-in grants no write to anything that
+	// later reads the stored token.
+	WriteScopes []string
 	// Ports are the redirect ports registered with the provider, tried in
 	// order; the redirect is http://localhost:<port>/oauth/callback.
 	Ports []int
@@ -83,7 +88,7 @@ func (o *OAuth) config(redirect string) *oauth2.Config {
 // hands open the address to visit (a browser, or a person told to), and
 // exchanges the code the provider redirects back with. hc sends the
 // exchange, so a read-only build sends it behind its guard.
-func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string)) (*oauth2.Token, error) {
+func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string), write bool) (*oauth2.Token, error) {
 	if o.id() == "" {
 		return nil, fmt.Errorf("this build has no sign-in registered for the provider; set the API token environment variable instead, or %s to a registered client", o.IDEnv)
 	}
@@ -100,6 +105,9 @@ func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string
 	}
 	defer ln.Close()
 	conf := o.config(fmt.Sprintf("http://localhost:%d/oauth/callback", port))
+	if write {
+		conf.Scopes = append(append([]string{}, conf.Scopes...), o.WriteScopes...)
+	}
 	state, verifier := random(), oauth2.GenerateVerifier()
 
 	type result struct {
@@ -130,6 +138,12 @@ func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string
 		}
 	})}
 	go func() { _ = srv.Serve(ln) }()
+	// The redirect names localhost, which a browser may resolve to ::1
+	// first; the IPv6 loopback answers too where it is free.
+	if ln6, err := net.Listen("tcp", fmt.Sprintf("[::1]:%d", port)); err == nil {
+		defer ln6.Close()
+		go func() { _ = srv.Serve(ln6) }()
+	}
 	defer srv.Close()
 
 	open(conf.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier)))
@@ -151,9 +165,19 @@ func random() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
+// stored is what a sign-in keeps: the tokens and when the access token
+// expires, nothing else. Windows Credential Manager holds at most 2560
+// bytes, so the token's extras (scope, expires_in) are not kept.
+type stored struct {
+	AccessToken  string    `json:"access_token"`
+	TokenType    string    `json:"token_type,omitempty"`
+	RefreshToken string    `json:"refresh_token,omitempty"`
+	Expiry       time.Time `json:"expiry,omitempty"`
+}
+
 // Save stores a token for the provider.
 func Save(store TokenStore, provider string, t *oauth2.Token) error {
-	b, err := json.Marshal(t)
+	b, err := json.Marshal(stored{t.AccessToken, t.TokenType, t.RefreshToken, t.Expiry})
 	if err != nil {
 		return err
 	}

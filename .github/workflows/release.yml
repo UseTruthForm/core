@@ -44,6 +44,15 @@ jobs:
       - run: go test -race -count=1 ./internal/awscc/ ./internal/azarm/ ./internal/gcp/ ./internal/saas/ ./internal/schedule/
       # The capture-only edition is what a client is handed.
       - run: go test -tags captureonly -count=1 ./cmd/stackdna/
+      # A release without it builds and passes, and its docs describe a
+      # Cloudflare sign-in it cannot make: refuse it instead.
+      - run: |
+          if [ -z "$STACKDNA_CLOUDFLARE_CLIENT_ID" ]; then
+            echo "repository variable STACKDNA_CLOUDFLARE_CLIENT_ID is not set; the release would have no Cloudflare sign-in"
+            exit 1
+          fi
+        env:
+          STACKDNA_CLOUDFLARE_CLIENT_ID: ${{ vars.STACKDNA_CLOUDFLARE_CLIENT_ID }}
       - run: bash scripts/build-release.sh "$GITHUB_REF_NAME"
         env:
           # StackDNA's Cloudflare OAuth client: public, not a secret, kept

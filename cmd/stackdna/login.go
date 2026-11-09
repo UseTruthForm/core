@@ -74,7 +74,7 @@ func loginCmd(ctx context.Context, args []string) int {
 			}
 		}
 		fmt.Println("Open it in a browser on this machine; waiting for the sign-in to finish.")
-	})
+	}, !captureOnly)
 	if err != nil {
 		return fail(err)
 	}

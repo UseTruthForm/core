@@ -45,6 +45,11 @@ jobs:
       # The capture-only edition is what a client is handed.
       - run: go test -tags captureonly -count=1 ./cmd/stackdna/
       - run: bash scripts/build-release.sh "$GITHUB_REF_NAME"
+        env:
+          # StackDNA's Cloudflare OAuth client: public, not a secret, kept
+          # out of the source. Unset, the build signs in to Cloudflare by
+          # token only.
+          STACKDNA_CLOUDFLARE_CLIENT_ID: ${{ vars.STACKDNA_CLOUDFLARE_CLIENT_ID }}
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}

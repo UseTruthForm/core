@@ -292,3 +292,20 @@ func TestCloudflareAsksForItsOwnScopeIDs(t *testing.T) {
 		t.Fatalf("scopes = %v, want %v", got, want)
 	}
 }
+
+// A build signs in as the client in its environment variable when one is
+// set: a development build, or an organisation's own registered client.
+func TestTheEnvironmentNamesTheClient(t *testing.T) {
+	a := newAuthServer(t)
+	o := a.oauth(freePort(t))
+	o.ClientID, o.IDEnv = "", "STACKDNA_TEST_CLIENT_ID"
+	t.Setenv("STACKDNA_TEST_CLIENT_ID", "from-env")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := o.Login(ctx, http.DefaultClient, browser(t)); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.exchanged[0].Get("client_id"); got != "from-env" {
+		t.Fatalf("client_id = %q, want the environment's", got)
+	}
+}

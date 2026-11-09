@@ -62,6 +62,8 @@ edit, nothing else. Capture, diff and restore then use it.
   StackDNA in the Cloudflare dashboard to end the grant itself.
 - A capture-only build signs in too: its read-only guard lets
   Cloudflare's token endpoint through and nothing else on that host.
+- `STACKDNA_CLOUDFLARE_CLIENT_ID` signs in as another registered OAuth
+  client, such as your organisation's own, in place of StackDNA's.
 
 ## Capture
 

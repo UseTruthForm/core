@@ -147,7 +147,9 @@ var GitHub = Provider{
 }
 
 // CloudflareClientID is StackDNA's registered Cloudflare OAuth client. It
-// is public (PKCE, no secret); a build without it signs in by token only.
+// is public (PKCE, no secret), and set at release time rather than kept in
+// the source (scripts/build-release.sh); STACKDNA_CLOUDFLARE_CLIENT_ID
+// replaces it. A build with neither signs in by token only.
 var CloudflareClientID = ""
 
 // Cloudflare is the descriptor for a Cloudflare account's zones and DNS.
@@ -155,7 +157,7 @@ var Cloudflare = Provider{
 	Name: "cloudflare", Spec: "cloudflare.json", Base: "https://api.cloudflare.com/client/v4", Envelope: "result", Paging: "page", PageSize: 50,
 	SpecURL: "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
 	Account: "account", TokenEnv: "CLOUDFLARE_API_TOKEN",
-	OAuth: &OAuth{ClientID: CloudflareClientID,
+	OAuth: &OAuth{ClientID: CloudflareClientID, IDEnv: "STACKDNA_CLOUDFLARE_CLIENT_ID",
 		AuthURL: "https://dash.cloudflare.com/oauth2/auth", TokenURL: "https://dash.cloudflare.com/oauth2/token",
 		// What capture, diff and restore of zones and DNS records need, and
 		// a refresh token so a sign-in outlives its hour.

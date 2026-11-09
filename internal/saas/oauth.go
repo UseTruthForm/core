@@ -20,7 +20,10 @@ import (
 // with PKCE, redirected to a port on this machine. The client is public (no
 // secret ships in the binary); the provider holds its registration.
 type OAuth struct {
-	ClientID          string
+	ClientID string
+	// IDEnv, when set in the environment, replaces ClientID: a development
+	// build, or an organisation's own registered client.
+	IDEnv             string
 	AuthURL, TokenURL string
 	Scopes            []string
 	// Ports are the redirect ports registered with the provider, tried in
@@ -61,8 +64,18 @@ func (Keychain) Delete(p string) error {
 // ErrNotSignedIn means no token is stored for the provider.
 var ErrNotSignedIn = errors.New("not signed in")
 
+// id is the client this run signs in as.
+func (o *OAuth) id() string {
+	if o.IDEnv != "" {
+		if v := os.Getenv(o.IDEnv); v != "" {
+			return v
+		}
+	}
+	return o.ClientID
+}
+
 func (o *OAuth) config(redirect string) *oauth2.Config {
-	return &oauth2.Config{ClientID: o.ClientID, Scopes: o.Scopes, RedirectURL: redirect,
+	return &oauth2.Config{ClientID: o.id(), Scopes: o.Scopes, RedirectURL: redirect,
 		Endpoint: oauth2.Endpoint{AuthURL: o.AuthURL, TokenURL: o.TokenURL, AuthStyle: oauth2.AuthStyleInParams}}
 }
 
@@ -71,8 +84,8 @@ func (o *OAuth) config(redirect string) *oauth2.Config {
 // exchanges the code the provider redirects back with. hc sends the
 // exchange, so a read-only build sends it behind its guard.
 func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string)) (*oauth2.Token, error) {
-	if o.ClientID == "" {
-		return nil, errors.New("this build has no sign-in registered for the provider; set the API token environment variable instead")
+	if o.id() == "" {
+		return nil, fmt.Errorf("this build has no sign-in registered for the provider; set the API token environment variable instead, or %s to a registered client", o.IDEnv)
 	}
 	var ln net.Listener
 	var port int
@@ -156,7 +169,7 @@ func Tokens(p Provider, store TokenStore, hc *http.Client) (oauth2.TokenSource, 
 		return oauth2.StaticTokenSource(&oauth2.Token{AccessToken: t}), p.TokenEnv, nil
 	}
 	how := fmt.Sprintf("%s is not set; set it to an API token", p.TokenEnv)
-	if p.OAuth != nil && p.OAuth.ClientID != "" {
+	if p.OAuth != nil && p.OAuth.id() != "" {
 		how += fmt.Sprintf(", or sign in with: stackdna login %s", p.Name)
 	}
 	if p.OAuth == nil || store == nil {

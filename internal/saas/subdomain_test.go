@@ -56,7 +56,7 @@ func names(s snapshot.Snapshot) []string {
 // and a delegation stay out.
 func TestASubdomainPutsTheZoneOneLevelDown(t *testing.T) {
 	f, _ := dnsZone(t)
-	d := &Subdomain{Name: "Test.Example.com.", Addresses: map[string]string{"192.0.2.1": "198.51.100.7"}}
+	d := &Subdomain{Name: "Test.Example.com.", Addresses: map[string]string{"192.0.2.1": "198.51.100.7"}, Targets: map[string]string{"pages.example.net": "pages-test.example.net"}}
 	got, left, err := d.Map(capture(t, f))
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestASubdomainPutsTheZoneOneLevelDown(t *testing.T) {
 		"example.com/A *.test.example.com 198.51.100.7",
 		"example.com/A test.example.com 198.51.100.7",
 		"example.com/CNAME *.auth.test.example.com auth.test.example.com",
-		"example.com/CNAME docs.test.example.com pages.example.net",
+		"example.com/CNAME docs.test.example.com pages-test.example.net",
 		"example.com",
 	}
 	if !slices.Equal(names(got), want) {
@@ -199,7 +199,7 @@ func TestASubdomainRestoreFindsWhatIsInTheWay(t *testing.T) {
 	if !strings.Contains(ws, "TXT old.test.example.com \"x\": made by an earlier restore") {
 		t.Errorf("no stale-record warning in %v", warnings)
 	}
-	if u := d.Unmapped(mapped); !slices.Equal(u, []string{"*.test.example.com 192.0.2.1", "test.example.com 192.0.2.1"}) {
+	if u := d.Unmapped(mapped); !slices.Equal(u, []string{"A *.test.example.com 192.0.2.1", "A test.example.com 192.0.2.1", "CNAME docs.test.example.com pages.example.net"}) {
 		t.Errorf("unmapped %v", u)
 	}
 
@@ -266,7 +266,7 @@ func TestAConflictStopsTheRestoreBeforeItWrites(t *testing.T) {
 	f, zid := dnsZone(t)
 	src := capture(t, f)
 	f.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "A", "name": "test.example.com", "content": "203.0.113.9", "ttl": 1, "proxied": false})
-	d := &Subdomain{Name: "test.example.com", Addresses: map[string]string{"192.0.2.1": "198.51.100.7"}}
+	d := &Subdomain{Name: "test.example.com", Addresses: map[string]string{"192.0.2.1": "198.51.100.7"}, Targets: map[string]string{"pages.example.net": "pages.example.net"}}
 	mapped, _, _ := d.Map(src)
 	f.writes = 0
 	conflicts, _, results, err := f.client(false).RestoreUnder(context.Background(), d, mapped, RestoreOptions{})
@@ -360,5 +360,101 @@ func TestAPresentKindIsNeverWritten(t *testing.T) {
 		if target.writes != 0 {
 			t.Errorf("%d writes to a kind the restore only finds", target.writes)
 		}
+	}
+}
+
+// A CNAME to a host outside the zone (the source's app service or load
+// balancer) would send the new name to the source, as a source address
+// would: the restore stops until --target names the target's host, or
+// the same host to keep it.
+func TestACNAMEOutOfTheZoneMustBeNamed(t *testing.T) {
+	f, _ := dnsZone(t)
+	src := capture(t, f)
+	addr := map[string]string{"192.0.2.1": "198.51.100.7"}
+	for _, tc := range []struct {
+		targets map[string]string
+		content string
+		stops   bool
+	}{
+		{nil, "pages.example.net", true},
+		{map[string]string{"pages.example.net": "pages-test.example.net"}, "pages-test.example.net", false},
+		{map[string]string{"pages.example.net": "pages.example.net"}, "pages.example.net", false},
+	} {
+		d := &Subdomain{Name: "test.example.com", Addresses: addr, Targets: tc.targets}
+		mapped, _, _ := d.Map(src)
+		if !slices.Contains(names(mapped), "example.com/CNAME docs.test.example.com "+tc.content) {
+			t.Errorf("%v: docs not mapped to %s: %v", tc.targets, tc.content, names(mapped))
+		}
+		f.writes = 0
+		c, _, r, _ := f.client(false).RestoreUnder(context.Background(), d, mapped, RestoreOptions{DryRun: true})
+		if stopped := len(c) > 0; stopped != tc.stops || (tc.stops && !strings.Contains(c[0], "CNAME docs.test.example.com pages.example.net: still points at the source")) {
+			t.Errorf("%v: conflicts %v", tc.targets, c)
+		}
+		if f.writes != 0 || len(r) != 5 {
+			t.Errorf("%v: %d writes, %d results", tc.targets, f.writes, len(r))
+		}
+	}
+}
+
+// A record a first run made, at a name the snapshot now gives other
+// content (a wrong --address the first time, a source that moved), would
+// answer beside the new one: the restore stops and names it.
+func TestAStaleRecordOfOursAtAPlannedNameStops(t *testing.T) {
+	f, _ := dnsZone(t)
+	src := capture(t, f)
+	keep := map[string]string{"pages.example.net": "pages.example.net"}
+	first := &Subdomain{Name: "test.example.com", Addresses: map[string]string{"192.0.2.1": "198.51.100.7"}, Targets: keep}
+	mapped, _, _ := first.Map(src)
+	if c, _, _, _ := f.client(false).RestoreUnder(context.Background(), first, mapped, RestoreOptions{}); len(c) > 0 {
+		t.Fatal(c)
+	}
+	again := &Subdomain{Name: "test.example.com", Addresses: map[string]string{"192.0.2.1": "198.51.100.8"}, Targets: keep}
+	mapped, _, _ = again.Map(src)
+	f.writes = 0
+	c, _, r, _ := f.client(false).RestoreUnder(context.Background(), again, mapped, RestoreOptions{})
+	want := []string{
+		"A *.test.example.com 198.51.100.7: made by an earlier restore with other content",
+		"A test.example.com 198.51.100.7: made by an earlier restore with other content",
+	}
+	if len(c) != 2 || !strings.HasPrefix(c[0], want[0]) || !strings.HasPrefix(c[1], want[1]) {
+		t.Errorf("conflicts %v", c)
+	}
+	if f.writes != 0 || len(r) != 0 {
+		t.Errorf("%d writes, %d results after a conflict", f.writes, len(r))
+	}
+}
+
+// A CNAME moved onto a name the restore leaves out points at nothing; an
+// SRV, HTTPS or SVCB target is copied as it is. Both are reported.
+func TestARestoreReportsWhatItCannotFollow(t *testing.T) {
+	f, zid := dnsZone(t)
+	f.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "CNAME", "name": "autodiscover.example.com", "content": "autodiscover.mail.example.net", "ttl": 1, "proxied": false})
+	f.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "CNAME", "name": "webmail.example.com", "content": "autodiscover.example.com", "ttl": 1, "proxied": false})
+	f.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "SRV", "name": "_sip._tcp.example.com", "content": "5 5060 sip.example.net", "priority": 10, "ttl": 1, "proxied": false})
+	src := capture(t, f)
+	d := &Subdomain{Name: "test.example.com"}
+	mapped, _, _ := d.Map(src)
+	_, w := d.Check(mapped, src)
+	ws := strings.Join(w, "\n")
+	if !strings.Contains(ws, "CNAME webmail.test.example.com autodiscover.test.example.com: points at a name the restore leaves out") {
+		t.Errorf("no dangling-CNAME warning in %v", w)
+	}
+	if !strings.Contains(ws, "SRV _sip._tcp.test.example.com 5 5060 sip.example.net: its target is copied as it is") {
+		t.Errorf("no SRV warning in %v", w)
+	}
+}
+
+// Cloudflare's free plan refuses a comment over 100 characters, so a mark
+// that long would fail every create; Map refuses it first.
+func TestAMarkTooLongForACommentIsRefused(t *testing.T) {
+	f, _ := dnsZone(t)
+	src := capture(t, f)
+	long := strings.Repeat("a", 80) + ".test.example.com"
+	if _, _, err := (&Subdomain{Name: long}).Map(src); err == nil || !strings.Contains(err.Error(), "100") {
+		t.Errorf("a %d-character mark accepted: %v", len("stackdna: "+long), err)
+	}
+	ok := strings.Repeat("a", 60) + ".test.example.com"
+	if _, _, err := (&Subdomain{Name: ok}).Map(src); err != nil {
+		t.Errorf("a %d-character mark refused: %v", len("stackdna: "+ok), err)
 	}
 }

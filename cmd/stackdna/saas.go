@@ -22,6 +22,7 @@ type saasFlags struct {
 	account, specDir string
 	subdomain        string
 	addresses        map[string]string
+	targets          map[string]string
 }
 
 func (s *saasFlags) registerSubdomain(fs *flag.FlagSet, restore bool) {
@@ -43,21 +44,49 @@ func (s *saasFlags) registerSubdomain(fs *flag.FlagSet, restore bool) {
 		}
 		return nil
 	})
+	fs.Func("target", "cloudflare --subdomain: comma-separated <source-host>=<target-host>; a CNAME to a host outside the zone (an app service, a load balancer) points at the target's; the same host twice keeps it (a restore that would keep a source host unnamed stops)", func(v string) error {
+		if s.targets == nil {
+			s.targets = map[string]string{}
+		}
+		for _, p := range strings.Split(v, ",") {
+			from, to, ok := strings.Cut(strings.TrimSpace(p), "=")
+			from, to = strings.TrimSuffix(from, "."), strings.TrimSuffix(to, ".")
+			if !ok || !hostname(from) || !hostname(to) {
+				return fmt.Errorf("%q: give <source-host>=<target-host>", p)
+			}
+			s.targets[strings.ToLower(from)] = to
+		}
+		return nil
+	})
+}
+
+// hostname reports whether v is a DNS name: dotted labels, no address,
+// no wildcard.
+func hostname(v string) bool {
+	if v == "" || net.ParseIP(v) != nil || !strings.Contains(v, ".") {
+		return false
+	}
+	for _, l := range strings.Split(v, ".") {
+		if l == "" || strings.Trim(strings.ToLower(l), "abcdefghijklmnopqrstuvwxyz0123456789-_") != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *saasFlags) subdomainAccepted(platform string) error {
 	if s.subdomain != "" && platform != "cloudflare" {
 		return fmt.Errorf("--subdomain is for --platform cloudflare; nothing was done")
 	}
-	if len(s.addresses) > 0 && s.subdomain == "" {
-		return fmt.Errorf("--address is for a --subdomain restore or diff; nothing was done")
+	if (len(s.addresses) > 0 || len(s.targets) > 0) && s.subdomain == "" {
+		return fmt.Errorf("--address and --target are for a --subdomain restore or diff; nothing was done")
 	}
 	return nil
 }
 
 // sub maps the snapshot under --subdomain and prints what it left out.
 func (s *saasFlags) sub(snap snapshot.Snapshot) (*saas.Subdomain, snapshot.Snapshot, error) {
-	d := &saas.Subdomain{Name: s.subdomain, Addresses: s.addresses}
+	d := &saas.Subdomain{Name: s.subdomain, Addresses: s.addresses, Targets: s.targets}
 	out, left, err := d.Map(snap)
 	if err != nil {
 		return nil, snap, err
@@ -138,9 +167,15 @@ func captureSaaS(ctx context.Context, platform string, s *saasFlags, out string)
 	return 0
 }
 
+// connectRestore connects for a restore. A dry run's client is the
+// read-only one, which refuses every write, beside the engine's own
+// DryRun.
+func (s *saasFlags) connectRestore(platform string, dryRun bool) (*saas.Adapter, error) {
+	return s.connect(platform, captureOnly || dryRun)
+}
+
 func restoreSaaS(ctx context.Context, platform string, s *saasFlags, snap snapshot.Snapshot, valuesFile string, update, dryRun bool) int {
-	// A dry run reads only: its client refuses every write.
-	ad, err := s.connect(platform, captureOnly || dryRun)
+	ad, err := s.connectRestore(platform, dryRun)
 	if err != nil {
 		return fail(err)
 	}

@@ -56,10 +56,10 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN, or C
   stackdna capture --platform cloudflare --account <account-id> --out <dir>
   stackdna restore --platform github --account <org> --from <dir> [--values <file>] [--update] [--dry-run]
   stackdna restore --platform cloudflare --account <account-id> --from <dir> [--update] [--dry-run]
-      [--subdomain test.example.com [--address <source-ip>=<target-ip>,...]]
+      [--subdomain test.example.com [--address <source-ip>=<target-ip>,...] [--target <source-host>=<target-host>,...]]
       the zone's records one level down (www.example.com -> www.test.example.com), marked as StackDNA's;
       checks the zone first and stops on any conflict, before it writes
-  stackdna diff    --platform cloudflare --account <account-id> --from <dir> [--subdomain test.example.com [--address ...]]
+  stackdna diff    --platform cloudflare --account <account-id> --from <dir> [--subdomain test.example.com [--address ...] [--target ...]]
 
 Machine-readable: add --json to capture, diff, restore, compare, check or permissions; stdout is then
 one JSON document (everything else goes to stderr) and the exit code is unchanged.

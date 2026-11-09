@@ -27,8 +27,18 @@ type Subdomain struct {
 	// Addresses replaces a source A or AAAA address with the target's: the
 	// same address would send the new names to the source's servers.
 	Addresses map[string]string
-	zone      string
+	// Targets replaces a CNAME's host outside the zone with the target's
+	// (a source's app service or load balancer); kept as it is, it would
+	// send the new names to the source too. Keys are lower case.
+	Targets map[string]string
+	zone    string
+	// dropped holds where the records left out would have gone: a CNAME
+	// moved to one of those names points at nothing.
+	dropped map[string]bool
 }
+
+// maxComment is the longest record comment Cloudflare's free plan takes.
+const maxComment = 100
 
 // Left is a record a subdomain restore leaves out, and why.
 type Left struct{ Name, Reason string }
@@ -60,7 +70,10 @@ func (d *Subdomain) Map(s snapshot.Snapshot) (snapshot.Snapshot, []Left, error) 
 	if d.Name == "" || strings.Contains(d.Name, "*") {
 		return s, nil, fmt.Errorf("--subdomain %q: give a name such as test.example.com", d.Name)
 	}
-	d.zone = ""
+	if len(d.Mark()) > maxComment {
+		return s, nil, fmt.Errorf("--subdomain %s: the comment marking its records (%q) is %d characters, over the %d Cloudflare's free plan takes; choose a shorter name", d.Name, d.Mark(), len(d.Mark()), maxComment)
+	}
+	d.zone, d.dropped = "", map[string]bool{}
 	for _, o := range s.Objects {
 		if z := strings.ToLower(o.Name()); o.Kind() == zoneKind && strings.HasSuffix(d.Name, "."+z) && len(z) > len(d.zone) {
 			d.zone = z
@@ -96,6 +109,9 @@ func (d *Subdomain) Map(s snapshot.Snapshot) (snapshot.Snapshot, []Left, error) 
 		typ, name, content := stringOf(spec["type"]), stringOf(spec["name"]), stringOf(spec["content"])
 		if why := d.leave(typ, name, content); why != "" {
 			left = append(left, Left{typ + " " + name, why})
+			if !under(name, d.Name) {
+				d.dropped[strings.ToLower(d.move(name))] = true
+			}
 			continue
 		}
 		ns := deepCopy(spec)
@@ -103,6 +119,10 @@ func (d *Subdomain) Map(s snapshot.Snapshot) (snapshot.Snapshot, []Left, error) 
 		switch {
 		case strings.EqualFold(typ, "CNAME") && under(content, d.zone) && !under(content, d.Name):
 			ns["content"] = d.move(content)
+		case strings.EqualFold(typ, "CNAME"):
+			if to, ok := d.Targets[strings.ToLower(strings.TrimSuffix(content, "."))]; ok {
+				ns["content"] = to
+			}
 		case strings.EqualFold(typ, "A") || strings.EqualFold(typ, "AAAA"):
 			if to, ok := d.Addresses[content]; ok {
 				ns["content"] = to
@@ -155,21 +175,38 @@ func (d *Subdomain) leave(typ, name, content string) string {
 	return ""
 }
 
-// Unmapped lists the A and AAAA records that would keep a source address,
-// as "name address".
+// Unmapped lists the records that would still reach the source: an A or
+// AAAA record with a source address, a CNAME to a host outside the
+// subdomain that --target does not name. Each is "TYPE name content".
 func (d *Subdomain) Unmapped(planned snapshot.Snapshot) []string {
 	var out []string
 	for _, o := range planned.Objects {
 		spec, _ := o.Body["spec"].(map[string]any)
-		t, c := stringOf(spec["type"]), stringOf(spec["content"])
-		if o.Kind() != recordKind || !(strings.EqualFold(t, "A") || strings.EqualFold(t, "AAAA")) {
+		t, n, c := strings.ToUpper(stringOf(spec["type"])), stringOf(spec["name"]), stringOf(spec["content"])
+		if o.Kind() != recordKind {
 			continue
 		}
-		if _, mapped := d.Addresses[c]; !mapped && !d.isTarget(c) {
-			out = append(out, stringOf(spec["name"])+" "+c)
+		switch {
+		case t == "A" || t == "AAAA":
+			if _, mapped := d.Addresses[c]; !mapped && !d.isTarget(c) {
+				out = append(out, t+" "+n+" "+c)
+			}
+		case t == "CNAME" && !under(c, d.Name):
+			if _, mapped := d.Targets[strings.ToLower(strings.TrimSuffix(c, "."))]; !mapped && !d.isTargetHost(c) {
+				out = append(out, t+" "+n+" "+c)
+			}
 		}
 	}
 	return out
+}
+
+func (d *Subdomain) isTargetHost(host string) bool {
+	for _, to := range d.Targets {
+		if strings.EqualFold(to, strings.TrimSuffix(host, ".")) {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *Subdomain) isTarget(addr string) bool {
@@ -241,8 +278,21 @@ func (d *Subdomain) Check(planned, target snapshot.Snapshot) (conflicts, warning
 			}
 		case len(byName[n]) > 0 && !ours:
 			conflicts = append(conflicts, desc+": already there, and StackDNA did not make it (no "+fmt.Sprintf("%q", d.Mark())+" comment)")
+		case ours && !keys[strings.ToLower(d.zone+"/"+t+" "+n+" "+c)] && clashes(t, byName[n]):
+			conflicts = append(conflicts, desc+": made by an earlier restore with other content; the restore would put a second record beside it (DNS would answer with both), so delete it first")
 		case ours && !keys[strings.ToLower(d.zone+"/"+t+" "+n+" "+c)]:
 			warnings = append(warnings, desc+": made by an earlier restore and not in this snapshot; left as it is")
+		}
+	}
+	for _, n := range sortedKeys(byName) {
+		for _, r := range byName[n] {
+			t, c := strings.ToUpper(stringOf(r["type"])), stringOf(r["content"])
+			switch {
+			case t == "CNAME" && d.dropped[strings.ToLower(strings.TrimSuffix(c, "."))]:
+				warnings = append(warnings, "CNAME "+n+" "+c+": points at a name the restore leaves out, so it will answer with nothing")
+			case t == "SRV" || t == "HTTPS" || t == "SVCB":
+				warnings = append(warnings, t+" "+n+" "+c+": its target is copied as it is; if it names the source's host, the new name reaches the source")
+			}
 		}
 	}
 	if shadowed {
@@ -264,7 +314,11 @@ func (c *Client) RestoreUnder(ctx context.Context, d *Subdomain, mapped snapshot
 	}
 	conflicts, warnings = d.Check(mapped, target)
 	for _, a := range d.Unmapped(mapped) {
-		conflicts = append(conflicts, "A/AAAA "+a+": keeps the source's address, so the new name would reach the source's servers; give its target with --address <source-ip>=<target-ip>")
+		how := "--address <source-ip>=<target-ip>"
+		if strings.HasPrefix(a, "CNAME ") {
+			how = "--target <source-host>=<target-host> (the same host twice keeps it)"
+		}
+		conflicts = append(conflicts, a+": still points at the source, so the new name would reach the source's servers; give its target with "+how)
 	}
 	if len(conflicts) > 0 && !opt.DryRun {
 		return conflicts, warnings, nil, nil
@@ -272,6 +326,18 @@ func (c *Client) RestoreUnder(ctx context.Context, d *Subdomain, mapped snapshot
 	opt.Present = map[string]bool{zoneKind: true}
 	opt.Allow = d.Allow
 	return conflicts, warnings, c.Restore(ctx, mapped, opt), nil
+}
+
+// clashes reports whether a record of type t at a name would answer beside
+// the planned ones there: the same type, or a CNAME on either side.
+func clashes(t string, planned []map[string]any) bool {
+	for _, r := range planned {
+		pt := stringOf(r["type"])
+		if strings.EqualFold(pt, t) || strings.EqualFold(pt, "CNAME") || strings.EqualFold(t, "CNAME") {
+			return true
+		}
+	}
+	return false
 }
 
 // Allow refuses every write a subdomain restore must not make: a record

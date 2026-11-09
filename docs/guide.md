@@ -243,7 +243,8 @@ stackdna restore --platform aws --region us-east-2 --from snap/aws --values secr
 
 ```sh
 stackdna restore --platform cloudflare --account <id> --from snap/cloudflare \
-  --subdomain test.example.com --address 192.0.2.1=198.51.100.7 --dry-run
+  --subdomain test.example.com --address 192.0.2.1=198.51.100.7 \
+  --target app.example.net=app-test.example.net --dry-run
 ```
 
 `--subdomain` restores one zone's records a level down, beside the
@@ -254,21 +255,31 @@ becomes `www.test.example.com`, and a CNAME to a name in the zone follows.
   and never created or changed; other zones in the snapshot are left out.
 - **Each record it writes carries the comment `stackdna: test.example.com`.**
   Only a record with that comment is StackDNA's to change, with `--update`.
-- **It reads the zone first and stops before writing anything** when a
-  record it did not make is at a name it would write, when the subdomain is
-  delegated or a zone of its own, or when an A or AAAA record would keep the
-  source's address. Name each target address with `--address
-  <source-ip>=<target-ip>`: the source's would send the new names to the
-  source's servers.
+- **It reads the zone first and stops before writing anything** when:
+  - a record it did not make is at a name it would write;
+  - a record an earlier run made is at a name it would write, with other
+    content (a wrong `--address` the first time), so DNS would answer
+    with both: delete it first;
+  - the subdomain is delegated or a zone of its own;
+  - a record would still point at the source. Name each target with
+    `--address <source-ip>=<target-ip>` for an A or AAAA record and
+    `--target <source-host>=<target-host>` for a CNAME to a host outside
+    the zone (an app service, a load balancer). The same host twice keeps
+    it.
+- The record comment it adds has to fit in the 100 characters Cloudflare's
+  free plan takes, so a subdomain name longer than 90 characters is refused.
 - **Mail, delegations and ACME records stay out:** MX, SPF, DKIM, DMARC,
   MTA-STS and autodiscovery records, NS records, `_acme-challenge`.
 - **It warns of a wildcard above the subdomain** (`*.example.com`). Today it
   answers for `test.example.com` and every name below it. Once any of those
   names exists, it no longer does, and a name there the restore does not
   create stops resolving.
+- **It also warns of** a CNAME moved onto a name it leaves out (it would
+  answer with nothing), and an SRV, HTTPS or SVCB record, whose target is
+  copied as it is.
 - **A record made by an earlier run that the snapshot no longer has** is
   reported and left in place; nothing is deleted.
-- `diff --subdomain test.example.com` (with the same `--address`) compares
+- `diff --subdomain test.example.com` (with the same `--address` and `--target`) compares
   the records under the subdomain with the snapshot as the restore put it.
 
 ## A whole environment

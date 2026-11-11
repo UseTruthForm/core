@@ -36,6 +36,13 @@ type OAuth struct {
 	// Ports are the redirect ports registered with the provider, tried in
 	// order; the redirect is http://localhost:<port>/oauth/callback.
 	Ports []int
+	// answered, when set, runs in the callback's handler once the sign-in
+	// has its answer, before the handler returns. Only a test sets it, to
+	// keep the handler running past the moment Login closes the listener.
+	// It is a field, not a package variable: a variable was read by one
+	// test's handler while the next test wrote it, which the race
+	// detector reported.
+	answered func()
 }
 
 // TokenStore keeps a signed-in person's token. The OS keychain in use, a
@@ -106,11 +113,6 @@ func page(w http.ResponseWriter, text string) {
 	}
 }
 
-// answered runs in the callback's handler once the sign-in has its answer,
-// before the handler returns. It does nothing; a test makes it slow, to
-// keep the handler running past the moment Login closes the listener.
-var answered = func() {}
-
 // ErrNotSignedIn means no token is stored for the provider.
 var ErrNotSignedIn = errors.New("not signed in")
 
@@ -177,11 +179,12 @@ func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string
 		case q.Get("error") != "":
 			page(w, "Sign-in was not completed. You can close this tab.")
 			finish(result{err: fmt.Errorf("sign-in refused: %s %s", q.Get("error"), q.Get("error_description"))})
-			answered()
 		default:
 			page(w, "Signed in to Truthform. You can close this tab and return to the terminal.")
 			finish(result{code: q.Get("code")})
-			answered()
+		}
+		if o.answered != nil {
+			o.answered()
 		}
 	})}
 	go func() { _ = srv.Serve(ln) }()

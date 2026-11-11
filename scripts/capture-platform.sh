@@ -4,20 +4,20 @@
 # on kind-tiltdev), compared with the previous capture. Nothing on the
 # cluster is changed: capture only lists and reads.
 #
-# Output goes to .stackdna/<context>/ (gitignored). The previous capture is
-# kept as .stackdna/<context>.prev so each run shows:
+# Output goes to .truthform/<context>/ (gitignored). The previous capture is
+# kept as .truthform/<context>.prev so each run shows:
 #   - which objects changed since last time (compare)
 #   - which API fields appeared or disappeared (schema-diff), for example
 #     after upgrading the platform or an operator on it
 set -euo pipefail
 
 CONTEXT=${CONTEXT:-kind-tiltdev}
-BIN=${BIN:-bin/stackdna}
+BIN=${BIN:-bin/truthform}
 cd "$(dirname "$0")/.."
 
-out=".stackdna/$CONTEXT"
-prev=".stackdna/$CONTEXT.prev"
-mkdir -p .stackdna
+out=".truthform/$CONTEXT"
+prev=".truthform/$CONTEXT.prev"
+mkdir -p .truthform
 if [ -f "$out/snapshot.yaml" ]; then
   rm -rf "$prev"
   mv "$out" "$prev"

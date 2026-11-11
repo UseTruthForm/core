@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // Failures from the review of #14 to #16, 2026-10-22.
@@ -14,10 +14,10 @@ import (
 // equal to the resource's own name is not a reference to a namesake.
 func TestOwnNameIsNotAReference(t *testing.T) {
 	reg := fixtures(t)
-	repo := normalize(reg.Types["AWS::ECR::Repository"], "stackdna-drill", map[string]any{"RepositoryName": "stackdna-drill"})
-	api := normalize(reg.Types["AWS::ApiGateway::RestApi"], "abc123", map[string]any{"RestApiId": "abc123", "Name": "stackdna-drill"})
+	repo := normalize(reg.Types["AWS::ECR::Repository"], "truthform-drill", map[string]any{"RepositoryName": "truthform-drill"})
+	api := normalize(reg.Types["AWS::ApiGateway::RestApi"], "abc123", map[string]any{"RestApiId": "abc123", "Name": "truthform-drill"})
 	name([]*resource{repo, api}, "")
-	if api.spec["Name"] != "stackdna-drill" {
+	if api.spec["Name"] != "truthform-drill" {
 		t.Errorf("Name became %v", api.spec["Name"])
 	}
 }

@@ -1,4 +1,4 @@
-// Package kube captures a Kubernetes cluster into a StackDNA snapshot and
+// Package kube captures a Kubernetes cluster into a Truthform snapshot and
 // restores one back. It needs nothing but the cluster's own API: discovery
 // says which types exist, and the dynamic client reads and writes any of them,
 // including custom resources nobody has written code for.
@@ -19,8 +19,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/stackdna/core/internal/readonly"
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/readonly"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // Clients bundles what capture and restore need for one cluster.

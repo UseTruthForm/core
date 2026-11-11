@@ -1,6 +1,6 @@
-# StackDNA user guide
+# Truthform user guide
 
-StackDNA reads the live configuration of a cloud account, a Kubernetes
+Truthform reads the live configuration of a cloud account, a Kubernetes
 cluster or a SaaS organisation into a **snapshot**: plain YAML files you
 can review, commit and diff. From a snapshot it can **diff** what is
 running against what was captured, and **restore** what is missing, into
@@ -12,12 +12,12 @@ platform itself is the source of truth.
 ## Install
 
 Download the archive for your platform from the release, check it against
-`SHA256SUMS`, and put `stackdna` (or `stackdna.exe`) on your `PATH`:
+`SHA256SUMS`, and put `truthform` (or `truthform.exe`) on your `PATH`:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-tar -xzf stackdna_0.1.0_linux_amd64.tar.gz
-./stackdna_0.1.0_linux_amd64/stackdna version
+tar -xzf truthform_0.1.0_linux_amd64.tar.gz
+./truthform_0.1.0_linux_amd64/truthform version
 ```
 
 There are two editions for every platform:
@@ -27,7 +27,7 @@ There are two editions for every platform:
 | full | capture, diff, restore | your own environments |
 | capture-only | capture, diff | handing to a client for an assessment: it has no restore, and every request it makes goes through the read-only guard, so it cannot change anything it reaches |
 
-`stackdna version` says which edition and build you have.
+`truthform version` says which edition and build you have.
 
 ## Permissions
 
@@ -35,10 +35,10 @@ Give a capture a read-only role, and a restore a write role, separately.
 [permissions.md](permissions.md) lists the exact roles per platform, and
 which have been verified.
 
-`stackdna permissions --platform <p>` writes the grant as a template for
+`truthform permissions --platform <p>` writes the grant as a template for
 the platform's own tool and prints every command to deploy, verify and
 remove it, with your values filled in; it grants nothing itself.
-`stackdna check` then says who StackDNA runs as, what that identity holds
+`truthform check` then says who Truthform runs as, what that identity holds
 beyond what it needs, and what it can read, type by type: a type refused
 for want of permission shows as **denied**, never as empty. A type the
 platform throttled until the retries ran out shows as **throttled**: that
@@ -48,8 +48,8 @@ failed.
 
 ### Signing in to Cloudflare
 
-No token to make: `stackdna login cloudflare` opens Cloudflare's sign-in
-in a browser, you approve StackDNA, and the sign-in is kept in the OS
+No token to make: `truthform login cloudflare` opens Cloudflare's sign-in
+in a browser, you approve Truthform, and the sign-in is kept in the OS
 keychain (Secret Service, macOS Keychain, Windows Credential Manager) and
 refreshed as it expires. It asks for zone read and DNS read, plus DNS
 write in the full edition only: the capture-only edition's sign-in grants
@@ -60,21 +60,21 @@ sign-in made with the full edition.
   no browser; a run says which one it used.
 - Without a keychain (a bare server), login says so and stores nothing;
   set the token instead. No file is written in its place.
-- `stackdna logout cloudflare` forgets the sign-in on this machine; revoke
-  StackDNA in the Cloudflare dashboard to end the grant itself.
+- `truthform logout cloudflare` forgets the sign-in on this machine; revoke
+  Truthform in the Cloudflare dashboard to end the grant itself.
 - A capture-only build signs in too: its read-only guard lets
   Cloudflare's token endpoint through and nothing else on that host.
-- `STACKDNA_CLOUDFLARE_CLIENT_ID` signs in as another registered OAuth
-  client, such as your organisation's own, in place of StackDNA's.
+- `TRUTHFORM_CLOUDFLARE_CLIENT_ID` signs in as another registered OAuth
+  client, such as your organisation's own, in place of Truthform's.
 
 ## Capture
 
 ```sh
-stackdna capture --platform aws   --region us-east-2 --profile prod --out snap/aws
-stackdna capture --platform azure --subscription <id>              --out snap/azure
-stackdna capture --platform gcp   --project my-project             --out snap/gcp
-stackdna capture --context prod-cluster                            --out snap/k8s
-GITHUB_TOKEN=... stackdna capture --platform github --account my-org --out snap/github
+truthform capture --platform aws   --region us-east-2 --profile prod --out snap/aws
+truthform capture --platform azure --subscription <id>              --out snap/azure
+truthform capture --platform gcp   --project my-project             --out snap/gcp
+truthform capture --context prod-cluster                            --out snap/k8s
+GITHUB_TOKEN=... truthform capture --platform github --account my-org --out snap/github
 ```
 
 A snapshot directory holds `objects/` (one YAML file per resource),
@@ -102,7 +102,7 @@ What a snapshot does not hold, by design:
   `--secrets-from-context`. Not caught: a credential passed as a command
   argument, inside a config file a ConfigMap holds, or in Helm values
   outside an `env` list. Because both sides are withheld, a diff does not
-  show a rotated credential, and a snapshot taken before StackDNA withheld
+  show a rotated credential, and a snapshot taken before Truthform withheld
   these values still holds them in its git history;
 - **what the platform made itself**: default VPCs and their subnets,
   built-in roles, AWS-managed policies. Use `--baseline` with a capture of
@@ -126,7 +126,7 @@ region (about 1,500 types) takes around five minutes.
 ## Diff
 
 ```sh
-stackdna diff --platform aws --region us-east-2 --from snap/aws
+truthform diff --platform aws --region us-east-2 --from snap/aws
 ```
 
 It lists what was added, removed or changed, field by field, and exits 2
@@ -135,7 +135,7 @@ when there are differences, so it can gate a pipeline or raise an alert.
 ## Restore
 
 ```sh
-stackdna restore --platform aws --region us-east-2 --from snap/aws --values secrets.yaml
+truthform restore --platform aws --region us-east-2 --from snap/aws --values secrets.yaml
 ```
 
 - **By default a restore only creates what is missing.** Something already
@@ -242,7 +242,7 @@ stackdna restore --platform aws --region us-east-2 --from snap/aws --values secr
 ### A second environment's DNS in the same zone (Cloudflare)
 
 ```sh
-stackdna restore --platform cloudflare --account <id> --from snap/cloudflare \
+truthform restore --platform cloudflare --account <id> --from snap/cloudflare \
   --subdomain test.example.com --address 192.0.2.1=198.51.100.7 \
   --target app.example.net=app-test.example.net --dry-run
 ```
@@ -253,8 +253,8 @@ becomes `www.test.example.com`, and a CNAME to a name in the zone follows.
 
 - **Only names under the subdomain are written.** The zone is used as it is
   and never created or changed; other zones in the snapshot are left out.
-- **Each record it writes carries the comment `stackdna: test.example.com`.**
-  Only a record with that comment is StackDNA's to change, with `--update`.
+- **Each record it writes carries the comment `truthform: test.example.com`.**
+  Only a record with that comment is Truthform's to change, with `--update`.
 - **It reads the zone first and stops before writing anything** when:
   - a record it did not make is at a name it would write;
   - a record an earlier run made is at a name it would write, with other
@@ -295,8 +295,8 @@ targets:
 ```
 
 ```sh
-stackdna capture --config prod.yaml --out snap/
-stackdna diff    --config prod.yaml --from snap/
+truthform capture --config prod.yaml --out snap/
+truthform diff    --config prod.yaml --from snap/
 ```
 
 A relative path in the file (`baseline`, a Kubernetes target's
@@ -308,7 +308,7 @@ flight at once; 8 by default), as `--parallel` does for one target.
 
 ## Throttling
 
-Every platform limits how fast it is read, and StackDNA waits as each one
+Every platform limits how fast it is read, and Truthform waits as each one
 asks. A read that stays throttled is reported as **throttled**, never as
 empty or denied: capture again later.
 
@@ -343,7 +343,7 @@ empty or denied: capture again later.
 
 Add `--json` to `capture`, `diff`, `restore` or `compare` (an environment
 `--config` too). Stdout is then one JSON document, named by its `schema`
-field (`stackdna.org/output/v1`), and everything meant for a person goes
+field (`truthform.org/output/v1`), and everything meant for a person goes
 to stderr. The exit code is the same as without it. A capture's document
 says whether it is `complete` and lists its `gaps`, and under `throttled`
 the gaps a later capture can close as it is; a diff's lists each
@@ -357,20 +357,20 @@ resource it is needed on (an event hub rule's keys for a diagnostic setting
 that sends there), as the report does.
 
 ```sh
-stackdna diff --platform aws --region us-east-2 --from snap/aws --json | jq '.differences'
+truthform diff --platform aws --region us-east-2 --from snap/aws --json | jq '.differences'
 ```
 
 ## As a graph (Azure)
 
-`stackdna graph --from <snapshot>` writes an Azure snapshot as resources
+`truthform graph --from <snapshot>` writes an Azure snapshot as resources
 and the relationships between them, as JSON, for a tool that maps an
 estate (an asset inventory, a security graph) rather than recreating it.
 It reads only the snapshot: no login, no request. Since the snapshot holds
 no secret values, neither does its graph.
 
 ```sh
-stackdna graph --from snap/azure --out graph.json
-stackdna graph --from snap/azure --subscription <id> --tenant <id> --out graph.json
+truthform graph --from snap/azure --out graph.json
+truthform graph --from snap/azure --subscription <id> --tenant <id> --out graph.json
 ```
 
 - **Nodes** are resources: `id` (the resource ID), `type`, `name`,
@@ -418,7 +418,7 @@ stackdna graph --from snap/azure --subscription <id> --tenant <id> --out graph.j
   tables, Service Bus topics and scale-set instances. `none` gives every
   resource without properties. A file in the same format as the built-in
   one (`internal/azarm/graph_security.yaml`) gives your own.
-- **IDs** keep the `{{stackdna|subscription}}` placeholder unless
+- **IDs** keep the `{{truthform|subscription}}` placeholder unless
   `--subscription` gives the real one, and `--tenant` does the same for the
   tenant. Another subscription that a resource refers to (a peered network)
   keeps its real ID either way, since the snapshot holds it as it is.
@@ -432,7 +432,7 @@ compare `nodes` and `edges`.
 
 ## For AI agents (MCP)
 
-`stackdna mcp` serves StackDNA's knowledge over the Model Context
+`truthform mcp` serves Truthform's knowledge over the Model Context
 Protocol. For every field of a resource type it says whether the field is
 required, set by the platform, write-only, secret or fixed at creation,
 with the platform's documentation link. It can also capture, diff and
@@ -442,13 +442,48 @@ anything. An agent setting up someone's access should follow
 [agents.md](agents.md). Add it to a client as:
 
 ```json
-{"mcpServers": {"stackdna": {"command": "stackdna", "args": ["mcp"]}}}
+{"mcpServers": {"truthform": {"command": "truthform", "args": ["mcp"]}}}
 ```
+
+## Snapshots from before the rename
+
+Truthform was called StackDNA up to v0.1.0-beta.20. A snapshot written then
+is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
+
+- **Azure, Kubernetes, GitHub and Cloudflare:** a format 1 snapshot is read
+  as it is by `diff`, `compare`, `restore`, `graph`, `report` and
+  `schema-diff`. What Truthform itself wrote under the old name is read
+  under the new one; what the captured system called by the old name (a
+  label, a tag, a CRD's group) is left as captured. Its digest differs from
+  a new capture's, because the files on disk differ.
+- **AWS and Google Cloud:** a format 1 snapshot is refused. A resource with
+  no name of its own is named from a hash of its contents, and that name
+  changed with the rename. Capture the source again, or use the build that
+  wrote the snapshot.
+- **A build from before the rename refuses a format 2 snapshot.**
+- **A Cloudflare sign-in** made before the rename is not used. Sign in
+  again; the old one is removed from the keychain when you do, or on
+  `logout`.
+- **A DNS record a subdomain restore wrote before the rename** is still
+  Truthform's, and compares as unchanged. Its comment keeps the old name
+  until `--update` changes something else in the record.
+- **What `permissions` generates** is now named `truthform-...`. Roles and
+  files made from an earlier build keep working; remove them with the
+  commands that build printed if you deploy the new ones.
+- **`--json` output** is now `"schema": "truthform.org/output/v1"`, and a
+  `graph` is `"format": 2`. Without `--subscription` and `--tenant` its
+  IDs hold placeholders, which were renamed, so they do not match the IDs
+  in a graph from an earlier build.
+- **Environment variables** that began `STACKDNA_` now begin `TRUTHFORM_`.
+  One set under the old name is ignored.
+- **Kubernetes:** restore applies as the field manager `truthform`. A field
+  an earlier build applied, and the snapshot no longer has, stays on the
+  object under the old manager.
 
 ## Known limits
 
 - A Log Analytics workspace's data sources can only be listed one kind at
-  a time. StackDNA lists every kind Azure's definition names; a data
+  a time. Truthform lists every kind Azure's definition names; a data
   source of a kind it does not name is not found. The change-tracking
   default registry keys Azure makes up on every read are counted in
   coverage, not captured.
@@ -468,7 +503,7 @@ anything. An agent setting up someone's access should follow
   was deleted.
 - Data is never captured (see above).
 - GitHub's environment wait timer and a few similar fields are accepted on
-  write but never read back; a snapshot names them (`stackdna.org/unreadable`)
+  write but never read back; a snapshot names them (`truthform.org/unreadable`)
   and a restore says it could not carry them.
 - Proven against real systems so far: AWS (21 resources across 17 types,
   IAM and Lambda included; restore, update, another region), Azure, Google Cloud, Kubernetes and

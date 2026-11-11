@@ -12,17 +12,17 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // APIVersion is the apiVersion of every AWS object in a snapshot. The AWS
 // type name is the kind, so object files are grouped per type exactly as
 // Kubernetes kinds are.
-const APIVersion = "aws.stackdna.org/v1"
+const APIVersion = "aws.truthform.org/v1"
 
 const (
-	annWriteOnly = "stackdna.org/write-only"
-	refPrefix    = "{{stackdna|"
+	annWriteOnly = "truthform.org/write-only"
+	refPrefix    = "{{truthform|"
 )
 
 // Policy is the set of capture rules. Its Name is recorded in the snapshot
@@ -266,7 +266,7 @@ func hasString(list []string, s string) bool {
 
 // aliases lists properties AWS returns together but refuses together on
 // create, because one is another name for the other. The registry schemas
-// do not declare it, so this is the one place StackDNA knows something about
+// do not declare it, so this is the one place Truthform knows something about
 // a type that its schema does not say; each entry names the failure that
 // found it. The first property present is kept in spec; the others move to
 // status, where they stay visible but are never sent back.
@@ -444,7 +444,7 @@ func canon(v any) string { b, _ := json.Marshal(v); return string(b) }
 // name gives every resource a logical name that is the same in any account,
 // and replaces references to other resources' generated values with tokens:
 //
-//	VpcId: vpc-0abc...  ->  VpcId: '{{stackdna|AWS::EC2::VPC|main|VpcId}}'
+//	VpcId: vpc-0abc...  ->  VpcId: '{{truthform|AWS::EC2::VPC|main|VpcId}}'
 //
 // Restore resolves each token to the value the target account generated.
 // A resource with no user-given name is named by a hash of its tokenized
@@ -596,14 +596,14 @@ func chosenID(t *TypeInfo) bool {
 
 // refersTo decides whether s, under top-level property prop, refers to the
 // resource that owns v. A tag value equal to a chosen name is a label: the
-// drill VPC's Name tag "stackdna-drill" became a token for the ECR
+// drill VPC's Name tag "truthform-drill" became a token for the ECR
 // repository of that name, a dependency that would block restoring the VPC
 // without the repository (real drill, 2026-10-22). A generated ID in a tag
 // still differs per account, so it stays a reference.
 //
 // More generally, a value equal to the resource's own name is its name, not
 // a reference to a namesake: the drill's REST API is named
-// "stackdna-drill", as is its ECR repository, and its Name became a token
+// "truthform-drill", as is its ECR repository, and its Name became a token
 // for the repository, a false dependency that would block restoring the API
 // without the repository (review, 2026-10-22).
 func refersTo(r *resource, prop string, o refTarget, s, v string) bool {

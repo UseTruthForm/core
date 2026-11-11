@@ -33,7 +33,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/awscc"
+	"github.com/usetruthform/core/internal/awscc"
 )
 
 // readVerb is an action named as a read.

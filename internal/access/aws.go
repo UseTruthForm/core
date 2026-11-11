@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 
-	"github.com/stackdna/core/internal/readonly"
+	"github.com/usetruthform/core/internal/readonly"
 )
 
 // awsNeeds are the calls a capture cannot do without; awsWrites are a
@@ -66,7 +66,7 @@ func AWS(ctx context.Context, profile, region, access string) (Report, error) {
 	switch {
 	case strings.HasSuffix(arn, ":root"):
 		r.Kind = "root user"
-		r.warn("This is the account's root user: it holds every permission, and no policy can limit it. Use the role from stackdna permissions --platform aws instead.")
+		r.warn("This is the account's root user: it holds every permission, and no policy can limit it. Use the role from truthform permissions --platform aws instead.")
 		return r, nil
 	case strings.Contains(arn, ":user/"):
 		r.Kind, source = "IAM user", arn
@@ -127,7 +127,7 @@ func AWS(ctx context.Context, profile, region, access string) (Report, error) {
 			r.fact("May write, as a restore needs: " + strings.Join(writes, ", "))
 		}
 	case len(writes) > 0:
-		r.warn("May write (" + strings.Join(writes, ", ") + "): more than a capture needs. Capture with the read-only role from stackdna permissions, or at least with the capture-only binary.")
+		r.warn("May write (" + strings.Join(writes, ", ") + "): more than a capture needs. Capture with the read-only role from truthform permissions, or at least with the capture-only binary.")
 	default:
 		r.fact("None of " + fmt.Sprint(len(awsWrites)) + " sampled writes is allowed")
 	}

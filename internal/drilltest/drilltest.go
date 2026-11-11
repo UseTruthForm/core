@@ -1,4 +1,4 @@
-// Package drilltest is StackDNA's restore drill, written once against the
+// Package drilltest is Truthform's restore drill, written once against the
 // platform contract so every adapter is held to the same proof:
 //
 //  1. capture the source twice and require byte-identical snapshots on disk
@@ -18,8 +18,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/platform"
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/platform"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // Spec describes one drill.

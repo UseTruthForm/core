@@ -18,7 +18,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 
-	"github.com/stackdna/core/internal/readonly"
+	"github.com/usetruthform/core/internal/readonly"
 )
 
 // SDK is ARM reached with Azure's own Go SDK core: its pipeline brings
@@ -86,7 +86,7 @@ func NewSDK(subscription string, readOnly bool) (*SDK, error) {
 	if err != nil {
 		return nil, fmt.Errorf("azure credentials: %w", err)
 	}
-	c, err := arm.NewClient("stackdna", "v0.1.0", cred, clientOptions(readOnly))
+	c, err := arm.NewClient("truthform", "v0.1.0", cred, clientOptions(readOnly))
 	if err != nil {
 		return nil, err
 	}

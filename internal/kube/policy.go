@@ -10,16 +10,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
-// WithheldAnnotation lists the keys of a Secret whose values StackDNA did not
+// WithheldAnnotation lists the keys of a Secret whose values Truthform did not
 // write to the snapshot. A backup is copied, committed and shared far more
 // freely than a cluster, so secret values never go into it; restore has to be
 // given them from somewhere else (a vault, or the live source cluster).
-const WithheldAnnotation = "stackdna.org/withheld-keys"
+const WithheldAnnotation = "truthform.org/withheld-keys"
 
-// WithheldEnvAnnotation lists the values StackDNA did not write to the
+// WithheldEnvAnnotation lists the values Truthform did not write to the
 // snapshot because they are credentials set as plain configuration: an env
 // variable of a workload, or a ConfigMap key, named like one, or any such
 // value that is a URL with a password in it. A key written straight into a
@@ -27,7 +27,7 @@ const WithheldAnnotation = "stackdna.org/withheld-keys"
 // real cluster had an API key in a Deployment's env, from its Helm values);
 // it is withheld like a Secret's value, and named so the report can say
 // where to move it. Each entry is a slot path (see slots), comma-separated.
-const WithheldEnvAnnotation = "stackdna.org/withheld-env"
+const WithheldEnvAnnotation = "truthform.org/withheld-env"
 
 // credentialNameRE matches names that say the value is a credential:
 // PASSWORD and PGPASSWORD, *_SECRET, SECRETKEY, *_TOKEN, API_KEY,

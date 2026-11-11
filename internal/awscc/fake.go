@@ -162,8 +162,8 @@ func (f *Fake) check(t *TypeInfo, props map[string]any) error {
 	var bad error
 	walkStrings(props, func(s string) string {
 		if bad == nil {
-			if strings.Contains(s, "{{stackdna") {
-				bad = fmt.Errorf("%s: unresolved StackDNA reference %q sent to AWS", t.Name, s)
+			if strings.Contains(s, "{{truthform") {
+				bad = fmt.Errorf("%s: unresolved Truthform reference %q sent to AWS", t.Name, s)
 			}
 			for v, acct := range f.w.owner {
 				if acct != f.ID && strings.Contains(s, v) {

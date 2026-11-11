@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/cloudcontrol"
 
-	"github.com/stackdna/core/internal/readonly"
+	"github.com/usetruthform/core/internal/readonly"
 )
 
 // The real Cloud Control client behind the guard: a list reaches the

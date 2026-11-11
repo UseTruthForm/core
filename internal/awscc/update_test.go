@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // queueIn returns the target's shop-jobs queue.

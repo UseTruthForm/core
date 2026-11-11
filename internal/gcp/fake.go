@@ -179,8 +179,8 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	}
 	var bad error
 	walkStrings(deepCopy(res), func(s string) string {
-		if bad == nil && strings.Contains(s, "{{stackdna") {
-			bad = fmt.Errorf("INVALID_ARGUMENT: unresolved StackDNA reference %q sent to Google", s)
+		if bad == nil && strings.Contains(s, "{{truthform") {
+			bad = fmt.Errorf("INVALID_ARGUMENT: unresolved Truthform reference %q sent to Google", s)
 		}
 		for other := range f.w.projects {
 			if bad == nil && other != f.id && (strings.Contains(s, "projects/"+other+"/") || strings.Contains(s, "@"+other+".")) {
@@ -283,7 +283,7 @@ func (f *Fake) update(method, u string, body map[string]any) (map[string]any, er
 		maskStr = q.Get("updateMask")
 	}
 	// A method that takes a mask gets one: without it a patch would be
-	// read as "every field", which is not what StackDNA means to send.
+	// read as "every field", which is not what Truthform means to send.
 	_, inQuery := m.Parameters["updateMask"]
 	_, inBody := d.Schemas[m.Request.Ref].Properties["updateMask"]
 	if (inQuery || inBody) && maskStr == "" {
@@ -302,8 +302,8 @@ func (f *Fake) update(method, u string, body map[string]any) (map[string]any, er
 	}
 	var bad error
 	walkStrings(deepCopy(res), func(s string) string {
-		if bad == nil && strings.Contains(s, "{{stackdna") {
-			bad = fmt.Errorf("INVALID_ARGUMENT: unresolved StackDNA reference %q sent to Google", s)
+		if bad == nil && strings.Contains(s, "{{truthform") {
+			bad = fmt.Errorf("INVALID_ARGUMENT: unresolved Truthform reference %q sent to Google", s)
 		}
 		return s
 	})

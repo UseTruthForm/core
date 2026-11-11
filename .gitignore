@@ -1,4 +1,8 @@
 bin/
 *.exe
+.truthform/
+# Where captures went before the tool was renamed. They describe a real
+# platform; without this line an existing checkout would show them as
+# untracked and `git add -A` would commit them.
 .stackdna/
 dist/

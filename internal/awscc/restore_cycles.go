@@ -4,14 +4,14 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // A reference cycle is ordinary in IAM: a role lists the managed policy it
 // holds (ManagedPolicyArns) and the policy lists the role (Roles), one
 // attachment recorded on both sides. No creation order exists, and the
 // first real IAM drill created the role first, with the policy's ARN still
-// literal, and AWS refused it: "NotFound Policy ... stackdna-drill-read"
+// literal, and AWS refused it: "NotFound Policy ... truthform-drill-read"
 // (2026-10-24).
 //
 // A cycle is broken by creating one member without the properties that

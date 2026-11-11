@@ -7,11 +7,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/stackdna/core/internal/schedule"
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/schedule"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
-var refRE = regexp.MustCompile(`\{\{stackdna\|ref\|([^|{}]+)\|([^{}]+)\}\}`)
+var refRE = regexp.MustCompile(`\{\{truthform\|ref\|([^|{}]+)\|([^{}]+)\}\}`)
 
 // RestoreOptions are the choices a restore takes beyond the snapshot.
 type RestoreOptions struct {

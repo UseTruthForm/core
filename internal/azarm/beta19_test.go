@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 func one(kind, name string, spec map[string]any) snapshot.Snapshot {

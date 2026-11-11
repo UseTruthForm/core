@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // The first restore of a real estate into another subscription: Azure refused

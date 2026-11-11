@@ -23,7 +23,7 @@ import (
 )
 
 // ErrWrite is returned for every refused request.
-var ErrWrite = errors.New("refused by StackDNA's read-only guard")
+var ErrWrite = errors.New("refused by Truthform's read-only guard")
 
 // Transport wraps base with the guard. A nil base uses http.DefaultTransport.
 func Transport(base http.RoundTripper) http.RoundTripper {
@@ -66,7 +66,7 @@ var readTargets = map[string]bool{
 
 // iamReads are IAM Query API actions that only read. IAM sends every call
 // as a POST with the action in the form body, so it cannot be told apart by
-// method; these two are named because stackdna check needs them, and every
+// method; these two are named because truthform check needs them, and every
 // other IAM action stays refused. SimulatePrincipalPolicy evaluates the
 // caller's policies against a list of actions and changes nothing.
 var iamReads = map[string]bool{
@@ -104,7 +104,7 @@ func Allowed(req *http.Request) (bool, string) {
 	// "aws login" sessions refresh at the sign-in service's token
 	// endpoint. Without this a profile from aws login worked until its
 	// cached credentials expired, then every capture failed with
-	// "refused by StackDNA's read-only guard" (2026-10-23).
+	// "refused by Truthform's read-only guard" (2026-10-23).
 	if (host == "signin.aws.amazon.com" || strings.HasSuffix(host, ".signin.aws.amazon.com")) && req.Method == http.MethodPost && req.URL.Path == "/v1/token" {
 		return true, ""
 	}

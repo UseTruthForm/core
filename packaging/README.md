@@ -1,6 +1,6 @@
-# StackDNA
+# Truthform
 
-StackDNA reads the live configuration of a cloud account, a Kubernetes
+Truthform reads the live configuration of a cloud account, a Kubernetes
 cluster or a SaaS organisation into a **snapshot**: plain YAML files you
 can review, commit and diff. From a snapshot it can **diff** what is
 running against what was captured, and **restore** what is missing, into
@@ -13,7 +13,7 @@ schemas.
 
 ## Which edition this is
 
-    stackdna version
+    truthform version
 
 | Edition | Can | Use it for |
 |---|---|---|
@@ -22,25 +22,25 @@ schemas.
 
 ## First steps
 
-1. **Give it access.** `stackdna permissions` prints exactly what to grant
+1. **Give it access.** `truthform permissions` prints exactly what to grant
    on a platform, as a template for the platform's own tool, with every
    command to grant, verify and remove it. It grants nothing itself.
    Read-only access is enough for capture and diff.
 
-        stackdna permissions --platform aws --account 111122223333 --principal arn:aws:iam::111122223333:role/ops
+        truthform permissions --platform aws --account 111122223333 --principal arn:aws:iam::111122223333:role/ops
 
    (Use your own account ID and the ARN of the user or role that will
-   run StackDNA; `aws sts get-caller-identity` prints both.)
+   run Truthform; `aws sts get-caller-identity` prints both.)
 
-2. **Check what it can read.** `stackdna check` names the identity it
+2. **Check what it can read.** `truthform check` names the identity it
    runs as, warns about access it does not need, and lists every type it
    can read, cannot read (denied), and why.
 
-        stackdna check --platform aws --region us-east-1 --profile stackdna-reader
+        truthform check --platform aws --region us-east-1 --profile truthform-reader
 
 3. **Capture.**
 
-        stackdna capture --platform aws --region us-east-1 --profile stackdna-reader --out snap/aws
+        truthform capture --platform aws --region us-east-1 --profile truthform-reader --out snap/aws
 
    Read `snap/aws/REPORT.md` first: it says what was captured, what was
    not and why, and what a restore would need.
@@ -53,7 +53,7 @@ The `docs` folder beside this file:
   restore, whole environments, exit codes, JSON output, known limits.
 - `docs/permissions.md`: what to grant on each platform, and which grants
   have been verified against real accounts.
-- `docs/agents.md`: using StackDNA from an AI agent (`stackdna mcp`), and
+- `docs/agents.md`: using Truthform from an AI agent (`truthform mcp`), and
   how an agent should help someone set up access.
 
 ## Exit codes

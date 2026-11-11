@@ -17,10 +17,10 @@ import (
 	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/yaml"
 
-	"github.com/stackdna/core/internal/drilltest"
-	"github.com/stackdna/core/internal/kube"
-	"github.com/stackdna/core/internal/kubetest"
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/drilltest"
+	"github.com/usetruthform/core/internal/kube"
+	"github.com/usetruthform/core/internal/kubetest"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // TestDrillOnAPIServer runs the full restore drill on two real API servers
@@ -59,9 +59,9 @@ func TestDrillOnAPIServer(t *testing.T) {
 		Source: &kube.Adapter{Clients: srcC, Policy: pol},
 		Target: &kube.Adapter{Clients: dstC, Policy: pol, Options: kube.RestoreOptions{SecretSource: srcC}},
 		ExpectKeys: []string{
-			"apiextensions.k8s.io/v1|CustomResourceDefinition||widgets.example.stackdna.org",
+			"apiextensions.k8s.io/v1|CustomResourceDefinition||widgets.example.truthform.org",
 			"apps/v1|Deployment|shop|shop-api",
-			"example.stackdna.org/v1|Widget|shop|blue-widget",
+			"example.truthform.org/v1|Widget|shop|blue-widget",
 			"networking.k8s.io/v1|Ingress|shop|shop",
 			"networking.k8s.io/v1|NetworkPolicy|shop|shop-api-ingress",
 			"rbac.authorization.k8s.io/v1|Role|shop|read-config",
@@ -125,7 +125,7 @@ func TestDrillOnAPIServer(t *testing.T) {
 }
 
 // seed creates the fixture with plain creates, deliberately not through
-// StackDNA's restore, so a restore bug cannot hide behind the seeding path.
+// Truthform's restore, so a restore bug cannot hide behind the seeding path.
 func seed(t *testing.T, c *kube.Clients, file string) {
 	t.Helper()
 	raw, err := os.ReadFile(file)

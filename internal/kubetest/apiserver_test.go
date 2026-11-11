@@ -3,8 +3,8 @@ package kubetest_test
 import (
 	"testing"
 
-	"github.com/stackdna/core/internal/kube"
-	"github.com/stackdna/core/internal/kubetest"
+	"github.com/usetruthform/core/internal/kube"
+	"github.com/usetruthform/core/internal/kubetest"
 )
 
 func TestStartServesTheAPI(t *testing.T) {

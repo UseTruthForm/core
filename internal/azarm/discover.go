@@ -680,9 +680,9 @@ func principalRefs(cs []*captured) {
 	}
 }
 
-const refPrefix = "{{stackdna|ref|"
+const refPrefix = "{{truthform|ref|"
 
-var refRE = regexp.MustCompile(`\{\{stackdna\|ref\|([^|{}]+)\|([^|{}]*)\|([^|{}]+)\|([^|{}]*)\}\}`)
+var refRE = regexp.MustCompile(`\{\{truthform\|ref\|([^|{}]+)\|([^|{}]*)\|([^|{}]+)\|([^|{}]*)\}\}`)
 
 // refToken names a value of a captured object: kind, group, name, path.
 func refToken(c *captured, path string) string {

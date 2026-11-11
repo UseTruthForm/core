@@ -12,10 +12,10 @@ import (
 
 // TestRegenerateFixtures rebuilds testdata/saas from each provider's
 // published description, keeping the operations the descriptors use and
-// the components they reach. STACKDNA_REGEN_SAAS_FIXTURES=1 go test -run Regenerate.
+// the components they reach. TRUTHFORM_REGEN_SAAS_FIXTURES=1 go test -run Regenerate.
 func TestRegenerateFixtures(t *testing.T) {
-	if os.Getenv("STACKDNA_REGEN_SAAS_FIXTURES") == "" {
-		t.Skip("set STACKDNA_REGEN_SAAS_FIXTURES=1 to rebuild the SaaS fixtures")
+	if os.Getenv("TRUTHFORM_REGEN_SAAS_FIXTURES") == "" {
+		t.Skip("set TRUTHFORM_REGEN_SAAS_FIXTURES=1 to rebuild the SaaS fixtures")
 	}
 	for _, p := range []Provider{GitHub, Cloudflare} {
 		full, err := FetchSpec(p, t.TempDir(), time.Hour)

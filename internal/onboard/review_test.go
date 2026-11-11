@@ -15,7 +15,7 @@ func TestKubernetesSubjectIsBoundExactlyAsGiven(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", subj, err)
 		}
-		docs := strings.Split(string(p.Files["stackdna-kubernetes.yaml"]), "\n---\n")
+		docs := strings.Split(string(p.Files["truthform-kubernetes.yaml"]), "\n---\n")
 		var binding map[string]any
 		if err := yaml.Unmarshal([]byte(docs[len(docs)-1]), &binding); err != nil {
 			t.Fatalf("%s: %v", subj, err)
@@ -36,7 +36,7 @@ func TestKubernetesRestoreIsClusterAdminAndSaysSo(t *testing.T) {
 		t.Fatal(err)
 	}
 	var binding map[string]any
-	if err := yaml.Unmarshal(p.Files["stackdna-kubernetes.yaml"], &binding); err != nil {
+	if err := yaml.Unmarshal(p.Files["truthform-kubernetes.yaml"], &binding); err != nil {
 		t.Fatal(err)
 	}
 	if binding["kind"] != "ClusterRoleBinding" || binding["roleRef"].(map[string]any)["name"] != "cluster-admin" {
@@ -60,12 +60,12 @@ func TestWriteDirectoryCannotBecomeSyntax(t *testing.T) {
 	}
 	// Forward slashes: a backslash separates paths only on Windows, and CI
 	// runs on Linux, where the first version of this test failed.
-	r.Dir = `C:/Users/me/stackdna grants`
+	r.Dir = `C:/Users/me/truthform grants`
 	p, err := Build(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(p.Grant[0].Command, `--template-file 'C:/Users/me/stackdna grants/stackdna-azure.json'`) {
+	if !strings.Contains(p.Grant[0].Command, `--template-file 'C:/Users/me/truthform grants/truthform-azure.json'`) {
 		t.Errorf("a directory with a space must be quoted whole: %s", p.Grant[0].Command)
 	}
 }

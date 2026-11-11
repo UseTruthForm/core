@@ -13,14 +13,14 @@ import (
 
 func full() map[string]Request {
 	return map[string]Request{
-		"aws": {Platform: "aws", Account: "111122223333", Principal: "arn:aws:iam::111122223333:user/stackdna-runner",
+		"aws": {Platform: "aws", Account: "111122223333", Principal: "arn:aws:iam::111122223333:user/truthform-runner",
 			SourceProfile: "runner", AdminProfile: "admin", Region: "us-east-2"},
 		"aws-cross": {Platform: "aws", Account: "111122223333", Principal: "arn:aws:iam::444455556666:role/consultant",
 			ExternalID: "acme.2026-10", SourceProfile: "consult"},
 		"azure": {Platform: "azure", Subscription: "00000000-0000-4000-8000-000000000001",
 			PrincipalID: "0b0e3c3e-1111-4222-8333-944445555666", PrincipalType: "ServicePrincipal"},
-		"gcp":        {Platform: "gcp", Project: "acme-prod-1", Member: "serviceAccount:stackdna@acme-prod-1.iam.gserviceaccount.com"},
-		"kubernetes": {Platform: "kubernetes", Context: "arn:aws:eks:us-east-1:111122223333:cluster/prod", Subject: "ServiceAccount:stackdna/reader"},
+		"gcp":        {Platform: "gcp", Project: "acme-prod-1", Member: "serviceAccount:truthform@acme-prod-1.iam.gserviceaccount.com"},
+		"kubernetes": {Platform: "kubernetes", Context: "arn:aws:eks:us-east-1:111122223333:cluster/prod", Subject: "ServiceAccount:truthform/reader"},
 		"github":     {Platform: "github", Account: "acme-corp"},
 		"cloudflare": {Platform: "cloudflare", Account: "0123456789abcdef0123456789abcdef"},
 	}
@@ -176,7 +176,7 @@ func TestKubernetesManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	docs := strings.Split(string(p.Files["stackdna-kubernetes.yaml"]), "\n---\n")
+	docs := strings.Split(string(p.Files["truthform-kubernetes.yaml"]), "\n---\n")
 	if len(docs) != 2 {
 		t.Fatalf("want a ClusterRole and a ClusterRoleBinding, got %d documents", len(docs))
 	}
@@ -194,7 +194,7 @@ func TestKubernetesManifest(t *testing.T) {
 		t.Errorf("capture is list only, got %v", role["rules"])
 	}
 	sub := binding["subjects"].([]any)[0].(map[string]any)
-	if sub["kind"] != "ServiceAccount" || sub["name"] != "reader" || sub["namespace"] != "stackdna" || sub["apiGroup"] != nil {
+	if sub["kind"] != "ServiceAccount" || sub["name"] != "reader" || sub["namespace"] != "truthform" || sub["apiGroup"] != nil {
 		t.Errorf("subject: %v", sub)
 	}
 }
@@ -204,11 +204,11 @@ func TestTerraformGetsItsOwnDirectoryAndVariables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(p.Grant[1].Command, "-chdir=stackdna-gcp apply") {
+	if !strings.Contains(p.Grant[1].Command, "-chdir=truthform-gcp apply") {
 		t.Errorf("Terraform must run in a directory of its own: %s", p.Grant[1].Command)
 	}
 	vars := string(p.Files["terraform.tfvars"])
-	if !strings.Contains(vars, `member  = "serviceAccount:stackdna@acme-prod-1.iam.gserviceaccount.com"`) || !strings.Contains(vars, `access  = "capture"`) {
+	if !strings.Contains(vars, `member  = "serviceAccount:truthform@acme-prod-1.iam.gserviceaccount.com"`) || !strings.Contains(vars, `access  = "capture"`) {
 		t.Errorf("tfvars: %s", vars)
 	}
 }
@@ -222,7 +222,7 @@ func TestWriteRefusesToReplaceADifferentFile(t *testing.T) {
 	if _, err := p.Write(dir); err != nil {
 		t.Errorf("rewriting the same content is fine: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "stackdna-aws.yaml"), []byte("edited"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "truthform-aws.yaml"), []byte("edited"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := p.Write(dir); err == nil {
@@ -234,7 +234,7 @@ func TestPlanTellsHowToWriteTheFilesUnlessWritten(t *testing.T) {
 	r := full()["aws"]
 	p, _ := Build(r)
 	last := p.Before[len(p.Before)-1].Command
-	if !strings.HasPrefix(last, "stackdna permissions --platform aws --access capture --account 111122223333 ") || !strings.HasSuffix(last, "--write '.'") {
+	if !strings.HasPrefix(last, "truthform permissions --platform aws --access capture --account 111122223333 ") || !strings.HasSuffix(last, "--write '.'") {
 		t.Errorf("write step: %s", last)
 	}
 	r.Written = true

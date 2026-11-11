@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudcontrol/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 
-	"github.com/stackdna/core/internal/readonly"
+	"github.com/usetruthform/core/internal/readonly"
 )
 
 // SDK is CloudControl backed by AWS.
@@ -201,7 +201,7 @@ func classify(err error) error {
 	return err
 }
 
-// The reasons a list fails because of the account rather than StackDNA are
+// The reasons a list fails because of the account rather than Truthform are
 // only in the handlers' messages; there is no error code for them. These
 // patterns come from the full us-east-2 capture (2026-10-21). Anything they
 // do not match stays a failure, so a new message is loud, not hidden.

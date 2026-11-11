@@ -1,12 +1,12 @@
 // Package kubetest starts a real Kubernetes API server (etcd plus
-// kube-apiserver, no nodes, no Docker) for tests. StackDNA only talks to the
+// kube-apiserver, no nodes, no Docker) for tests. Truthform only talks to the
 // API, so this is enough to exercise capture, restore and diff against real
 // discovery, real OpenAPI schemas and real validation, in seconds.
 //
 // It exists instead of controller-runtime's envtest because envtest's Go
 // library does not compile on Windows at v0.25.2 ("signalProcess redeclared"),
 // and the release that does (v0.23.3) pins older Kubernetes libraries than
-// StackDNA uses. The binaries are the same ones envtest uses; fetch them with
+// Truthform uses. The binaries are the same ones envtest uses; fetch them with
 // scripts/envtest-assets.sh.
 package kubetest
 
@@ -33,12 +33,12 @@ import (
 
 // AssetsEnv names the directory holding etcd and kube-apiserver.
 // KUBEBUILDER_ASSETS is accepted too, as setup-envtest prints it.
-const AssetsEnv = "STACKDNA_KUBE_ASSETS"
+const AssetsEnv = "TRUTHFORM_KUBE_ASSETS"
 
 // RequireEnv, when set (CI does), turns a missing binary into a failure.
 // Otherwise the test is skipped with a message: a silently skipped test
 // reads as a pass, so CI must never be allowed to skip.
-const RequireEnv = "STACKDNA_REQUIRE_KUBE_ASSETS"
+const RequireEnv = "TRUTHFORM_REQUIRE_KUBE_ASSETS"
 
 // Server is a running API server and the kubeconfig that reaches it.
 type Server struct {
@@ -93,7 +93,7 @@ func Start(t *testing.T, name string) *Server {
 	tokens := filepath.Join(dir, "tokens.csv")
 	// A static admin token in system:masters: enough authority for a test
 	// cluster, and no client certificates to generate.
-	if err := os.WriteFile(tokens, []byte(token+",stackdna-test,stackdna-test,system:masters\n"), 0o600); err != nil {
+	if err := os.WriteFile(tokens, []byte(token+",truthform-test,truthform-test,system:masters\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	api := exec.CommandContext(ctx, apiBin,

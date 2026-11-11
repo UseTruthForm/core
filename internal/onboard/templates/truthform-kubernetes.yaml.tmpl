@@ -1,0 +1,61 @@
+# Truthform's access to one cluster, written by
+# "truthform permissions --platform kubernetes". kubectl apply grants it;
+# kubectl delete with this same file removes it.
+{{- if .Restore}}
+#
+# Restore: the built-in cluster-admin. Restoring a snapshot creates
+# Roles, ClusterRoles and bindings, and Kubernetes lets an identity grant
+# only what it holds itself, so any narrower role fails on the first Role
+# with a verb it lacks ("attempting to grant RBAC permissions not
+# currently held"). A role that could restore RBAC would be cluster-admin
+# in all but name; this says so.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{q .Name}}
+  labels:
+    app.kubernetes.io/managed-by: truthform-permissions
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+{{- else}}
+#
+# Capture: list on every resource, cluster-wide, and nothing else. A
+# capture only lists. get is left out on purpose: on "*" it also covers
+# subresources, and get on nodes/proxy reaches the kubelet API and on
+# pods/exec can open a shell (review of #23). list covers Secrets, so
+# their existence is captured; their values are never written to a
+# snapshot, but this identity can read them.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{q .Name}}
+  labels:
+    app.kubernetes.io/managed-by: truthform-permissions
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{q .Name}}
+  labels:
+    app.kubernetes.io/managed-by: truthform-permissions
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{q .Name}}
+{{- end}}
+subjects:
+  # Quoted: unquoted, YAML reads User:0123 as the number 83 and Group:yes
+  # as true, and binds someone else (review of #23).
+  - kind: {{q .SubjectKind}}
+    name: {{q .SubjectName}}
+{{- if .SubjectNamespace}}
+    namespace: {{q .SubjectNamespace}}
+{{- else}}
+    apiGroup: rbac.authorization.k8s.io
+{{- end}}

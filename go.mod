@@ -1,4 +1,4 @@
-module github.com/stackdna/core
+module github.com/usetruthform/core
 
 go 1.27.1
 

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // Rename gives resources new names in a snapshot, before a restore or a
@@ -25,7 +25,7 @@ import (
 // It returns the renamed snapshot, and a warning for each object whose spec
 // still mentions an old name as text outside an ID or a reference (a host
 // name such as name.blob.core.windows.net): those are not changed, since
-// what such text means is the resource's, not StackDNA's, to know.
+// what such text means is the resource's, not Truthform's, to know.
 func Rename(s snapshot.Snapshot, names map[string]string) (snapshot.Snapshot, []string, error) {
 	if len(names) == 0 {
 		return s, nil, nil
@@ -249,10 +249,10 @@ func renameID(id string, m map[string]string) string {
 // anyIDRE is idRE for renaming: any case (a captured ID can say
 // resourcegroups), and a segment stops at a comma or a space, so IDs joined
 // into one string are found one by one.
-var anyIDRE = regexp.MustCompile(`(?i)/subscriptions/\{\{stackdna\|subscription\}\}/resourceGroups/[^/",;\s]+(/providers/[^/",;\s]+(/[^/",;\s]+/[^/",;\s]+)+)?`)
+var anyIDRE = regexp.MustCompile(`(?i)/subscriptions/\{\{truthform\|subscription\}\}/resourceGroups/[^/",;\s]+(/providers/[^/",;\s]+(/[^/",;\s]+/[^/",;\s]+)+)?`)
 
 // refAnyRE is a reference token, which names a resource by type and name.
-var refAnyRE = regexp.MustCompile(`\{\{stackdna\|ref\|([^|{}]+)\|([^|{}]*)\|([^|{}]+)\|([^|{}]*)\}\}`)
+var refAnyRE = regexp.MustCompile(`\{\{truthform\|ref\|([^|{}]+)\|([^|{}]*)\|([^|{}]+)\|([^|{}]*)\}\}`)
 
 // renameText renames resource IDs and reference tokens inside a string.
 func renameText(v string, m map[string]string) string {

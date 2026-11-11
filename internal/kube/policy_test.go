@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 func k8sObj(kind, ns, name string, md map[string]any, extra map[string]any) map[string]any {
@@ -263,7 +263,7 @@ func TestPlatformManagerOnWindowsAndDerivedAPIObjects(t *testing.T) {
 		t.Fatalf("kube-apiserver.exe not recognised as the platform: %q", got)
 	}
 	auto := map[string]any{"labels": map[string]any{"kube-aggregator.kubernetes.io/automanaged": "true"}}
-	if got := (Policy{}).skipReason("apiregistration.k8s.io", "apiservices", k8sObj("APIService", "", "v1.example.stackdna.org", auto, nil)); !strings.Contains(got, "registered automatically") {
+	if got := (Policy{}).skipReason("apiregistration.k8s.io", "apiservices", k8sObj("APIService", "", "v1.example.truthform.org", auto, nil)); !strings.Contains(got, "registered automatically") {
 		t.Fatalf("auto-registered APIService not skipped: %q", got)
 	}
 	if got := (Policy{}).typeExcluded("networking.k8s.io", "ipaddresses"); got == "" {

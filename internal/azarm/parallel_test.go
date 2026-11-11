@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // Independent PUTs run at once, and the result is the one-at-a-time result:

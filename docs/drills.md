@@ -1,9 +1,9 @@
 # Drill accounts (internal)
 
-How StackDNA's own test accounts are set up for the real restore drills
-(`scripts/drill-*.sh`). This is about testing StackDNA, not about a
+How Truthform's own test accounts are set up for the real restore drills
+(`scripts/drill-*.sh`). This is about testing Truthform, not about a
 customer's setup: for that, see [permissions.md](permissions.md) and
-`stackdna permissions`.
+`truthform permissions`.
 
 Only free resources are created, and every drill deletes what it made and
 checks the account against its baseline afterwards. Anything metered needs
@@ -14,15 +14,15 @@ the owner's go-ahead first.
 | Account | Used for | Identity |
 |---|---|---|
 | Main sandbox (the organisation's management account) | every AWS drill, IAM included (a role and a managed policy, since 2026-10-24) | IAM user `tf-pilot-automation`: `ReadOnlyAccess` and `PowerUserAccess`, plus the inline policies below |
-| `stackdna-drill-b` (a member account, created 2026-10-23; its services were still not activated after 40 minutes: CloudFormation answers OptInRequired, S3 NotSignedUp) | cross-account restores; proving the `stackdna permissions` role | profile `stackdna-drill-b`, which assumes `OrganizationAccountAccessRole` from `tf-pilot-automation` |
+| `truthform-drill-b` (a member account, created 2026-10-23; its services were still not activated after 40 minutes: CloudFormation answers OptInRequired, S3 NotSignedUp) | cross-account restores; proving the `truthform permissions` role | profile `truthform-drill-b`, which assumes `OrganizationAccountAccessRole` from `tf-pilot-automation` |
 
 `PowerUserAccess` covers every service except IAM and Organizations, so
 IAM types need their own grant. Two inline policies on
 `tf-pilot-automation` give it, each limited by name:
 
-- `tf-pilot-iam-scoped` (not StackDNA's): roles and instance profiles named
+- `tf-pilot-iam-scoped` (not Truthform's): roles and instance profiles named
   `tf-pilot-*`.
-- `stackdna-drill-iam`: roles and policies named `stackdna-drill*`, plus
+- `truthform-drill-iam`: roles and policies named `truthform-drill*`, plus
   IAM read. The policy is kept outside the repository in the handoff
   folder and is attached by the account owner, not by an agent.
 
@@ -48,8 +48,8 @@ exactly the role under test, deleted afterwards and checked to be gone.
 
 ## Signing in
 
-`aws login --profile stackdna-admin` (AWS CLI 2.32 and later) keeps a short session
+`aws login --profile truthform-admin` (AWS CLI 2.32 and later) keeps a short session
 that refreshes itself through the sign-in service. The read-only guard
 let that refresh through only from 2026-10-23 on: before, such a profile
 worked until its first cached credentials expired, then every capture
-failed with "refused by StackDNA's read-only guard".
+failed with "refused by Truthform's read-only guard".

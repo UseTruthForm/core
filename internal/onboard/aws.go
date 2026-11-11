@@ -34,11 +34,11 @@ func loadAddOn() (addOn, error) {
 func buildAWS(r Request) (Plan, error) {
 	var miss MissingError
 	if r.Account == "" {
-		miss = append(miss, Missing{"account", "the 12-digit ID of the account StackDNA reads (the role is created there)",
+		miss = append(miss, Missing{"account", "the 12-digit ID of the account Truthform reads (the role is created there)",
 			"aws sts get-caller-identity --query Account --output text   (run with the administrator's credentials for that account)"})
 	}
 	if r.Principal == "" {
-		miss = append(miss, Missing{"principal", "the ARN of the IAM user or role that will run StackDNA and assume the new role",
+		miss = append(miss, Missing{"principal", "the ARN of the IAM user or role that will run Truthform and assume the new role",
 			"aws sts get-caller-identity --query Arn --output text   (run with that identity's credentials)"})
 	}
 	if len(miss) > 0 {
@@ -61,10 +61,10 @@ func buildAWS(r Request) (Plan, error) {
 		return Plan{}, fmt.Errorf("--principal: %q is not the ARN of an IAM user or role (arn:aws:iam::<account>:user/<name> or :role/<name>)", r.Principal)
 	}
 	if m[2] == "root" {
-		warn = append(warn, "--principal names a whole account: every user and role there that may call sts:AssumeRole could use this role. Name the one user or role that runs StackDNA.")
+		warn = append(warn, "--principal names a whole account: every user and role there that may call sts:AssumeRole could use this role. Name the one user or role that runs Truthform.")
 	}
 	if m[1] != r.Account && r.ExternalID == "" {
-		warn = append(warn, fmt.Sprintf("The principal is in another account (%s). Agree an external ID with whoever runs StackDNA and pass it with --external-id: it stops anyone else that account acts for from using this role.", m[1]))
+		warn = append(warn, fmt.Sprintf("The principal is in another account (%s). Agree an external ID with whoever runs Truthform and pass it with --external-id: it stops anyone else that account acts for from using this role.", m[1]))
 	}
 	if r.ExternalID != "" && (len(r.ExternalID) < 2 || len(r.ExternalID) > 1224 || !externalIDRE.MatchString(r.ExternalID)) {
 		return Plan{}, fmt.Errorf("--external-id: 2 to 1224 letters, digits or + = , . @ : / - _")
@@ -78,13 +78,13 @@ func buildAWS(r Request) (Plan, error) {
 	}
 	for flag, v := range map[string]string{"source-profile": r.SourceProfile, "admin-profile": r.AdminProfile} {
 		if v != "" && !profileRE.MatchString(v) {
-			return Plan{}, fmt.Errorf("--%s: %q is not a profile name StackDNA can put in a command (letters, digits, . _ -)", flag, v)
+			return Plan{}, fmt.Errorf("--%s: %q is not a profile name Truthform can put in a command (letters, digits, . _ -)", flag, v)
 		}
 	}
 
-	role := "stackdna-reader"
+	role := "truthform-reader"
 	if r.Access == "restore" {
-		role = "stackdna-restorer"
+		role = "truthform-restorer"
 	}
 	partition := strings.SplitN(principal, ":", 3)[1]
 	roleARN := fmt.Sprintf("arn:%s:iam::%s:role/%s", partition, r.Account, role)
@@ -98,13 +98,13 @@ func buildAWS(r Request) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	b, err := render("stackdna-aws.yaml.tmpl", map[string]any{"Chunks": add.Chunks, "ReadOnlyVersion": add.ReadOnlyAccess})
+	b, err := render("truthform-aws.yaml.tmpl", map[string]any{"Chunks": add.Chunks, "ReadOnlyVersion": add.ReadOnlyAccess})
 	if err != nil {
 		return Plan{}, err
 	}
-	tpl := file(r, "stackdna-aws.yaml")
+	tpl := file(r, "truthform-aws.yaml")
 
-	p := Plan{Files: map[string][]byte{"stackdna-aws.yaml": b}, Warnings: warn}
+	p := Plan{Files: map[string][]byte{"truthform-aws.yaml": b}, Warnings: warn}
 	trust := "assumable by " + principal
 	if r.ExternalID != "" {
 		trust += " with the agreed external ID"
@@ -116,14 +116,14 @@ func buildAWS(r Request) (Plan, error) {
 			"IAM roles and policies in a snapshot are not restorable with this role: add an IAM grant scoped to the names being restored (docs/permissions.md).")
 	} else {
 		p.Grants = append(p.Grants, fmt.Sprintf("and %d customer managed policies, %s-reads-0 to -%d: %d reads AWS's ReadOnlyAccess (%s) lacks for newer services, generated from the CloudFormation registry and kept to reads of configuration (no secret values, no data)", len(add.Chunks), role, len(add.Chunks)-1, add.ActionCount, add.ReadOnlyAccess),
-			"Nothing that writes. Run StackDNA's capture-only binary with it too: one that cannot send a write at all.")
-		p.Warnings = append(p.Warnings, "ReadOnlyAccess reads data as well as configuration: S3 objects, DynamoDB items, queue messages. StackDNA reads configuration only and never writes data to a snapshot, but whoever holds this role could read the data.")
+			"Nothing that writes. Run Truthform's capture-only binary with it too: one that cannot send a write at all.")
+		p.Warnings = append(p.Warnings, "ReadOnlyAccess reads data as well as configuration: S3 objects, DynamoDB items, queue messages. Truthform reads configuration only and never writes data to a snapshot, but whoever holds this role could read the data.")
 	}
 	if r.Access == "restore" {
 		p.Status = "Expected. PowerUserAccess restored the drill's 14 types, held by a user, not through this role."
 	} else {
-		p.Status = "Verified (2026-10-24) in a sandbox account, trusting a user in the same account: deployed from this template, the role captured us-east-2 with the same 97 resources as an identity holding ReadOnlyAccess and PowerUserAccess (stackdna compare: no differences) and was refused 2 types of 1,161, both on purpose: AWS::Bedrock::Session (AWS marks its reads data plane) and AWS::BedrockAgentCore::PaymentCredentialProvider (its reads return credentials). No sampled write was allowed. Without the add-on it was refused 87 types. Deleting the stack removed the role, the add-on and the access. The sandbox holds few resources: in an account using services whose listing needs a withheld read (about 37 types), more are refused, and a capture reports them. A principal in another account has not yet been tried."
-		p.Warnings = append(p.Warnings, fmt.Sprintf("%d types need an action the add-on does not grant (mostly kms:Decrypt for resources encrypted with a customer's key, or a write a schema lists under read). A capture reports any it cannot read; stackdna check lists them.", add.ShortN))
+		p.Status = "Verified (2026-10-24) in a sandbox account, trusting a user in the same account: deployed from this template, the role captured us-east-2 with the same 97 resources as an identity holding ReadOnlyAccess and PowerUserAccess (truthform compare: no differences) and was refused 2 types of 1,161, both on purpose: AWS::Bedrock::Session (AWS marks its reads data plane) and AWS::BedrockAgentCore::PaymentCredentialProvider (its reads return credentials). No sampled write was allowed. Without the add-on it was refused 87 types. Deleting the stack removed the role, the add-on and the access. The sandbox holds few resources: in an account using services whose listing needs a withheld read (about 37 types), more are refused, and a capture reports them. A principal in another account has not yet been tried."
+		p.Warnings = append(p.Warnings, fmt.Sprintf("%d types need an action the add-on does not grant (mostly kms:Decrypt for resources encrypted with a customer's key, or a write a schema lists under read). A capture reports any it cannot read; truthform check lists them.", add.ShortN))
 	}
 
 	p.Before = []Step{
@@ -151,9 +151,9 @@ func buildAWS(r Request) (Plan, error) {
 			p.Verify = append(p.Verify, set("external_id", r.ExternalID))
 		}
 		p.Verify = append(p.Verify, Step{Title: "Check what the role can read, type by type, and that it can write nothing it should not",
-			Command: cmd("stackdna", "check", "--platform", "aws", "--region", region, "--profile", role, "--access", r.Access)})
+			Command: cmd("truthform", "check", "--platform", "aws", "--region", region, "--profile", role, "--access", r.Access)})
 	} else {
-		p.Verify = append(p.Verify, Step{Title: "Use the role from a profile that assumes it (role_arn " + roleARN + ", source_profile set to the principal's own profile), then run stackdna check --platform aws with that profile",
+		p.Verify = append(p.Verify, Step{Title: "Use the role from a profile that assumes it (role_arn " + roleARN + ", source_profile set to the principal's own profile), then run truthform check --platform aws with that profile",
 			Note: "Pass --source-profile with the principal's profile name to have these commands written out in full."})
 	}
 	p.Undo = []Step{

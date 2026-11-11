@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/drilltest"
-	"github.com/stackdna/core/internal/platform"
+	"github.com/usetruthform/core/internal/drilltest"
+	"github.com/usetruthform/core/internal/platform"
 )
 
 var _ platform.Platform = (*Adapter)(nil)
@@ -53,11 +53,11 @@ func seedShop(t *testing.T, f *Fake) {
 }
 
 var shopKeys = []string{
-	"iam.googleapis.com/ServiceAccount||projects/{{stackdna|project}}/serviceAccounts/shop-api",
-	"iam.googleapis.com/Role||projects/{{stackdna|project}}/roles/shopReader",
-	"logging.googleapis.com/LogMetric||projects/{{stackdna|project}}/metrics/shop-errors",
-	"monitoring.googleapis.com/NotificationChannel||projects/{{stackdna|project}}/notificationChannels/~Shop on-call",
-	"monitoring.googleapis.com/AlertPolicy||projects/{{stackdna|project}}/alertPolicies/~Shop errors",
+	"iam.googleapis.com/ServiceAccount||projects/{{truthform|project}}/serviceAccounts/shop-api",
+	"iam.googleapis.com/Role||projects/{{truthform|project}}/roles/shopReader",
+	"logging.googleapis.com/LogMetric||projects/{{truthform|project}}/metrics/shop-errors",
+	"monitoring.googleapis.com/NotificationChannel||projects/{{truthform|project}}/notificationChannels/~Shop on-call",
+	"monitoring.googleapis.com/AlertPolicy||projects/{{truthform|project}}/alertPolicies/~Shop errors",
 }
 
 func keys() []string {

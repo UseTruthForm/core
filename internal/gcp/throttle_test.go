@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // stepServer answers each request with the next step, then 200.

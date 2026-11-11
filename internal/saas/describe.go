@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/stackdna/core/internal/describe"
+	"github.com/usetruthform/core/internal/describe"
 )
 
 // Kinds lists the provider's collections, derived ones included.

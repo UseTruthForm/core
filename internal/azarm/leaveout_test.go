@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 const otherSub = "33333333-3333-3333-3333-333333333333"
@@ -55,7 +55,7 @@ func TestLeaveOutRefusesWhatIsStillNeeded(t *testing.T) {
 	pe := obj("Microsoft.Network/privateEndpoints/privateDnsZoneGroups", "rg", "pe/default", sub+"Microsoft.Network/privateEndpoints/pe/privateDnsZoneGroups/default",
 		map[string]any{"properties": map[string]any{"privateDnsZoneConfigs": []any{map[string]any{"properties": map[string]any{"privateDnsZoneId": zoneID}}}}})
 	byRef := obj("Microsoft.Network/privateEndpoints", "rg", "pe2", sub+"Microsoft.Network/privateEndpoints/pe2",
-		map[string]any{"properties": map[string]any{"note": "{{stackdna|ref|Microsoft.Network/privateDnsZones|rg|corp.example|id}}"}})
+		map[string]any{"properties": map[string]any{"note": "{{truthform|ref|Microsoft.Network/privateDnsZones|rg|corp.example|id}}"}})
 	waits := obj("Microsoft.Storage/storageAccounts", "rg", "after", sub+"Microsoft.Storage/storageAccounts/after", map[string]any{})
 	waits.Body["metadata"].(map[string]any)["annotations"].(map[string]any)[annAfter] = zoneID
 	zone := "Microsoft.Network/privateDnsZones/rg/corp.example"
@@ -68,7 +68,7 @@ func TestLeaveOutRefusesWhatIsStillNeeded(t *testing.T) {
 	idID := sub + "Microsoft.ManagedIdentity/userAssignedIdentities/aks-id"
 	identity := obj("Microsoft.ManagedIdentity/userAssignedIdentities", "rg", "aks-id", idID, map[string]any{"location": "eastus"})
 	grant := obj("Microsoft.Authorization/roleAssignments", "rg", "providers/Microsoft.Authorization/roleAssignments/g1", sub+"Microsoft.Network/privateDnsZones/corp.example/providers/Microsoft.Authorization/roleAssignments/g1",
-		map[string]any{"properties": map[string]any{"principalId": "{{stackdna|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|aks-id|properties.principalId}}"}})
+		map[string]any{"properties": map[string]any{"principalId": "{{truthform|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|aks-id|properties.principalId}}"}})
 	grantKey := "Microsoft.Authorization/roleAssignments/rg/providers/Microsoft.Authorization/roleAssignments/g1"
 	cluster := obj(managedClusterType, "rg", "aks", sub+managedClusterType+"/aks", map[string]any{"identity": map[string]any{"type": "UserAssigned", "userAssignedIdentities": map[string]any{idID: map[string]any{}}}})
 	clusterAndGrant := []snapshot.Object{identity, grant, cluster}

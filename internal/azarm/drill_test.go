@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/drilltest"
-	"github.com/stackdna/core/internal/platform"
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/drilltest"
+	"github.com/usetruthform/core/internal/platform"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 var _ platform.Platform = (*Adapter)(nil)

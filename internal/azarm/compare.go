@@ -3,7 +3,7 @@ package azarm
 import (
 	"strings"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // unsetDefaults are what Azure answers for a property a snapshot does not set,

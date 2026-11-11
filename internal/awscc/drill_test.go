@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/drilltest"
-	"github.com/stackdna/core/internal/platform"
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/drilltest"
+	"github.com/usetruthform/core/internal/platform"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 var _ platform.Platform = (*Adapter)(nil)
@@ -19,7 +19,7 @@ const (
 	srcAccount = "111111111111"
 	dstAccount = "222222222222"
 	region     = "us-east-1"
-	zipCode    = "def handler(event, context):\n    return 'stackdna'\n"
+	zipCode    = "def handler(event, context):\n    return 'truthform'\n"
 	secretVal  = "s3cr3t-value-never-on-disk"
 )
 
@@ -150,9 +150,11 @@ var shopKeys = []string{
 	"AWS::SSM::Parameter||/shop/env",
 	"AWS::ApiGateway::RestApi||shop",
 	// Pinned: the hash of a tokenized spec. If these change, names in
-	// existing snapshots change, which is a format change.
-	"AWS::ApiGateway::Resource||h-0b3a4f829256",
-	"AWS::ApiGateway::Resource||h-8a8b99be7fdf",
+	// existing snapshots change, which is a format change. They changed
+	// once, at format 2: the placeholders in the spec were renamed with the
+	// tool, and format 1 snapshots from AWS are refused for it.
+	"AWS::ApiGateway::Resource||h-315c6d225de1",
+	"AWS::ApiGateway::Resource||h-388f538922b2",
 }
 
 type env struct {
@@ -245,7 +247,7 @@ func TestDrillOnFakeAccounts(t *testing.T) {
 	// Nothing account-specific or secret may be in the spec of any object.
 	for _, o := range snap.Objects {
 		s := canon(o.Body["spec"])
-		for _, bad := range []string{srcAccount, secretVal, "stackdna'", "vpc-"} {
+		for _, bad := range []string{srcAccount, secretVal, "truthform'", "vpc-"} {
 			if strings.Contains(s, bad) {
 				t.Errorf("%s spec contains %q: %s", o.Key(), bad, s)
 			}
@@ -281,7 +283,7 @@ func TestSnapshotOnDisk(t *testing.T) {
 			return err
 		}
 		b, _ := os.ReadFile(p)
-		for _, bad := range []string{secretVal, "return 'stackdna'"} {
+		for _, bad := range []string{secretVal, "return 'truthform'"} {
 			if strings.Contains(string(b), bad) {
 				t.Errorf("%s contains %q", p, bad)
 			}

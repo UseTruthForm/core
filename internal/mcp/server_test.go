@@ -32,7 +32,7 @@ func session(t *testing.T, s *Server, msgs ...string) map[string]map[string]any 
 func mustJSON(v any) []byte { b, _ := json.Marshal(v); return b }
 
 func TestProtocol(t *testing.T) {
-	s := &Server{Name: "stackdna", Version: "test", Tools: []Tool{
+	s := &Server{Name: "truthform", Version: "test", Tools: []Tool{
 		{Name: "echo", Description: "echo", Schema: map[string]any{"type": "object"}, ReadOnly: true,
 			Call: func(_ context.Context, a map[string]any) (string, error) { return "said " + a["x"].(string), nil }},
 		{Name: "broken", Description: "fails", Schema: map[string]any{"type": "object"}, ReadOnly: true,

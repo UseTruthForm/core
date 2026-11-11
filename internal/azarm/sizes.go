@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // A size a subscription is not offered is refused, and Azure does not say so:

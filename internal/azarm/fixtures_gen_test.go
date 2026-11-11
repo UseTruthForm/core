@@ -84,10 +84,10 @@ const fixtureDir = "../../testdata/azure/types"
 
 // TestRegenerateFixtures rebuilds testdata/azure/types from Azure's
 // published definitions, keeping only what fixtureTypes reach. It runs only
-// when asked: STACKDNA_REGEN_AZURE_FIXTURES=1 go test -run Regenerate.
+// when asked: TRUTHFORM_REGEN_AZURE_FIXTURES=1 go test -run Regenerate.
 func TestRegenerateFixtures(t *testing.T) {
-	if os.Getenv("STACKDNA_REGEN_AZURE_FIXTURES") == "" {
-		t.Skip("set STACKDNA_REGEN_AZURE_FIXTURES=1 to rebuild the Azure fixtures")
+	if os.Getenv("TRUTHFORM_REGEN_AZURE_FIXTURES") == "" {
+		t.Skip("set TRUTHFORM_REGEN_AZURE_FIXTURES=1 to rebuild the Azure fixtures")
 	}
 	src, err := FetchDefinitions(t.TempDir(), time.Hour)
 	if err != nil {

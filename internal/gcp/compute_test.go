@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stackdna/core/internal/drilltest"
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/drilltest"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // seedNetwork builds a Compute network with a regional subnetwork and a
@@ -44,9 +44,9 @@ func TestComputeDrill(t *testing.T) {
 	a := func(f *Fake) *Adapter { return &Adapter{API: f, Docs: docs} }
 	pre := APIVersion + "|compute.googleapis.com/"
 	snap := drilltest.Run(t, drilltest.Spec{Source: a(src), Target: a(dst), ExpectKeys: []string{
-		pre + "Network||projects/{{stackdna|project}}/global/networks/shop-net",
-		pre + "Subnetwork||projects/{{stackdna|project}}/regions/us-central1/subnetworks/app",
-		pre + "Firewall||projects/{{stackdna|project}}/global/firewalls/allow-https",
+		pre + "Network||projects/{{truthform|project}}/global/networks/shop-net",
+		pre + "Subnetwork||projects/{{truthform|project}}/regions/us-central1/subnetworks/app",
+		pre + "Firewall||projects/{{truthform|project}}/global/firewalls/allow-https",
 	}})
 	for _, o := range snap.Objects {
 		if s := canon(o.Body["spec"]); strings.Contains(s, srcProject) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The Azure restore drill against a real subscription: the disaster case.
 #
-#   seed an app with the az CLI (not StackDNA)
+#   seed an app with the az CLI (not Truthform)
 #   capture it twice; the digests must match
 #   DELETE the app's resource group
 #   restore it from the snapshot; every resource must be applied
@@ -30,10 +30,10 @@ set -euo pipefail
 
 SUBSCRIPTION="${SUBSCRIPTION:?set SUBSCRIPTION to a sandbox subscription ID}"
 LOCATION="${LOCATION:-eastus}"
-BIN="${BIN:-bin/stackdna}"
-OUT="${OUT:-.stackdna/azure-drill}"
-RG=stackdna-drill-rg
-N=stackdna-drill
+BIN="${BIN:-bin/truthform}"
+OUT="${OUT:-.truthform/azure-drill}"
+RG=truthform-drill-rg
+N=truthform-drill
 
 # Git Bash on Windows rewrites arguments that look like paths, which turns
 # resource IDs (/subscriptions/...) into C:/Program Files/Git/subscriptions/...
@@ -80,16 +80,16 @@ seed() {
   # An issuer under .invalid (RFC 2606) no one can hold: a real one such as
   # GitHub's would give whoever owns the subject Reader on the group meanwhile.
   az identity federated-credential create -g "$RG" --identity-name "$N-id" -n "$N-fic" \
-    --issuer https://drill.stackdna.invalid --subject stackdna-drill \
+    --issuer https://drill.truthform.invalid --subject truthform-drill \
     --audiences api://AzureADTokenExchange -o none
   az network vnet create -g "$RG" -n "$N-vnet2" -l "$LOCATION" --address-prefixes 10.43.0.0/16 -o none
   az network vnet peering create -g "$RG" --vnet-name "$N-vnet" -n to-2 --remote-vnet "$N-vnet2" --allow-vnet-access -o none
   az network vnet peering create -g "$RG" --vnet-name "$N-vnet2" -n to-1 --remote-vnet "$N-vnet" --allow-vnet-access -o none
-  az lock create --name "$N-lock" --lock-type CanNotDelete --resource-group "$RG" --notes "StackDNA drill" -o none
+  az lock create --name "$N-lock" --lock-type CanNotDelete --resource-group "$RG" --notes "Truthform drill" -o none
   echo "seeded $RG"
 }
 
-[ -x "$BIN" ] || [ -x "$BIN.exe" ] || { echo "build first: go build -o $BIN ./cmd/stackdna" >&2; exit 1; }
+[ -x "$BIN" ] || [ -x "$BIN.exe" ] || { echo "build first: go build -o $BIN ./cmd/truthform" >&2; exit 1; }
 [ -x "$BIN" ] || BIN="$BIN.exe"
 rm -rf "$OUT"; mkdir -p "$OUT"
 az account show --query "{name:name, id:id}" -o tsv

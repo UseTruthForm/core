@@ -11,7 +11,7 @@ func buildKubernetes(r Request) (Plan, error) {
 		miss = append(miss, Missing{"context", "the kubeconfig context of the cluster, as the administrator", "kubectl config get-contexts"})
 	}
 	if r.Subject == "" {
-		miss = append(miss, Missing{"subject", "who will run StackDNA: User:NAME, Group:NAME or ServiceAccount:NAMESPACE/NAME", ""})
+		miss = append(miss, Missing{"subject", "who will run Truthform: User:NAME, Group:NAME or ServiceAccount:NAMESPACE/NAME", ""})
 	}
 	if len(miss) > 0 {
 		return Plan{}, miss
@@ -34,18 +34,18 @@ func buildKubernetes(r Request) (Plan, error) {
 	if !ok {
 		return Plan{}, fmt.Errorf("--subject: %q is not User:NAME, Group:NAME or ServiceAccount:NAMESPACE/NAME", r.Subject)
 	}
-	role := "stackdna-reader"
+	role := "truthform-reader"
 	if r.Access == "restore" {
-		role = "stackdna-restorer"
+		role = "truthform-restorer"
 	}
-	b, err := render("stackdna-kubernetes.yaml.tmpl", map[string]any{
+	b, err := render("truthform-kubernetes.yaml.tmpl", map[string]any{
 		"Name": role, "Restore": r.Access == "restore", "SubjectKind": kind, "SubjectName": name, "SubjectNamespace": ns})
 	if err != nil {
 		return Plan{}, err
 	}
-	f := file(r, "stackdna-kubernetes.yaml")
+	f := file(r, "truthform-kubernetes.yaml")
 	kc := func(a ...string) string { return cmd(append([]string{"kubectl", "--context", r.Context}, a...)...) }
-	p := Plan{Files: map[string][]byte{"stackdna-kubernetes.yaml": b}}
+	p := Plan{Files: map[string][]byte{"truthform-kubernetes.yaml": b}}
 	if r.Access == "restore" {
 		p.Grants = []string{"The built-in ClusterRole cluster-admin, bound to " + r.Subject + " as " + role}
 		p.Warnings = []string{"This is cluster-admin: everything in the cluster. A restore recreates Roles and bindings, and Kubernetes lets an identity grant only what it holds, so nothing narrower can restore RBAC. Grant it for the restore and remove it afterwards."}
@@ -72,7 +72,7 @@ func buildKubernetes(r Request) (Plan, error) {
 			p.Verify = append(p.Verify, Step{Title: "And that it cannot open a shell in a pod (expect no)", Command: kc("auth", "can-i", "get", "pods/exec", "--all-namespaces", "--as", as)})
 		}
 	}
-	p.Verify = append(p.Verify, Step{Title: "With a context that authenticates as " + r.Subject + ", check what it can read: stackdna check --context with that context's name"})
+	p.Verify = append(p.Verify, Step{Title: "With a context that authenticates as " + r.Subject + ", check what it can read: truthform check --context with that context's name"})
 	p.Undo = []Step{
 		{Title: "Delete the role and its binding", Command: kc("delete", "-f", f)},
 		{Title: "Check they are gone (expect NotFound for both)", Command: kc("get", "clusterrole,clusterrolebinding", role)},

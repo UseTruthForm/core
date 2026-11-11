@@ -15,28 +15,28 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/stackdna/core/internal/readonly"
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/readonly"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // APIVersion is the apiVersion of every SaaS object in a snapshot.
-const APIVersion = "saas.stackdna.org/v1"
+const APIVersion = "saas.truthform.org/v1"
 
 const (
-	annSecrets = "stackdna.org/secrets"
+	annSecrets = "truthform.org/secrets"
 	// annParent names an item's parent. A name cannot carry it: a webhook
 	// is named by its URL, which is full of slashes.
-	annParent = "stackdna.org/parent"
+	annParent = "truthform.org/parent"
 	// annUnreadable names fields a write accepts that no read returns in
 	// that form, so they cannot be in a snapshot. GitHub takes an
 	// environment's wait_timer and reports it reshaped inside
 	// protection_rules; without this the timer was dropped silently and a
 	// restore read as complete.
-	annUnreadable = "stackdna.org/unreadable"
+	annUnreadable = "truthform.org/unreadable"
 	// annUnchecked says the unreadable check could not look: the response
 	// schema has no envelope where the provider puts the item.
-	annUnchecked = "stackdna.org/unreadable-unchecked"
-	tokAccount   = "{{stackdna|account}}"
+	annUnchecked = "truthform.org/unreadable-unchecked"
+	tokAccount   = "{{truthform|account}}"
 )
 
 // Client is one account of one provider.
@@ -281,7 +281,7 @@ func (it *item) fullName() string {
 // schema. A field only the create takes (auto_init, license_template) is
 // a one-time input, and one only the update takes (a label's new_name) is
 // an action; neither is state a snapshot could hold, and naming them made
-// every repository and label in the real StackDNA capture look lossy.
+// every repository and label in the real Truthform capture look lossy.
 // With no response schema nothing is claimed: absence of evidence is not
 // reported as a gap.
 func (c *Client) unreadable(col *Collection) []string {
@@ -469,8 +469,8 @@ func (c *Client) specOf(col *Collection, w *Fields, raw map[string]any, masked *
 
 // tokenize replaces the account where it is structural, so a snapshot of
 // one organisation or account restores into another: a value that is the
-// account, or a path or URL segment (/StackDNA/). Never inside prose: the
-// StackDNA organisation's repository describes itself as "StackDNA core:
+// account, or a path or URL segment (/Truthform/). Never inside prose: the
+// Truthform organisation's repository describes itself as "Truthform core:
 // ...", and replacing that would rewrite the description in every target.
 func tokenize(spec map[string]any, account string) map[string]any {
 	if account == "" {
@@ -570,6 +570,10 @@ type RestoreOptions struct {
 	// Allow, when set, is asked before every write, with the item the
 	// write would change (nil for a create); a reason refuses the write.
 	Allow func(o snapshot.Object, existing map[string]any) string
+	// Existing, when set, is given the spec of an item already in the
+	// target before it is compared with the snapshot's, and returns the
+	// spec to compare.
+	Existing func(kind string, spec map[string]any) map[string]any
 }
 
 // Restore creates what is missing, parents first. An item that exists is
@@ -666,12 +670,16 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 	}
 	if ex, ok := listed[lk][own]; ok {
 		targets[col.Kind+"|"+full] = ex.raw
-		if canon(ex.spec) == canon(spec) {
+		exSpec := ex.spec
+		if opt.Existing != nil {
+			exSpec = opt.Existing(col.Kind, exSpec)
+		}
+		if canon(exSpec) == canon(spec) {
 			return true, "already present and identical"
 		}
 		var changed []string
 		for _, k := range sortedKeys(spec) {
-			if canon(spec[k]) != canon(ex.spec[k]) {
+			if canon(spec[k]) != canon(exSpec[k]) {
 				changed = append(changed, k)
 			}
 		}

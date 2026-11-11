@@ -140,7 +140,7 @@ type SchemaChange struct {
 }
 
 // CompareSchemas reports what each API added or removed between old and new.
-// This is how StackDNA keeps up with APIs without anyone maintaining field
+// This is how Truthform keeps up with APIs without anyone maintaining field
 // lists: the fields are whatever the live API publishes, and this shows the
 // difference.
 func CompareSchemas(old, new Snapshot) []SchemaChange {

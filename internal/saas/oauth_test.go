@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -405,5 +406,114 @@ func TestACaptureWritesTheUncheckedGap(t *testing.T) {
 	ann, _ := snap.Objects[0].Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	if why, _ := ann[annUnchecked].(string); !strings.Contains(why, `no "result" envelope`) {
 		t.Fatalf("annotations %v, want the unchecked gap", ann)
+	}
+}
+
+// answer is what a browser got back from the sign-in's callback.
+type answer struct {
+	status int
+	body   string
+	closed bool
+	err    error
+}
+
+// get fetches a URL as a browser would and sends what came back.
+func get(u string, to chan<- answer) {
+	resp, err := http.Get(u)
+	if err != nil {
+		to <- answer{err: err}
+		return
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	to <- answer{resp.StatusCode, string(b), resp.Close, err}
+}
+
+// The browser gets the page saying the sign-in worked, although Login closes
+// its listener the moment it has its answer, and Login is not held up by a
+// connection a browser opened and never used.
+//
+// Two failures are pinned here. The first: the page was only sent once the
+// handler returned, and Login's Close could come first and cut it. In CI
+// TestASignInRefusesAnotherState failed once with "dial tcp [::1]:41439:
+// connect: connection refused", which fits a client retrying a cut request
+// and finding nothing listening; that run was not reproduced, but with the
+// handler held open the cut happens every time. The second came from the
+// first attempt at a fix, a graceful Shutdown: it waited out its whole
+// limit on an unused open connection, so a sign-in that worked sat for two
+// seconds before returning.
+func TestTheBrowserGetsItsAnswerAndLoginDoesNotWait(t *testing.T) {
+	a := newAuthServer(t)
+	port := freePort(t)
+	o := a.oauth(port)
+	o.answered = func() { time.Sleep(300 * time.Millisecond) }
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	got := make(chan answer, 1)
+	var spare net.Conn
+	defer func() {
+		if spare != nil {
+			spare.Close()
+		}
+	}()
+	start := time.Now()
+	tok, err := o.Login(ctx, http.DefaultClient, func(u string) {
+		// As a browser does: a second connection, opened and not used.
+		spare, _ = net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		go get(u, got)
+	}, true)
+	took := time.Since(start)
+	if err != nil || tok.AccessToken != "access-1" {
+		t.Fatalf("login: %v, token %+v", err, tok)
+	}
+	if spare == nil {
+		t.Fatal("the spare connection was not opened, so the wait was not tested")
+	}
+	if took > time.Second {
+		t.Errorf("Login took %v with an unused connection open; it must not wait for it", took)
+	}
+	select {
+	case p := <-got:
+		if p.err != nil || p.status != http.StatusOK || !strings.Contains(p.body, "Signed in to Truthform") {
+			t.Errorf("the browser got status %d, body %q, error %v", p.status, p.body, p.err)
+		}
+		// The listener is gone by now: a browser that kept the connection
+		// would send its next request into nothing.
+		if !p.closed {
+			t.Error("the page did not tell the browser to close the connection")
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("the browser never got an answer")
+	}
+}
+
+// A sign-in the person refused tells the browser so. Login returns its
+// error at once there, with no token exchange first, so the page has even
+// less time: before it was sent whole, this path lost it every time the
+// handler was still running.
+func TestARefusedSignInStillAnswersTheBrowser(t *testing.T) {
+	a := newAuthServer(t)
+	port := freePort(t)
+	o := a.oauth(port)
+	o.answered = func() { time.Sleep(300 * time.Millisecond) }
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	got := make(chan answer, 1)
+	_, err := o.Login(ctx, http.DefaultClient, func(u string) {
+		// The provider's redirect when the person says no: the sign-in's
+		// own state, and an error in place of a code.
+		au, _ := url.Parse(u)
+		go get(fmt.Sprintf("http://127.0.0.1:%d/oauth/callback?error=access_denied&error_description=no&state=%s", port, url.QueryEscape(au.Query().Get("state"))), got)
+	}, true)
+	if err == nil || !strings.Contains(err.Error(), "sign-in refused: access_denied no") {
+		t.Fatalf("login error %v, want the refusal", err)
+	}
+	select {
+	case p := <-got:
+		if p.err != nil || p.status != http.StatusOK || !strings.Contains(p.body, "Sign-in was not completed") || !p.closed {
+			t.Errorf("the browser got status %d, body %q, closed %v, error %v", p.status, p.body, p.closed, p.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("the browser never got an answer")
 	}
 }

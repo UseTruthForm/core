@@ -17,7 +17,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
-	"github.com/stackdna/core/internal/readonly"
+	"github.com/usetruthform/core/internal/readonly"
 )
 
 // SDK is the API reached with Application Default Credentials (gcloud auth

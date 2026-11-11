@@ -17,12 +17,12 @@ import (
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/restmapper"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
-// FieldManager is the server-side-apply owner StackDNA writes as, so a later
+// FieldManager is the server-side-apply owner Truthform writes as, so a later
 // diff or a human can see which fields a restore set.
-const FieldManager = "stackdna"
+const FieldManager = "truthform"
 
 // RestoreOptions control where secret values come from.
 type RestoreOptions struct {

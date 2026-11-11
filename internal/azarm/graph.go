@@ -10,7 +10,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // A Graph is a snapshot as resources and the relationships between them,
@@ -258,7 +258,7 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 		edges[pending{from, target, kind, path, part}] = true
 	}
 	// A reference token's value, from the status of the resource it names:
-	// a principal ID, not "{{stackdna|ref|...}}", for whatever joins on it.
+	// a principal ID, not "{{truthform|ref|...}}", for whatever joins on it.
 	resolve := func(v string) string {
 		return refAnyRE.ReplaceAllStringFunc(v, func(tok string) string {
 			m := refAnyRE.FindStringSubmatch(tok)
@@ -476,8 +476,8 @@ var subscriptionRE = regexp.MustCompile(`(?i)^/subscriptions/([^/]+)/?$`)
 // where an ID in text does: at a separator between joined IDs, a quote,
 // a URL's query, a bracket.
 var graphIDRE = regexp.MustCompile(`(?i)` +
-	`/subscriptions/(?:\{\{stackdna\|subscription\}\}|` + idSeg + `+)(?:/resourceGroups/` + idSeg + `+)?/providers/` + idSeg + `+(?:/` + idSeg + `+/` + idSeg + `+)+` +
-	`|/subscriptions/(?:\{\{stackdna\|subscription\}\}|` + idSeg + `+)/resourceGroups/` + idSeg + `+` +
+	`/subscriptions/(?:\{\{truthform\|subscription\}\}|` + idSeg + `+)(?:/resourceGroups/` + idSeg + `+)?/providers/` + idSeg + `+(?:/` + idSeg + `+/` + idSeg + `+)+` +
+	`|/subscriptions/(?:\{\{truthform\|subscription\}\}|` + idSeg + `+)/resourceGroups/` + idSeg + `+` +
 	`|/providers/Microsoft\.(?:Authorization|Management)/` + idSeg + `+/` + idSeg + `+(?:/` + idSeg + `+/` + idSeg + `+)*`)
 
 // findIDs is every resource ID in a string, outside reference tokens (an

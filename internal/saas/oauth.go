@@ -49,7 +49,13 @@ type TokenStore interface {
 // keychain runs, login says so and the token comes from the environment.
 type Keychain struct{}
 
-const keychainService = "stackdna"
+const keychainService = "truthform"
+
+// legacyService is where a sign-in made before the tool was renamed is kept.
+// It is never read, so that sign-in is made again. It is removed whenever a
+// sign-in is stored or forgotten: left behind, `logout` would report the
+// sign-in gone while a working refresh token stayed in the keychain.
+const legacyService = "stackdna"
 
 func (Keychain) Get(p string) (string, error) {
 	s, err := keyring.Get(keychainService, p)
@@ -58,9 +64,18 @@ func (Keychain) Get(p string) (string, error) {
 	}
 	return s, err
 }
-func (Keychain) Set(p, s string) error { return keyring.Set(keychainService, p, s) }
+func (Keychain) Set(p, s string) error {
+	if err := keyring.Set(keychainService, p, s); err != nil {
+		return err
+	}
+	return forget(legacyService, p)
+}
 func (Keychain) Delete(p string) error {
-	if err := keyring.Delete(keychainService, p); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+	return errors.Join(forget(keychainService, p), forget(legacyService, p))
+}
+
+func forget(service, p string) error {
+	if err := keyring.Delete(service, p); err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		return err
 	}
 	return nil
@@ -127,13 +142,13 @@ func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string
 		// A redirect without this sign-in's state is not its answer: it is
 		// refused, and the sign-in goes on waiting for the real one.
 		case q.Get("state") != state:
-			http.Error(w, "This is not the sign-in StackDNA started.", http.StatusBadRequest)
+			http.Error(w, "This is not the sign-in Truthform started.", http.StatusBadRequest)
 			return
 		case q.Get("error") != "":
 			fmt.Fprintln(w, "Sign-in was not completed. You can close this tab.")
 			finish(result{err: fmt.Errorf("sign-in refused: %s %s", q.Get("error"), q.Get("error_description"))})
 		default:
-			fmt.Fprintln(w, "Signed in to StackDNA. You can close this tab and return to the terminal.")
+			fmt.Fprintln(w, "Signed in to Truthform. You can close this tab and return to the terminal.")
 			finish(result{code: q.Get("code")})
 		}
 	})}
@@ -194,7 +209,7 @@ func Tokens(p Provider, store TokenStore, hc *http.Client) (oauth2.TokenSource, 
 	}
 	how := fmt.Sprintf("%s is not set; set it to an API token", p.TokenEnv)
 	if p.OAuth != nil && p.OAuth.id() != "" {
-		how += fmt.Sprintf(", or sign in with: stackdna login %s", p.Name)
+		how += fmt.Sprintf(", or sign in with: truthform login %s", p.Name)
 	}
 	if p.OAuth == nil || store == nil {
 		return nil, "", errors.New(how)
@@ -208,7 +223,7 @@ func Tokens(p Provider, store TokenStore, hc *http.Client) (oauth2.TokenSource, 
 	}
 	var t oauth2.Token
 	if err := json.Unmarshal([]byte(s), &t); err != nil {
-		return nil, "", fmt.Errorf("the stored %s sign-in is unreadable; sign in again with: stackdna login %s", p.Name, p.Name)
+		return nil, "", fmt.Errorf("the stored %s sign-in is unreadable; sign in again with: truthform login %s", p.Name, p.Name)
 	}
 	src := p.OAuth.config("").TokenSource(context.WithValue(context.Background(), oauth2.HTTPClient, hc), &t)
 	return &saving{src: src, store: store, name: p.Name, last: t.AccessToken}, "sign-in", nil
@@ -227,14 +242,14 @@ type saving struct {
 func (s *saving) Token() (*oauth2.Token, error) {
 	t, err := s.src.Token()
 	if err != nil {
-		return nil, fmt.Errorf("refreshing the %s sign-in: %w; sign in again with: stackdna login %s", s.name, err, s.name)
+		return nil, fmt.Errorf("refreshing the %s sign-in: %w; sign in again with: truthform login %s", s.name, err, s.name)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if t.AccessToken != s.last {
 		s.last = t.AccessToken
 		if err := Save(s.store, s.name, t); err != nil {
-			fmt.Fprintf(os.Stderr, "WARNING: the refreshed %s sign-in could not be stored (%v); if the next run is refused, sign in again with: stackdna login %s\n", s.name, err, s.name)
+			fmt.Fprintf(os.Stderr, "WARNING: the refreshed %s sign-in could not be stored (%v); if the next run is refused, sign in again with: truthform login %s\n", s.name, err, s.name)
 		}
 	}
 	return t, nil

@@ -1,0 +1,6 @@
+apiVersion: azure.stackdna.org/v1
+kind: Microsoft.Resources/resourceGroups@2025-04-01
+digest: sha256:00
+fields:
+  - location
+  - tags.*

@@ -1,9 +1,9 @@
-# Setting up StackDNA access: a guide for agents
+# Setting up Truthform access: a guide for agents
 
-This is for an AI agent (or a person) helping someone give StackDNA access
+This is for an AI agent (or a person) helping someone give Truthform access
 to their AWS account, Azure subscription, Google Cloud project, Kubernetes
 cluster, GitHub organisation or Cloudflare account. The MCP server
-(`stackdna mcp`) points agents here.
+(`truthform mcp`) points agents here.
 
 It also covers planning a restore, at the end. The person runs the restore;
 you prepare it.
@@ -11,16 +11,16 @@ you prepare it.
 The tools do the exact parts: `permissions` says what to grant and gives
 every command, and `check_access` shows what a grant actually allows. This
 page is the judgement around them. Every rule here comes from a mistake
-that was made while setting up StackDNA's own test accounts.
+that was made while setting up Truthform's own test accounts.
 
 ## The rules
 
-1. **You do not grant access. The person does.** No StackDNA tool creates
+1. **You do not grant access. The person does.** No Truthform tool creates
    a role, attaches a policy, creates an account or issues a token, and you
    should not do it either, with this server or any other. Giving an
    identity permissions is the person's decision. Their security tooling,
    and yours, will usually refuse it anyway: Claude Code's safety check
-   blocked exactly this while StackDNA's own drill policy was being
+   blocked exactly this while Truthform's own drill policy was being
    attached.
 
 2. **Never hand over a command with a placeholder in it.** A pasted
@@ -32,7 +32,7 @@ that was made while setting up StackDNA's own test accounts.
 
 3. **Look before granting.** Each plan starts with read-only commands:
    which account the administrator is signed in to, what the principal
-   already holds, whether a StackDNA role is already there. Run them, or
+   already holds, whether a Truthform role is already there. Run them, or
    have the person run them, and read the output. On the first real setup
    the user already had an inline policy nobody had mentioned, and the
    account turned out to be the organisation's management account. Both
@@ -40,7 +40,7 @@ that was made while setting up StackDNA's own test accounts.
 
 4. **Add a separately named grant; never edit theirs.** The templates
    create their own role, role assignment, IAM binding or ClusterRole,
-   named `stackdna-reader` (capture) or `stackdna-restorer` (restore).
+   named `truthform-reader` (capture) or `truthform-restorer` (restore).
    Never widen a policy the customer already has, even when that looks
    simpler: theirs is theirs to change, and a separate grant can be removed
    on its own.
@@ -71,7 +71,7 @@ that was made while setting up StackDNA's own test accounts.
    the role, the token) and the commands that remove it.
 
 9. **Separate what you verified from what you assumed.** Each plan carries
-   a status: verified (StackDNA ran with exactly this grant), partly
+   a status: verified (Truthform ran with exactly this grant), partly
    verified or expected. Repeat it; do not upgrade it.
 
 ## The sequence
@@ -84,7 +84,7 @@ that was made while setting up StackDNA's own test accounts.
 4. Walk through *Before granting*. Stop and ask if anything there is a
    surprise.
 5. Have the person write the template files (the plan's first step gives
-   the exact `stackdna permissions ... --write` command) and read them.
+   the exact `truthform permissions ... --write` command) and read them.
 6. Have the person run the *Grant* steps.
 7. Run `check_access` as the new identity. Report its warnings, anything
    not checked, and every denied or failed type.
@@ -109,7 +109,7 @@ are. The common ones:
 ## Platform notes
 
 - **AWS.** The role is a CloudFormation stack, so deleting the stack
-  removes it. When the person who runs StackDNA is in another account,
+  removes it. When the person who runs Truthform is in another account,
   agree an external ID; the plan warns if there is none. If the principal
   given is a role session (what `aws sts get-caller-identity` prints for a
   role), the plan trusts the role itself, and says to give the role's full
@@ -118,16 +118,16 @@ are. The common ones:
   plain deployment leaves its role assignments behind; deleting the stack
   with `--action-on-unmanage deleteAll` removes them.
 - **Google Cloud.** The grant is Terraform in its own directory
-  (`stackdna-gcp` by default). That directory holds the state `destroy`
+  (`truthform-gcp` by default). That directory holds the state `destroy`
   needs: tell the person to keep it. The two APIs it enables stay enabled
   when the grant is removed, on purpose.
-- **Kubernetes.** The capture role can read Secret values. StackDNA never
+- **Kubernetes.** The capture role can read Secret values. Truthform never
   writes them to a snapshot, but the identity can read them; say so.
 - **GitHub.** Use a fine-grained token. A classic token cannot read an
   organisation's settings without `repo` and `admin:org`, which both
   write. Fine-grained tokens may need the organisation's approval.
 - **Cloudflare.** Not yet run against a real account. Say so. A person
-  signs in with `stackdna login cloudflare` (browser, kept in the OS
+  signs in with `truthform login cloudflare` (browser, kept in the OS
   keychain); never ask them to make or paste a token. CI sets
   `CLOUDFLARE_API_TOKEN`.
 
@@ -148,7 +148,7 @@ needs, and what the person must decide. What you run is read-only.
      into another subscription. A restore needs access there for each of
      them.
    - *Access a restore needs outside its target*: the action and the
-     resource for each reference whose check StackDNA knows. It is not
+     resource for each reference whose check Truthform knows. It is not
      every grant: a reference listed only under *References to other
      subscriptions* (a network interface in another subscription's subnet,
      an identity from another subscription) needs access too, and which
@@ -179,7 +179,7 @@ why. Don't settle any of them yourself.
   needs outside its target* is a grant in another subscription, and so may
   be every line under *References to other subscriptions*. Each one is the
   person's to make, or the object goes in `--leave-out`. The actions come
-  from Azure's documentation, not from a StackDNA restore: say so.
+  from Azure's documentation, not from a Truthform restore: say so.
 - **Each role assignment.** List the source's assignments by principal and
   role, and suggest one of: *leave out* (the target already has it, or the
   principal would gain write access it should not have there: a deploy

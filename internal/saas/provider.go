@@ -40,7 +40,7 @@ type Provider struct {
 	// the account's plan does not include. Such a collection is recorded
 	// as not available, not as a failed read: GitHub answers rulesets on a
 	// private repository of a free organisation with "Upgrade to GitHub
-	// Pro" (seen capturing StackDNA, 2026-10-22).
+	// Pro" (seen capturing Truthform, 2026-10-22).
 	Unavailable []string
 	Collections []Collection
 	// Derive, if set, adds the collections the description offers under
@@ -146,9 +146,9 @@ var GitHub = Provider{
 	},
 }
 
-// CloudflareClientID is StackDNA's registered Cloudflare OAuth client. It
+// CloudflareClientID is Truthform's registered Cloudflare OAuth client. It
 // is public (PKCE, no secret), and set at release time rather than kept in
-// the source (scripts/build-release.sh); STACKDNA_CLOUDFLARE_CLIENT_ID
+// the source (scripts/build-release.sh); TRUTHFORM_CLOUDFLARE_CLIENT_ID
 // replaces it. A build with neither signs in by token only.
 var CloudflareClientID = ""
 
@@ -157,7 +157,7 @@ var Cloudflare = Provider{
 	Name: "cloudflare", Spec: "cloudflare.json", Base: "https://api.cloudflare.com/client/v4", Envelope: "result", Paging: "page", PageSize: 50,
 	SpecURL: "https://raw.githubusercontent.com/cloudflare/api-schemas/main/openapi.json",
 	Account: "account", TokenEnv: "CLOUDFLARE_API_TOKEN",
-	OAuth: &OAuth{ClientID: CloudflareClientID, IDEnv: "STACKDNA_CLOUDFLARE_CLIENT_ID",
+	OAuth: &OAuth{ClientID: CloudflareClientID, IDEnv: "TRUTHFORM_CLOUDFLARE_CLIENT_ID",
 		AuthURL: "https://dash.cloudflare.com/oauth2/auth", TokenURL: "https://dash.cloudflare.com/oauth2/token",
 		// What capture and diff of zones and DNS records need, and a refresh
 		// token so a sign-in outlives its hour; DNS write only for a build

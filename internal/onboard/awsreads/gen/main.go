@@ -1,4 +1,4 @@
-// Command gen writes the AWS read add-on that stackdna permissions puts in
+// Command gen writes the AWS read add-on that truthform permissions puts in
 // the capture role: the reads the registry schemas name that AWS's
 // ReadOnlyAccess does not grant, judged by AWS's Service Reference. Every
 // source is public, so it needs no AWS credentials.
@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/stackdna/core/internal/awscc"
-	"github.com/stackdna/core/internal/onboard/awsreads"
+	"github.com/usetruthform/core/internal/awscc"
+	"github.com/usetruthform/core/internal/onboard/awsreads"
 )
 
 func main() {
@@ -54,7 +54,7 @@ func main() {
 	for _, r := range strings.Split(*regions, ",") {
 		r = strings.TrimSpace(r)
 		// Fresh, not a day-old cache: this decides what a role is given.
-		reg, err := awscc.LoadBundle(r, filepath.Join(cache, "stackdna", "aws"), time.Minute)
+		reg, err := awscc.LoadBundle(r, filepath.Join(cache, "truthform", "aws"), time.Minute)
 		if err != nil {
 			fail(err)
 		}

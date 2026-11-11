@@ -236,8 +236,8 @@ func (f *fake) create(w http.ResponseWriter, col *Collection, path string, ps ma
 		f.fail(w, 403, fmt.Sprintf("body refers to account %s, which this one cannot see", foreign))
 		return
 	}
-	if strings.Contains(string(raw), "{{stackdna") {
-		f.fail(w, 422, "unresolved StackDNA token sent to the provider")
+	if strings.Contains(string(raw), "{{truthform") {
+		f.fail(w, 422, "unresolved Truthform token sent to the provider")
 		return
 	}
 	for _, it := range f.colls[path] {

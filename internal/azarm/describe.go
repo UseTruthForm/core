@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/describe"
+	"github.com/usetruthform/core/internal/describe"
 )
 
 // Names lists every resource type with a published definition, as Azure
@@ -72,7 +72,7 @@ func (r *Registry) Describe(resourceType, version string, maxDepth int) (describ
 	}
 	walk(s.body, "", 1, map[int]bool{})
 	if !s.Writable {
-		d.Notes = append(d.Notes, "Azure defines this type and no one can PUT it: StackDNA does not capture it.")
+		d.Notes = append(d.Notes, "Azure defines this type and no one can PUT it: Truthform does not capture it.")
 	}
 	d.Notes = append(d.Notes, "A restore PUTs the whole body; secret fields are never in a snapshot and come from --values.")
 	return d, nil

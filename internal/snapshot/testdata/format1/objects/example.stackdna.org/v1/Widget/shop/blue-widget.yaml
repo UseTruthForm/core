@@ -1,0 +1,7 @@
+apiVersion: example.stackdna.org/v1
+kind: Widget
+metadata:
+  name: blue-widget
+  namespace: shop
+spec:
+  colour: blue

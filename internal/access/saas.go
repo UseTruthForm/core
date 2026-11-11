@@ -10,7 +10,7 @@ import (
 
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/stackdna/core/internal/readonly"
+	"github.com/usetruthform/core/internal/readonly"
 )
 
 func getJSON(ctx context.Context, u, token string, out any) (http.Header, error) {
@@ -93,7 +93,7 @@ func GitHub(ctx context.Context, token, access string) (Report, error) {
 		r.fact("Scopes: " + list)
 		writes := githubWrites(list)
 		if len(writes) > 0 && access != "restore" {
-			r.warn("Scopes that write (" + strings.Join(writes, ", ") + "). A classic token cannot read an organisation's settings without them; a fine-grained token with read-only permissions can (stackdna permissions --platform github).")
+			r.warn("Scopes that write (" + strings.Join(writes, ", ") + "). A classic token cannot read an organisation's settings without them; a fine-grained token with read-only permissions can (truthform permissions --platform github).")
 		}
 	} else {
 		r.unchecked("The token's permissions: GitHub does not show a fine-grained token its own; the reads below show what it can read")

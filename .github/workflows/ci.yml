@@ -30,7 +30,7 @@ jobs:
     if: github.event.action != 'labeled' || github.event.label.name == 'full-drill'
     runs-on: ubuntu-latest
     env:
-      STACKDNA_REQUIRE_KUBE_ASSETS: "1" # a missing API server fails CI instead of skipping
+      TRUTHFORM_REQUIRE_KUBE_ASSETS: "1" # a missing API server fails CI instead of skipping
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -38,7 +38,7 @@ jobs:
           go-version-file: go.mod
       - uses: actions/cache@v6
         with:
-          path: ~/.cache/stackdna/envtest
+          path: ~/.cache/truthform/envtest
           key: envtest-1.37.0
       # Fetched into a variable first: inside `echo "X=$(...)"` a failing
       # script is ignored and the step passes with an empty path (PR #5's
@@ -48,7 +48,7 @@ jobs:
           assets="$(bash scripts/envtest-assets.sh)"
           test -d "$assets" || { echo "envtest assets missing: '$assets'"; exit 1; }
           ls "$assets"
-          echo "STACKDNA_KUBE_ASSETS=$assets" >> "$GITHUB_ENV"
+          echo "TRUTHFORM_KUBE_ASSETS=$assets" >> "$GITHUB_ENV"
       - run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt needed"; exit 1; }
       - run: go vet ./...
       - run: go test -count=1 ./...
@@ -58,7 +58,7 @@ jobs:
       - run: go test -race -count=1 ./internal/awscc/ ./internal/azarm/ ./internal/gcp/ ./internal/saas/ ./internal/schedule/
       # The capture-only build (handed to clients for information
       # gathering) must refuse restore; it is a separate build, so test it.
-      - run: go test -tags captureonly -count=1 ./cmd/stackdna/
+      - run: go test -tags captureonly -count=1 ./cmd/truthform/
   drill-kind:
     if: (github.event_name == 'workflow_dispatch' && inputs.full-drill) || contains(github.event.pull_request.labels.*.name, 'full-drill')
     needs: test

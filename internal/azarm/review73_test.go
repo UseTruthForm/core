@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // clusterWithNodeGroup seeds a cluster whose node group is "Nodes" (spelled so

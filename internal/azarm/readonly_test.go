@@ -14,7 +14,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 
-	"github.com/stackdna/core/internal/readonly"
+	"github.com/usetruthform/core/internal/readonly"
 )
 
 // A list filtered by kind keeps its filter and gets the API version after
@@ -40,7 +40,7 @@ func TestListByKindOverHTTP(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	pl := runtime.NewPipeline("stackdna", "v0.1.0", runtime.PipelineOptions{}, &policy.ClientOptions{Transport: readonly.Client()})
+	pl := runtime.NewPipeline("truthform", "v0.1.0", runtime.PipelineOptions{}, &policy.ClientOptions{Transport: readonly.Client()})
 	s := &SDK{sub: "s", pl: pl, ep: srv.URL}
 	if _, err := s.List(context.Background(), "/x/dataSources", "2025-07-01"); !errors.Is(err, ErrNeedsKind) {
 		t.Fatalf("unfiltered list: %v", err)
@@ -92,7 +92,7 @@ func TestThrottledReadsAreReadAgain(t *testing.T) {
 			w.Write([]byte(`{"error":{"code":"Throttled","message":"slow down"}}`))
 		}))
 		// No SDK retries here: only the layer under test retries.
-		pl := runtime.NewPipeline("stackdna", "v0.1.0", runtime.PipelineOptions{}, &policy.ClientOptions{Transport: readonly.Client(), Retry: policy.RetryOptions{MaxRetries: -1}})
+		pl := runtime.NewPipeline("truthform", "v0.1.0", runtime.PipelineOptions{}, &policy.ClientOptions{Transport: readonly.Client(), Retry: policy.RetryOptions{MaxRetries: -1}})
 		return &SDK{sub: "s", pl: pl, ep: srv.URL}, &n, srv.Close
 	}
 	s, n, done := serve(func(n int) int {
@@ -141,7 +141,7 @@ func TestPatienceHonoursRetryAfter(t *testing.T) {
 		w.Write([]byte(`{"name":"q"}`))
 	}))
 	defer srv.Close()
-	pl := runtime.NewPipeline("stackdna", "v0.1.0", runtime.PipelineOptions{}, &policy.ClientOptions{Transport: readonly.Client(), Retry: policy.RetryOptions{MaxRetries: -1}})
+	pl := runtime.NewPipeline("truthform", "v0.1.0", runtime.PipelineOptions{}, &policy.ClientOptions{Transport: readonly.Client(), Retry: policy.RetryOptions{MaxRetries: -1}})
 	s := &SDK{sub: "s", pl: pl, ep: srv.URL}
 	if _, err := s.Get(context.Background(), "/x/queues/q", "1"); err != nil {
 		t.Fatal(err)
@@ -172,7 +172,7 @@ func TestPutRetriesOnlyThrottling(t *testing.T) {
 			}
 			w.Write([]byte(`{"name":"rg","properties":{"provisioningState":"Succeeded"}}`))
 		}))
-		pl := runtime.NewPipeline("stackdna", "v0.1.0", runtime.PipelineOptions{}, &clientOptions(false).ClientOptions)
+		pl := runtime.NewPipeline("truthform", "v0.1.0", runtime.PipelineOptions{}, &clientOptions(false).ClientOptions)
 		s := &SDK{sub: "s", pl: pl, ep: srv.URL}
 		s.Put(context.Background(), "/subscriptions/s/resourceGroups/rg", "2024-11-01", map[string]any{"location": "eastus"})
 		puts := 0
@@ -189,7 +189,7 @@ func TestPutRetriesOnlyThrottling(t *testing.T) {
 	}
 }
 
-// With StackDNA's retry policy, the SDK waits the Retry-After ARM gives.
+// With Truthform's retry policy, the SDK waits the Retry-After ARM gives.
 func TestRetryAfterIsHonoured(t *testing.T) {
 	var mu sync.Mutex
 	var at []time.Time
@@ -207,7 +207,7 @@ func TestRetryAfterIsHonoured(t *testing.T) {
 		w.Write([]byte(`{"name":"q"}`))
 	}))
 	defer srv.Close()
-	pl := runtime.NewPipeline("stackdna", "v0.1.0", runtime.PipelineOptions{}, &clientOptions(true).ClientOptions)
+	pl := runtime.NewPipeline("truthform", "v0.1.0", runtime.PipelineOptions{}, &clientOptions(true).ClientOptions)
 	s := &SDK{sub: "s", pl: pl, ep: srv.URL}
 	if _, err := s.Get(context.Background(), "/x/queues/q", "1"); err != nil {
 		t.Fatal(err)
@@ -229,7 +229,7 @@ func TestReadOnlyARM(t *testing.T) {
 		w.Write([]byte(`{"name":"rg","location":"eastus"}`))
 	}))
 	defer srv.Close()
-	pl := runtime.NewPipeline("stackdna", "v0.1.0", runtime.PipelineOptions{}, &policy.ClientOptions{Transport: readonly.Client()})
+	pl := runtime.NewPipeline("truthform", "v0.1.0", runtime.PipelineOptions{}, &policy.ClientOptions{Transport: readonly.Client()})
 	s := &SDK{sub: "s", pl: pl, ep: srv.URL}
 	id := "/subscriptions/s/resourceGroups/rg"
 	if _, err := s.Get(context.Background(), id, "2024-11-01"); err != nil {

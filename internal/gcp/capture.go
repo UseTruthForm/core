@@ -12,21 +12,21 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // APIVersion is the apiVersion of every GCP object in a snapshot; the asset
 // type (iam.googleapis.com/ServiceAccount) is the kind.
-const APIVersion = "gcp.stackdna.org/v1"
+const APIVersion = "gcp.truthform.org/v1"
 
 const (
-	annDiscovery  = "stackdna.org/discovery"  // iam/v1
-	annSchema     = "stackdna.org/schema"     // ServiceAccount
-	annCollection = "stackdna.org/collection" // projects.serviceAccounts
-	annParent     = "stackdna.org/parent"     // projects/{{stackdna|project}}
-	tokProject    = "{{stackdna|project}}"
-	tokNumber     = "{{stackdna|project-number}}"
-	refPrefix     = "{{stackdna|ref|"
+	annDiscovery  = "truthform.org/discovery"  // iam/v1
+	annSchema     = "truthform.org/schema"     // ServiceAccount
+	annCollection = "truthform.org/collection" // projects.serviceAccounts
+	annParent     = "truthform.org/parent"     // projects/{{truthform|project}}
+	tokProject    = "{{truthform|project}}"
+	tokNumber     = "{{truthform|project-number}}"
+	refPrefix     = "{{truthform|ref|"
 )
 
 // Policy is the set of capture rules, recorded in the snapshot by Name.

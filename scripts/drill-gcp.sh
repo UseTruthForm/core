@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The GCP restore drill against a real project: the disaster case.
 #
-#   seed with gcloud (not StackDNA); capture twice, the digests must match
+#   seed with gcloud (not Truthform); capture twice, the digests must match
 #   DELETE what was seeded; restore it from the snapshot
 #   diff the project against the snapshot: no differences
 #   delete it again, and require the project to match its baseline
@@ -22,10 +22,10 @@
 set -euo pipefail
 
 PROJECT="${PROJECT:?set PROJECT to a sandbox project ID}"
-BIN="${BIN:-bin/stackdna}"
-OUT="${OUT:-.stackdna/gcp-drill}"
-SA=stackdna-drill
-CHANNEL="StackDNA drill"
+BIN="${BIN:-bin/truthform}"
+OUT="${OUT:-.truthform/gcp-drill}"
+SA=truthform-drill
+CHANNEL="Truthform drill"
 TYPES='iam.googleapis.com/ServiceAccount,monitoring.googleapis.com/NotificationChannel'
 
 # No MSYS_NO_PATHCONV here (unlike the AWS and Azure drills): gcloud's own
@@ -52,9 +52,9 @@ cleanup() {
 
 seed() {
   step "seed with gcloud"
-  gcloud iam service-accounts create "$SA" --display-name "StackDNA drill" --project "$PROJECT" --quiet
+  gcloud iam service-accounts create "$SA" --display-name "Truthform drill" --project "$PROJECT" --quiet
   mon -X POST "https://monitoring.googleapis.com/v3/projects/$PROJECT/notificationChannels" \
-    -d '{"type":"email","displayName":"'"$CHANNEL"'","labels":{"email_address":"stackdna-drill@example.com"}}' >/dev/null
+    -d '{"type":"email","displayName":"'"$CHANNEL"'","labels":{"email_address":"truthform-drill@example.com"}}' >/dev/null
   echo "seeded"
 }
 
@@ -75,7 +75,7 @@ until_settled() {
 
 seeded2() { sd capture --out "$OUT/probe" | grep -q "^captured 2 resources"; }
 
-[ -x "$BIN" ] || [ -x "$BIN.exe" ] || { echo "build first: go build -o $BIN ./cmd/stackdna" >&2; exit 1; }
+[ -x "$BIN" ] || [ -x "$BIN.exe" ] || { echo "build first: go build -o $BIN ./cmd/truthform" >&2; exit 1; }
 [ -x "$BIN" ] || BIN="$BIN.exe"
 rm -rf "$OUT"; mkdir -p "$OUT"
 gcloud config get-value account

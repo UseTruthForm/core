@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/stackdna/core/internal/readonly"
+	"github.com/usetruthform/core/internal/readonly"
 )
 
 // The GCP client behind the guard: GET reaches the server, a create does not.

@@ -29,36 +29,36 @@ jobs:
       # main does not prove its checks passed (review of #20).
       - uses: actions/cache@v6
         with:
-          path: ~/.cache/stackdna/envtest
+          path: ~/.cache/truthform/envtest
           key: envtest-1.37.0
       - name: Fetch etcd and kube-apiserver
         run: |
           assets="$(bash scripts/envtest-assets.sh)"
           test -d "$assets" || { echo "envtest assets missing: '$assets'"; exit 1; }
-          echo "STACKDNA_KUBE_ASSETS=$assets" >> "$GITHUB_ENV"
+          echo "TRUTHFORM_KUBE_ASSETS=$assets" >> "$GITHUB_ENV"
       - run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt needed"; exit 1; }
       - run: go vet ./...
       - run: go test -count=1 ./...
         env:
-          STACKDNA_REQUIRE_KUBE_ASSETS: "1"
+          TRUTHFORM_REQUIRE_KUBE_ASSETS: "1"
       - run: go test -race -count=1 ./internal/awscc/ ./internal/azarm/ ./internal/gcp/ ./internal/saas/ ./internal/schedule/
       # The capture-only edition is what a client is handed.
-      - run: go test -tags captureonly -count=1 ./cmd/stackdna/
+      - run: go test -tags captureonly -count=1 ./cmd/truthform/
       # A release without it builds and passes, and its docs describe a
       # Cloudflare sign-in it cannot make: refuse it instead.
       - run: |
-          if [ -z "$STACKDNA_CLOUDFLARE_CLIENT_ID" ]; then
-            echo "repository variable STACKDNA_CLOUDFLARE_CLIENT_ID is not set; the release would have no Cloudflare sign-in"
+          if [ -z "$TRUTHFORM_CLOUDFLARE_CLIENT_ID" ]; then
+            echo "repository variable TRUTHFORM_CLOUDFLARE_CLIENT_ID is not set; the release would have no Cloudflare sign-in"
             exit 1
           fi
         env:
-          STACKDNA_CLOUDFLARE_CLIENT_ID: ${{ vars.STACKDNA_CLOUDFLARE_CLIENT_ID }}
+          TRUTHFORM_CLOUDFLARE_CLIENT_ID: ${{ vars.TRUTHFORM_CLOUDFLARE_CLIENT_ID }}
       - run: bash scripts/build-release.sh "$GITHUB_REF_NAME"
         env:
-          # StackDNA's Cloudflare OAuth client: public, not a secret, kept
+          # Truthform's Cloudflare OAuth client: public, not a secret, kept
           # out of the source. Unset, the build signs in to Cloudflare by
           # token only.
-          STACKDNA_CLOUDFLARE_CLIENT_ID: ${{ vars.STACKDNA_CLOUDFLARE_CLIENT_ID }}
+          TRUTHFORM_CLOUDFLARE_CLIENT_ID: ${{ vars.TRUTHFORM_CLOUDFLARE_CLIENT_ID }}
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,4 +66,4 @@ jobs:
           pre=""
           case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.tar.gz dist/SHA256SUMS \
-            --draft $pre --verify-tag --title "StackDNA $GITHUB_REF_NAME" --generate-notes
+            --draft $pre --verify-tag --title "Truthform $GITHUB_REF_NAME" --generate-notes

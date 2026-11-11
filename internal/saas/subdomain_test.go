@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // dnsZone is one Cloudflare account with example.com as a first
@@ -72,7 +72,7 @@ func TestASubdomainPutsTheZoneOneLevelDown(t *testing.T) {
 		t.Errorf("mapped\n %v\nwant\n %v", names(got), want)
 	}
 	for _, o := range got.Objects {
-		if spec, _ := o.Body["spec"].(map[string]any); o.Kind() == recordKind && spec["comment"] != "stackdna: test.example.com" {
+		if spec, _ := o.Body["spec"].(map[string]any); o.Kind() == recordKind && spec["comment"] != "truthform: test.example.com" {
 			t.Errorf("%s: comment %v, not the mark", o.Name(), spec["comment"])
 		}
 	}
@@ -178,18 +178,18 @@ func TestADryRunWritesNothing(t *testing.T) {
 	}
 }
 
-// A record already at a planned name that StackDNA did not make stops
+// A record already at a planned name that Truthform did not make stops
 // the restore; so does the subdomain delegated away. A wildcard above the
 // subdomain, and an address left as the source's, are reported.
 func TestASubdomainRestoreFindsWhatIsInTheWay(t *testing.T) {
 	f, zid := dnsZone(t)
 	src := capture(t, f)
 	f.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "A", "name": "test.example.com", "content": "203.0.113.9", "ttl": 1, "proxied": false})
-	f.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "TXT", "name": "old.test.example.com", "content": "\"x\"", "comment": "stackdna: test.example.com", "ttl": 1, "proxied": false})
+	f.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "TXT", "name": "old.test.example.com", "content": "\"x\"", "comment": "truthform: test.example.com", "ttl": 1, "proxied": false})
 	d := &Subdomain{Name: "test.example.com"}
 	mapped, _, _ := d.Map(src)
 	conflicts, warnings := d.Check(mapped, capture(t, f))
-	if len(conflicts) != 1 || !strings.Contains(conflicts[0], "A test.example.com 203.0.113.9: already there, and StackDNA did not make it") {
+	if len(conflicts) != 1 || !strings.Contains(conflicts[0], "A test.example.com 203.0.113.9: already there, and Truthform did not make it") {
 		t.Errorf("conflicts %v", conflicts)
 	}
 	ws := strings.Join(warnings, "\n")
@@ -215,7 +215,7 @@ func TestASubdomainRestoreFindsWhatIsInTheWay(t *testing.T) {
 }
 
 // The guard refuses what Check should have stopped: a change to a record
-// StackDNA did not make, a record outside the subdomain, the zone.
+// Truthform did not make, a record outside the subdomain, the zone.
 func TestASubdomainRestoreWritesOnlyItsOwnRecords(t *testing.T) {
 	f, zid := dnsZone(t)
 	src := capture(t, f)
@@ -226,7 +226,7 @@ func TestASubdomainRestoreWritesOnlyItsOwnRecords(t *testing.T) {
 	f.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "A", "name": "test.example.com", "content": "198.51.100.7", "ttl": 1, "proxied": false, "comment": "theirs"})
 	f.writes = 0
 	for _, r := range subRestore(f, d, mapped, RestoreOptions{Update: true}) {
-		if strings.Contains(r.Key, "A test.example.com") && (r.OK || !strings.Contains(r.Detail, "StackDNA did not make it")) {
+		if strings.Contains(r.Key, "A test.example.com") && (r.OK || !strings.Contains(r.Detail, "Truthform did not make it")) {
 			t.Errorf("someone's record: ok=%v %s", r.OK, r.Detail)
 		}
 	}
@@ -451,10 +451,35 @@ func TestAMarkTooLongForACommentIsRefused(t *testing.T) {
 	src := capture(t, f)
 	long := strings.Repeat("a", 80) + ".test.example.com"
 	if _, _, err := (&Subdomain{Name: long}).Map(src); err == nil || !strings.Contains(err.Error(), "100") {
-		t.Errorf("a %d-character mark accepted: %v", len("stackdna: "+long), err)
+		t.Errorf("a %d-character mark accepted: %v", len("truthform: "+long), err)
 	}
 	ok := strings.Repeat("a", 60) + ".test.example.com"
 	if _, _, err := (&Subdomain{Name: ok}).Map(src); err != nil {
-		t.Errorf("a %d-character mark refused: %v", len("stackdna: "+ok), err)
+		t.Errorf("a %d-character mark refused: %v", len("truthform: "+ok), err)
+	}
+}
+
+// A record written before the tool was renamed carries the mark under the
+// old name. It is still ours: read as someone else's, a restore would stop
+// on it as a conflict and --update would refuse to change it.
+func TestARecordMarkedUnderTheOldNameIsStillOurs(t *testing.T) {
+	f, zid := dnsZone(t)
+	src := capture(t, f)
+	f.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "TXT", "name": "old.test.example.com", "content": `"x"`, "comment": "stackdna: test.example.com", "ttl": 1, "proxied": false})
+	d := &Subdomain{Name: "test.example.com"}
+	mapped, _, _ := d.Map(src)
+	conflicts, warnings := d.Check(mapped, capture(t, f))
+	if len(conflicts) != 0 {
+		t.Errorf("conflicts %v", conflicts)
+	}
+	if ws := strings.Join(warnings, " | "); !strings.Contains(ws, `TXT old.test.example.com "x": made by an earlier restore`) {
+		t.Errorf("not recognised as ours in %v", warnings)
+	}
+	rec := snapshot.Object{Body: map[string]any{"kind": recordKind, "spec": map[string]any{"name": "old.test.example.com"}}}
+	if why := d.Allow(rec, map[string]any{"comment": "stackdna: test.example.com"}); why != "" {
+		t.Errorf("a change to it was refused: %s", why)
+	}
+	if why := d.Allow(rec, map[string]any{"comment": "stackdna: other.example.com"}); why == "" {
+		t.Error("a record marked for another subdomain was taken as ours")
 	}
 }

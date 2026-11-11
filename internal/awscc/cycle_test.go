@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // iamRefs makes the fake refuse what IAM refuses: a role holding a managed
@@ -85,7 +85,7 @@ func TestIAMRoleAndPolicyCycleRestores(t *testing.T) {
 			roleSpec, _ = o.Body["spec"].(map[string]any)
 		}
 	}
-	if arns := fmt.Sprint(roleSpec["ManagedPolicyArns"]); !strings.Contains(arns, "{{stackdna|AWS::IAM::ManagedPolicy|") {
+	if arns := fmt.Sprint(roleSpec["ManagedPolicyArns"]); !strings.Contains(arns, "{{truthform|AWS::IAM::ManagedPolicy|") {
 		t.Fatalf("the role's policy ARN was left literal, so restore cannot order by it: %s", arns)
 	}
 
@@ -127,9 +127,9 @@ func TestIAMRoleAndPolicyCycleRestores(t *testing.T) {
 func TestUnbreakableCycleIsReported(t *testing.T) {
 	reg := fixtures(t)
 	a := snapshot.Object{Body: map[string]any{"apiVersion": APIVersion, "kind": "AWS::IAM::Role", "metadata": map[string]any{"name": "app"},
-		"spec": map[string]any{"RoleName": "shop-app", "AssumeRolePolicyDocument": "{{stackdna|AWS::IAM::ManagedPolicy|read|PolicyArn}}"}}}
+		"spec": map[string]any{"RoleName": "shop-app", "AssumeRolePolicyDocument": "{{truthform|AWS::IAM::ManagedPolicy|read|PolicyArn}}"}}}
 	b := snapshot.Object{Body: map[string]any{"apiVersion": APIVersion, "kind": "AWS::IAM::ManagedPolicy", "metadata": map[string]any{"name": "read"},
-		"spec": map[string]any{"PolicyDocument": "{{stackdna|AWS::IAM::Role|app|Arn}}"}}}
+		"spec": map[string]any{"PolicyDocument": "{{truthform|AWS::IAM::Role|app|Arn}}"}}}
 	_, defs, unbroken := breakCycles(reg, nil, []snapshot.Object{a, b})
 	if len(unbroken) != 2 {
 		t.Errorf("required properties deferred: defs=%+v unbroken=%d", defs, len(unbroken))
@@ -166,9 +166,9 @@ func TestBreakableCycleRestoresBesideAnUnbreakableOne(t *testing.T) {
 	// Required properties naming each other: no creation order exists.
 	snap.Objects = append(snap.Objects,
 		snapshot.Object{Body: map[string]any{"apiVersion": APIVersion, "kind": "AWS::IAM::Role", "metadata": map[string]any{"name": "stuck"},
-			"spec": map[string]any{"RoleName": "stuck", "AssumeRolePolicyDocument": "{{stackdna|AWS::IAM::ManagedPolicy|stuck|PolicyArn}}"}}},
+			"spec": map[string]any{"RoleName": "stuck", "AssumeRolePolicyDocument": "{{truthform|AWS::IAM::ManagedPolicy|stuck|PolicyArn}}"}}},
 		snapshot.Object{Body: map[string]any{"apiVersion": APIVersion, "kind": "AWS::IAM::ManagedPolicy", "metadata": map[string]any{"name": "stuck"},
-			"spec": map[string]any{"PolicyDocument": "{{stackdna|AWS::IAM::Role|stuck|Arn}}"}}})
+			"spec": map[string]any{"PolicyDocument": "{{truthform|AWS::IAM::Role|stuck|Arn}}"}}})
 
 	dst := newAccount(w, dstAccount)
 	dst.Validate = iamRefs(dst)

@@ -18,7 +18,7 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/stackdna/core/internal/readonly"
+	"github.com/usetruthform/core/internal/readonly"
 )
 
 // memStore is a keychain in memory.
@@ -119,7 +119,7 @@ func freePort(t *testing.T) int {
 	return p
 }
 
-// browser follows the sign-in page's redirect back to StackDNA, as a person
+// browser follows the sign-in page's redirect back to Truthform, as a person
 // approving the sign-in does.
 func browser(t *testing.T) func(string) {
 	return func(u string) {
@@ -180,15 +180,15 @@ func TestASignInRefusesAnotherState(t *testing.T) {
 }
 
 func TestTheEnvironmentTokenComesFirst(t *testing.T) {
-	t.Setenv("STACKDNA_TEST_TOKEN", "from-env")
+	t.Setenv("TRUTHFORM_TEST_TOKEN", "from-env")
 	store := &memStore{}
 	_ = store.Set("p", `{"access_token":"stored"}`)
-	src, how, err := Tokens(Provider{Name: "p", TokenEnv: "STACKDNA_TEST_TOKEN", OAuth: &OAuth{ClientID: "c"}}, store, http.DefaultClient)
+	src, how, err := Tokens(Provider{Name: "p", TokenEnv: "TRUTHFORM_TEST_TOKEN", OAuth: &OAuth{ClientID: "c"}}, store, http.DefaultClient)
 	if err != nil {
 		t.Fatal(err)
 	}
 	tok, _ := src.Token()
-	if tok.AccessToken != "from-env" || how != "STACKDNA_TEST_TOKEN" {
+	if tok.AccessToken != "from-env" || how != "TRUTHFORM_TEST_TOKEN" {
 		t.Fatalf("got %q from %q, want the environment's", tok.AccessToken, how)
 	}
 }
@@ -197,7 +197,7 @@ func TestTheEnvironmentTokenComesFirst(t *testing.T) {
 // a provider that rotates refresh tokens refuses the old one next run.
 func TestAnExpiredSignInIsRefreshedAndKept(t *testing.T) {
 	a := newAuthServer(t)
-	p := Provider{Name: "p", TokenEnv: "STACKDNA_TEST_UNSET", OAuth: a.oauth(0)}
+	p := Provider{Name: "p", TokenEnv: "TRUTHFORM_TEST_UNSET", OAuth: a.oauth(0)}
 	store := &memStore{}
 	if err := Save(store, "p", &oauth2.Token{AccessToken: "access-1", RefreshToken: "refresh-1", Expiry: time.Now().Add(-time.Minute)}); err != nil {
 		t.Fatal(err)
@@ -256,12 +256,12 @@ type tokenFunc func() (*oauth2.Token, error)
 func (f tokenFunc) Token() (*oauth2.Token, error) { return f() }
 
 func TestNoSignInSaysHowToSignIn(t *testing.T) {
-	_, _, err := Tokens(Provider{Name: "cloudflare", TokenEnv: "STACKDNA_TEST_UNSET", OAuth: &OAuth{ClientID: "c"}}, &memStore{}, http.DefaultClient)
-	if err == nil || !strings.Contains(err.Error(), "stackdna login cloudflare") || !strings.Contains(err.Error(), "STACKDNA_TEST_UNSET") {
+	_, _, err := Tokens(Provider{Name: "cloudflare", TokenEnv: "TRUTHFORM_TEST_UNSET", OAuth: &OAuth{ClientID: "c"}}, &memStore{}, http.DefaultClient)
+	if err == nil || !strings.Contains(err.Error(), "truthform login cloudflare") || !strings.Contains(err.Error(), "TRUTHFORM_TEST_UNSET") {
 		t.Fatalf("err = %v, want both ways to authenticate", err)
 	}
 	// A build with no registered client offers only the token.
-	_, _, err = Tokens(Provider{Name: "cloudflare", TokenEnv: "STACKDNA_TEST_UNSET", OAuth: &OAuth{}}, &memStore{}, http.DefaultClient)
+	_, _, err = Tokens(Provider{Name: "cloudflare", TokenEnv: "TRUTHFORM_TEST_UNSET", OAuth: &OAuth{}}, &memStore{}, http.DefaultClient)
 	if err == nil || strings.Contains(err.Error(), "login") {
 		t.Fatalf("err = %v, want the token only", err)
 	}
@@ -301,8 +301,8 @@ func TestCloudflareAsksForItsOwnScopeIDs(t *testing.T) {
 func TestTheEnvironmentNamesTheClient(t *testing.T) {
 	a := newAuthServer(t)
 	o := a.oauth(freePort(t))
-	o.ClientID, o.IDEnv = "", "STACKDNA_TEST_CLIENT_ID"
-	t.Setenv("STACKDNA_TEST_CLIENT_ID", "from-env")
+	o.ClientID, o.IDEnv = "", "TRUTHFORM_TEST_CLIENT_ID"
+	t.Setenv("TRUTHFORM_TEST_CLIENT_ID", "from-env")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if _, err := o.Login(ctx, http.DefaultClient, browser(t), true); err != nil {

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/stackdna/core/internal/describe"
+	"github.com/usetruthform/core/internal/describe"
 )
 
-// Collections lists a Discovery document's collections that StackDNA can
+// Collections lists a Discovery document's collections that Truthform can
 // capture (they have a get) and says which it can create.
 func (ds *Docs) Collections(api, ver string) ([]string, error) {
 	d, err := ds.Doc(docURL(api, ver), "")
@@ -91,7 +91,7 @@ func (ds *Docs) Describe(api, ver, collection string, maxDepth int) (describe.Ty
 	}
 	walk(&Schema{Ref: c.schema}, "", 1, map[string]bool{})
 	if createMethod(c.methods) == nil {
-		t.Notes = append(t.Notes, "The document declares no create method: StackDNA captures this collection but cannot restore it.")
+		t.Notes = append(t.Notes, "The document declares no create method: Truthform captures this collection but cannot restore it.")
 	}
 	if m := c.methods["patch"]; m != nil {
 		t.Notes = append(t.Notes, "restore --update uses "+m.ID+".")

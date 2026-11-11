@@ -1,9 +1,9 @@
-# StackDNA
+# Truthform
 
 Capture what is running, so it can be recreated.
 
-StackDNA is infrastructure-as-code in reverse. You don't write IaC and then manage
-state files. Instead, StackDNA reads the live system through the platform's own
+Truthform is infrastructure-as-code in reverse. You don't write IaC and then manage
+state files. Instead, Truthform reads the live system through the platform's own
 APIs and writes a normalised snapshot that can recreate it. The live system is
 the source of truth, so there is no state to manage. The snapshot is plain YAML
 that you can review, commit and diff.
@@ -25,48 +25,48 @@ Cloudflare (fake only so far). A restore only creates what is missing;
 `restore --update` also brings drifted resources back in line, and passed
 against real AWS, Azure and GCP (each drill drifts resources by hand, then
 requires an empty diff). Agents get the same knowledge over MCP
-(`stackdna mcp`): every field of a type, which are required, set by the
+(`truthform mcp`): every field of a type, which are required, set by the
 platform, secret or fixed at creation, with the platform's docs, plus
 read-only capture and diff; restore is deliberately not a tool. See
 [AWS](docs/architecture.md#aws-cloud-control-driven-by-the-registry). Other
 platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.
 
-**Using StackDNA:** the [user guide](docs/guide.md) and the
+**Using Truthform:** the [user guide](docs/guide.md) and the
 [permissions](docs/permissions.md) to grant on each platform.
 
 ## Commands
 
 ```bash
-go build -o bin/stackdna ./cmd/stackdna
+go build -o bin/truthform ./cmd/truthform
 
-stackdna capture --context kind-src --out snap/ [--baseline base/] [--include-system]
-stackdna restore --context kind-dst --from snap/ [--secrets-from-context kind-src]
-stackdna diff    --context kind-dst --from snap/ [--baseline base/]
-stackdna compare snap-a/ snap-b/
-stackdna schema-diff old/ new/
+truthform capture --context kind-src --out snap/ [--baseline base/] [--include-system]
+truthform restore --context kind-dst --from snap/ [--secrets-from-context kind-src]
+truthform diff    --context kind-dst --from snap/ [--baseline base/]
+truthform compare snap-a/ snap-b/
+truthform schema-diff old/ new/
 
-stackdna capture --platform aws --region eu-west-1 --profile sandbox --out snap/ [--types 'AWS::S3::*,AWS::IAM::Role']
-stackdna restore --platform aws --region eu-west-1 --profile dr --from snap/ [--values write-only.yaml]
-stackdna aws-coverage   # offline: what the public registry lets StackDNA capture
+truthform capture --platform aws --region eu-west-1 --profile sandbox --out snap/ [--types 'AWS::S3::*,AWS::IAM::Role']
+truthform restore --platform aws --region eu-west-1 --profile dr --from snap/ [--values write-only.yaml]
+truthform aws-coverage   # offline: what the public registry lets Truthform capture
 
-stackdna capture --platform azure --subscription <id> --out snap/ [--types 'Microsoft.Network/*']
-stackdna restore --platform azure --subscription <id> --from snap/ [--values secrets.yaml]
+truthform capture --platform azure --subscription <id> --out snap/ [--types 'Microsoft.Network/*']
+truthform restore --platform azure --subscription <id> --from snap/ [--values secrets.yaml]
 
-stackdna permissions --platform aws --account 111122223333 --principal arn:aws:iam::111122223333:role/ops [--write dir/]
-stackdna check --platform aws --region us-east-1 --profile stackdna-reader
+truthform permissions --platform aws --account 111122223333 --principal arn:aws:iam::111122223333:role/ops [--write dir/]
+truthform check --platform aws --region us-east-1 --profile truthform-reader
 ```
 
-- **permissions** writes the grant StackDNA needs as a template for the
+- **permissions** writes the grant Truthform needs as a template for the
   platform's own tool and prints the commands to deploy, verify and remove
   it, with no placeholders. It grants nothing. See [docs/agents.md](docs/agents.md)
   for guiding someone through it.
-- **check** names the identity StackDNA runs as, warns about root users,
+- **check** names the identity Truthform runs as, warns about root users,
   long-lived keys and write access a capture does not need, and runs a
   capture written nowhere to show what it can read, type by type.
 
 - **capture** discovers every resource type the cluster serves, including custom
-  resources no StackDNA code knows about. It keeps what someone configured and
+  resources no Truthform code knows about. It keeps what someone configured and
   strips what the server generated: UIDs, `resourceVersion`, status and
   allocated cluster IPs. It writes one YAML file per object, plus
   `coverage.yaml`, which lists everything it did not take and why.
@@ -83,8 +83,8 @@ some objects).
 ## A whole environment in one command
 
 ```bash
-stackdna capture --config environment.yaml --out snap/   # every target, read-only
-stackdna diff    --config environment.yaml --from snap/  # drift, per target
+truthform capture --config environment.yaml --out snap/   # every target, read-only
+truthform diff    --config environment.yaml --from snap/  # drift, per target
 ```
 
 The config lists each system (see `examples/environment.yaml`). Kubernetes
@@ -101,7 +101,7 @@ Every snapshot gets a **`REPORT.md`** for people. It leads with anything
 incomplete, then says what was captured, what was skipped and why, which
 types weren't captured and why, and what is never in a snapshot by design
 (data, secret values). The environment gets a summary report too.
-`stackdna report <dir>` regenerates one. Reports carry no timestamps, so an
+`truthform report <dir>` regenerates one. Reports carry no timestamps, so an
 unchanged system gives an unchanged report.
 
 A capture of four sandboxes (kind-tiltdev, AWS, Azure, GCP), from one
@@ -111,19 +111,19 @@ config, took 29s and was complete.
 
 Terraform and Pulumi build each API's fields into a provider release, so a
 field an API added last month doesn't exist for them until a new provider
-ships. StackDNA keeps no field list in its code:
+ships. Truthform keeps no field list in its code:
 
 - **Capture** reads whatever the live API returns, so new fields are captured
   as soon as the API serves them.
 - **Each snapshot fingerprints the schema** that each captured type published
   at that moment, in `schemas/<group>/<version>/<kind>.yaml`. The field paths
   come from the API's own OpenAPI document.
-- **`stackdna schema-diff old/ new/`** shows exactly what each API added or
+- **`truthform schema-diff old/ new/`** shows exactly what each API added or
   removed between two captures, for example across a cluster or operator
   upgrade:
 
   ```
-  changed       example.stackdna.org/v1 Widget
+  changed       example.truthform.org/v1 Widget
       + spec.shape
   ```
 
@@ -166,7 +166,7 @@ runs at two levels:
 | Full fidelity | `scripts/drill-kind.sh` (on demand; the `full-drill` PR label) | ~2 min | Two kind clusters with running controllers |
 
 Get the API-server binaries once with
-`export STACKDNA_KUBE_ASSETS="$(scripts/envtest-assets.sh)"`. Without them the
+`export TRUTHFORM_KUBE_ASSETS="$(scripts/envtest-assets.sh)"`. Without them the
 drill is skipped with a message locally, and fails in CI.
 
 ### The kind drill
@@ -200,6 +200,6 @@ tilt up --port 10352   # 10350 belongs to a platform Tilt
 | `restore-drill` | On click | The full kind round trip above, about 2 minutes |
 | `capture-platform` | On click | A read-only capture of the platform cluster (`kind-tiltdev`). It compares with the previous capture, and `schema-diff` shows which API fields a platform or operator upgrade added or removed |
 
-All of it is local and free. Snapshots of real clusters go to `.stackdna/`,
+All of it is local and free. Snapshots of real clusters go to `.truthform/`,
 which is gitignored. Resources for other platforms are added along with their
 adapters, never before.

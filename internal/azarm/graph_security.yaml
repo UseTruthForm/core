@@ -1,4 +1,4 @@
-# The built-in projection of `stackdna graph` ("--types security"): what
+# The built-in projection of `truthform graph` ("--types security"): what
 # a security view of an Azure estate needs from each resource. Network
 # exposure, identity and access, encryption, public access, private
 # endpoints and diagnostics.

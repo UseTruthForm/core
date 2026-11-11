@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the release binaries: every platform a customer runs StackDNA on,
+# Builds the release binaries: every platform a customer runs Truthform on,
 # in two editions each.
 #
 #   full          capture, diff and restore
@@ -7,7 +7,7 @@
 #                 guard: the binary to hand a client for information
 #                 gathering, which cannot write to anything it reaches
 #
-# Each binary is stamped with the version, commit and build time (stackdna
+# Each binary is stamped with the version, commit and build time (truthform
 # version prints them), stripped, and built without cgo, so it is one file
 # with nothing to install. Archives (zip for Windows, tar.gz elsewhere) and
 # SHA256SUMS go in dist/.
@@ -32,19 +32,19 @@ TARGETS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows
 for target in $TARGETS; do
   os="${target%/*}"; arch="${target#*/}"
   for edition in full capture-only; do
-    name="stackdna_${VERSION#v}_${os}_${arch}"
+    name="truthform_${VERSION#v}_${os}_${arch}"
     tags=()
     if [ "$edition" = capture-only ]; then
       name="${name}_capture-only"; tags=(-tags captureonly)
     fi
-    exe=stackdna; [ "$os" = windows ] && exe=stackdna.exe
+    exe=truthform; [ "$os" = windows ] && exe=truthform.exe
     mkdir -p "$OUT/$name"
     # ${tags[@]+...}: an empty array under set -u aborts macOS's bash 3.2.
     CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath ${tags[@]+"${tags[@]}"} \
-      -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.built=$BUILT -X github.com/stackdna/core/internal/saas.CloudflareClientID=${STACKDNA_CLOUDFLARE_CLIENT_ID:-}" \
-      -o "$OUT/$name/$exe" ./cmd/stackdna
+      -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.built=$BUILT -X github.com/usetruthform/core/internal/saas.CloudflareClientID=${TRUTHFORM_CLOUDFLARE_CLIENT_ID:-}" \
+      -o "$OUT/$name/$exe" ./cmd/truthform
     # The customer's README and guides, not the repository's README: that
-    # one is for StackDNA's developers (the dev loop, Tilt ports, internal
+    # one is for Truthform's developers (the dev loop, Tilt ports, internal
     # drills), and a customer cannot reach the private repository's docs.
     cp packaging/README.md "$OUT/$name/README.md"
     mkdir -p "$OUT/$name/docs"

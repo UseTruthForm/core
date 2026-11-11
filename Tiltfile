@@ -1,5 +1,5 @@
 ###############################################################################
-# StackDNA dev loop
+# Truthform dev loop
 #
 #   tilt up --port 10352
 #
@@ -11,34 +11,34 @@
 # each emulator/mock profile is added in the same change as its adapter.
 #
 # Cost: everything here is local and free. The drill builds throwaway kind
-# clusters (stackdna-src, stackdna-dst); the platform capture is read-only
+# clusters (truthform-src, truthform-dst); the platform capture is read-only
 # against your existing kind-tiltdev cluster and changes nothing on it.
 ###############################################################################
 
 EXE = ".exe" if os.name == "nt" else ""
-BIN = "bin/stackdna" + EXE
+BIN = "bin/truthform" + EXE
 GO_SRC = ["cmd", "internal", "go.mod", "go.sum"]
 
 # Rebuild on every save.
 local_resource(
     "build",
-    cmd=["go", "build", "-o", BIN, "./cmd/stackdna"],
+    cmd=["go", "build", "-o", BIN, "./cmd/truthform"],
     deps=GO_SRC,
     labels=["core"],
 )
 
 # The etcd and kube-apiserver binaries for the API-server restore drill,
-# fetched once into ~/.cache/stackdna/envtest.
+# fetched once into ~/.cache/truthform/envtest.
 KUBE_ASSETS = str(local("bash scripts/envtest-assets.sh", quiet=True, echo_off=True)).strip()
 
 # Unit tests on every save, including the restore drill on two real API
-# servers (internal/kube/drill_test.go). STACKDNA_REQUIRE_KUBE_ASSETS makes a
+# servers (internal/kube/drill_test.go). TRUTHFORM_REQUIRE_KUBE_ASSETS makes a
 # missing binary fail instead of quietly skipping the drill.
 local_resource(
     "unit-tests",
     cmd=["go", "test", "-count=1", "./..."],
     deps=GO_SRC + ["testdata"],
-    env={"STACKDNA_KUBE_ASSETS": KUBE_ASSETS, "STACKDNA_REQUIRE_KUBE_ASSETS": "1"},
+    env={"TRUTHFORM_KUBE_ASSETS": KUBE_ASSETS, "TRUTHFORM_REQUIRE_KUBE_ASSETS": "1"},
     resource_deps=["build"],
     labels=["core"],
 )
@@ -59,7 +59,7 @@ local_resource(
 # Real-world check: capture the platform cluster read-only, keep the last
 # capture, and schema-diff against it, so a platform or operator upgrade
 # shows up as the API fields it added or removed. The snapshots are written
-# under .stackdna/ (gitignored): they describe your platform, and secret
+# under .truthform/ (gitignored): they describe your platform, and secret
 # values are withheld but key names are not.
 local_resource(
     "capture-platform",

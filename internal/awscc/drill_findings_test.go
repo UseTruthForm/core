@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // Failures from the broadened real drill, us-east-2, 2026-10-22.

@@ -1,4 +1,4 @@
-// Package onboard says what to grant StackDNA on a platform and how, as
+// Package onboard says what to grant Truthform on a platform and how, as
 // files to deploy and commands to run, with the customer's own values
 // filled in.
 //
@@ -6,7 +6,7 @@
 // with the platform's own tool, from a template that deploys in one step
 // and is removed in one step, so the access is never applied by hand and
 // never outlives its use unnoticed. An agent guiding someone through it
-// (stackdna mcp) gets the same plan.
+// (truthform mcp) gets the same plan.
 //
 // Every command it prints is complete: no placeholder to substitute. A
 // placeholder pasted as is fails, and not always harmlessly: PowerShell
@@ -46,7 +46,7 @@ type Request struct {
 
 	// aws
 	Account       string // aws: the account the role goes in; github: the organisation; cloudflare: the account ID
-	Principal     string // the IAM user or role that runs StackDNA
+	Principal     string // the IAM user or role that runs Truthform
 	ExternalID    string
 	Region        string // where the CloudFormation stack lives (IAM is global)
 	SourceProfile string // the shared-config profile of Principal, to set up a profile for the role
@@ -150,7 +150,7 @@ func Build(r Request) (Plan, error) {
 	// Terraform reads every .tf file in its directory: written into one
 	// that holds other configuration, apply would plan that too.
 	if r.Platform == "gcp" && r.Dir == "." {
-		r.Dir = "stackdna-gcp"
+		r.Dir = "truthform-gcp"
 	}
 	if !dirRE.MatchString(r.Dir) {
 		return Plan{}, fmt.Errorf(`--write: %q holds a character that cannot be named safely in a command; use letters, digits, spaces and _ . / \ : -`, r.Dir)
@@ -199,10 +199,10 @@ func file(r Request, name string) string {
 	return filepath.ToSlash(filepath.Join(r.Dir, name))
 }
 
-// rebuild is the stackdna permissions command line for r, so a step can
+// rebuild is the truthform permissions command line for r, so a step can
 // say exactly how to write the files.
 func rebuild(r Request) []string {
-	a := []string{"stackdna", "permissions", "--platform", r.Platform, "--access", r.Access}
+	a := []string{"truthform", "permissions", "--platform", r.Platform, "--access", r.Access}
 	add := func(flag, v string) {
 		if v != "" {
 			a = append(a, "--"+flag, v)
@@ -276,7 +276,7 @@ func render(name string, data any) ([]byte, error) {
 func (p Plan) Text() string {
 	var b strings.Builder
 	w := func(f string, a ...any) { fmt.Fprintf(&b, f, a...) }
-	w("StackDNA %s access on %s\n\n", p.Access, p.Platform)
+	w("Truthform %s access on %s\n\n", p.Access, p.Platform)
 	if len(p.Warnings) > 0 {
 		w("WARNINGS\n")
 		for _, x := range p.Warnings {

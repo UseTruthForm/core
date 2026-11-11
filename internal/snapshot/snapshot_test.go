@@ -202,18 +202,18 @@ func TestYAML11SpecialScalarsAreQuoted(t *testing.T) {
 }
 
 // The point of schema fingerprints: an API adding a field must show up as
-// that field, with no field list maintained anywhere in StackDNA.
+// that field, with no field list maintained anywhere in Truthform.
 func TestCompareSchemasShowsAddedAndRemovedFields(t *testing.T) {
 	ts := func(kind, digest string, fields ...string) TypeSchema {
-		return TypeSchema{APIVersion: "example.stackdna.org/v1", Kind: kind, Digest: digest, Fields: fields}
+		return TypeSchema{APIVersion: "example.truthform.org/v1", Kind: kind, Digest: digest, Fields: fields}
 	}
 	old := Snapshot{Schemas: []TypeSchema{ts("Widget", "a", "spec.size", "spec.colour"), ts("Gone", "g", "x"), ts("NoSchema", "")}}
 	new := Snapshot{Schemas: []TypeSchema{ts("Widget", "b", "spec.size", "spec.shape"), ts("New", "n", "y"), ts("NoSchema", "")}}
 	got := CompareSchemas(old, new)
 	want := []string{
-		"example.stackdna.org/v1 Gone|removed type||",
-		"example.stackdna.org/v1 New|added type||",
-		"example.stackdna.org/v1 Widget|changed|spec.shape|spec.colour",
+		"example.truthform.org/v1 Gone|removed type||",
+		"example.truthform.org/v1 New|added type||",
+		"example.truthform.org/v1 Widget|changed|spec.shape|spec.colour",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v", got)

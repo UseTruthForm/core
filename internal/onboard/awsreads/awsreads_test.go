@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/awscc"
+	"github.com/usetruthform/core/internal/awscc"
 )
 
 func reg(schemas map[string]string) *awscc.Registry {

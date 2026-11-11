@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // A subdomain restore puts one zone's DNS records a level down, under a
@@ -44,8 +44,16 @@ const maxComment = 100
 type Left struct{ Name, Reason string }
 
 // Mark is the comment on every record a subdomain restore writes. Only a
-// record that carries it is StackDNA's to change.
-func (d *Subdomain) Mark() string { return "stackdna: " + d.Name }
+// record that carries it is Truthform's to change.
+func (d *Subdomain) Mark() string { return "truthform: " + d.Name }
+
+// ours reports whether a record's comment is the mark. A record written
+// before the tool was renamed carries the mark under the old name. Without
+// this it would read as someone else's: every restore would stop on it as a
+// conflict, and --update would refuse to touch a record Truthform made.
+func (d *Subdomain) ours(comment string) bool {
+	return comment == d.Mark() || comment == "stackdna: "+d.Name
+}
 
 // under reports whether a DNS name is the subdomain or below it.
 func under(name, sub string) bool {
@@ -220,10 +228,10 @@ func (d *Subdomain) isTarget(addr string) bool {
 
 // Check compares the planned records with what the target zone holds now.
 // A conflict stops the restore before it writes anything: a record at a
-// planned name StackDNA did not make, the subdomain delegated or a zone
+// planned name Truthform did not make, the subdomain delegated or a zone
 // of its own, a CNAME beside other records. A warning does not: a
 // wildcard above the subdomain that answers for it today, and a record
-// StackDNA made earlier that the snapshot no longer has.
+// Truthform made earlier that the snapshot no longer has.
 func (d *Subdomain) Check(planned, target snapshot.Snapshot) (conflicts, warnings []string) {
 	byName := map[string][]map[string]any{}
 	keys := map[string]bool{}
@@ -266,7 +274,7 @@ func (d *Subdomain) Check(planned, target snapshot.Snapshot) (conflicts, warning
 		}
 		spec, _ := o.Body["spec"].(map[string]any)
 		t, n, c := stringOf(spec["type"]), strings.ToLower(stringOf(spec["name"])), stringOf(spec["content"])
-		ours := stringOf(spec["comment"]) == d.Mark()
+		ours := d.ours(stringOf(spec["comment"]))
 		desc := t + " " + n + " " + c
 		switch {
 		case strings.EqualFold(t, "NS") && (under(d.Name, n) && n != d.zone):
@@ -277,7 +285,7 @@ func (d *Subdomain) Check(planned, target snapshot.Snapshot) (conflicts, warning
 				shadowed = true
 			}
 		case len(byName[n]) > 0 && !ours:
-			conflicts = append(conflicts, desc+": already there, and StackDNA did not make it (no "+fmt.Sprintf("%q", d.Mark())+" comment)")
+			conflicts = append(conflicts, desc+": already there, and Truthform did not make it (no "+fmt.Sprintf("%q", d.Mark())+" comment)")
 		case ours && !keys[strings.ToLower(d.zone+"/"+t+" "+n+" "+c)] && clashes(t, byName[n]):
 			conflicts = append(conflicts, desc+": made by an earlier restore with other content; the restore would put a second record beside it (DNS would answer with both), so delete it first")
 		case ours && !keys[strings.ToLower(d.zone+"/"+t+" "+n+" "+c)]:
@@ -350,8 +358,8 @@ func (d *Subdomain) Allow(o snapshot.Object, existing map[string]any) string {
 		return "a subdomain restore writes DNS records only"
 	case !under(n, d.Name):
 		return n + " is not under " + d.Name
-	case existing != nil && stringOf(existing["comment"]) != d.Mark():
-		return "StackDNA did not make it (no " + fmt.Sprintf("%q", d.Mark()) + " comment)"
+	case existing != nil && !d.ours(stringOf(existing["comment"])):
+		return "Truthform did not make it (no " + fmt.Sprintf("%q", d.Mark()) + " comment)"
 	}
 	return ""
 }

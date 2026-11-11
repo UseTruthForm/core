@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/stackdna/core/internal/schedule"
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/schedule"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // RestoreOptions are the inputs a restore needs beyond the snapshot.
@@ -33,7 +33,7 @@ type RestoreOptions struct {
 // become readable. Variables so tests need not wait.
 var readBackStep, readBackLimit = 5 * time.Second, 2 * time.Minute
 
-var tokenRE = regexp.MustCompile(`\{\{stackdna\|([^|{}]+)\|([^|{}]+)\|([^|{}]+)\}\}`)
+var tokenRE = regexp.MustCompile(`\{\{truthform\|([^|{}]+)\|([^|{}]+)\|([^|{}]+)\}\}`)
 
 // Restore creates every snapshot object that is missing from the target, in
 // reference order, resolving each reference token to the value the target
@@ -512,7 +512,7 @@ func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *
 	sortSets(desired, map[string]any{"properties": t.Properties}, t.Definitions)
 	ops, replace := planUpdate(t, live, desired)
 	if len(replace) > 0 {
-		return false, "differs in " + strings.Join(replace, ", ") + ", which AWS can only change by replacing the resource; StackDNA does not replace resources"
+		return false, "differs in " + strings.Join(replace, ", ") + ", which AWS can only change by replacing the resource; Truthform does not replace resources"
 	}
 	if len(ops) == 0 {
 		return true, "already present; it differs only in how references are named"

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // LeaveOut removes objects from a snapshot before a restore or a diff, keyed

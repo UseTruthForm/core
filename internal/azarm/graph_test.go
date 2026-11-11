@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // A small estate with every kind of relationship a graph draws.
@@ -50,7 +50,7 @@ func graphSnapshot() snapshot.Snapshot {
 	assign := obj("Microsoft.Authorization/roleAssignments", "rg", "providers/Microsoft.Storage/storageAccounts/acct/providers/Microsoft.Authorization/roleAssignments/ra",
 		id("Microsoft.Storage/storageAccounts/acct/providers/Microsoft.Authorization/roleAssignments/ra"), map[string]any{
 			"properties": map[string]any{
-				"principalId":      "{{stackdna|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|id1|properties.principalId}}",
+				"principalId":      "{{truthform|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|id1|properties.principalId}}",
 				"roleDefinitionId": sub + "/providers/Microsoft.Authorization/roleDefinitions/r1",
 			},
 		})
@@ -192,10 +192,10 @@ func TestGraphEdgeCases(t *testing.T) {
 	lock := obj("Microsoft.Authorization/locks", "rg", "nodelete", id("Microsoft.Authorization/locks/nodelete"), map[string]any{})
 	assign := obj("Microsoft.Authorization/roleAssignments", "", "ra", sub+"/providers/Microsoft.Authorization/roleAssignments/ra", map[string]any{
 		"properties": map[string]any{
-			"principalId": "{{stackdna|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|id1|properties.principalId}}",
-			"note":        "{{stackdna|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|id1|properties.createdBy}}",
+			"principalId": "{{truthform|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|id1|properties.principalId}}",
+			"note":        "{{truthform|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg|id1|properties.createdBy}}",
 			// An extension's token, whose name is providers/... text.
-			"other": "{{stackdna|ref|Microsoft.Authorization/roleAssignments|rg|providers/Microsoft.Network/virtualNetworks/vnet/providers/Microsoft.Authorization/roleAssignments/r2|properties.createdBy}}",
+			"other": "{{truthform|ref|Microsoft.Authorization/roleAssignments|rg|providers/Microsoft.Network/virtualNetworks/vnet/providers/Microsoft.Authorization/roleAssignments/r2|properties.createdBy}}",
 		},
 	})
 	// No ID annotation and a nested kind: took a slice out of range.
@@ -345,8 +345,8 @@ func TestGraphNamesWhatAManagerKeeps(t *testing.T) {
 	nic := "/subscriptions/" + tokSub + "/resourceGroups/shop-rg/providers/Microsoft.Network/networkInterfaces/nic"
 	pip := "/subscriptions/" + tokSub + "/resourceGroups/MC_shop_aks_eastus/providers/Microsoft.Network/publicIPAddresses/kubernetes-abc"
 	s.Objects = append(s.Objects, snapshot.Object{Body: map[string]any{
-		"apiVersion": "azure.stackdna.org/v1", "kind": "Microsoft.Network/networkInterfaces",
-		"metadata": map[string]any{"name": "nic", "namespace": "shop-rg", "annotations": map[string]any{"stackdna.org/id": nic, "stackdna.org/api-version": "2023-01-01"}},
+		"apiVersion": "azure.truthform.org/v1", "kind": "Microsoft.Network/networkInterfaces",
+		"metadata": map[string]any{"name": "nic", "namespace": "shop-rg", "annotations": map[string]any{"truthform.org/id": nic, "truthform.org/api-version": "2023-01-01"}},
 		"spec":     map[string]any{"properties": map[string]any{"publicIPAddress": map[string]any{"id": pip}}},
 	}})
 	p, _, _ := LoadProjection("security", nil)

@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // accessRule is a reference Azure checks the caller's access to when a
@@ -15,7 +15,7 @@ type accessRule struct {
 }
 
 // accessRules are the references whose check is known. From Azure's
-// documentation; not yet verified by a StackDNA restore.
+// documentation; not yet verified by a Truthform restore.
 var accessRules = []accessRule{
 	// Sending to an event hub through an authorization rule: Azure reads
 	// the rule's keys as the caller.
@@ -30,7 +30,7 @@ var accessRules = []accessRule{
 // only that a restore "needs access there"; which access was found when Azure
 // refused the write, after the rest had been sent (a diagnostic setting to
 // another subscription's event hub needs its rule's keys). A reference with
-// no known check is in OtherSubscriptions only. Only the checks StackDNA
+// no known check is in OtherSubscriptions only. Only the checks Truthform
 // knows are listed: any other reference may need access there too. A
 // reference to target, the subscription restored into, is not elsewhere
 // ("" when it is not known, as for a report).

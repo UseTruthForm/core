@@ -14,7 +14,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
-	"github.com/stackdna/core/internal/readonly"
+	"github.com/usetruthform/core/internal/readonly"
 )
 
 var gcpReadRoles = map[string]bool{"roles/viewer": true, "roles/cloudasset.viewer": true, "roles/browser": true, "roles/iam.securityReviewer": true}

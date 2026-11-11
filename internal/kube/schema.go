@@ -10,12 +10,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
-// This is the reflection half of StackDNA. Other IaC tools compile each API's
+// This is the reflection half of Truthform. Other IaC tools compile each API's
 // fields into a provider release, so a field the API added last month does
-// not exist for them until someone ships a new provider. StackDNA never holds
+// not exist for them until someone ships a new provider. Truthform never holds
 // a field list in code: capture reads whatever the live API returns, and the
 // schema the server publishes at that moment is fingerprinted into the
 // snapshot. New fields are therefore captured automatically, and schema-diff

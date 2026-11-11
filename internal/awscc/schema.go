@@ -6,7 +6,7 @@
 // parent relationships come from the schema AWS publishes for it, and the
 // same schemas become the field fingerprints that schema-diff compares. When
 // AWS adds a property or a whole type, the next capture picks it up from the
-// refreshed schema; nobody edits StackDNA.
+// refreshed schema; nobody edits Truthform.
 package awscc
 
 import (
@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-// TypeInfo is what StackDNA needs to know about one resource type, all of it
+// TypeInfo is what Truthform needs to know about one resource type, all of it
 // read from the type's registry schema.
 type TypeInfo struct {
 	Name string // AWS::S3::Bucket
@@ -123,7 +123,7 @@ func BundleURL(region string) string {
 
 // LoadBundle downloads (or reads from the cache) a region's schema bundle.
 // The cache is refreshed after maxAge, so captures follow AWS's schema
-// updates without anyone shipping a StackDNA release.
+// updates without anyone shipping a Truthform release.
 var bundleClient = &http.Client{Timeout: 5 * time.Minute}
 
 func LoadBundle(region, cacheDir string, maxAge time.Duration) (*Registry, error) {

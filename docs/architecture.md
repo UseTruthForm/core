@@ -4,7 +4,7 @@
 
 Infrastructure-as-code goes from code to cloud and keeps a state file that
 records what it believes it created. That state drifts, gets corrupted and has
-to be locked, imported and migrated. StackDNA goes the other way. It reads what
+to be locked, imported and migrated. Truthform goes the other way. It reads what
 is actually running and writes a snapshot that can recreate it. The live system
 is the source of truth, so nothing has to be kept in sync.
 
@@ -58,7 +58,7 @@ live system ──discover──▶ list every type ──policy──▶ normal
    policy, object count and a digest over every file. Reading verifies the
    digest, so a hand-edited or half-copied snapshot is refused. A capture always
    rebuilds the objects folder, so deleted objects can't come back.
-5. **Restore.** Server-side apply as the `stackdna` field manager, in phases:
+5. **Restore.** Server-side apply as the `truthform` field manager, in phases:
    CRDs, then namespaces, then everything else, then admission webhooks.
    Every object ends up applied or reported as not applied, with the reason.
    Restore never deletes anything.
@@ -70,7 +70,7 @@ live system ──discover──▶ list every type ──policy──▶ normal
 
 This is the one thing other IaC tools struggle with. A provider release
 freezes each API's fields, and keeping up means shipping releases forever.
-StackDNA's rule is that no adapter may contain a field list:
+Truthform's rule is that no adapter may contain a field list:
 
 - **Values** come from the live API as-is (the Kubernetes dynamic client).
 - **Shape** comes from the schema the API publishes (Kubernetes OpenAPI v3).
@@ -125,7 +125,7 @@ Proof:
 ## Secrets
 
 Values never enter a snapshot. A Secret is captured with its key names and
-empty values, plus the annotation `stackdna.org/withheld-keys`. Restore refuses
+empty values, plus the annotation `truthform.org/withheld-keys`. Restore refuses
 those secrets unless it has a source for the values. Today that source is a
 live cluster (`--secrets-from-context`), for migrations and drills. A vault
 source comes next.
@@ -136,18 +136,18 @@ source comes next.
 CRUD API across the CloudFormation registry, and each type's registry schema
 says everything the adapter needs:
 
-| Schema says | StackDNA does |
+| Schema says | Truthform does |
 |---|---|
 | `primaryIdentifier` | How to read it, and whether the user chose the ID (`BucketName`) or AWS generated it (`VpcId`) |
 | `readOnlyProperties` | Moves those values out of `spec` into `status`. They are never sent back, and they are the targets of references |
-| `writeOnlyProperties` | Drops them (AWS never returns them anyway), annotates the object with `stackdna.org/write-only`, and requires them at restore when they are also `required` |
+| `writeOnlyProperties` | Drops them (AWS never returns them anyway), annotates the object with `truthform.org/write-only`, and requires them at restore when they are also `required` |
 | `handlers.list.handlerSchema.required` | Builds a list plan. An enum property (WAFv2 `Scope`) is listed once per value. Any other property comes from one parent type found by name, such as `RestApiId` from `AWS::ApiGateway::RestApi` |
 | `insertionOrder: false` | Sorts the array canonically (tags, CIDR lists), so captures are deterministic |
 
 Pointers are applied in full, including nested ones and `*` across arrays
 (`/properties/Code/ZipFile`, `/properties/LifecycleConfiguration/Rules/*/Transition`).
 
-**Coverage.** `stackdna aws-coverage` measures this from the public bundle,
+**Coverage.** `truthform aws-coverage` measures this from the public bundle,
 using the adapter's own rules. The bundle had 1,854 types on 2026-10-21:
 
 - 1,607 (87%) are capturable and creatable:
@@ -178,7 +178,7 @@ resource's spec is replaced with a token that restore resolves to the value
 the target account generated:
 
 ```yaml
-Role: "{{stackdna|AWS::IAM::Role|shop-lambda|Arn}}"
+Role: "{{truthform|AWS::IAM::Role|shop-lambda|Arn}}"
 ```
 
 These values count as identifying: the resource's identifier, `*Id`, `*Arn`
@@ -192,7 +192,7 @@ what is missing, in reference order:
 - An object that already exists and is identical is reported as applied.
   This makes a second restore a no-op.
 - An object that exists but differs is reported as not applied, with the
-  differing fields. StackDNA doesn't update or delete anything.
+  differing fields. Truthform doesn't update or delete anything.
 - A token can resolve to a resource that wasn't in the snapshot but exists in
   the target. The target's default VPC is one example.
 - Write-only values come from `--values <file>` and go only to AWS.
@@ -442,7 +442,7 @@ Something else in a node group is captured and restored after the cluster.
 **Proven against a fake only, so far.** The drill runs between two fake
 subscriptions in different tenants, using the trimmed real definitions in
 `testdata/azure/types`. Those are regenerated from Azure's repository with
-`STACKDNA_REGEN_AZURE_FIXTURES=1 go test -run Regenerate ./internal/azarm/`.
+`TRUTHFORM_REGEN_AZURE_FIXTURES=1 go test -run Regenerate ./internal/azarm/`.
 It covers a resource group, NSG, VNet with a subnet referencing the NSG,
 managed identity, storage account, App Service plan and site, and a VM. The
 drill passes. Mutation checks confirm that dropping subscription tokens,
@@ -659,8 +659,8 @@ Everything else comes from the description:
   never kept. They are annotated, supplied at restore with `--values`, and
   named in the result when missing.
 - **The account is tokenized only where it is structural**: an exact value,
-  or a path or URL segment. The StackDNA organisation's repository
-  describes itself as "StackDNA core: ...", and replacing the name in prose
+  or a path or URL segment. The Truthform organisation's repository
+  describes itself as "Truthform core: ...", and replacing the name in prose
   would rewrite the description in every target.
 - **A feature the plan lacks is not a failure.** Each provider lists its own
   refusal messages ("Upgrade to GitHub Pro"), and those collections are
@@ -671,9 +671,9 @@ Everything else comes from the description:
 
 | | Proof |
 |---|---|
-| GitHub: repositories, labels, webhooks, rulesets | A fake drill. Plus a real read-only capture of the StackDNA organisation: 2 repositories, 19 labels, rulesets correctly "not available on this plan", complete |
+| GitHub: repositories, labels, webhooks, rulesets | A fake drill. Plus a real read-only capture of the Truthform organisation: 2 repositories, 19 labels, rulesets correctly "not available on this plan", complete |
 | Cloudflare: zones, DNS records | A fake drill only; no API token on the dev machine |
-| GitHub, derived (Actions settings, variables, secrets, environments, org issue fields, code-security configurations, ...) | A derived drill. Plus a real capture of StackDNA: 36 items across 18 collections; 10 organisation collections need an org-admin token |
+| GitHub, derived (Actions settings, variables, secrets, environments, org issue fields, code-security configurations, ...) | A derived drill. Plus a real capture of Truthform: 36 items across 18 collections; 10 organisation collections need an org-admin token |
 
 **GitHub's collections are derived, not listed.** The description tags
 every operation with a category. The descriptor names the configuration
@@ -730,23 +730,23 @@ captured. GitHub accepts it on write and returns it only reshaped inside
 `protection_rules`, so capture, which keeps what writes accept and reads
 return, dropped it without a word, and the earlier drill passed because
 both sides lacked it. Each object now carries a
-`stackdna.org/unreadable` annotation naming such fields (state both the
+`truthform.org/unreadable` annotation naming such fields (state both the
 create and the update accept, absent from the read's response schema), and
-a restore says it could not carry them. In the real StackDNA organisation
+a restore says it could not carry them. In the real Truthform organisation
 it names one: a code-security configuration's `code_security` and
 `secret_protection`.
 
 ## Agents: the MCP server
 
-`stackdna mcp` serves StackDNA to an agent over the Model Context Protocol
+`truthform mcp` serves Truthform to an agent over the Model Context Protocol
 (JSON-RPC on stdin and stdout; no MCP dependency in the binary). An agent
 building on a platform needs to know what a resource takes before it
-writes one. StackDNA already reads that from each platform's published
+writes one. Truthform already reads that from each platform's published
 schemas to capture and restore, so it says it:
 
 | Tool | What it does |
 |---|---|
-| `platforms` | What StackDNA covers on each platform, and each platform's own MCP server |
+| `platforms` | What Truthform covers on each platform, and each platform's own MCP server |
 | `list_types` | Resource types from the published schemas (AWS registry, Azure definitions, a GCP API's Discovery document, a SaaS description) |
 | `describe_type` | Every field of a type: required, read-only (set by the platform), write-only, secret, create-only (changing it replaces the resource), with the platform's documentation links |
 | `capture`, `diff` | Read a live target into a snapshot, or compare one with it |
@@ -766,7 +766,7 @@ Verified against real systems through the protocol: `describe_type` for
 `AWS::SQS::Queue` (FifoQueue and QueueName create-only, Arn and QueueUrl
 read-only), `Microsoft.Compute/virtualMachines` (159 fields to depth 3,
 `properties.osProfile.adminPassword` secret), IAM service accounts, and
-GitHub environments; a capture of the StackDNA organisation (36 items,
+GitHub environments; a capture of the Truthform organisation (36 items,
 honestly incomplete for want of `admin:org`), a diff of it (no
 differences), its report, and an AWS capture. The first real describe
 showed an environment's `name` as read-only; it names the item in the
@@ -780,7 +780,7 @@ resolve: AWS's CloudFormation template reference
 themselves) and Azure's template reference
 (`/azure/templates/microsoft.compute/<version>/virtualmachines`).
 
-**Companion servers.** StackDNA says what exists and what each field
+**Companion servers.** Truthform says what exists and what each field
 means; each platform's own MCP server acts on it. As listed by the
 providers on 2026-10-22:
 
@@ -801,7 +801,7 @@ providers on 2026-10-22:
 A client runs it like any stdio server:
 
 ```json
-{"mcpServers": {"stackdna": {"command": "stackdna", "args": ["mcp"]}}}
+{"mcpServers": {"truthform": {"command": "truthform", "args": ["mcp"]}}}
 ```
 
 ## Roadmap
@@ -809,7 +809,7 @@ A client runs it like any stdio server:
 | Step | What |
 |---|---|
 | Next | Vault and file sources for secret values; PersistentVolume handling (claims are captured, but volume **data** is not, and the snapshot must say so) |
-| AWS | The drill extended to IAM and Lambda (the sandbox user may now write roles named `stackdna-drill*`); a restore into a second account, and the onboarding role trusted from another account, once that account is activated; replay fixtures recorded from real responses; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
+| AWS | The drill extended to IAM and Lambda (the sandbox user may now write roles named `truthform-drill*`); a restore into a second account, and the onboarding role trusted from another account, once that account is activated; replay fixtures recorded from real responses; Secrets Manager values read live from a source account, as `--secrets-from-context` does for Kubernetes |
 | Azure | Mapping principals across tenants; data-plane configuration (Key Vault secrets' metadata, storage CORS) where ARM exposes it |
 | GCP | A real Compute drill (needs billing); project IDs in free text; `undelete` for soft-deleted resources (custom roles) |
 | SaaS | GitHub, Cloudflare, Okta, Datadog and similar, through their REST APIs, each with an explicit schema of configured fields versus computed fields |

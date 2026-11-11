@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // rateServer answers with each step in turn, and records when (on the

@@ -1,0 +1,11 @@
+apiVersion: azure.stackdna.org/v1
+kind: Microsoft.Resources/resourceGroups
+metadata:
+  annotations:
+    stackdna.org/api-version: "2025-04-01"
+    stackdna.org/id: /subscriptions/{{stackdna|subscription}}/resourceGroups/rg-app
+  name: rg-app
+spec:
+  location: westeurope
+  tags:
+    owner: stackdna-team

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // Creates that do not depend on each other run at once, and the result is

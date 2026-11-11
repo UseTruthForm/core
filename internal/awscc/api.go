@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// CloudControl is the slice of the AWS Cloud Control API StackDNA uses. One
+// CloudControl is the slice of the AWS Cloud Control API Truthform uses. One
 // generic API serves every type the registry describes, which is why the
 // adapter needs no per-service code. sdk.go implements it against AWS;
 // Fake implements it in memory from the same schemas.

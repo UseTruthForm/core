@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/stackdna/core/internal/schedule"
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/schedule"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // RestoreOptions are the inputs a restore needs beyond the snapshot.
@@ -685,7 +685,7 @@ const DiagnosticsTableLater = "Azure makes AzureDiagnostics when a diagnostic se
 // DiagnosticsTableFlagless follows DiagnosticsTableLater for a snapshot that
 // cannot tell a retention set by a person from the workspace's default, and is
 // read as set: an older one waited on every run, with nothing to say why.
-const DiagnosticsTableFlagless = "; this snapshot predates StackDNA keeping whether its retention is the workspace's default, so it is taken as set: capture the source again with this version, and if nothing was set on it, it no longer waits"
+const DiagnosticsTableFlagless = "; this snapshot predates Truthform keeping whether its retention is the workspace's default, so it is taken as set: capture the source again with this version, and if nothing was set on it, it no longer waits"
 
 // DiagnosticsTableDefault is why one holding only the workspace's defaults is
 // not sent: the table Azure makes has them too, so there is nothing to wait
@@ -704,7 +704,7 @@ func KeptOnceAzureMakesIt(s snapshot.Snapshot) (set, defaults []string) {
 		k := o.Kind() + " " + o.Namespace() + "/" + o.Name()
 		if spec, _ := o.Body["spec"].(map[string]any); diagnosticsTableSet(spec) {
 			if diagnosticsTableFlagless(spec) {
-				k += " (this snapshot predates StackDNA keeping whether its retention is the workspace's default, so it is taken as set: capture the source again with this version, and if nothing was set on it, it no longer waits)"
+				k += " (this snapshot predates Truthform keeping whether its retention is the workspace's default, so it is taken as set: capture the source again with this version, and if nothing was set on it, it no longer waits)"
 			}
 			set = append(set, k)
 		} else {
@@ -878,7 +878,7 @@ func namedGroups(o snapshot.Object) []string {
 
 // Case-insensitive: Azure spells .../resourcegroups/... in some services' IDs (a
 // key vault's), and a reference missed here has nothing waiting for it.
-var idRE = regexp.MustCompile(`(?i)/subscriptions/\{\{stackdna\|subscription\}\}/resourceGroups/[^/"]+(/providers/[^/"]+(/[^/"]+/[^/"]+)+)?`)
+var idRE = regexp.MustCompile(`(?i)/subscriptions/\{\{truthform\|subscription\}\}/resourceGroups/[^/"]+(/providers/[^/"]+(/[^/"]+/[^/"]+)+)?`)
 
 // trimToResource cuts an ID found in text to an even number of segments
 // after providers/{namespace}, so a trailing action or sub-path does not

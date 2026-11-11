@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The AWS restore drill against a real account: the disaster case.
 #
-#   seed an app with the plain AWS CLI (not StackDNA)
+#   seed an app with the plain AWS CLI (not Truthform)
 #   capture it twice; the digests must match
 #   DELETE the app
 #   restore it from the snapshot; every resource must be applied
@@ -19,7 +19,7 @@
 #
 # IAM needs writes PowerUserAccess does not give: the sandbox user holds an
 # extra policy allowing them only on roles and policies named
-# stackdna-drill* (docs/drills.md). IAM=0 leaves IAM out, for an account
+# truthform-drill* (docs/drills.md). IAM=0 leaves IAM out, for an account
 # without it.
 #
 # The references are the point: the rule names the topic by ARN, the queue's
@@ -29,7 +29,7 @@
 # listed as a resource of its own, so it must not be restored twice. A
 # restore must remap every one.
 #
-# Everything is named stackdna-drill*. Cleanup finds resources by those names,
+# Everything is named truthform-drill*. Cleanup finds resources by those names,
 # not by remembered IDs, so it also removes what a restore created, and it
 # runs on exit even when a step fails.
 #
@@ -46,10 +46,10 @@ PROFILE="${PROFILE:-tf-pilot-automation}"
 REGION="${REGION:-us-east-2}"
 TARGET="${TARGET_REGION:-$REGION}"
 XREGION=false; [ "$TARGET" = "$REGION" ] || XREGION=true
-BIN="${BIN:-bin/stackdna}"
-OUT="${OUT:-.stackdna/aws-drill}"
+BIN="${BIN:-bin/truthform}"
+OUT="${OUT:-.truthform/aws-drill}"
 TYPES='AWS::EC2::VPC,AWS::EC2::Subnet,AWS::EC2::SecurityGroup,AWS::EC2::SecurityGroupIngress,AWS::EC2::SecurityGroupEgress,AWS::SQS::Queue,AWS::SSM::Parameter,AWS::ApiGateway::RestApi,AWS::ApiGateway::Resource,AWS::SNS::Topic,AWS::Events::Rule,AWS::Logs::LogGroup,AWS::ECR::Repository,AWS::S3::Bucket'
-N=stackdna-drill
+N=truthform-drill
 # Across regions the bucket is left out: bucket names are global, and a name
 # just deleted in one region cannot be created in another while S3 still
 # holds it ("A conflicting conditional operation is currently in progress",
@@ -64,7 +64,7 @@ if [ "$IAM" = 1 ]; then TYPES="$TYPES,AWS::IAM::Role,AWS::IAM::ManagedPolicy,AWS
 VALUES=()
 
 # Git Bash on Windows rewrites arguments that look like paths, which turns
-# the parameter name /stackdna-drill/env into C:/Program Files/Git/...
+# the parameter name /truthform-drill/env into C:/Program Files/Git/...
 export MSYS_NO_PATHCONV=1
 aws() { command aws --profile "$PROFILE" --region "$REGION" "$@"; }
 sd() { "$BIN" "$@" --platform aws --profile "$PROFILE" --region "$REGION" --types "$TYPES"; }
@@ -180,7 +180,7 @@ seed() {
     --tag-specifications "ResourceType=vpc,Tags=[{Key=Name,Value=$N},{Key=team,Value=shop}]" --query Vpc.VpcId --output text)
   aws ec2 create-subnet --vpc-id "$vpc" --cidr-block 10.42.1.0/24 --availability-zone "${REGION}a" \
     --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=$N-app}]" --query Subnet.SubnetId --output text
-  sg=$(aws ec2 create-security-group --vpc-id "$vpc" --group-name "$N-web" --description "StackDNA drill"     --tag-specifications "ResourceType=security-group,Tags=[{Key=Name,Value=$N-web}]" --query GroupId --output text)
+  sg=$(aws ec2 create-security-group --vpc-id "$vpc" --group-name "$N-web" --description "Truthform drill"     --tag-specifications "ResourceType=security-group,Tags=[{Key=Name,Value=$N-web}]" --query GroupId --output text)
   # A rule AWS also lists as its own AWS::EC2::SecurityGroupIngress.
   aws ec2 authorize-security-group-ingress --group-id "$sg" --protocol tcp --port 443 --cidr 10.42.0.0/16 >/dev/null
   # SQS refuses a queue name for 60 seconds after it was deleted.
@@ -197,7 +197,7 @@ seed() {
     done
   done
   topic=$(aws sns create-topic --name "$N-alerts" --query TopicArn --output text)
-  aws events put-rule --name "$N-nightly" --schedule-expression "cron(0 3 * * ? *)" --state DISABLED --description "StackDNA drill" >/dev/null
+  aws events put-rule --name "$N-nightly" --schedule-expression "cron(0 3 * * ? *)" --state DISABLED --description "Truthform drill" >/dev/null
   aws events put-targets --rule "$N-nightly" --targets "Id"="alerts","Arn"="$topic" >/dev/null
   aws logs create-log-group --log-group-name "/$N/app"
   aws logs put-retention-policy --log-group-name "/$N/app" --retention-in-days 7
@@ -206,15 +206,15 @@ seed() {
   aws ssm put-parameter --name "/$N/env" --type String --value prod --tags Key=team,Value=shop --output text
   if [ "$IAM" = 1 ]; then
     printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}' > "$OUT/trust.json"
-    aws iam create-role --role-name "$N-app" --assume-role-policy-document "file://$OUT/trust.json"       --description "StackDNA drill" --tags Key=team,Value=shop --query Role.Arn --output text
+    aws iam create-role --role-name "$N-app" --assume-role-policy-document "file://$OUT/trust.json"       --description "Truthform drill" --tags Key=team,Value=shop --query Role.Arn --output text
     jobs_arn=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text)
     printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["sqs:ReceiveMessage","sqs:DeleteMessage"],"Resource":"%s"}]}' "$jobs_arn" > "$OUT/policy.json"
-    pol=$(aws iam create-policy --policy-name "$N-read" --policy-document "file://$OUT/policy.json" --description "StackDNA drill" --query Policy.Arn --output text)
+    pol=$(aws iam create-policy --policy-name "$N-read" --policy-document "file://$OUT/policy.json" --description "Truthform drill" --query Policy.Arn --output text)
     aws iam attach-role-policy --role-name "$N-app" --policy-arn "$pol"
     # A function: its role is named by ARN, and its environment names the
     # queue by URL, two more references to remap. Never invoked, so free.
     printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}' > "$OUT/fn-trust.json"
-    fnrole=$(aws iam create-role --role-name "$N-fn" --assume-role-policy-document "file://$OUT/fn-trust.json" --description "StackDNA drill" --query Role.Arn --output text)
+    fnrole=$(aws iam create-role --role-name "$N-fn" --assume-role-policy-document "file://$OUT/fn-trust.json" --description "Truthform drill" --query Role.Arn --output text)
     jobs_url=$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)
     # python3 first: Linux and macOS often have no "python".
     "$(command -v python3 || command -v python)" - "$OUT/fn.zip" <<'PY'
@@ -239,7 +239,7 @@ PY
   wait_all
 }
 
-[ -x "$BIN" ] || [ -x "$BIN.exe" ] || { echo "build first: go build -o $BIN ./cmd/stackdna" >&2; exit 1; }
+[ -x "$BIN" ] || [ -x "$BIN.exe" ] || { echo "build first: go build -o $BIN ./cmd/truthform" >&2; exit 1; }
 # Bucket names are global across AWS: the account ID keeps this one ours.
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
 BUCKET="$N-$ACCOUNT-$REGION"

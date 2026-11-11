@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackdna/core/internal/describe"
+	"github.com/usetruthform/core/internal/describe"
 )
 
 func field(d describe.Type, path string) describe.Field {

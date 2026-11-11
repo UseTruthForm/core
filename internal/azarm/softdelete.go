@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // heldName is a type whose deleted resources keep their name for a time: a

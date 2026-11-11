@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/stackdna/core/internal/describe"
+	"github.com/usetruthform/core/internal/describe"
 )
 
 // Names lists the registry's type names, sorted.
@@ -68,10 +68,10 @@ func (r *Registry) Describe(name string) (describe.Type, error) {
 		d.Fields = append(d.Fields, f)
 	}
 	if !t.Handlers["create"] {
-		d.Notes = append(d.Notes, "Cloud Control cannot create this type: StackDNA captures it but cannot restore it.")
+		d.Notes = append(d.Notes, "Cloud Control cannot create this type: Truthform captures it but cannot restore it.")
 	}
 	if !t.Capturable() {
-		d.Notes = append(d.Notes, "Cloud Control cannot list or read this type: StackDNA cannot capture it.")
+		d.Notes = append(d.Notes, "Cloud Control cannot list or read this type: Truthform cannot capture it.")
 	}
 	if len(t.CreateOnly) > 0 {
 		d.Notes = append(d.Notes, "createOnly fields are fixed at creation: restore --update refuses to change them rather than replace the resource.")

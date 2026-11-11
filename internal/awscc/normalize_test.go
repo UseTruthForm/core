@@ -3,7 +3,7 @@ package awscc
 import (
 	"testing"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // AWS does not return write-only values, but normalize must not rely on

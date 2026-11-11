@@ -13,23 +13,23 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/stackdna/core/internal/snapshot"
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // APIVersion is the apiVersion of every Azure object in a snapshot; the ARM
 // type is the kind and the resource group is the namespace.
-const APIVersion = "azure.stackdna.org/v1"
+const APIVersion = "azure.truthform.org/v1"
 
 const (
-	annAPIVersion = "stackdna.org/api-version"
-	annSecrets    = "stackdna.org/secrets"
-	annID         = "stackdna.org/id"
+	annAPIVersion = "truthform.org/api-version"
+	annSecrets    = "truthform.org/secrets"
+	annID         = "truthform.org/id"
 	// annAfter names a resource a restore applies first, though nothing in
 	// the spec refers to it: the manager of the group an extension sits on,
 	// which creates that group (review of #43).
-	annAfter  = "stackdna.org/after"
-	tokSub    = "{{stackdna|subscription}}"
-	tokTenant = "{{stackdna|tenant}}"
+	annAfter  = "truthform.org/after"
+	tokSub    = "{{truthform|subscription}}"
+	tokTenant = "{{truthform|tenant}}"
 	groupType = "Microsoft.Resources/resourceGroups"
 )
 
@@ -490,7 +490,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 		switch {
 		// Azure's own roles are not recorded, not even as a count: the live list
-		// gave 973 and 976 on calls a minute apart, from StackDNA and az alike, so
+		// gave 973 and 976 on calls a minute apart, from Truthform and az alike, so
 		// the count changed the digest of an unchanged subscription, and a
 		// scheduled job would commit noise.
 		case f.count && f.reason == builtInRole:

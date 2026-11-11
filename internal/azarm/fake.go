@@ -357,8 +357,8 @@ func (f *Fake) validate(s *Schema, rid ResourceID, body map[string]any) error {
 	var bad error
 	// Keys too: some maps are keyed by resource ID.
 	rewriteAll(deepCopy(body), func(v string) string {
-		if bad == nil && strings.Contains(v, "{{stackdna") {
-			bad = fmt.Errorf("InvalidRequestContent: unresolved StackDNA reference %q sent to Azure", v)
+		if bad == nil && strings.Contains(v, "{{truthform") {
+			bad = fmt.Errorf("InvalidRequestContent: unresolved Truthform reference %q sent to Azure", v)
 		}
 		lower := strings.ToLower(v)
 		if o, ok := f.w.owner[lower]; ok && bad == nil && o != strings.ToLower(f.sub) {

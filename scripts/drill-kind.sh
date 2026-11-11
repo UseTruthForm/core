@@ -17,13 +17,13 @@
 #   KEEP=0 scripts/drill-kind.sh     # delete the destination at the end
 set -euo pipefail
 
-SRC=${SRC:-stackdna-src}
-DST=${DST:-stackdna-dst}
-BIN=${BIN:-bin/stackdna}
+SRC=${SRC:-truthform-src}
+DST=${DST:-truthform-dst}
+BIN=${BIN:-bin/truthform}
 WORK=${WORK:-$(mktemp -d)}
 
 cd "$(dirname "$0")/.."
-go build -o "$BIN" ./cmd/stackdna
+go build -o "$BIN" ./cmd/truthform
 
 kind get clusters | grep -qx "$SRC" || kind create cluster --name "$SRC" --wait 120s
 # The destination is rebuilt every run: a baseline taken from a cluster that
@@ -36,7 +36,7 @@ echo "== baseline: fresh $DST"
 
 echo "== load fixture into $SRC"
 kubectl --context "kind-$SRC" apply -f testdata/k8s/workload.yaml
-kubectl --context "kind-$SRC" wait --for=condition=Established crd/widgets.example.stackdna.org --timeout=60s
+kubectl --context "kind-$SRC" wait --for=condition=Established crd/widgets.example.truthform.org --timeout=60s
 kubectl --context "kind-$SRC" apply -f testdata/k8s/widget.yaml
 kubectl --context "kind-$SRC" -n shop rollout status deploy/shop-api --timeout=120s
 
@@ -50,7 +50,7 @@ fi
 echo "deterministic: both captures $a"
 
 echo "== captured set is exactly the fixture"
-expected="apiextensions.k8s.io/v1/CustomResourceDefinition/_cluster/widgets.example.stackdna.org
+expected="apiextensions.k8s.io/v1/CustomResourceDefinition/_cluster/widgets.example.truthform.org
 apps/v1/Deployment/shop/shop-api
 core/v1/ConfigMap/shop/shop-config
 core/v1/Namespace/_cluster/shop
@@ -58,7 +58,7 @@ core/v1/PersistentVolumeClaim/shop/shop-data
 core/v1/Secret/shop/shop-db
 core/v1/Service/shop/shop-api
 core/v1/ServiceAccount/shop/shop-api
-example.stackdna.org/v1/Widget/shop/blue-widget
+example.truthform.org/v1/Widget/shop/blue-widget
 networking.k8s.io/v1/Ingress/shop/shop
 networking.k8s.io/v1/NetworkPolicy/shop/shop-api-ingress
 rbac.authorization.k8s.io/v1/Role/shop/read-config

@@ -30,10 +30,10 @@ const fixtureDir = "../../testdata/gcp/discovery"
 
 // TestRegenerateFixtures rebuilds testdata/gcp/discovery from Google's
 // published documents, keeping only the collections above and the schemas
-// they reach. STACKDNA_REGEN_GCP_FIXTURES=1 go test -run Regenerate.
+// they reach. TRUTHFORM_REGEN_GCP_FIXTURES=1 go test -run Regenerate.
 func TestRegenerateFixtures(t *testing.T) {
-	if os.Getenv("STACKDNA_REGEN_GCP_FIXTURES") == "" {
-		t.Skip("set STACKDNA_REGEN_GCP_FIXTURES=1 to rebuild the GCP fixtures")
+	if os.Getenv("TRUTHFORM_REGEN_GCP_FIXTURES") == "" {
+		t.Skip("set TRUTHFORM_REGEN_GCP_FIXTURES=1 to rebuild the GCP fixtures")
 	}
 	for _, av := range sortedKeys(fixtureKinds) {
 		api, ver, _ := strings.Cut(av, "/")

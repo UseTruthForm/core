@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -86,9 +88,27 @@ func forget(service, p string) error {
 	return nil
 }
 
+// page sends the whole of the browser's page before it returns. Login closes
+// its listener as soon as the handler hands it the answer, and a response
+// is otherwise only sent once the handler has returned: the close cut it,
+// so a sign-in that worked could show the browser a connection error. With
+// its length set and flushed, nothing of the page is left to send after.
+func page(w http.ResponseWriter, text string) {
+	text += "\n"
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len(text)))
+	// The listener is about to go; a browser must not keep this
+	// connection for another request.
+	w.Header().Set("Connection", "close")
+	_, _ = io.WriteString(w, text)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // answered runs in the callback's handler once the sign-in has its answer,
 // before the handler returns. It does nothing; a test makes it slow, to
-// hold the browser's page open past the moment Login returns.
+// keep the handler running past the moment Login closes the listener.
 var answered = func() {}
 
 // ErrNotSignedIn means no token is stored for the provider.
@@ -155,10 +175,11 @@ func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string
 			http.Error(w, "This is not the sign-in Truthform started.", http.StatusBadRequest)
 			return
 		case q.Get("error") != "":
-			fmt.Fprintln(w, "Sign-in was not completed. You can close this tab.")
+			page(w, "Sign-in was not completed. You can close this tab.")
 			finish(result{err: fmt.Errorf("sign-in refused: %s %s", q.Get("error"), q.Get("error_description"))})
+			answered()
 		default:
-			fmt.Fprintln(w, "Signed in to Truthform. You can close this tab and return to the terminal.")
+			page(w, "Signed in to Truthform. You can close this tab and return to the terminal.")
 			finish(result{code: q.Get("code")})
 			answered()
 		}
@@ -170,17 +191,11 @@ func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string
 		defer ln6.Close()
 		go func() { _ = srv.Serve(ln6) }()
 	}
-	// Shutdown, not Close. Login returns as soon as it has the code, while
-	// the page that tells the person they are signed in may still be on
-	// its way: Close cut that connection, so a sign-in that worked could
-	// show the browser a connection error. Shutdown lets the answer
-	// finish first. Close follows in case a connection never goes idle.
-	defer func() {
-		wait, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(wait)
-		_ = srv.Close()
-	}()
+	// Close, not Shutdown: by the time Login has its answer the page is
+	// already sent (see page). Shutdown would also wait, up to its limit,
+	// on a connection a browser opened and never used, and browsers open
+	// those; a sign-in that worked then sat for seconds before returning.
+	defer srv.Close()
 
 	open(conf.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier)))
 	var r result

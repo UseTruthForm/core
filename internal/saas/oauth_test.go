@@ -409,30 +409,45 @@ func TestACaptureWritesTheUncheckedGap(t *testing.T) {
 	}
 }
 
-// The browser gets the page saying the sign-in worked, even when Login has
-// its answer and returns while that page is still being written.
+// The browser gets the page saying the sign-in worked, although Login closes
+// its listener the moment it has its answer, and Login is not held up by a
+// connection a browser opened and never used.
 //
-// The failure this pins: Login closed its listener with Close the moment it
-// had the code. In CI TestASignInRefusesAnotherState failed once with
-// "dial tcp [::1]:41439: connect: connection refused": the connection
-// carrying the page was cut, the client retried on a new one, and nothing
-// was listening. A person would have seen a connection error in the browser
-// on a sign-in that had worked.
-func TestTheBrowserGetsItsAnswerBeforeTheListenerCloses(t *testing.T) {
+// Two failures are pinned here. The first: the page was only sent once the
+// handler returned, and Login's Close could come first and cut it. In CI
+// TestASignInRefusesAnotherState failed once with "dial tcp [::1]:41439:
+// connect: connection refused", which fits a client retrying a cut request
+// and finding nothing listening; that run was not reproduced, but with the
+// handler held open the cut happens every time. The second came from the
+// first attempt at a fix, a graceful Shutdown: it waited out its whole
+// limit on an unused open connection, so a sign-in that worked sat for two
+// seconds before returning.
+func TestTheBrowserGetsItsAnswerAndLoginDoesNotWait(t *testing.T) {
 	prev := answered
-	answered = func() { time.Sleep(150 * time.Millisecond) }
+	answered = func() { time.Sleep(300 * time.Millisecond) }
 	defer func() { answered = prev }()
 
 	a := newAuthServer(t)
+	port := freePort(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	type page struct {
 		status int
 		body   string
 		err    error
+		at     time.Time
 	}
 	got := make(chan page, 1)
-	tok, err := a.oauth(freePort(t)).Login(ctx, http.DefaultClient, func(u string) {
+	var spare net.Conn
+	defer func() {
+		if spare != nil {
+			spare.Close()
+		}
+	}()
+	start := time.Now()
+	tok, err := a.oauth(port).Login(ctx, http.DefaultClient, func(u string) {
+		// As a browser does: a second connection, opened and not used.
+		spare, _ = net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		go func() {
 			resp, err := http.Get(u)
 			if err != nil {
@@ -441,11 +456,18 @@ func TestTheBrowserGetsItsAnswerBeforeTheListenerCloses(t *testing.T) {
 			}
 			defer resp.Body.Close()
 			b, err := io.ReadAll(resp.Body)
-			got <- page{resp.StatusCode, string(b), err}
+			got <- page{resp.StatusCode, string(b), err, time.Now()}
 		}()
 	}, true)
+	took := time.Since(start)
 	if err != nil || tok.AccessToken != "access-1" {
 		t.Fatalf("login: %v, token %+v", err, tok)
+	}
+	if spare == nil {
+		t.Fatal("the spare connection was not opened, so the wait was not tested")
+	}
+	if took > time.Second {
+		t.Errorf("Login took %v with an unused connection open; it must not wait for it", took)
 	}
 	select {
 	case p := <-got:

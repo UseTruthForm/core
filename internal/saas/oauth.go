@@ -86,6 +86,11 @@ func forget(service, p string) error {
 	return nil
 }
 
+// answered runs in the callback's handler once the sign-in has its answer,
+// before the handler returns. It does nothing; a test makes it slow, to
+// hold the browser's page open past the moment Login returns.
+var answered = func() {}
+
 // ErrNotSignedIn means no token is stored for the provider.
 var ErrNotSignedIn = errors.New("not signed in")
 
@@ -155,6 +160,7 @@ func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string
 		default:
 			fmt.Fprintln(w, "Signed in to Truthform. You can close this tab and return to the terminal.")
 			finish(result{code: q.Get("code")})
+			answered()
 		}
 	})}
 	go func() { _ = srv.Serve(ln) }()
@@ -164,7 +170,17 @@ func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string
 		defer ln6.Close()
 		go func() { _ = srv.Serve(ln6) }()
 	}
-	defer srv.Close()
+	// Shutdown, not Close. Login returns as soon as it has the code, while
+	// the page that tells the person they are signed in may still be on
+	// its way: Close cut that connection, so a sign-in that worked could
+	// show the browser a connection error. Shutdown lets the answer
+	// finish first. Close follows in case a connection never goes idle.
+	defer func() {
+		wait, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(wait)
+		_ = srv.Close()
+	}()
 
 	open(conf.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier)))
 	var r result

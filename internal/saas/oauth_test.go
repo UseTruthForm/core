@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -405,5 +406,53 @@ func TestACaptureWritesTheUncheckedGap(t *testing.T) {
 	ann, _ := snap.Objects[0].Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	if why, _ := ann[annUnchecked].(string); !strings.Contains(why, `no "result" envelope`) {
 		t.Fatalf("annotations %v, want the unchecked gap", ann)
+	}
+}
+
+// The browser gets the page saying the sign-in worked, even when Login has
+// its answer and returns while that page is still being written.
+//
+// The failure this pins: Login closed its listener with Close the moment it
+// had the code. In CI TestASignInRefusesAnotherState failed once with
+// "dial tcp [::1]:41439: connect: connection refused": the connection
+// carrying the page was cut, the client retried on a new one, and nothing
+// was listening. A person would have seen a connection error in the browser
+// on a sign-in that had worked.
+func TestTheBrowserGetsItsAnswerBeforeTheListenerCloses(t *testing.T) {
+	prev := answered
+	answered = func() { time.Sleep(150 * time.Millisecond) }
+	defer func() { answered = prev }()
+
+	a := newAuthServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	type page struct {
+		status int
+		body   string
+		err    error
+	}
+	got := make(chan page, 1)
+	tok, err := a.oauth(freePort(t)).Login(ctx, http.DefaultClient, func(u string) {
+		go func() {
+			resp, err := http.Get(u)
+			if err != nil {
+				got <- page{err: err}
+				return
+			}
+			defer resp.Body.Close()
+			b, err := io.ReadAll(resp.Body)
+			got <- page{resp.StatusCode, string(b), err}
+		}()
+	}, true)
+	if err != nil || tok.AccessToken != "access-1" {
+		t.Fatalf("login: %v, token %+v", err, tok)
+	}
+	select {
+	case p := <-got:
+		if p.err != nil || p.status != http.StatusOK || !strings.Contains(p.body, "Signed in to Truthform") {
+			t.Errorf("the browser got status %d, body %q, error %v", p.status, p.body, p.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("the browser never got an answer")
 	}
 }

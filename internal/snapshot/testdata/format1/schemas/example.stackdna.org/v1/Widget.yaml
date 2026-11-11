@@ -1,5 +1,0 @@
-apiVersion: example.stackdna.org/v1
-kind: Widget
-digest: sha256:01
-fields:
-  - spec.colour

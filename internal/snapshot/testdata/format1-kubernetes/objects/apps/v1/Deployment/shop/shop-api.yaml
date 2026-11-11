@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    stackdna.org/owner: platform team
+    stackdna.org/withheld-env: api/DB_PASSWORD
+  labels:
+    stackdna.org/tier: web
+  name: shop-api
+  namespace: shop
+spec:
+  selector:
+    matchLabels:
+      stackdna.org/tier: web
+  template:
+    metadata:
+      annotations:
+        stackdna.org/withheld-env: not ours here
+      labels:
+        stackdna.org/tier: web

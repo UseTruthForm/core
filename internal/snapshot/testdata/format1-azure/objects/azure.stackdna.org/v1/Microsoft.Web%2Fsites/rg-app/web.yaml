@@ -1,0 +1,15 @@
+apiVersion: azure.stackdna.org/v1
+kind: Microsoft.Web/sites
+metadata:
+  annotations:
+    stackdna.org/after:
+      - Microsoft.ManagedIdentity/userAssignedIdentities|rg-app/id-app
+    stackdna.org/api-version: "2024-04-01"
+    stackdna.org/id: /subscriptions/{{stackdna|subscription}}/resourceGroups/rg-app/providers/Microsoft.Web/sites/web
+  name: web
+  namespace: rg-app
+spec:
+  identity:
+    type: UserAssigned
+    userAssignedIdentities:
+      /subscriptions/{{stackdna|subscription}}/resourceGroups/rg-app/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-app: {}

@@ -181,7 +181,7 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 		}
 		return v
 	}
-	g := Graph{Format: 1, Platform: "azure", Projection: projection, Nodes: []GraphNode{}, Edges: []GraphEdge{}}
+	g := Graph{Format: GraphFormat, Platform: "azure", Projection: projection, Nodes: []GraphNode{}, Edges: []GraphEdge{}}
 
 	// Every object by its ID, case-insensitively: Azure IDs are, and
 	// references to one resource come in more than one case.
@@ -583,3 +583,12 @@ func project(v any, segs []string) (any, bool) {
 	}
 	return out, found
 }
+
+// GraphFormat is bumped when a reader of an earlier graph must know of a
+// change.
+//
+// 2: unless a subscription and tenant are given, node and edge IDs hold
+// placeholders, and the placeholders were renamed with the tool
+// ({{truthform|...}}). Whatever joins a graph to an earlier one by ID
+// would match nothing, and would read that as every resource replaced.
+const GraphFormat = 2

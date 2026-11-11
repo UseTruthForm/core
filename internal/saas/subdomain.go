@@ -52,7 +52,29 @@ func (d *Subdomain) Mark() string { return "truthform: " + d.Name }
 // this it would read as someone else's: every restore would stop on it as a
 // conflict, and --update would refuse to touch a record Truthform made.
 func (d *Subdomain) ours(comment string) bool {
-	return comment == d.Mark() || comment == "stackdna: "+d.Name
+	return comment == d.Mark() || comment == d.legacyMark()
+}
+
+func (d *Subdomain) legacyMark() string { return "stackdna: " + d.Name }
+
+// existing reads a record already in the zone as the restore compares it: a
+// mark under the old name counts as the mark. Recognising the record as
+// ours is not enough: the plan carries the new mark, so the record would
+// still differ in its comment, a second run of the same restore would
+// report every record as "already exists and differs (comment)" where the
+// old build said identical, and diff --subdomain would show each as
+// changed. The record itself keeps its comment until something else in it
+// changes and --update rewrites it whole.
+func (d *Subdomain) existing(kind string, spec map[string]any) map[string]any {
+	if kind != recordKind || stringOf(spec["comment"]) != d.legacyMark() {
+		return spec
+	}
+	out := make(map[string]any, len(spec))
+	for k, v := range spec {
+		out[k] = v
+	}
+	out["comment"] = d.Mark()
+	return out
 }
 
 // under reports whether a DNS name is the subdomain or below it.
@@ -333,6 +355,7 @@ func (c *Client) RestoreUnder(ctx context.Context, d *Subdomain, mapped snapshot
 	}
 	opt.Present = map[string]bool{zoneKind: true}
 	opt.Allow = d.Allow
+	opt.Existing = d.existing
 	return conflicts, warnings, c.Restore(ctx, mapped, opt), nil
 }
 
@@ -375,6 +398,15 @@ func (d *Subdomain) Scope(s snapshot.Snapshot) snapshot.Snapshot {
 		p, _ := ann[annParent].(string)
 		if (o.Kind() == zoneKind && strings.EqualFold(o.Name(), d.zone)) ||
 			(o.Kind() == recordKind && strings.EqualFold(p, d.zone) && under(stringOf(spec["name"]), d.Name)) {
+			// Compared as the restore compares it (see existing).
+			if seen := d.existing(o.Kind(), spec); stringOf(seen["comment"]) != stringOf(spec["comment"]) {
+				body := make(map[string]any, len(o.Body))
+				for k, v := range o.Body {
+					body[k] = v
+				}
+				body["spec"] = seen
+				o = snapshot.Object{Body: body}
+			}
 			out.Objects = append(out.Objects, o)
 		}
 	}

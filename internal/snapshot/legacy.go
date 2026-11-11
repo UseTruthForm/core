@@ -3,14 +3,20 @@ package snapshot
 import "strings"
 
 // Truthform was called StackDNA until format 2, and a format 1 snapshot
-// carries that name in three places a reader acts on. They are translated as
-// the snapshot is read, after its digest is checked against the files as
-// written, so everything past Read sees one spelling.
+// carries that name in places a reader acts on. They are translated as the
+// snapshot is read, so everything past Read sees one spelling. The digest
+// is unaffected: it is over the files as written.
 //
 // Without this a format 1 snapshot would load and quietly lose what the
 // names carry: an annotation under the old domain is not found, so a restore
 // sends an object with no API version or dependency order, and a placeholder
 // under the old name is sent to the platform as a literal string.
+//
+// What is translated is what the build that wrote format 1 put there, and
+// nothing else. That differs by platform, so the translation does too:
+// anything wider rewrites what belongs to the captured system (a label key
+// under the old domain became another label, and with it a Deployment's
+// selector).
 const (
 	legacyFormat = 1
 
@@ -21,11 +27,14 @@ const (
 	token       = "{{truthform|"
 )
 
-// legacyGroups are the API groups Truthform itself writes objects under.
-// Only these are renamed: any other group under the old domain belongs to
-// the cluster that was captured (a CRD's group), and renaming it would make
-// a restore ask for a type that does not exist.
+// legacyGroups are the API groups Truthform itself writes objects under on
+// a cloud or SaaS platform.
 var legacyGroups = []string{"aws", "azure", "gcp", "saas"}
+
+// legacyKubeAnnotations are the only names a Kubernetes capture ever added
+// to an object: both on its own metadata, never deeper. Everything else in a
+// Kubernetes snapshot is the cluster's, whatever it is called.
+var legacyKubeAnnotations = []string{"withheld-keys", "withheld-env"}
 
 // legacyNamesDiffer lists the platforms whose format 1 snapshots are refused
 // instead of translated. A resource with no name of its own is named there
@@ -35,15 +44,56 @@ var legacyGroups = []string{"aws", "azure", "gcp", "saas"}
 var legacyNamesDiffer = map[string]bool{"aws": true, "gcp": true}
 
 func fromLegacy(s *Snapshot) {
+	if s.Platform == "kubernetes" {
+		for _, o := range s.Objects {
+			ann, _ := meta(o.Body)["annotations"].(map[string]any)
+			for _, n := range legacyKubeAnnotations {
+				if v, ok := ann[legacyDomain+"/"+n]; ok {
+					delete(ann, legacyDomain+"/"+n)
+					ann[domain+"/"+n] = v
+				}
+			}
+		}
+		return
+	}
+	// A cloud or SaaS object. Its apiVersion and its metadata.annotations
+	// are Truthform's own, and the capture put placeholders anywhere an ID
+	// stood, in values and in map keys alike (a user-assigned identity is
+	// a key). User data keeps its names: a tag key under the old domain is
+	// a key in spec, not an annotation.
 	for i := range s.Objects {
-		b := s.Objects[i].Body
+		b := legacyTokens(s.Objects[i].Body).(map[string]any)
 		if v, ok := b["apiVersion"].(string); ok {
 			b["apiVersion"] = legacyAPIVersion(v)
 		}
-		s.Objects[i].Body = legacyValue(b).(map[string]any)
+		if ann, ok := meta(b)["annotations"].(map[string]any); ok {
+			for k, v := range ann {
+				if rest, ok := strings.CutPrefix(k, legacyDomain+"/"); ok {
+					delete(ann, k)
+					ann[domain+"/"+rest] = v
+				}
+			}
+		}
+		s.Objects[i].Body = b
 	}
 	for i := range s.Schemas {
 		s.Schemas[i].APIVersion = legacyAPIVersion(s.Schemas[i].APIVersion)
+	}
+	// Reasons and names in the coverage report quote IDs, placeholders
+	// included. Nothing acts on them; a report would show the old name.
+	tok := func(v string) string { return strings.ReplaceAll(v, legacyToken, token) }
+	for i := range s.Skips {
+		s.Skips[i].Name, s.Skips[i].Reason = tok(s.Skips[i].Name), tok(s.Skips[i].Reason)
+	}
+	for i := range s.Coverage {
+		c := &s.Coverage[i]
+		c.NotCaptured = tok(c.NotCaptured)
+		for k, n := range c.Skipped {
+			if nk := tok(k); nk != k {
+				delete(c.Skipped, k)
+				c.Skipped[nk] = n
+			}
+		}
 	}
 }
 
@@ -56,24 +106,19 @@ func legacyAPIVersion(v string) string {
 	return v
 }
 
-// legacyValue renames annotation keys under the old domain and placeholders
-// under the old name, at any depth. A key is renamed only when the domain is
-// its whole prefix, and a value only where the placeholder opens, so the old
-// name inside a tag, a label or a description is left as captured.
-func legacyValue(v any) any {
+// legacyTokens renames placeholders under the old name wherever one opens:
+// in string values and in map keys, at any depth, lists included.
+func legacyTokens(v any) any {
 	switch t := v.(type) {
 	case map[string]any:
 		out := make(map[string]any, len(t))
 		for k, e := range t {
-			if rest, ok := strings.CutPrefix(k, legacyDomain+"/"); ok {
-				k = domain + "/" + rest
-			}
-			out[k] = legacyValue(e)
+			out[strings.ReplaceAll(k, legacyToken, token)] = legacyTokens(e)
 		}
 		return out
 	case []any:
 		for i := range t {
-			t[i] = legacyValue(t[i])
+			t[i] = legacyTokens(t[i])
 		}
 		return t
 	case string:

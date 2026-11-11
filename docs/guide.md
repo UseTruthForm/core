@@ -451,9 +451,11 @@ Truthform was called StackDNA up to v0.1.0-beta.20. A snapshot written then
 is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
 
 - **Azure, Kubernetes, GitHub and Cloudflare:** a format 1 snapshot is read
-  as it is. `diff`, `compare`, `restore`, `graph` and `describe` take it,
-  and the rename alone is never reported as a difference. Its digest differs
-  from a new capture's, because the files on disk differ.
+  as it is by `diff`, `compare`, `restore`, `graph`, `report` and
+  `schema-diff`. What Truthform itself wrote under the old name is read
+  under the new one; what the captured system called by the old name (a
+  label, a tag, a CRD's group) is left as captured. Its digest differs from
+  a new capture's, because the files on disk differ.
 - **AWS and Google Cloud:** a format 1 snapshot is refused. A resource with
   no name of its own is named from a hash of its contents, and that name
   changed with the rename. Capture the source again, or use the build that
@@ -463,11 +465,17 @@ is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
   again; the old one is removed from the keychain when you do, or on
   `logout`.
 - **A DNS record a subdomain restore wrote before the rename** is still
-  recognised as Truthform's, though its comment keeps the old name.
-- **What `permissions` generates** is now named `truthform-…`. Roles and
+  Truthform's, and compares as unchanged. Its comment keeps the old name
+  until `--update` changes something else in the record.
+- **What `permissions` generates** is now named `truthform-...`. Roles and
   files made from an earlier build keep working; remove them with the
   commands that build printed if you deploy the new ones.
-- **`--json` output** is now `"schema": "truthform.org/output/v1"`.
+- **`--json` output** is now `"schema": "truthform.org/output/v1"`, and a
+  `graph` is `"format": 2`. Without `--subscription` and `--tenant` its
+  IDs hold placeholders, which were renamed, so they do not match the IDs
+  in a graph from an earlier build.
+- **Environment variables** that began `STACKDNA_` now begin `TRUTHFORM_`.
+  One set under the old name is ignored.
 - **Kubernetes:** restore applies as the field manager `truthform`. A field
   an earlier build applied, and the snapshot no longer has, stays on the
   object under the old manager.

@@ -52,6 +52,13 @@ func TestGraphCommand(t *testing.T) {
 	if !strings.Contains(string(b), "{{truthform|subscription}}") {
 		t.Error("without --subscription the graph must keep the placeholder")
 	}
+	// The placeholder in those IDs was renamed with the tool, so a graph
+	// from an earlier build shares no ID with this one. The format says so;
+	// left at 1, a consumer joining the two would see every resource
+	// replaced and nothing to tell it why.
+	if g.Format != 2 {
+		t.Errorf("graph format %d, want 2", g.Format)
+	}
 
 	s.Platform = "kubernetes"
 	kube := filepath.Join(dir, "kube")

@@ -1,0 +1,4 @@
+types:
+  - resource: deployments.apps
+    kind: Deployment
+    captured: 1

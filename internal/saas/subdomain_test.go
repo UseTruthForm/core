@@ -483,3 +483,68 @@ func TestARecordMarkedUnderTheOldNameIsStillOurs(t *testing.T) {
 		t.Error("a record marked for another subdomain was taken as ours")
 	}
 }
+
+// The same restore run again over records an earlier build wrote, which
+// carry the mark under the old name, finds them identical and writes
+// nothing, and a diff shows no change.
+//
+// The failure this pins, found in review: the records were recognised as
+// ours, but the plan carries the new mark, so every one still differed in
+// its comment. The second run reported "already exists and differs
+// (comment)" for each, where the build that wrote them said identical, and
+// diff --subdomain showed each as changed.
+func TestARestoreRunAgainOverRecordsMarkedUnderTheOldName(t *testing.T) {
+	f, _ := dnsZone(t)
+	src := capture(t, f)
+	d := &Subdomain{Name: "test.example.com", Addresses: map[string]string{"192.0.2.1": "198.51.100.7"}, Targets: map[string]string{"pages.example.net": "pages.example.net"}}
+	mapped, _, _ := d.Map(src)
+	if c, _, _, err := f.client(false).RestoreUnder(context.Background(), d, mapped, RestoreOptions{}); err != nil || len(c) > 0 {
+		t.Fatal(err, c)
+	}
+	relabelled := 0
+	for _, items := range f.colls {
+		for _, it := range items {
+			if it["comment"] == d.Mark() {
+				it["comment"] = "stackdna: test.example.com"
+				relabelled++
+			}
+		}
+	}
+	if relabelled == 0 {
+		t.Fatal("the restore wrote no marked record to relabel")
+	}
+	for _, opt := range []RestoreOptions{{}, {Update: true}} {
+		f.writes = 0
+		c, _, r, err := f.client(false).RestoreUnder(context.Background(), d, mapped, opt)
+		if err != nil || len(c) != 0 {
+			t.Fatalf("update %v: err %v, conflicts %v", opt.Update, err, c)
+		}
+		identical := 0
+		for _, x := range r {
+			if !x.OK {
+				t.Errorf("update %v: %s: %s", opt.Update, x.Key, x.Detail)
+			}
+			if strings.Contains(x.Detail, "identical") {
+				identical++
+			}
+		}
+		if identical != relabelled || f.writes != 0 {
+			t.Errorf("update %v: %d of %d records identical, %d writes; want all and 0", opt.Update, identical, relabelled, f.writes)
+		}
+	}
+	if ch := snapshot.Compare(mapped, d.Scope(capture(t, f))); len(ch) != 0 {
+		t.Errorf("diff shows %v", ch)
+	}
+	// Only the old mark for this subdomain counts: another comment is a
+	// real difference and is still reported.
+	for _, items := range f.colls {
+		for _, it := range items {
+			if it["comment"] == "stackdna: test.example.com" {
+				it["comment"] = "stackdna: other.example.com"
+			}
+		}
+	}
+	if ch := snapshot.Compare(mapped, d.Scope(capture(t, f))); len(ch) != relabelled {
+		t.Errorf("records marked for another subdomain: %d changes, want %d", len(ch), relabelled)
+	}
+}

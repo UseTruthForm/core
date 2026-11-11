@@ -27,6 +27,12 @@ if [ -n "$(git status --porcelain -- cmd internal go.mod go.sum)" ] && [ -z "${A
 fi
 OUT="${OUT:-dist}"
 rm -rf "$OUT"; mkdir -p "$OUT"
+# An unset variable builds binaries that cannot sign in to Cloudflare, with
+# nothing else wrong with them. The release workflow refuses that; a local
+# run only warns, because a test build needs no sign-in.
+if [ -z "${TRUTHFORM_CLOUDFLARE_CLIENT_ID:-}" ]; then
+  echo "WARNING: TRUTHFORM_CLOUDFLARE_CLIENT_ID is not set: these binaries will have no Cloudflare sign-in" >&2
+fi
 
 TARGETS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64"
 for target in $TARGETS; do

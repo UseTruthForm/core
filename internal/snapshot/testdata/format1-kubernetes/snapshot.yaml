@@ -1,0 +1,6 @@
+digest: sha256:ffb945c00141c3d4af0e9aae536c88e0762413470ae1386ef0f4cfc8d53c92cf
+format: 1
+objects: 4
+platform: kubernetes
+policy: default
+serverVersion: v1.37.0

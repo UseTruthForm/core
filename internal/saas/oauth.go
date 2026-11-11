@@ -68,7 +68,12 @@ func (Keychain) Set(p, s string) error {
 	if err := keyring.Set(keychainService, p, s); err != nil {
 		return err
 	}
-	return forget(legacyService, p)
+	// The new sign-in is stored by now, so say so: a bare error here
+	// would read as a sign-in that failed.
+	if err := forget(legacyService, p); err != nil {
+		return fmt.Errorf("the sign-in is stored, but the one an earlier build stored could not be removed from the keychain: %w", err)
+	}
+	return nil
 }
 func (Keychain) Delete(p string) error {
 	return errors.Join(forget(keychainService, p), forget(legacyService, p))

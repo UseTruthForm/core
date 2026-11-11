@@ -570,6 +570,10 @@ type RestoreOptions struct {
 	// Allow, when set, is asked before every write, with the item the
 	// write would change (nil for a create); a reason refuses the write.
 	Allow func(o snapshot.Object, existing map[string]any) string
+	// Existing, when set, is given the spec of an item already in the
+	// target before it is compared with the snapshot's, and returns the
+	// spec to compare.
+	Existing func(kind string, spec map[string]any) map[string]any
 }
 
 // Restore creates what is missing, parents first. An item that exists is
@@ -666,12 +670,16 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 	}
 	if ex, ok := listed[lk][own]; ok {
 		targets[col.Kind+"|"+full] = ex.raw
-		if canon(ex.spec) == canon(spec) {
+		exSpec := ex.spec
+		if opt.Existing != nil {
+			exSpec = opt.Existing(col.Kind, exSpec)
+		}
+		if canon(exSpec) == canon(spec) {
 			return true, "already present and identical"
 		}
 		var changed []string
 		for _, k := range sortedKeys(spec) {
-			if canon(spec[k]) != canon(ex.spec[k]) {
+			if canon(spec[k]) != canon(exSpec[k]) {
 				changed = append(changed, k)
 			}
 		}

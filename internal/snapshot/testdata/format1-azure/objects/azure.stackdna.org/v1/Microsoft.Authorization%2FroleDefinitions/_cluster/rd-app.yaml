@@ -1,0 +1,14 @@
+apiVersion: azure.stackdna.org/v1
+kind: Microsoft.Authorization/roleDefinitions
+metadata:
+  annotations:
+    stackdna.org/api-version: "2022-04-01"
+    stackdna.org/id: /subscriptions/{{stackdna|subscription}}/providers/Microsoft.Authorization/roleDefinitions/rd-app
+  name: rd-app
+spec:
+  properties:
+    assignableScopes:
+      - /subscriptions/{{stackdna|subscription}}
+      - - /tenants/{{stackdna|tenant}}
+    description: tenant {{stackdna|tenant}} reader
+    principalId: "{{stackdna|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg-app/id-app|properties.principalId}}"

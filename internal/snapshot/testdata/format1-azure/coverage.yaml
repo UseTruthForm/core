@@ -1,0 +1,10 @@
+types:
+  - resource: Microsoft.Resources/resourceGroups
+    kind: Microsoft.Resources/resourceGroups
+    captured: 1
+    skipped:
+      managed by /subscriptions/{{stackdna|subscription}}/resourceGroups/rg-app: 1
+skips:
+  - resource: Microsoft.Resources/resourceGroups
+    name: NetworkWatcherRG
+    reason: managed by /subscriptions/{{stackdna|subscription}}/resourceGroups/rg-app

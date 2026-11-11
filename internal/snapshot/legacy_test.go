@@ -7,15 +7,14 @@ import (
 	"testing"
 )
 
-// testdata/format1 was written by the last build before the rename
-// (StackDNA v0.1.0-beta.20's Write), so this reads what is really on disk
-// from that time, not what this build thinks it wrote.
-//
-// The failure it pins: with only the names changed in code, a format 1
-// snapshot loaded without error and every annotation and placeholder in it
-// was silently not found.
-func TestAFormat1SnapshotIsReadUnderTheNewNames(t *testing.T) {
-	s, err := Read("testdata/format1")
+// testdata/format1-azure and testdata/format1-kubernetes were written by
+// the last build before the rename (StackDNA v0.1.0-beta.20's Write), so
+// these read what is really on disk from that time, not what this build
+// thinks it wrote.
+
+func legacyObjects(t *testing.T, dir string) (Snapshot, map[string]Object) {
+	t.Helper()
+	s, err := Read(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,87 +22,151 @@ func TestAFormat1SnapshotIsReadUnderTheNewNames(t *testing.T) {
 	for _, o := range s.Objects {
 		by[o.Kind()+"/"+o.Name()] = o
 	}
-	ann := func(o Object) map[string]any { return meta(o.Body)["annotations"].(map[string]any) }
+	return s, by
+}
 
-	ra := by["Microsoft.Authorization/roleAssignments/ra-app"]
-	if got := ra.APIVersion(); got != "azure.truthform.org/v1" {
+func dig(v any, path ...string) any {
+	for _, p := range path {
+		m, _ := v.(map[string]any)
+		v = m[p]
+	}
+	return v
+}
+
+// The failure this pins: with only the names changed in code, a format 1
+// snapshot loaded without error and every annotation and placeholder in it
+// was silently not found.
+//
+// A review then found two more. A placeholder that is a map key (a
+// user-assigned identity's ID) was left under the old name, so a diff
+// reported an unchanged site as changed and a restore sent the literal
+// placeholder to Azure as the identity. And a placeholder inside a list was
+// translated but nothing pinned it.
+func TestAFormat1AzureSnapshotIsReadUnderTheNewNames(t *testing.T) {
+	s, by := legacyObjects(t, "testdata/format1-azure")
+
+	site := by["Microsoft.Web/sites/web"]
+	if got := site.APIVersion(); got != "azure.truthform.org/v1" {
 		t.Errorf("apiVersion %q, want Truthform's own group renamed", got)
 	}
-	want := map[string]any{
-		"truthform.org/api-version": "2022-04-01",
+	wantAnn := map[string]any{
+		"truthform.org/api-version": "2024-04-01",
 		"truthform.org/after":       []any{"Microsoft.ManagedIdentity/userAssignedIdentities|rg-app/id-app"},
-		"truthform.org/id":          "/subscriptions/{{truthform|subscription}}/providers/Microsoft.Authorization/roleAssignments/ra-app",
+		"truthform.org/id":          "/subscriptions/{{truthform|subscription}}/resourceGroups/rg-app/providers/Microsoft.Web/sites/web",
 	}
-	if got := ann(ra); !reflect.DeepEqual(got, want) {
-		t.Errorf("annotations\n got %v\nwant %v", got, want)
+	if got := dig(site.Body, "metadata", "annotations"); !reflect.DeepEqual(got, wantAnn) {
+		t.Errorf("annotations\n got %v\nwant %v", got, wantAnn)
 	}
-	props := ra.Body["spec"].(map[string]any)["properties"].(map[string]any)
-	for k, want := range map[string]string{
-		"principalId": "{{truthform|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg-app/id-app|properties.principalId}}",
-		"scope":       "/subscriptions/{{truthform|subscription}}",
-		"description": "tenant {{truthform|tenant}} reader",
-	} {
-		if props[k] != want {
-			t.Errorf("%s = %q, want %q", k, props[k], want)
+	wantIDs := map[string]any{"/subscriptions/{{truthform|subscription}}/resourceGroups/rg-app/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-app": map[string]any{}}
+	if got := dig(site.Body, "spec", "identity", "userAssignedIdentities"); !reflect.DeepEqual(got, wantIDs) {
+		t.Errorf("a placeholder that is a map key was not renamed: %v", got)
+	}
+
+	props := dig(by["Microsoft.Authorization/roleDefinitions/rd-app"].Body, "spec", "properties")
+	wantProps := map[string]any{
+		"assignableScopes": []any{"/subscriptions/{{truthform|subscription}}", []any{"/tenants/{{truthform|tenant}}"}},
+		"description":      "tenant {{truthform|tenant}} reader",
+		"principalId":      "{{truthform|ref|Microsoft.ManagedIdentity/userAssignedIdentities|rg-app/id-app|properties.principalId}}",
+	}
+	if !reflect.DeepEqual(props, wantProps) {
+		t.Errorf("properties\n got %v\nwant %v", props, wantProps)
+	}
+
+	// The resource group's tags are the customer's, old name or not: a tag
+	// key under the old domain is a key in spec, not an annotation.
+	wantTags := map[string]any{"owner": "stackdna-team", "stackdna.org/costcentre": "42"}
+	if got := dig(by["Microsoft.Resources/resourceGroups/rg-app"].Body, "spec", "tags"); !reflect.DeepEqual(got, wantTags) {
+		t.Errorf("tags were rewritten: %v", got)
+	}
+
+	if len(s.Schemas) != 1 || s.Schemas[0].APIVersion != "azure.truthform.org/v1" {
+		t.Errorf("schemas %v", s.Schemas)
+	}
+	const reason = "managed by /subscriptions/{{truthform|subscription}}/resourceGroups/rg-app"
+	if len(s.Skips) != 1 || s.Skips[0].Reason != reason || s.Coverage[0].Skipped[reason] != 1 || len(s.Coverage[0].Skipped) != 1 {
+		t.Errorf("coverage still quotes the old placeholder: %v %v", s.Skips, s.Coverage)
+	}
+	for _, o := range s.Objects {
+		b, _ := encodeYAML(o.Body)
+		if strings.Contains(strings.ReplaceAll(strings.ReplaceAll(string(b), "stackdna-team", ""), "stackdna.org/costcentre", ""), "stackdna") {
+			t.Errorf("%s still holds the old name:\n%s", o.Key(), b)
 		}
-	}
-
-	// What the captured system itself called by the old name stays as it
-	// was: a tag, a label, a value that only looks like an annotation key,
-	// and a CRD's own API group, which a restore must ask the cluster for
-	// under the name the cluster knows.
-	rg := by["Microsoft.Resources/resourceGroups/rg-app"]
-	if got := rg.Body["spec"].(map[string]any)["tags"].(map[string]any)["owner"]; got != "stackdna-team" {
-		t.Errorf("tag %q was rewritten", got)
-	}
-	sec := by["Secret/shop-db"]
-	if got := meta(sec.Body)["labels"].(map[string]any)["app.kubernetes.io/managed-by"]; got != "stackdna" {
-		t.Errorf("label %q was rewritten", got)
-	}
-	if got := ann(sec); !reflect.DeepEqual(got, map[string]any{"truthform.org/withheld-keys": "password", "example.com/owner": "stackdna.org/not-ours-as-a-value"}) {
-		t.Errorf("secret annotations %v", got)
-	}
-	if got := by["Widget/blue-widget"].APIVersion(); got != "example.stackdna.org/v1" {
-		t.Errorf("a CRD's group became %q", got)
-	}
-
-	schemas := map[string]bool{}
-	for _, ts := range s.Schemas {
-		schemas[ts.APIVersion+" "+ts.Kind] = true
-	}
-	if !schemas["azure.truthform.org/v1 Microsoft.Resources/resourceGroups@2025-04-01"] || !schemas["example.stackdna.org/v1 Widget"] {
-		t.Errorf("schemas %v", schemas)
 	}
 }
 
-// A format 1 snapshot and the same system captured today compare as equal:
-// the rename alone is not drift.
+// A Kubernetes capture added two annotations to an object's own metadata
+// and nothing else. Everything else in the snapshot is the cluster's, and
+// is left exactly as captured.
+//
+// The failure this pins, found in review: the translation renamed every key
+// under the old domain and every placeholder-looking string on every
+// platform, so a label "stackdna.org/tier" became another label (and with
+// it the Deployment's selector, which cannot change) and a ConfigMap's text
+// was edited.
+func TestAFormat1KubernetesSnapshotKeepsWhatIsTheClusters(t *testing.T) {
+	s, by := legacyObjects(t, "testdata/format1-kubernetes")
+
+	dep := by["Deployment/shop-api"].Body
+	wantAnn := map[string]any{"truthform.org/withheld-env": "api/DB_PASSWORD", "stackdna.org/owner": "platform team"}
+	if got := dig(dep, "metadata", "annotations"); !reflect.DeepEqual(got, wantAnn) {
+		t.Errorf("annotations\n got %v\nwant %v", got, wantAnn)
+	}
+	labels := map[string]any{"stackdna.org/tier": "web"}
+	for _, p := range [][]string{{"metadata", "labels"}, {"spec", "selector", "matchLabels"}, {"spec", "template", "metadata", "labels"}} {
+		if got := dig(dep, p...); !reflect.DeepEqual(got, labels) {
+			t.Errorf("%s was rewritten: %v", strings.Join(p, "."), got)
+		}
+	}
+	if got := dig(dep, "spec", "template", "metadata", "annotations"); !reflect.DeepEqual(got, map[string]any{"stackdna.org/withheld-env": "not ours here"}) {
+		t.Errorf("the pod template's annotations were rewritten: %v", got)
+	}
+	if got := dig(by["Secret/shop-db"].Body, "metadata", "annotations"); !reflect.DeepEqual(got, map[string]any{"truthform.org/withheld-keys": "password"}) {
+		t.Errorf("secret annotations %v", got)
+	}
+	wantData := map[string]any{"readme": "ids look like /subscriptions/{{stackdna|subscription}}", "{{stackdna|key}}": "v"}
+	if got := dig(by["ConfigMap/notes"].Body, "data"); !reflect.DeepEqual(got, wantData) {
+		t.Errorf("a ConfigMap's content was rewritten: %v", got)
+	}
+	// A CRD's group is asked of the cluster under the name the cluster
+	// knows, even one spelled like a group Truthform writes elsewhere.
+	if got := by["Widget/blue-widget"].APIVersion(); got != "azure.stackdna.org/v1" {
+		t.Errorf("a CRD's group became %q", got)
+	}
+	if len(s.Schemas) != 1 || s.Schemas[0].APIVersion != "azure.stackdna.org/v1" {
+		t.Errorf("schemas %v", s.Schemas)
+	}
+}
+
+// A format 1 snapshot, written again by this build, compares as equal to
+// itself and gets another digest. This shows the translation is stable and
+// that format 2 really is written under the new names. It does not show
+// that a new capture of the same system matches: that is for each
+// platform's own tests.
 func TestAFormat1SnapshotComparesEqualToItsRewrite(t *testing.T) {
-	old, err := Read("testdata/format1")
+	old, err := Read("testdata/format1-azure")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
-	if err := old.Write(dir); err != nil {
+	out := t.TempDir()
+	if err := old.Write(out); err != nil {
 		t.Fatal(err)
 	}
-	now, err := Read(dir)
+	now, err := Read(out)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ch := Compare(old, now); len(ch) != 0 {
 		t.Errorf("changes %v", ch)
 	}
-	if d, _ := Digest(dir); d == "sha256:7e11bce13c02b933ef964762c840a13cfc88fc685ea59dd4cbaf024bc6e4fad5" {
+	if d, _ := Digest(out); d == "sha256:5a37a0b53373d6795ae5fd950a77109492636c751d5c880d113483ae9f3a2124" {
 		t.Error("the rewritten snapshot kept format 1's digest: nothing was renamed on disk")
 	}
 }
 
-// A snapshot edited after capture is still refused when it is format 1: the
-// digest is checked over the files as written, before anything is renamed.
+// A snapshot edited after capture is still refused when it is format 1.
 func TestATamperedFormat1SnapshotIsRefused(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.CopyFS(dir, os.DirFS("testdata/format1")); err != nil {
+	if err := os.CopyFS(dir, os.DirFS("testdata/format1-kubernetes")); err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.OpenFile(dir+"/objects/core/v1/Secret/shop/shop-db.yaml", os.O_APPEND|os.O_WRONLY, 0)
@@ -117,33 +180,15 @@ func TestATamperedFormat1SnapshotIsRefused(t *testing.T) {
 	}
 }
 
-// Only a key whose whole prefix is the old domain is ours. One that merely
-// contains it belongs to the captured system and is left alone.
-func TestOnlyKeysUnderTheOldDomainAreRenamed(t *testing.T) {
-	got := legacyValue(map[string]any{
-		"stackdna.org/id":                 "a",
-		"corp.example/stackdna.org/owner": "b",
-		"notstackdna.org/id":              "c",
-	})
-	want := map[string]any{
-		"truthform.org/id":                "a",
-		"corp.example/stackdna.org/owner": "b",
-		"notstackdna.org/id":              "c",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %v, want %v", got, want)
-	}
-}
-
 // AWS and GCP name a resource that has no name from a hash of its spec, and
 // the spec holds placeholders. After the rename the same resource hashes to
 // another name (the AWS drill's two API Gateway resources did), so a format
 // 1 snapshot from either is refused: translated, it would diff as missing
 // and extra, and a restore could create the resource a second time.
 func TestAFormat1SnapshotWithGeneratedNamesIsRefused(t *testing.T) {
-	for platform, refuse := range map[string]bool{"aws": true, "gcp": true, "azure": false, "kubernetes": false, "github": false, "cloudflare": false} {
+	for platform, refuse := range map[string]bool{"aws": true, "gcp": true, "azure": false, "kubernetes": false, "saas/github": false, "saas/cloudflare": false} {
 		dir := t.TempDir()
-		if err := os.CopyFS(dir, os.DirFS("testdata/format1")); err != nil {
+		if err := os.CopyFS(dir, os.DirFS("testdata/format1-azure")); err != nil {
 			t.Fatal(err)
 		}
 		mb, err := os.ReadFile(dir + "/snapshot.yaml")

@@ -61,8 +61,21 @@ func fromLegacy(s *Snapshot) {
 	// stood, in values and in map keys alike (a user-assigned identity is
 	// a key). User data keeps its names: a tag key under the old domain is
 	// a key in spec, not an annotation.
+	//
+	// On Azure a placeholder is whatever opens with the old name: the old
+	// build wrote several forms and its own restore read any of them. On a
+	// SaaS platform it wrote exactly one, for the account, and sent every
+	// other string as captured, so only that one is renamed there: a TXT
+	// record or a description that happens to quote a placeholder is the
+	// customer's text.
+	tok := func(v string) string { return strings.ReplaceAll(v, legacyToken, token) }
+	if strings.HasPrefix(s.Platform, "saas/") {
+		tok = func(v string) string {
+			return strings.ReplaceAll(v, legacyToken+"account}}", token+"account}}")
+		}
+	}
 	for i := range s.Objects {
-		b := legacyTokens(s.Objects[i].Body).(map[string]any)
+		b := legacyTokens(s.Objects[i].Body, tok).(map[string]any)
 		if v, ok := b["apiVersion"].(string); ok {
 			b["apiVersion"] = legacyAPIVersion(v)
 		}
@@ -81,7 +94,6 @@ func fromLegacy(s *Snapshot) {
 	}
 	// Reasons and names in the coverage report quote IDs, placeholders
 	// included. Nothing acts on them; a report would show the old name.
-	tok := func(v string) string { return strings.ReplaceAll(v, legacyToken, token) }
 	for i := range s.Skips {
 		s.Skips[i].Name, s.Skips[i].Reason = tok(s.Skips[i].Name), tok(s.Skips[i].Reason)
 	}
@@ -106,23 +118,23 @@ func legacyAPIVersion(v string) string {
 	return v
 }
 
-// legacyTokens renames placeholders under the old name wherever one opens:
-// in string values and in map keys, at any depth, lists included.
-func legacyTokens(v any) any {
+// legacyTokens renames placeholders under the old name, as tok does it, in
+// string values and in map keys, at any depth, lists included.
+func legacyTokens(v any, tok func(string) string) any {
 	switch t := v.(type) {
 	case map[string]any:
 		out := make(map[string]any, len(t))
 		for k, e := range t {
-			out[strings.ReplaceAll(k, legacyToken, token)] = legacyTokens(e)
+			out[tok(k)] = legacyTokens(e, tok)
 		}
 		return out
 	case []any:
 		for i := range t {
-			t[i] = legacyTokens(t[i])
+			t[i] = legacyTokens(t[i], tok)
 		}
 		return t
 	case string:
-		return strings.ReplaceAll(t, legacyToken, token)
+		return tok(t)
 	}
 	return v
 }

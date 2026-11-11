@@ -209,3 +209,39 @@ func TestAFormat1SnapshotWithGeneratedNamesIsRefused(t *testing.T) {
 		}
 	}
 }
+
+// On a SaaS platform the old build wrote one placeholder, for the account,
+// and sent every other string as captured. Only that one is renamed: a
+// record that quotes a placeholder is the customer's text, and renaming it
+// would show the record as changed and restore it with other content.
+//
+// There is no SaaS snapshot written by the old build among the fixtures, so
+// this builds one in memory. It also pins that a type left out of a capture
+// keeps a readable reason, which nothing else covered.
+func TestOnASaaSPlatformOnlyTheAccountPlaceholderIsRenamed(t *testing.T) {
+	s := Snapshot{Platform: "saas/cloudflare",
+		Objects: []Object{{Body: map[string]any{"apiVersion": "saas.stackdna.org/v1", "kind": "DNSRecord",
+			"metadata": map[string]any{"name": "docs", "annotations": map[string]any{"stackdna.org/parent": "accounts/{{stackdna|account}}/zones/example.com"}},
+			"spec": map[string]any{
+				"content":                "see {{stackdna|subscription}} in the guide",
+				"owner":                  "accounts/{{stackdna|account}}",
+				"{{stackdna|account}}/k": "accounts/{{stackdna|ref|x}}",
+			}}}},
+		Coverage: []Coverage{{Resource: "rulesets", Kind: "Ruleset", NotCaptured: "not readable for accounts/{{stackdna|account}}"}},
+	}
+	fromLegacy(&s)
+	b := s.Objects[0].Body
+	want := map[string]any{"apiVersion": "saas.truthform.org/v1", "kind": "DNSRecord",
+		"metadata": map[string]any{"name": "docs", "annotations": map[string]any{"truthform.org/parent": "accounts/{{truthform|account}}/zones/example.com"}},
+		"spec": map[string]any{
+			"content":                 "see {{stackdna|subscription}} in the guide",
+			"owner":                   "accounts/{{truthform|account}}",
+			"{{truthform|account}}/k": "accounts/{{stackdna|ref|x}}",
+		}}
+	if !reflect.DeepEqual(b, want) {
+		t.Errorf("\n got %v\nwant %v", b, want)
+	}
+	if got := s.Coverage[0].NotCaptured; got != "not readable for accounts/{{truthform|account}}" {
+		t.Errorf("notCaptured %q", got)
+	}
+}

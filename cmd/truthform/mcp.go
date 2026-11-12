@@ -23,7 +23,7 @@ import (
 	"github.com/usetruthform/core/internal/saas"
 )
 
-// mcpCmd serves Truthform's tools to an agent over MCP on stdin and stdout.
+// mcpCmd serves TruthForm's tools to an agent over MCP on stdin and stdout.
 // No tool writes to a cloud: describing types reads public schemas, and
 // capture and diff run through the read-only guard, as they always do.
 // capture writes a snapshot to local disk, into a new or empty directory
@@ -44,20 +44,20 @@ func mcpCmd(ctx context.Context, args []string) int {
 	return 0
 }
 
-const mcpInstructions = `Truthform captures the live configuration of AWS, Azure, GCP, Kubernetes, GitHub and Cloudflare into deterministic snapshots, and diffs them against what is running.
+const mcpInstructions = `TruthForm captures the live configuration of AWS, Azure, GCP, Kubernetes, GitHub and Cloudflare into deterministic snapshots, and diffs them against what is running.
 
-Use describe_type before writing configuration: it says which fields a resource type takes, which are required, which the platform sets (read-only), which are never returned (write-only, secret), and which are fixed at creation, with the platform's own documentation links. These come from the same schemas Truthform captures and restores with.
+Use describe_type before writing configuration: it says which fields a resource type takes, which are required, which the platform sets (read-only), which are never returned (write-only, secret), and which are fixed at creation, with the platform's own documentation links. These come from the same schemas TruthForm captures and restores with.
 
 capture and diff only read (the read-only guard refuses any write). They use the credentials of the environment this server runs in. There is no restore tool: restoring changes live resources and is run by a person with the CLI.
 
-Setting up access: permissions gives the template and every command to grant Truthform access, with the person's values filled in; check_access then shows who Truthform runs as and what it can read. Neither grants anything. Follow docs/agents.md: look at what is there before granting, let the person run the grant, never hand over a command with a placeholder in it, and verify with check_access, not with the grant's exit code.
+Setting up access: permissions gives the template and every command to grant TruthForm access, with the person's values filled in; check_access then shows who TruthForm runs as and what it can read. Neither grants anything. Follow docs/agents.md: look at what is there before granting, let the person run the grant, never hand over a command with a placeholder in it, and verify with check_access, not with the grant's exit code.
 
 Planning a restore: report and a diff into the target, with --json, say what it needs. Read the report's sections on what will not come back, references to other subscriptions and access a restore needs outside its target (access_elsewhere in the diff document), and follow "Planning a restore" in docs/agents.md. The person decides each grant, each object left out and when the restore runs.
 
 For building and changing resources, use the platform's own MCP server alongside this one; platforms lists them.`
 
 // companions are the platforms' own MCP servers, checked 2026-10-22 on
-// each provider's repository. Truthform says what exists and what each
+// each provider's repository. TruthForm says what exists and what each
 // field means; these act on the platform.
 var companions = map[string][]string{
 	"aws":        {"AWS MCP Server (remote, in preview), AWS IaC MCP Server, AWS Documentation MCP Server: https://github.com/awslabs/mcp (the Cloud Control API MCP Server there is deprecated in favour of the IaC server)"},
@@ -94,10 +94,10 @@ func mcpTools() []mcp.Tool {
 	}
 	return []mcp.Tool{
 		{Name: "platforms", ReadOnly: true, Schema: obj(nil, map[string]any{}),
-			Description: "What Truthform covers on each platform, and each platform's own MCP server to use alongside it.",
+			Description: "What TruthForm covers on each platform, and each platform's own MCP server to use alongside it.",
 			Call:        func(context.Context, map[string]any) (string, error) { return platformsText(), nil }},
 		{Name: "list_types", ReadOnly: true,
-			Description: "List the resource types Truthform knows on a platform, from the platform's published schemas. gcp lists one API's collections.",
+			Description: "List the resource types TruthForm knows on a platform, from the platform's published schemas. gcp lists one API's collections.",
 			Schema: obj([]string{"platform"}, map[string]any{"platform": platform, "filter": str("case-insensitive substring to keep"),
 				"region": str("aws: whose schema bundle (default us-east-1)"), "api": str("gcp: the API (iam, compute, monitoring...)"),
 				"version": str("gcp: the API version (default v1)")}),
@@ -119,7 +119,7 @@ func mcpTools() []mcp.Tool {
 				if ents, err := os.ReadDir(arg(a, "out", "")); err == nil && len(ents) > 0 {
 					return "", fmt.Errorf("%s exists and is not empty; capture writes only into a new or empty directory", arg(a, "out", ""))
 				}
-				return runTruthform(ctx, "capture", a, "out")
+				return runTruthForm(ctx, "capture", a, "out")
 			}},
 		{Name: "diff", ReadOnly: true,
 			Description: "Compare a live target with a snapshot, read-only. Exit 0 means no differences, 2 means differences (listed).",
@@ -128,14 +128,14 @@ func mcpTools() []mcp.Tool {
 				"leave-out":               str("azure: file listing the objects it was restored without"),
 				"new-role-assignment-ids": str("azure: true if it was restored with --new-role-assignment-ids")})),
 			Call: func(ctx context.Context, a map[string]any) (string, error) {
-				return runTruthform(ctx, "diff", a, "from")
+				return runTruthForm(ctx, "diff", a, "from")
 			}},
 		{Name: "permissions", ReadOnly: true,
-			Description: "What to grant Truthform on a platform, for capture (read-only) or restore: the template to deploy, every command to check what is there, grant it, verify it and remove it, with the given values filled in, and what has been verified. Grants nothing. A value it needs and was not given is an error saying how to find it: ask the person for it, never substitute a placeholder.",
+			Description: "What to grant TruthForm on a platform, for capture (read-only) or restore: the template to deploy, every command to check what is there, grant it, verify it and remove it, with the given values filled in, and what has been verified. Grants nothing. A value it needs and was not given is an error saying how to find it: ask the person for it, never substitute a placeholder.",
 			Schema: obj([]string{"platform"}, map[string]any{
 				"platform": str("aws, azure, gcp, kubernetes, github or cloudflare"), "access": str("capture (default) or restore"),
 				"account":   str("aws: the account ID the role goes in; github: the organisation; cloudflare: the account ID"),
-				"principal": str("aws: ARN of the IAM user or role that will run Truthform"), "external_id": str("aws: external ID for a principal in another account"),
+				"principal": str("aws: ARN of the IAM user or role that will run TruthForm"), "external_id": str("aws: external ID for a principal in another account"),
 				"region": str("aws: region of the CloudFormation stack"), "source_profile": str("aws: the principal's shared-config profile"),
 				"admin_profile": str("aws: the administrator's profile"), "subscription": str("azure: subscription ID"),
 				"principal_id": str("azure: object ID"), "principal_type": str("azure: User, Group or ServicePrincipal"),
@@ -144,10 +144,10 @@ func mcpTools() []mcp.Tool {
 				"subject": str("kubernetes: User:NAME, Group:NAME or ServiceAccount:NAMESPACE/NAME")}),
 			Call: permissionsTool},
 		{Name: "check_access", ReadOnly: true,
-			Description: "Who Truthform runs as here, what that identity holds beyond what it needs (root, long-lived keys, write access for a capture), what could not be checked, and what it can read, type by type, from a trial capture written nowhere. DENIED types are refused for want of permission and are not empty. Exit 3 means some types cannot be read.",
+			Description: "Who TruthForm runs as here, what that identity holds beyond what it needs (root, long-lived keys, write access for a capture), what could not be checked, and what it can read, type by type, from a trial capture written nowhere. DENIED types are refused for want of permission and are not empty. Exit 3 means some types cannot be read.",
 			Schema:      obj([]string{"platform"}, with(map[string]any{"access": str("capture (default) or restore: what the identity is for")})),
 			Call: func(ctx context.Context, a map[string]any) (string, error) {
-				return runTruthform(ctx, "check", a, "platform")
+				return runTruthForm(ctx, "check", a, "platform")
 			}},
 		{Name: "report", ReadOnly: true,
 			Description: "Read a snapshot's REPORT.md: what was captured, what was not and why, what a restore needs.",
@@ -158,7 +158,7 @@ func mcpTools() []mcp.Tool {
 
 func platformsText() string {
 	var b strings.Builder
-	b.WriteString("Truthform reads each platform's configuration through its published schemas and restores it from a snapshot.\n\n")
+	b.WriteString("TruthForm reads each platform's configuration through its published schemas and restores it from a snapshot.\n\n")
 	for _, p := range []struct{ name, what string }{
 		{"aws", "every Cloud Control type in the CloudFormation registry, one account and region"},
 		{"azure", "every ARM type with a published definition, one subscription"},
@@ -376,9 +376,9 @@ func permissionsTool(_ context.Context, a map[string]any) (string, error) {
 	return b.String(), nil
 }
 
-// runTruthform runs this binary's capture or diff. Running it as a separate
+// runTruthForm runs this binary's capture or diff. Running it as a separate
 // process keeps its progress lines off stdout, which is the protocol.
-func runTruthform(ctx context.Context, cmd string, a map[string]any, need string) (string, error) {
+func runTruthForm(ctx context.Context, cmd string, a map[string]any, need string) (string, error) {
 	if arg(a, need, "") == "" {
 		return "", fmt.Errorf("%s needs %s", cmd, need)
 	}

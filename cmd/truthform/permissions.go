@@ -7,7 +7,7 @@ import (
 	"github.com/usetruthform/core/internal/onboard"
 )
 
-// permissionsCmd prints what to grant Truthform on a platform and the
+// permissionsCmd prints what to grant TruthForm on a platform and the
 // commands to grant, verify and remove it, with the values given filled
 // in. It grants nothing: the administrator runs the commands. --write puts
 // the template files where the commands expect them.
@@ -58,7 +58,7 @@ func permissionFlags(fs *flag.FlagSet) (*onboard.Request, *string) {
 	s(&r.Platform, "platform", "aws, azure, gcp, kubernetes, github or cloudflare")
 	fs.StringVar(&r.Access, "access", "capture", "capture (read-only) or restore (writes)")
 	s(&r.Account, "account", "aws: the account ID the role goes in; github: the organisation; cloudflare: the account ID")
-	s(&r.Principal, "principal", "aws: ARN of the IAM user or role that runs Truthform")
+	s(&r.Principal, "principal", "aws: ARN of the IAM user or role that runs TruthForm")
 	s(&r.ExternalID, "external-id", "aws: external ID the trust requires (for a principal in another account)")
 	s(&r.Region, "region", "aws: region of the CloudFormation stack (default us-east-1)")
 	s(&r.SourceProfile, "source-profile", "aws: the principal's profile, to write the commands that set up a profile for the role")

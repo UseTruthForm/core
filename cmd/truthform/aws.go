@@ -284,7 +284,7 @@ func diffAWS(ctx context.Context, a *awsFlags, want snapshot.Snapshot, from stri
 	return report(snapshot.Compare(want, got), from, "aws "+a.region)
 }
 
-// awsCoverage reports, offline, what the registry lets Truthform capture and
+// awsCoverage reports, offline, what the registry lets TruthForm capture and
 // restore. It reads only the public schema bundle: no account is touched.
 func awsCoverage(args []string) int {
 	fs := flag.NewFlagSet("aws-coverage", flag.ExitOnError)

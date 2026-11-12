@@ -186,18 +186,30 @@ func TestRenameStores(t *testing.T) {
 			}
 		}
 	}
-	var kept []string
-	for _, r := range rep.Kept {
-		kept = append(kept, r.Object+" "+r.Field+" "+r.From)
+	// What no start fits: a store is the source's still, an item's name is
+	// read from whichever store its object says.
+	said := func(l []StoreRef) []string {
+		var out []string
+		for _, r := range l {
+			out = append(out, r.Object+" "+r.Field+" "+r.From)
+		}
+		return out
 	}
-	wantKept := []string{
-		"OnePasswordItem shop/other spec.itemPath vaults/shared/items/x",
-		"ExternalSecret shop/es spec.data[].remoteRef.key plain",
-		"VaultStaticSecret shop/vss spec.path shop/db",
+	if got, want := said(rep.Unnamed), []string{"OnePasswordItem shop/other spec.itemPath vaults/shared/items/x"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("unnamed:\n got %q\nwant %q", got, want)
 	}
-	if !reflect.DeepEqual(kept, wantKept) {
-		t.Errorf("kept:\n got %q\nwant %q", kept, wantKept)
+	if got, want := said(rep.Within), []string{"ExternalSecret shop/es spec.data[].remoteRef.key plain", "VaultStaticSecret shop/vss spec.path shop/db"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("within:\n got %q\nwant %q", got, want)
 	}
+	if len(rep.Kept) != 0 {
+		t.Errorf("kept, with no start that says so: %q", said(rep.Kept))
+	}
+	// A start replaced by itself says the reference is the same in both.
+	names["vaults/shared/"] = "vaults/shared/"
+	if _, again, err := RenameStores(s, names); err != nil || len(again.Unnamed) != 0 || !reflect.DeepEqual(said(again.Kept), []string{"OnePasswordItem shop/other spec.itemPath vaults/shared/items/x"}) {
+		t.Errorf("a start replaced by itself: kept %q, unnamed %q, %v", said(again.Kept), said(again.Unnamed), err)
+	}
+	delete(names, "vaults/shared/")
 	wantUnreached := []string{
 		"ClusterExternalSecret ces: it finds what it reads by a pattern of names (dataFrom.find.name)",
 		"SecretStore shop/op: its vaults are named as keys of spec.provider.onepassword.vaults",
@@ -274,4 +286,34 @@ func indexOf(s snapshot.Snapshot, o snapshot.Object) int {
 		}
 	}
 	return 0
+}
+
+// What a rename cannot reach is said, object by object: found by tags, or
+// asked of the Vault agent by a pod's annotations. A 1Password SDK
+// store's vault is a store, and renamed.
+func TestRenameSaysWhatItDoesNotReach(t *testing.T) {
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		planObject("external-secrets.io/v1", "ExternalSecret", "shop", "tagged", map[string]any{"spec": map[string]any{"dataFrom": []any{map[string]any{"find": map[string]any{"tags": map[string]any{"env": "dev"}}}}}}),
+		planObject("external-secrets.io/v1", "ClusterExternalSecret", "", "tagged", map[string]any{"spec": map[string]any{"externalSecretSpec": map[string]any{"dataFrom": []any{map[string]any{"find": map[string]any{"tags": map[string]any{"env": "dev"}}}}}}}),
+		planObject("apps/v1", "Deployment", "shop", "web", map[string]any{"spec": map[string]any{"template": map[string]any{"metadata": map[string]any{
+			"annotations": map[string]any{"vault.hashicorp.com/agent-inject-secret-db": "dev-kv/data/shop/db"}}}}}),
+		planObject("apps/v1", "Deployment", "shop", "plain", map[string]any{"spec": map[string]any{"template": map[string]any{"metadata": map[string]any{
+			"annotations": map[string]any{"vault.hashicorp.com/agent-inject": "false"}}}}}),
+		planObject("external-secrets.io/v1", "SecretStore", "shop", "sdk", map[string]any{"spec": map[string]any{"provider": map[string]any{"onepasswordSDK": map[string]any{"vault": "dev-vault"}}}}),
+	}}
+	_, rep, err := RenameStores(s, map[string]string{"dev-": "test-"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"ExternalSecret shop/tagged: it finds what it reads by tags (dataFrom.find.tags)",
+		"ClusterExternalSecret tagged: it finds what it reads by tags (dataFrom.find.tags)",
+		"Deployment shop/web: it asks the Vault agent for secrets by annotation (vault.hashicorp.com/agent-inject-secret-*), which names a path in Vault",
+	}
+	if !reflect.DeepEqual(rep.Unreached, want) {
+		t.Errorf("unreached:\n got %q\nwant %q", rep.Unreached, want)
+	}
+	if len(rep.Changed) != 1 || rep.Changed[0].Field != "spec.provider.onepasswordSDK.vault" || rep.Changed[0].To != "test-vault" {
+		t.Errorf("changed: %+v", rep.Changed)
+	}
 }

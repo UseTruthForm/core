@@ -1,9 +1,9 @@
-# Truthform
+# TruthForm
 
 Capture what is running, so it can be recreated.
 
-Truthform is infrastructure-as-code in reverse. You don't write IaC and then manage
-state files. Instead, Truthform reads the live system through the platform's own
+TruthForm is infrastructure-as-code in reverse. You don't write IaC and then manage
+state files. Instead, TruthForm reads the live system through the platform's own
 APIs and writes a normalised snapshot that can recreate it. The live system is
 the source of truth, so there is no state to manage. The snapshot is plain YAML
 that you can review, commit and diff.
@@ -32,7 +32,7 @@ read-only capture and diff; restore is deliberately not a tool. See
 platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.
 
-**Using Truthform:** the [user guide](docs/guide.md) and the
+**Using TruthForm:** the [user guide](docs/guide.md) and the
 [permissions](docs/permissions.md) to grant on each platform.
 
 ## Commands
@@ -49,7 +49,7 @@ truthform plan rebuild --from snap/   # offline: what a rebuild needs that the s
 
 truthform capture --platform aws --region eu-west-1 --profile sandbox --out snap/ [--types 'AWS::S3::*,AWS::IAM::Role']
 truthform restore --platform aws --region eu-west-1 --profile dr --from snap/ [--values write-only.yaml]
-truthform aws-coverage   # offline: what the public registry lets Truthform capture
+truthform aws-coverage   # offline: what the public registry lets TruthForm capture
 
 truthform capture --platform azure --subscription <id> --out snap/ [--types 'Microsoft.Network/*']
 truthform restore --platform azure --subscription <id> --from snap/ [--values secrets.yaml]
@@ -58,16 +58,16 @@ truthform permissions --platform aws --account 111122223333 --principal arn:aws:
 truthform check --platform aws --region us-east-1 --profile truthform-reader
 ```
 
-- **permissions** writes the grant Truthform needs as a template for the
+- **permissions** writes the grant TruthForm needs as a template for the
   platform's own tool and prints the commands to deploy, verify and remove
   it, with no placeholders. It grants nothing. See [docs/agents.md](docs/agents.md)
   for guiding someone through it.
-- **check** names the identity Truthform runs as, warns about root users,
+- **check** names the identity TruthForm runs as, warns about root users,
   long-lived keys and write access a capture does not need, and runs a
   capture written nowhere to show what it can read, type by type.
 
 - **capture** discovers every resource type the cluster serves, including custom
-  resources no Truthform code knows about. It keeps what someone configured and
+  resources no TruthForm code knows about. It keeps what someone configured and
   strips what the server generated: UIDs, `resourceVersion`, status and
   allocated cluster IPs. It writes one YAML file per object, plus
   `coverage.yaml`, which lists everything it did not take and why.
@@ -112,7 +112,7 @@ config, took 29s and was complete.
 
 Terraform and Pulumi build each API's fields into a provider release, so a
 field an API added last month doesn't exist for them until a new provider
-ships. Truthform keeps no field list in its code:
+ships. TruthForm keeps no field list in its code:
 
 - **Capture** reads whatever the live API returns, so new fields are captured
   as soon as the API serves them.

@@ -293,16 +293,59 @@ func TestRestoreReadsSecretSources(t *testing.T) {
 			t.Errorf("shop/%s is something else's to make and was written: %v", name, err)
 		}
 	}
+}
+
+// Flags that nothing would read are refused before any cluster or cloud
+// is asked: in the capture-only build too.
+func TestRestoreRefusesSecretSourceFlagsNothingReads(t *testing.T) {
+	_, dir := sourcesSnapshot(t)
+	ctx := context.Background()
+	file := writeFile(t, t.TempDir(), "secrets.yaml", "secrets: []\n")
 	azure := filepath.Join(t.TempDir(), "azure")
 	if err := (snapshot.Snapshot{Platform: "azure", Policy: "default"}).Write(azure); err != nil {
 		t.Fatal(err)
 	}
 	for why, args := range map[string][]string{
-		"--allow-exec is for --secrets-from": append(base, "--allow-exec"),
+		"--allow-exec is for --secrets-from": {"--kubeconfig", filepath.Join(t.TempDir(), "none"), "--context", "none", "--from", dir, "--allow-exec"},
 		"are for a kubernetes restore":       {"--platform", "azure", "--subscription", "x", "--from", azure, "--secrets-from", file},
 	} {
-		if code := restore(ctx, args); code != 1 || !strings.Contains(lastErr.Error(), why) {
+		lastErr = nil
+		if code := restore(ctx, args); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), why) {
 			t.Errorf("%v: exit %d, %v; want 1 and %q", args, code, lastErr, why)
 		}
+	}
+}
+
+// A snapshot whose capture could not read Secrets holds none to supply,
+// and that is no proof there are none: the check does not pass, and says
+// what was not read.
+func TestPlanSecretsCheckOfAnIncompleteSnapshot(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cluster")
+	s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Coverage: []snapshot.Coverage{
+		{Resource: "core/v1/secrets", Kind: "Secret", NotCaptured: "list failed: secrets is forbidden"},
+	}}
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	file := writeFile(t, t.TempDir(), "secrets.yaml", "secrets: []\n")
+	code, stdout, _ := output(t, func() int { return planCmd([]string{"secrets", "--from", dir, "--check", file}) })
+	if code != 2 || !strings.Contains(stdout, "the capture could not read core/v1/secrets") || strings.Contains(stdout, "every one of the") {
+		t.Errorf("exit %d\n%s", code, stdout)
+	}
+	d := asJSON(t, func() { planCmd([]string{"secrets", "--from", dir, "--check", file}) })
+	if g, _ := d["gaps"].([]any); len(g) != 1 {
+		t.Errorf("gaps in --json: %v", d)
+	}
+	// The file to fill in is still written, with a warning beside it.
+	code, _, stderr := output(t, func() int { return planCmd([]string{"secrets", "--from", dir}) })
+	if code != 0 || !strings.Contains(stderr, "INCOMPLETE SNAPSHOT") {
+		t.Errorf("the file to fill in: exit %d, stderr %q", code, stderr)
+	}
+
+	// A whole snapshot: an empty list, and nothing said.
+	_, whole := sourcesSnapshot(t)
+	d = asJSON(t, func() { planCmd([]string{"secrets", "--from", whole, "--check", file}) })
+	if g, ok := d["gaps"].([]any); !ok || len(g) != 0 {
+		t.Errorf("gaps of a whole snapshot: %v", d["gaps"])
 	}
 }

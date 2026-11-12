@@ -58,7 +58,7 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN, or C
   truthform restore --platform github --account <org> --from <dir> [--values <file>] [--update] [--dry-run]
   truthform restore --platform cloudflare --account <account-id> --from <dir> [--update] [--dry-run]
       [--subdomain test.example.com [--address <source-ip>=<target-ip>,...] [--target <source-host>=<target-host>,...]]
-      the zone's records one level down (www.example.com -> www.test.example.com), marked as Truthform's;
+      the zone's records one level down (www.example.com -> www.test.example.com), marked as TruthForm's;
       checks the zone first and stops on any conflict, before it writes
   truthform diff    --platform cloudflare --account <account-id> --from <dir> [--subdomain test.example.com [--address ...] [--target ...]]
 
@@ -69,7 +69,7 @@ Access (what to grant, and what a grant can read):
   truthform permissions --platform <p> [--access capture|restore] <the platform's values> [--write <dir>]
       the template to deploy and every command to grant, verify and remove it; grants nothing itself
   truthform check --platform <p> <the target, as for capture> [--types <patterns>] [--access capture|restore]
-      who Truthform runs as, what it holds beyond what it needs, and what it can read, type by type
+      who TruthForm runs as, what it holds beyond what it needs, and what it can read, type by type
 
 As a graph (resources and their relationships, for an asset inventory or a security graph):
   truthform graph --from <dir> [--types security|none|<file>] [--subscription <id>] [--tenant <id>] [--out <file>]
@@ -264,6 +264,7 @@ func restore(ctx context.Context, args []string) int {
 	update := fs.Bool("update", false, "aws, azure, gcp, github, cloudflare: also bring existing resources that differ in line with the snapshot (never replaces one); without it, restore only creates what is missing. Kubernetes restore always applies (server-side apply)")
 	values := fs.String("values", "", "aws, azure, github, cloudflare: YAML file of values the platform never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the platform, never written. Refused elsewhere")
 	rename := fs.String("rename", "", renameHelp)
+	keepStores := fs.Bool("keep-source-stores", false, "kubernetes, with --rename: restore though a use of a secret store that no start fits, or that --rename does not reach, stays as the source's")
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	dryRun := fs.Bool("dry-run", false, "github, cloudflare: read the target and print every write the restore would make; make none")
@@ -302,7 +303,10 @@ func restore(ctx context.Context, args []string) int {
 	if snap, err = leftOut(*leaveOut, *platform, snap); err != nil {
 		return fail(err)
 	}
-	names, snap, err := renamed(*rename, *platform, snap)
+	if *keepStores && (*rename == "" || *platform != "kubernetes") {
+		return fail(fmt.Errorf("--keep-source-stores is for a kubernetes restore with --rename; nothing was restored"))
+	}
+	names, snap, err := renamed(*rename, *platform, snap, !*keepStores)
 	if err != nil {
 		return fail(err)
 	}
@@ -433,7 +437,7 @@ func diff(ctx context.Context, args []string) int {
 	if want, err = leftOut(*leaveOut, *platform, want); err != nil {
 		return fail(err)
 	}
-	names, want, err := renamed(*rename, *platform, want)
+	names, want, err := renamed(*rename, *platform, want, false)
 	if err != nil {
 		return fail(err)
 	}
@@ -787,7 +791,13 @@ func warnOtherSubscriptions(s snapshot.Snapshot, platform, target string) {
 
 // renamed applies --rename to a snapshot. Only Azure has it; elsewhere it
 // is refused, never ignored.
-func renamed(file, platform string, s snapshot.Snapshot) (map[string]string, snapshot.Snapshot, error) {
+//
+// For Kubernetes, strict refuses a rename that leaves a store reference
+// where the source's is with nobody having said so: one no start fits, or
+// one a rename does not reach. A restore is strict unless told otherwise;
+// a diff writes nothing, and only says.
+func renamed(file, platform string, s snapshot.Snapshot, strict bool) (map[string]string, snapshot.Snapshot, error) {
+	storeRefs = nil
 	if file == "" {
 		return nil, s, nil
 	}
@@ -799,7 +809,8 @@ func renamed(file, platform string, s snapshot.Snapshot) (map[string]string, sna
 		return nil, s, err
 	}
 	var names map[string]string
-	if err := yaml.Unmarshal(b, &names); err != nil {
+	// Strict: a start given twice is a mistake, and the last would win.
+	if err := yaml.UnmarshalStrict(b, &names); err != nil {
 		return nil, s, fmt.Errorf("%s: %w", file, err)
 	}
 	if platform == "kubernetes" {
@@ -815,8 +826,20 @@ func renamed(file, platform string, s snapshot.Snapshot) (map[string]string, sna
 			fmt.Fprintf(os.Stderr, "   %s %s: %s -> %s\n", r.Object, r.Field, r.From, r.To)
 		}
 		if len(rep.Kept) > 0 {
-			fmt.Fprintf(os.Stderr, "rename: %d store references are as the source's (no start fits them):\n", len(rep.Kept))
+			fmt.Fprintf(os.Stderr, "rename: %d store references are as the source's, as %s asks:\n", len(rep.Kept), file)
 			for _, r := range rep.Kept {
+				fmt.Fprintf(os.Stderr, "   %s %s: %s\n", r.Object, r.Field, r.From)
+			}
+		}
+		if len(rep.Within) > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d references name an item in a store and no start fits them: each reads the same name, from the store its store object says:\n", len(rep.Within))
+			for _, r := range rep.Within {
+				fmt.Fprintf(os.Stderr, "   %s %s: %s\n", r.Object, r.Field, r.From)
+			}
+		}
+		if len(rep.Unnamed) > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d references say which store, and no start fits them: they are the source's:\n", len(rep.Unnamed))
+			for _, r := range rep.Unnamed {
 				fmt.Fprintf(os.Stderr, "   %s %s: %s\n", r.Object, r.Field, r.From)
 			}
 		}
@@ -825,6 +848,10 @@ func renamed(file, platform string, s snapshot.Snapshot) (map[string]string, sna
 			for _, u := range rep.Unreached {
 				fmt.Fprintln(os.Stderr, "  ", u)
 			}
+		}
+		storeRefs = &rep
+		if n := len(rep.Unnamed) + len(rep.Unreached); strict && n > 0 {
+			return nil, s, fmt.Errorf("%s: %d objects would use the source's secret store (listed above: a store no start fits, or a use --rename does not reach), and what reads or writes through them would read or write the source's; nothing was restored. Give each store a start (replaced by itself, if it is the same in both), leave the object out, or pass --keep-source-stores", file, n)
 		}
 		return nil, out, nil
 	}

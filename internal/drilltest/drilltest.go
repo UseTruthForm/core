@@ -1,4 +1,4 @@
-// Package drilltest is Truthform's restore drill, written once against the
+// Package drilltest is TruthForm's restore drill, written once against the
 // platform contract so every adapter is held to the same proof:
 //
 //  1. capture the source twice and require byte-identical snapshots on disk

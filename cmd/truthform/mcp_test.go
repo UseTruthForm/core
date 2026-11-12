@@ -51,7 +51,7 @@ func TestMCPRefusesNonRegion(t *testing.T) {
 			t.Errorf("region %q accepted", r)
 		}
 	}
-	if _, err := runTruthform(context.Background(), "capture", map[string]any{"platform": "aws", "region": "x@evil.example", "out": t.TempDir() + "/new"}, "out"); err == nil {
+	if _, err := runTruthForm(context.Background(), "capture", map[string]any{"platform": "aws", "region": "x@evil.example", "out": t.TempDir() + "/new"}, "out"); err == nil {
 		t.Error("capture accepted a non-region")
 	}
 }

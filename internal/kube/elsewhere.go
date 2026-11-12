@@ -89,6 +89,17 @@ var providerRefs = map[string][]string{
 	"onepasswordSDK": {"vault"},
 }
 
+// whichStore are the fields that say which store is read, where the rest
+// say what in it. A 1Password item's path is both: it starts with its
+// vault.
+var whichStore = map[string]bool{
+	"spec.itemPath": true, "metadata.annotations[" + onePasswordPath + "]": true,
+	"spec.provider.azurekv.vaultUrl": true, "spec.provider.vault.server": true, "spec.provider.gcpsm.projectID": true,
+	"spec.provider.onepassword.connectHost": true, "spec.provider.onepasswordSDK.vault": true,
+	"spec.address": true, "spec.vault.name": true,
+	"spec.parameters.keyvaultName": true, "spec.parameters.vaultAddress": true,
+}
+
 // onePasswordPath is the annotation by which the 1Password operator is
 // asked for a Secret from a workload, and marks the Secrets it made.
 const onePasswordPath = "operator.1password.io/item-path"
@@ -167,8 +178,65 @@ func unreached(o snapshot.Object) string {
 				return "it finds what it reads by a pattern of names (dataFrom.find.name)"
 			}
 		}
+		for _, at := range []string{"spec.dataFrom", "spec.externalSecretSpec.dataFrom"} {
+			if findsByTags(o.Body, at) {
+				return "it finds what it reads by tags (dataFrom.find.tags)"
+			}
+		}
+	}
+	if asksVaultAgent(o.Body) {
+		return "it asks the Vault agent for secrets by annotation (" + vaultAgentSecret + "*), which names a path in Vault"
 	}
 	return ""
+}
+
+// findsByTags reports a dataFrom entry, in the list at the dotted path,
+// that finds by tags.
+func findsByTags(body map[string]any, at string) bool {
+	var v any = body
+	for _, name := range strings.Split(at, ".") {
+		m, _ := v.(map[string]any)
+		v = m[name]
+	}
+	for _, e := range list(v) {
+		m, _ := e.(map[string]any)
+		find, _ := m["find"].(map[string]any)
+		if tags, _ := find["tags"].(map[string]any); len(tags) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// vaultAgentSecret starts the annotations by which a pod asks the Vault
+// agent injector for a secret.
+const vaultAgentSecret = "vault.hashicorp.com/agent-inject-secret-"
+
+// asksVaultAgent reports such an annotation on the object or on a pod
+// template anywhere in it.
+func asksVaultAgent(v any) bool {
+	switch x := v.(type) {
+	case map[string]any:
+		if ann, _ := x["annotations"].(map[string]any); ann != nil {
+			for k := range ann {
+				if strings.HasPrefix(k, vaultAgentSecret) {
+					return true
+				}
+			}
+		}
+		for _, c := range x {
+			if asksVaultAgent(c) {
+				return true
+			}
+		}
+	case []any:
+		for _, c := range x {
+			if asksVaultAgent(c) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // StoreRef is one reference to a secret store: the object and field that
@@ -180,9 +248,14 @@ type StoreRef struct {
 
 // RenameReport is what a rename did and did not do.
 type RenameReport struct {
-	// Changed are the references that point elsewhere now, and Kept those
-	// no start fitted: they read where the source reads.
-	Changed, Kept []StoreRef
+	// Changed are the references that point elsewhere now. Kept are those
+	// a start names and leaves as they are: said to be the same in both
+	// environments. Of those no start fits, Unnamed say which store (a
+	// vault's address, a 1Password item's path): they read where the
+	// source reads, and nobody said they should. Within are the rest,
+	// which name an item in a store and read from whichever store their
+	// store object says.
+	Changed, Kept, Unnamed, Within []StoreRef
 	// Unreached are objects that use a store in a way a rename does not
 	// reach, each with why.
 	Unreached []string
@@ -191,7 +264,8 @@ type RenameReport struct {
 // RenameStores rewrites where the snapshot's objects read their Secrets
 // from. names maps the start of a reference to what replaces it ("vaults/
 // apps/" to "vaults/apps-test/"; a whole reference is its own start), and
-// the longest start that fits a reference is the one applied. Only the
+// the longest start that fits a reference is the one applied; a start replaced by itself
+// says a reference is the same in both environments. Only the
 // fields that name a store or an item in it are touched. A start that
 // fits no reference is an error. The report says every reference changed,
 // every one left as it was, and what a rename cannot reach: a restore
@@ -248,9 +322,14 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 					}
 				}
 				ref := StoreRef{Object: who, Field: field, From: v, To: to}
-				if to == v {
+				switch {
+				case !applied && whichStore[field]:
+					rep.Unnamed = append(rep.Unnamed, ref)
+				case !applied:
+					rep.Within = append(rep.Within, ref)
+				case to == v:
 					rep.Kept = append(rep.Kept, ref)
-				} else {
+				default:
 					rep.Changed = append(rep.Changed, ref)
 				}
 				return to

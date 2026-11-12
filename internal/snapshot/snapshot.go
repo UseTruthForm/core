@@ -1,4 +1,4 @@
-// Package snapshot is Truthform's on-disk backup format: one YAML document per
+// Package snapshot is TruthForm's on-disk backup format: one YAML document per
 // live object, plus a manifest and a coverage report.
 //
 // The format exists so that a backup can be recreated without any state file.
@@ -36,12 +36,12 @@ import (
 // FormatVersion is bumped on any change a reader of older snapshots must know about.
 //
 // 2: the tool was renamed. Annotations moved to truthform.org, placeholders
-// to {{truthform|...}} and Truthform's own API groups to *.truthform.org.
+// to {{truthform|...}} and TruthForm's own API groups to *.truthform.org.
 // Format 1 is still read (see legacy.go); a build from before the rename
 // refuses format 2 rather than reading it without its annotations.
 const FormatVersion = 2
 
-// manifestFile marks a directory as a Truthform snapshot. Write refuses to
+// manifestFile marks a directory as a TruthForm snapshot. Write refuses to
 // replace the contents of a non-empty directory without it, so pointing --out
 // at the wrong folder cannot delete someone's files.
 const manifestFile = "snapshot.yaml"
@@ -208,7 +208,7 @@ func (s Snapshot) Write(dir string) error {
 func Read(dir string) (Snapshot, error) {
 	mb, err := os.ReadFile(filepath.Join(dir, manifestFile))
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("%s is not a Truthform snapshot: %w", dir, err)
+		return Snapshot{}, fmt.Errorf("%s is not a TruthForm snapshot: %w", dir, err)
 	}
 	var m manifest
 	if err := yaml.Unmarshal(mb, &m); err != nil {
@@ -306,7 +306,7 @@ func Digest(dir string) (string, error) {
 
 // A string is written unquoted only if every YAML reader would read it back
 // as that exact string. Go's encoders reason in YAML 1.2, but YAML 1.1 readers
-// (sigs.k8s.io/yaml, which Truthform itself reads with; PyYAML; many CI tools)
+// (sigs.k8s.io/yaml, which TruthForm itself reads with; PyYAML; many CI tools)
 // resolve more plain words: "yes"/"on"/"no" become booleans, "=" is the value
 // tag, "<<" the merge key. Found when a CRD enum containing "=" made a whole
 // snapshot unreadable to PyYAML; the test for that then showed "yes" being
@@ -479,7 +479,7 @@ func ensureOwnedOrEmpty(dir string) error {
 		return nil
 	}
 	if _, err := os.Stat(filepath.Join(dir, manifestFile)); err != nil {
-		return fmt.Errorf("%s is not empty and is not a Truthform snapshot; refusing to overwrite it", dir)
+		return fmt.Errorf("%s is not empty and is not a TruthForm snapshot; refusing to overwrite it", dir)
 	}
 	return nil
 }

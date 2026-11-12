@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// API is the slice of Google Cloud Truthform uses: Cloud Asset Inventory to
+// API is the slice of Google Cloud TruthForm uses: Cloud Asset Inventory to
 // list, and plain HTTP calls to each resource's own API, whose URLs and
 // bodies come from its Discovery document.
 type API interface {

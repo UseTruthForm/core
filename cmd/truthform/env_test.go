@@ -107,7 +107,7 @@ type envDoc struct {
 // settle waits until each fresh API server captures to the same digest
 // twice running. A server still creating its own bootstrap objects after
 // /readyz differs between captures for a reason that has nothing to do
-// with Truthform: in CI (PR #14) the second of two fresh servers captured
+// with TruthForm: in CI (PR #14) the second of two fresh servers captured
 // to one digest and then another, objects identical, and the unchanged-
 // environment assertion failed. Which bootstrap object it was is not
 // pinned down (six local starts never showed it), so this waits for the
@@ -330,10 +330,10 @@ func TestReportListsPlainCredentials(t *testing.T) {
 // not ignored.
 func TestRenameIsRefusedElsewhere(t *testing.T) {
 	f := writeFile(t, t.TempDir(), "names.yaml", "Microsoft.Storage/storageAccounts/a: b\n")
-	if _, _, err := renamed(f, "aws", snapshot.Snapshot{}); err == nil || !strings.Contains(err.Error(), "azure and kubernetes only") {
+	if _, _, err := renamed(f, "aws", snapshot.Snapshot{}, true); err == nil || !strings.Contains(err.Error(), "azure and kubernetes only") {
 		t.Errorf("aws: %v", err)
 	}
-	if _, _, err := renamed(f, "azure", snapshot.Snapshot{}); err == nil || !strings.Contains(err.Error(), "not in the snapshot") {
+	if _, _, err := renamed(f, "azure", snapshot.Snapshot{}, true); err == nil || !strings.Contains(err.Error(), "not in the snapshot") {
 		t.Errorf("azure with a name not in the snapshot: %v", err)
 	}
 	r, w, _ := os.Pipe()

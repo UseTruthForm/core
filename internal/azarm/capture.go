@@ -490,7 +490,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		}
 		switch {
 		// Azure's own roles are not recorded, not even as a count: the live list
-		// gave 973 and 976 on calls a minute apart, from Truthform and az alike, so
+		// gave 973 and 976 on calls a minute apart, from TruthForm and az alike, so
 		// the count changed the digest of an unchanged subscription, and a
 		// scheduled job would commit noise.
 		case f.count && f.reason == builtInRole:

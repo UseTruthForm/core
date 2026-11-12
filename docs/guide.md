@@ -475,8 +475,14 @@ secrets:
 | `op://<vault>/<item>/<field>` | 1Password, with the `op` CLI |
 | `azurekv://<vault>/<secret>[/<version>]` | Azure Key Vault, with the `az` CLI |
 | `env:<NAME>` | an environment variable |
-| `file:<path>` | a file's whole content, byte for byte |
+| `file:<path>` | a file's whole content, byte for byte; a relative path is from where the command runs |
 | `exec:<command>` | what a command prints, less its last line end; only with `--allow-exec` |
+| `empty:` | the empty value, for a key that holds nothing |
+
+A read that gives nothing is refused, so that a sign-in that lapsed does
+not restore an empty password: a key that is meant to be empty says so
+with `empty:`. A read is given two minutes, and what it started is ended
+with it.
 
 `exec:` is for whatever has no reference of its own: another vault's CLI,
 or a value read from the cloud the cluster is rebuilt in (a storage key, a
@@ -488,6 +494,11 @@ only for a file you would run as a script.
 `leave:` is for a Secret the plan lists by hand that something does make:
 the restore does not write it, and the check does not ask for a source.
 
+An entry may also give values to a Secret the plan does not ask for (to
+bring a certificate with you, where cert-manager would issue a new one).
+Any entry with `from:` gives every key the Secret has and no other: a
+restore takes one Secret's values from one place.
+
 `--check` exits 2 when a rebuild would lack something: a Secret to supply
 with no entry, a key with no reference, a key the Secret does not have.
 Run after each capture, it says so the day someone adds a Secret by hand.
@@ -498,11 +509,21 @@ the items are there before the day they are needed.
 A restore with `--secrets-from` checks the file the same way and reads
 every value **before it writes anything** to the cluster; a source that
 does not answer stops it there. It then leaves out the Secrets that are
-not a restore's to write (those a store or a controller makes, by the
-plan, and the file's `leave:` entries) and says which. A value is read,
-sent to the cluster, and written nowhere else; no message repeats one.
-With `--secrets-from-context` as well, what the file does not name is
-read from that cluster.
+not a restore's to write (those a store, a controller or a SealedSecret
+makes, by the plan, and the file's `leave:` entries) and says which. A
+value is read, sent to the cluster, and written nowhere else. No message
+repeats one, nor an `exec:` command, nor text in the file that is not
+what a sources file holds. With `--secrets-from-context` as well, a
+Secret the file does not name is read from that cluster.
+
+Not covered: a credential set as a plain value in a workload's
+environment, which a snapshot withholds like a Secret's. A restore still
+refuses that workload without `--secrets-from-context`; the capture's
+report lists them, and the fix is to move each into a Secret.
+
+The file to fill in is written from what the cluster's objects say, and
+only as comments and names: read it before you fill it in, as you would
+any file a tool wrote for you to run.
 
 ## As a graph (Azure)
 

@@ -81,8 +81,11 @@ type PlanMade struct {
 // those the capture saw and left out (in kube-system). Neither: the key
 // is not a Secret the capture saw (for SOPS, a cloud key service).
 type PlanEncrypted struct {
-	By          string   `json:"by"`
-	Objects     int      `json:"objects,omitempty"`
+	By      string `json:"by"`
+	Objects int    `json:"objects,omitempty"`
+	// Secrets are the Secrets in the snapshot (namespace/name) that the
+	// encrypted objects in it make: their controller's to write.
+	Secrets     []string `json:"secrets"`
 	Keys        []string `json:"keys"`
 	KeysNotHeld []string `json:"keysNotInSnapshot"`
 }

@@ -44,6 +44,8 @@ func sourcesSnapshot(t *testing.T) (snapshot.Snapshot, string) {
 		secret("shop", "ca", []string{"tls.key"}, map[string]any{"app.kubernetes.io/managed-by": "cert-manager"}),
 		secret("shop", "db", []string{"password"}, nil),
 		secret("shop", "empty", nil, nil),
+		secret("shop", "sealed", []string{"k"}, nil),
+		{Body: map[string]any{"apiVersion": "bitnami.com/v1alpha1", "kind": "SealedSecret", "metadata": map[string]any{"name": "sealed", "namespace": "shop"}}},
 		{Body: map[string]any{"apiVersion": "onepassword.com/v1", "kind": "OnePasswordItem", "metadata": map[string]any{"name": "db", "namespace": "shop"}, "spec": map[string]any{"itemPath": "vaults/v/items/db"}}},
 	}}
 	dir := filepath.Join(t.TempDir(), "cluster")
@@ -74,7 +76,7 @@ func TestPlanSecretsCommand(t *testing.T) {
 			t.Errorf("the file lacks %q:\n%s", want, text)
 		}
 	}
-	for _, not := range []string{"shop/ca", "shop/db", "shop/empty"} {
+	for _, not := range []string{"shop/ca", "shop/db", "shop/empty", "shop/sealed"} {
 		if strings.Contains(text, not) {
 			t.Errorf("the file asks for %s, which is not a person's to supply:\n%s", not, text)
 		}
@@ -108,10 +110,13 @@ func TestPlanSecretsCommand(t *testing.T) {
 	if len(problems) != 1 || !strings.Contains(problems[0].(string), "shop/git: key username: env:TF_TEST_USER_UNSET") || doc["read"] != float64(1) || len(doc["notes"].([]any)) != 1 {
 		t.Errorf("document: %v", d)
 	}
-	if strings.Contains(strings.Join(strings.Fields(strings.ReplaceAll(strings.Trim(strings.Join([]string{problems[0].(string)}, ""), ""), "\n", " ")), " "), "s3cr3t-value") {
-		t.Error("a value read is in the document")
+	t.Setenv("TF_TEST_USER_UNSET", "now-set-user")
+	code, stdout, stderr := output(t, func() int { return planCmd([]string{"secrets", "--from", dir, "--check", filled, "--resolve"}) })
+	if code != 0 || !strings.Contains(stdout, "2 values were read from theirs (none printed)") || strings.Contains(stdout+stderr, "s3cr3t-value") || strings.Contains(stdout+stderr, "now-set-user") {
+		t.Errorf("--resolve: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	for _, args := range [][]string{
+		{"secrets", "--from", dir, "--check", filled, "--allow-exec"},
 		{"secrets", "--out", file},
 		{"secrets", "--from", dir, "--out", file, "--check", filled},
 		{"secrets", "--from", dir, "--resolve"},
@@ -141,7 +146,7 @@ func TestWithSecretSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantLeft := []string{"shop/ca (cert-manager)", "shop/db (the store (1Password))", "shop/odd (an operator)"}
+	wantLeft := []string{"shop/ca (cert-manager)", "shop/db (the store (1Password))", "shop/odd (an operator)", "shop/sealed (Sealed Secrets)"}
 	if !reflect.DeepEqual(left, wantLeft) {
 		t.Errorf("left: %q, want %q", left, wantLeft)
 	}
@@ -149,7 +154,7 @@ func TestWithSecretSources(t *testing.T) {
 	for _, o := range out.Objects {
 		kept = append(kept, o.Kind()+"/"+o.Name())
 	}
-	if want := []string{"Namespace/shop", "OnePasswordItem/db", "Secret/empty", "Secret/git"}; !sameSet(kept, want) {
+	if want := []string{"Namespace/shop", "OnePasswordItem/db", "SealedSecret/sealed", "Secret/empty", "Secret/git"}; !sameSet(kept, want) {
 		t.Errorf("restored: %q, want %q", kept, want)
 	}
 	v, known, _ := opt.Values(ctx, "shop", "git", nil)
@@ -169,8 +174,29 @@ func TestWithSecretSources(t *testing.T) {
   - secret: shop/ca
     from: {tls.key: "env:TF_TEST_PASSWORD"}
 `)
-	if _, _, left, err := withSecretSources(ctx, snap, override, false, false); err != nil || !reflect.DeepEqual(left, []string{"shop/db (the store (1Password))"}) {
+	if _, _, left, err := withSecretSources(ctx, snap, override, false, false); err != nil || !reflect.DeepEqual(left, []string{"shop/db (the store (1Password))", "shop/sealed (Sealed Secrets)"}) {
 		t.Errorf("override: left %q, %v", left, err)
+	}
+	// A value given to what is not a person's to supply has to be whole,
+	// and is found wanting before the restore, not half way through it:
+	// with another cluster to read from as well.
+	wrong := writeFile(t, dir, "wrong.yaml", `secrets:
+  - secret: shop/git
+    from: {password: "env:TF_TEST_PASSWORD", usernme: "env:TF_TEST_USER"}
+  - secret: shop/odd
+    leave: an operator
+  - secret: shop/ca
+    from: {tls.kee: "env:TF_TEST_PASSWORD"}
+  - secret: shop/empty
+    from: {k: "env:TF_TEST_PASSWORD"}
+`)
+	for _, fromContext := range []bool{false, true} {
+		_, _, _, err := withSecretSources(ctx, snap, wrong, false, fromContext)
+		for _, want := range []string{"shop/git: key username has no reference", "shop/git: names key usernme", "shop/ca: key tls.key has no reference", "shop/empty: names key k", "nothing was restored"} {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("with a source cluster %v: the file is not refused for %q: %v", fromContext, want, err)
+			}
+		}
 	}
 
 	// With another cluster to read from, what the file does not name is read there: nothing is left out for it.
@@ -230,8 +256,8 @@ func TestRestoreReadsSecretSources(t *testing.T) {
 `)
 	base := []string{"--kubeconfig", s.Kubeconfig, "--context", s.Context, "--from", dir}
 	// Without the flag an exec: reference stops the restore, and nothing is written.
-	if code := restore(ctx, append(base, "--secrets-from", file)); code != 1 {
-		t.Fatalf("an exec: reference ran without --allow-exec: exit %d", code)
+	if code := restore(ctx, append(base, "--secrets-from", file)); code != 1 || !strings.Contains(lastErr.Error(), "only with --allow-exec") {
+		t.Fatalf("an exec: reference ran without --allow-exec: exit %d, %v", code, lastErr)
 	}
 	c, err := kube.Connect(s.Kubeconfig, s.Context, false)
 	if err != nil {
@@ -241,9 +267,10 @@ func TestRestoreReadsSecretSources(t *testing.T) {
 	if _, err := cs.CoreV1().Namespaces().Get(ctx, "shop", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
 		t.Fatalf("a refused restore wrote the namespace: %v", err)
 	}
-	// The OnePasswordItem has no type to be served by here: that one object fails, and the rest is applied.
-	if code := restore(ctx, append(base, "--secrets-from", file, "--allow-exec")); code != 3 {
-		t.Fatalf("exit %d, want 3 (one type is not served)", code)
+	// The OnePasswordItem and the SealedSecret have no type to be served by here: those two objects fail, and no Secret does.
+	code, stdout, _ := output(t, func() int { return restore(ctx, append(base, "--secrets-from", file, "--allow-exec")) })
+	if code != 3 || strings.Contains(stdout, "|Secret|") || !strings.Contains(stdout, "applied 3 of 5 objects") {
+		t.Fatalf("exit %d, want 3 (two types are not served) and every Secret applied or left:\n%s", code, stdout)
 	}
 	got, err := cs.CoreV1().Secrets("shop").Get(ctx, "git", metav1.GetOptions{})
 	if err != nil {
@@ -258,7 +285,7 @@ func TestRestoreReadsSecretSources(t *testing.T) {
 	if _, err := cs.CoreV1().Secrets("shop").Get(ctx, "empty", metav1.GetOptions{}); err != nil {
 		t.Errorf("a Secret with nothing withheld was not restored: %v", err)
 	}
-	for _, name := range []string{"odd", "ca", "db"} {
+	for _, name := range []string{"odd", "ca", "db", "sealed"} {
 		if _, err := cs.CoreV1().Secrets("shop").Get(ctx, name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
 			t.Errorf("shop/%s is something else's to make and was written: %v", name, err)
 		}

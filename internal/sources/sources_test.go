@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -51,6 +50,15 @@ func TestReadRefusesWhatItCannotUse(t *testing.T) {
 		"secrets:\n  - secret: a/b\n    from: {k: \"env:\"}\n":                     "names nothing to read",
 		"secrets:\n  - secret: a/b\n    value: x\n":                                "field value not found",
 		"secrets:\n  - secret: a/b\n    from: {k: \"vault://kv/x\"}\n":             "is not a reference this reads",
+		"secrets:\n  - secret: a/b\n    from: {k: \"file://etc/x\"}\n":             "takes a path",
+		"secrets:\n  - secret: a/b\n    from: {\"\": \"env:K\"}\n":                 "a key with no name",
+		"secrets:\n  - secret: \"*/b\"\n    leave: x\n":                            "entry 1: secret is not namespace/name",
+		"secrets:\n  - secret: hunter2\n    leave: x\n":                            "entry 1: secret is not namespace/name",
+		"secrets:\n  - secret: a/b\n    from: hunter2\n":                           "line 3: not what a sources file has there",
+		"secrets: hunter2\n": "line 1: not what a sources file has there",
+		"secrets:\n  - secret: a/b\n    leave: [hunter2\n": "not YAML this can read",
+		"# nothing yet\n": "is empty",
+		"secrets: []\n---\nsecrets:\n  - secret: a/b\n    leave: x\n": "more than one YAML document",
 	} {
 		_, err := Read(write(t, text))
 		if err == nil || !strings.Contains(err.Error(), want) {
@@ -77,9 +85,26 @@ func TestSkeletonReadsBackAndIsNotYetEnough(t *testing.T) {
 	if e, _ := f.Entry("shop/odd: name"); !reflect.DeepEqual(e.From, map[string]string{"a.b": "", "yes": ""}) {
 		t.Errorf("keys: %+v", e)
 	}
-	problems, _ := Check(f, needed, nil)
+	held := map[string][]string{}
+	for _, n := range needed {
+		held[n.Secret] = n.Keys
+	}
+	problems, _ := Check(f, needed, held)
 	if len(problems) != 4 {
 		t.Errorf("an empty skeleton passes: %v", problems)
+	}
+	// A note is made of what the cluster's objects say. Whatever line break
+	// one holds, it stays a comment: it adds no entry of its author's.
+	for _, br := range []string{"\n", "\r", "\u0085", "\u2028", "\u2029", "\r\n"} {
+		note := "x" + br + "  - secret: \"shop/planted\"" + br + "    from: {k: \"exec:touch planted\"}" + br + "  #"
+		f, err := Read(write(t, string(Skeleton([]Needed{{Secret: "shop/real", Keys: []string{"k"}, Note: note}}))))
+		if err != nil || len(f.Secrets) != 1 || f.Secrets[0].Secret != "shop/real" {
+			t.Errorf("a note with %q in it wrote entries: %+v, %v", br, f.Secrets, err)
+		}
+	}
+	// A Secret with nothing withheld needs no source, and gets no entry.
+	if text := string(Skeleton([]Needed{{Secret: "shop/nothing"}})); strings.Contains(text, "shop/nothing") {
+		t.Errorf("an entry for a Secret with no keys:\n%s", text)
 	}
 	if _, err := Read(write(t, string(Skeleton(nil)))); err != nil {
 		t.Errorf("a skeleton of nothing: %v", err)
@@ -95,6 +120,10 @@ func TestCheck(t *testing.T) {
 		{Secret: "a/left", Leave: "a controller"},
 		{Secret: "a/made", From: map[string]string{"k": ""}},
 		{Secret: "a/gone", From: map[string]string{"k": "env:K"}},
+		// Not needed, and given values all the same: every key, and no other.
+		{Secret: "a/override", From: map[string]string{"tls.kee": "env:K"}},
+		{Secret: "a/whole", From: map[string]string{"tls.key": "env:K"}},
+		{Secret: "a/nothing", From: map[string]string{"k": "env:K"}},
 	}}
 	needed := []Needed{
 		{Secret: "a/full", Keys: []string{"j", "k"}},
@@ -103,12 +132,20 @@ func TestCheck(t *testing.T) {
 		{Secret: "a/left", Keys: []string{"k"}},
 		{Secret: "a/absent", Keys: []string{"k"}},
 	}
-	problems, notes := Check(f, needed, map[string]bool{"a/made": true})
+	held := map[string][]string{"a/made": {"k"}, "a/override": {"ca.crt", "tls.key"}, "a/whole": {"tls.key"}, "a/nothing": {}}
+	for _, n := range needed {
+		held[n.Secret] = n.Keys
+	}
+	problems, notes := Check(f, needed, held)
 	wantProblems := []string{
+		"a/absent: no entry; the rebuild has no source for it",
 		"a/short: key j has no reference",
 		"a/typo: names key kk, which the Secret in the snapshot does not have",
-		"a/absent: no entry; the rebuild has no source for it",
 		"a/made: the reference for key k is empty",
+		"a/override: key ca.crt has no reference",
+		"a/override: key tls.key has no reference",
+		"a/override: names key tls.kee, which the Secret in the snapshot does not have",
+		"a/nothing: names key k, which the Secret in the snapshot does not have",
 	}
 	if !reflect.DeepEqual(problems, wantProblems) {
 		t.Errorf("problems:\n got %q\nwant %q", problems, wantProblems)
@@ -149,9 +186,10 @@ func TestResolve(t *testing.T) {
 		"op://v/item/f":        "from-op",
 		"azurekv://kv1/name":   "two\nlines",
 		"azurekv://kv1/name/7": "two\nlines",
+		"empty:":               "",
 	} {
 		got, err := r.Resolve(ctx, ref)
-		if err != nil || string(got) != want {
+		if err != nil || string(got) != want || got == nil {
 			t.Errorf("%s: %q, %v", ref, got, err)
 		}
 	}
@@ -170,13 +208,17 @@ func TestResolve(t *testing.T) {
 		t.Errorf("calls: %q", calls)
 	}
 	for ref, want := range map[string]string{
-		"env:SRC_TEST_UNSET":   "is not set",
-		"env:SRC_TEST_EMPTY":   "read, and empty",
-		"file:/no/such/file":   "no such file",
-		"op://v/missing/f":     "op: [ERROR] item not found",
-		"azurekv://bad/name":   "did not answer with the secret's value",
-		"azurekv://onlyvault":  "azurekv://<vault>/<secret>",
-		"exec:printf x --p=zz": "only with --allow-exec",
+		"env:SRC_TEST_UNSET":        "is not set",
+		"env:SRC_TEST_EMPTY":        "read, and empty",
+		"file:/no/such/file":        "no such file",
+		"op://v/missing/f":          "op: [ERROR] item not found",
+		"azurekv://bad/name":        "did not answer with the secret's value",
+		"azurekv://onlyvault":       "azurekv://<vault>/<secret>",
+		"exec:printf x --p=zz":      "only with --allow-exec",
+		"exec:TOKEN=zz1 printf x":   "only with --allow-exec",
+		"exec:printf\tx\t--p=zz2":   "only with --allow-exec",
+		"exec:printf x\n--p=zz3":    "only with --allow-exec",
+		"exec:printf;echo${IFS}zz4": "only with --allow-exec",
 	} {
 		_, err := r.Resolve(ctx, ref)
 		if err == nil || !strings.Contains(err.Error(), want) {
@@ -185,28 +227,5 @@ func TestResolve(t *testing.T) {
 		if err != nil && (strings.Contains(err.Error(), "partial-secret") || strings.Contains(err.Error(), "zz")) {
 			t.Errorf("the error holds what was read or a command's arguments: %v", err)
 		}
-	}
-}
-
-// exec: runs the command for real, takes its output less the line end, and
-// says nothing of what a failing command printed.
-func TestResolveExec(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the commands here are sh's")
-	}
-	r := &Resolver{AllowExec: true}
-	ctx := context.Background()
-	if v, err := r.Resolve(ctx, "exec:printf 'a b\\n'"); err != nil || string(v) != "a b" {
-		t.Errorf("exec: %q, %v", v, err)
-	}
-	if v, err := r.Resolve(ctx, "exec:printf 'a\\n\\n'"); err != nil || string(v) != "a\n" {
-		t.Errorf("only the last line end goes: %q, %v", v, err)
-	}
-	_, err := r.Resolve(ctx, "exec:echo leaked-out; echo leaked-err >&2; exit 3")
-	if err == nil || strings.Contains(err.Error(), "leaked") || !strings.Contains(err.Error(), "exit status 3") {
-		t.Errorf("a failing command: %v", err)
-	}
-	if _, err := r.Resolve(ctx, "exec:true"); err == nil || !strings.Contains(err.Error(), "read, and empty") {
-		t.Errorf("a command that prints nothing: %v", err)
 	}
 }

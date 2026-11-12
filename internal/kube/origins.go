@@ -185,6 +185,12 @@ const SealedSecrets = "Sealed Secrets"
 func encrypted(s snapshot.Snapshot) []PlanEncrypted {
 	out := []PlanEncrypted{}
 	sealed, keys, unheld := 0, map[string]bool{}, map[string]bool{}
+	secrets, makes := map[string]bool{}, []string{}
+	for _, o := range s.Objects {
+		if o.Kind() == "Secret" && o.APIVersion() == "v1" {
+			secrets[o.Namespace()+"/"+o.Name()] = true
+		}
+	}
 	for _, o := range s.Objects {
 		group, _, _ := strings.Cut(o.APIVersion(), "/")
 		md, _ := o.Body["metadata"].(map[string]any)
@@ -193,6 +199,9 @@ func encrypted(s snapshot.Snapshot) []PlanEncrypted {
 		switch {
 		case group == "bitnami.com" && o.Kind() == "SealedSecret":
 			sealed++
+			if secrets[o.Namespace()+"/"+o.Name()] {
+				makes = append(makes, o.Namespace()+"/"+o.Name())
+			}
 		case o.Kind() == "Secret" && o.APIVersion() == "v1" && labels["sealedsecrets.bitnami.com/sealed-secrets-key"] != nil:
 			keys[o.Namespace()+"/"+o.Name()] = true
 		case group == "kustomize.toolkit.fluxcd.io" && o.Kind() == "Kustomization":
@@ -200,7 +209,7 @@ func encrypted(s snapshot.Snapshot) []PlanEncrypted {
 			if dec == nil {
 				continue
 			}
-			e := PlanEncrypted{By: "SOPS, read by Flux Kustomization " + o.Namespace() + "/" + o.Name(), Keys: []string{}, KeysNotHeld: []string{}}
+			e := PlanEncrypted{By: "SOPS, read by Flux Kustomization " + o.Namespace() + "/" + o.Name(), Secrets: []string{}, Keys: []string{}, KeysNotHeld: []string{}}
 			if ref, _ := dec["secretRef"].(map[string]any); strOf(ref["name"]) != "" {
 				e.Keys = append(e.Keys, o.Namespace()+"/"+strOf(ref["name"]))
 			}
@@ -218,7 +227,8 @@ func encrypted(s snapshot.Snapshot) []PlanEncrypted {
 		}
 	}
 	if sealed > 0 {
-		e := PlanEncrypted{By: SealedSecrets, Objects: sealed, Keys: make([]string, 0, len(keys)), KeysNotHeld: make([]string, 0, len(unheld))}
+		sort.Strings(makes)
+		e := PlanEncrypted{By: SealedSecrets, Objects: sealed, Secrets: makes, Keys: make([]string, 0, len(keys)), KeysNotHeld: make([]string, 0, len(unheld))}
 		for k := range keys {
 			e.Keys = append(e.Keys, k)
 		}

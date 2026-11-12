@@ -16,7 +16,7 @@ import (
 
 // secretsNeeded are the Secrets of a snapshot that a rebuild has to be
 // given (the plan's by-hand list), and every Secret the snapshot holds.
-func secretsNeeded(s snapshot.Snapshot, p kube.Plan) (needed []sources.Needed, held map[string]bool) {
+func secretsNeeded(s snapshot.Snapshot, p kube.Plan) (needed []sources.Needed, held map[string][]string) {
 	for _, b := range p.ByHand {
 		if len(b.Keys) == 0 {
 			continue // nothing withheld: the restore applies it as it is
@@ -27,10 +27,18 @@ func secretsNeeded(s snapshot.Snapshot, p kube.Plan) (needed []sources.Needed, h
 		}
 		needed = append(needed, sources.Needed{Secret: b.Namespace + "/" + b.Name, Keys: b.Keys, Note: note})
 	}
-	held = map[string]bool{}
+	held = map[string][]string{}
 	for _, o := range s.Objects {
 		if o.Kind() == "Secret" && o.APIVersion() == "v1" {
-			held[o.Namespace()+"/"+o.Name()] = true
+			keys := []string{}
+			for _, field := range []string{"data", "stringData"} {
+				m, _ := o.Body[field].(map[string]any)
+				for k := range m {
+					keys = append(keys, k)
+				}
+			}
+			sort.Strings(keys)
+			held[o.Namespace()+"/"+o.Name()] = keys
 		}
 	}
 	return needed, held
@@ -60,6 +68,8 @@ func planSecrets(ctx context.Context, args []string) int {
 		return fail(fmt.Errorf("plan secrets: --out writes a file to fill in and --check reads one; give one of them"))
 	case *check == "" && (*resolve || *allowExec):
 		return fail(fmt.Errorf("plan secrets: --resolve and --allow-exec are for --check"))
+	case *allowExec && !*resolve:
+		return fail(fmt.Errorf("plan secrets: --allow-exec is for --resolve; a check without it runs nothing"))
 	case *check == "" && jsonOut:
 		return fail(fmt.Errorf("plan secrets: --json is for --check; the file to fill in is YAML"))
 	}
@@ -100,7 +110,7 @@ func planSecrets(ctx context.Context, args []string) int {
 	if *resolve {
 		r := &sources.Resolver{AllowExec: *allowExec}
 		for _, e := range file.Secrets {
-			if !known[e.Secret] {
+			if _, held := known[e.Secret]; !held {
 				continue
 			}
 			for _, k := range sortedKeys(e.From) {
@@ -183,7 +193,7 @@ func withSecretSources(ctx context.Context, snap snapshot.Snapshot, path string,
 	plan := kube.RebuildPlan(snap)
 	needed, known := secretsNeeded(snap, plan)
 	if fromContext {
-		// What the file does not name is read from the other cluster.
+		// A Secret the file does not name is read from the other cluster.
 		needed = nil
 	}
 	if problems, _ := sources.Check(file, needed, known); len(problems) > 0 {
@@ -201,12 +211,17 @@ func withSecretSources(ctx context.Context, snap snapshot.Snapshot, path string,
 				leave[sec] = "the store (" + it.Store + ")"
 			}
 		}
+		for _, e := range plan.Encrypted {
+			for _, sec := range e.Secrets {
+				leave[sec] = e.By
+			}
+		}
 	}
 	values := map[string]map[string][]byte{}
 	r := &sources.Resolver{AllowExec: allowExec}
 	var failed []string
 	for _, e := range file.Secrets {
-		if !known[e.Secret] {
+		if _, held := known[e.Secret]; !held {
 			continue
 		}
 		if e.Leave != "" {

@@ -9,13 +9,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
-	"runtime"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	yaml "go.yaml.in/yaml/v3"
 )
@@ -44,6 +47,7 @@ var schemes = map[string]string{
 	"env":     "env:<NAME>: an environment variable",
 	"file":    "file:<path>: a file's whole content",
 	"exec":    "exec:<command>: a command's output, with --allow-exec",
+	"empty":   "empty: the empty value, for a key that holds nothing",
 }
 
 // Schemes are the kinds of reference, for a message.
@@ -58,8 +62,14 @@ func Schemes() []string {
 
 // scheme splits a reference into its kind and the rest.
 func scheme(ref string) (kind, rest string, err error) {
+	if ref == "empty:" {
+		return "empty", "", nil
+	}
+	if strings.HasPrefix(ref, "file://") {
+		return "", "", fmt.Errorf("a file: reference takes a path (file:/etc/x), not a URL")
+	}
 	for _, sep := range []string{"://", ":"} {
-		if k, r, ok := strings.Cut(ref, sep); ok && schemes[k] != "" {
+		if k, r, ok := strings.Cut(ref, sep); ok && schemes[k] != "" && k != "empty" {
 			if (sep == "://") != (k == "op" || k == "azurekv") {
 				continue
 			}
@@ -85,14 +95,21 @@ func Read(path string) (File, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
 	if err := dec.Decode(&f); err != nil {
-		return f, fmt.Errorf("%s: %w", path, err)
+		if err == io.EOF {
+			return f, fmt.Errorf("%s: is empty; a sources file has a secrets list", path)
+		}
+		return f, fmt.Errorf("%s: %s", path, unechoed(err))
+	}
+	if dec.Decode(new(any)) != io.EOF {
+		return f, fmt.Errorf("%s: holds more than one YAML document; only one is read, so the rest would be ignored", path)
 	}
 	seen := map[string]bool{}
-	for _, e := range f.Secrets {
+	for i, e := range f.Secrets {
 		ns, name, ok := strings.Cut(e.Secret, "/")
 		switch {
-		case !ok || ns == "" || name == "" || strings.Contains(name, "/"):
-			return f, fmt.Errorf("%s: secret %q is not namespace/name", path, e.Secret)
+		case !ok || ns == "" || name == "" || strings.ContainsAny(e.Secret, "*\n\r") || strings.Contains(name, "/"):
+			// By its place: what is there may not be a name at all.
+			return f, fmt.Errorf("%s: entry %d: secret is not namespace/name", path, i+1)
 		case seen[e.Secret]:
 			return f, fmt.Errorf("%s: %s is listed twice", path, e.Secret)
 		case e.Leave != "" && len(e.From) > 0:
@@ -102,6 +119,9 @@ func Read(path string) (File, error) {
 		}
 		seen[e.Secret] = true
 		for key, ref := range e.From {
+			if key == "" {
+				return f, fmt.Errorf("%s: %s has a reference for a key with no name", path, e.Secret)
+			}
 			if ref == "" {
 				continue
 			}
@@ -111,6 +131,38 @@ func Read(path string) (File, error) {
 		}
 	}
 	return f, nil
+}
+
+// lineOf finds where yaml says an error is.
+var lineOf = regexp.MustCompile(`line \d+`)
+
+// unknownField is the one kind of type error that repeats a field's name
+// and never its content.
+var unknownField = regexp.MustCompile(`^line \d+: field \S+ not found`)
+
+// unechoed is a YAML error without what the file holds: yaml quotes the
+// text it could not read as the type wanted, and that text may be a value
+// put where a reference goes.
+func unechoed(err error) string {
+	var te *yaml.TypeError
+	if !errors.As(err, &te) {
+		if l := lineOf.FindString(err.Error()); l != "" {
+			return l + ": not YAML this can read"
+		}
+		return "not YAML this can read"
+	}
+	var out []string
+	for _, e := range te.Errors {
+		switch {
+		case unknownField.MatchString(e):
+			out = append(out, unknownField.FindString(e)+" in a sources file (secret, from, leave)")
+		case lineOf.MatchString(e):
+			out = append(out, lineOf.FindString(e)+": not what a sources file has there (a secrets list; in each, secret, and from as key: reference, or leave)")
+		default:
+			out = append(out, "not what a sources file has")
+		}
+	}
+	return strings.Join(out, "; ")
 }
 
 // Entry returns the entry for a Secret, if the file has one.
@@ -147,8 +199,20 @@ func Skeleton(needed []Needed) []byte {
 	}
 	b.WriteString("secrets:\n")
 	for _, n := range needed {
+		if len(n.Keys) == 0 {
+			continue // nothing withheld: nothing to give a source
+		}
 		if n.Note != "" {
-			b.WriteString("  # " + strings.ReplaceAll(n.Note, "\n", " ") + "\n")
+			// One line whatever it holds: a note is made of what the
+			// cluster's objects say, and a line break in one would end the
+			// comment and begin an entry of its author's.
+			note := strings.Map(func(r rune) rune {
+				if unicode.IsControl(r) || r == '\u0085' || r == '\u2028' || r == '\u2029' {
+					return ' '
+				}
+				return r
+			}, n.Note)
+			b.WriteString("  # " + note + "\n")
 		}
 		q, _ := json.Marshal(n.Secret)
 		b.WriteString("  - secret: " + string(q) + "\n    from:\n")
@@ -156,40 +220,42 @@ func Skeleton(needed []Needed) []byte {
 			q, _ := json.Marshal(k)
 			b.WriteString("      " + string(q) + ": \"\"\n")
 		}
-		if len(n.Keys) == 0 {
-			b.WriteString("      {}\n")
-		}
 	}
 	return []byte(b.String())
 }
 
 // Check says where the file does not cover what is needed: a Secret with
-// no entry, a key with no reference, a key the Secret does not have. known
-// are the other Secrets of the snapshot, which an entry may name. The
-// second list is of what is not wrong and worth saying: an entry for a
-// Secret the snapshot does not hold.
-func Check(f File, needed []Needed, known map[string]bool) (problems, notes []string) {
-	need := map[string]Needed{}
+// no entry, a key with no reference, a key the Secret does not have. held
+// are the Secrets of the snapshot and the keys each has withheld: an entry
+// may name one that is not needed (to give a value to what a controller
+// would make), and then has to give every key, as a restore takes a
+// Secret's values from one place. The second list is of what is not wrong
+// and worth saying: an entry for a Secret the snapshot does not hold.
+func Check(f File, needed []Needed, held map[string][]string) (problems, notes []string) {
+	need := map[string]bool{}
 	for _, n := range needed {
-		need[n.Secret] = n
-		e, ok := f.Entry(n.Secret)
-		if !ok {
+		need[n.Secret] = true
+		if _, ok := f.Entry(n.Secret); !ok {
 			problems = append(problems, n.Secret+": no entry; the rebuild has no source for it")
+		}
+	}
+	for _, e := range f.Secrets {
+		keys, ok := held[e.Secret]
+		if !ok {
+			notes = append(notes, e.Secret+": not a Secret in the snapshot; the entry is not used")
 			continue
 		}
 		if e.Leave != "" {
 			continue
 		}
-		for _, k := range n.Keys {
-			if ref, ok := e.From[k]; !ok {
-				problems = append(problems, n.Secret+": key "+k+" has no reference")
-			} else if ref == "" {
-				problems = append(problems, n.Secret+": the reference for key "+k+" is empty")
-			}
-		}
 		has := map[string]bool{}
-		for _, k := range n.Keys {
+		for _, k := range keys {
 			has[k] = true
+			if ref, ok := e.From[k]; !ok {
+				problems = append(problems, e.Secret+": key "+k+" has no reference")
+			} else if ref == "" {
+				problems = append(problems, e.Secret+": the reference for key "+k+" is empty")
+			}
 		}
 		extra := []string{}
 		for k := range e.From {
@@ -199,26 +265,7 @@ func Check(f File, needed []Needed, known map[string]bool) (problems, notes []st
 		}
 		sort.Strings(extra)
 		for _, k := range extra {
-			problems = append(problems, n.Secret+": names key "+k+", which the Secret in the snapshot does not have")
-		}
-	}
-	for _, e := range f.Secrets {
-		if _, ok := need[e.Secret]; ok {
-			continue
-		}
-		if !known[e.Secret] {
-			notes = append(notes, e.Secret+": not a Secret in the snapshot; the entry is not used")
-			continue
-		}
-		keys := make([]string, 0, len(e.From))
-		for k := range e.From {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			if e.From[k] == "" {
-				problems = append(problems, e.Secret+": the reference for key "+k+" is empty")
-			}
+			problems = append(problems, e.Secret+": names key "+k+", which the Secret in the snapshot does not have")
 		}
 	}
 	return problems, notes
@@ -239,17 +286,27 @@ type Resolver struct {
 const timeout = 2 * time.Minute
 
 func run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	return runFor(ctx, timeout, name, args...)
+}
+
+func runFor(ctx context.Context, limit time.Duration, name string, args ...string) ([]byte, []byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
+	// With what it started: a pipeline's other commands hold its output
+	// open, and killing the shell alone left the read waiting for them.
+	wholeGroup(cmd)
+	cmd.WaitDelay = 2 * time.Second
 	err := cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
-		err = fmt.Errorf("gave no answer in %s", timeout)
+		return nil, nil, fmt.Errorf("%w in %s", errNoAnswer, limit)
 	}
 	return out.Bytes(), errb.Bytes(), err
 }
+
+var errNoAnswer = errors.New("gave no answer")
 
 // Resolve reads the value. An error names the reference and never holds
 // any of what was read.
@@ -265,7 +322,7 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 	if exe == nil {
 		exe = run
 	}
-	var v []byte
+	v := []byte{}
 	switch kind {
 	case "env":
 		s, ok := os.LookupEnv(rest)
@@ -307,11 +364,7 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 		if !r.AllowExec {
 			return nil, fmt.Errorf("%s: an exec: reference runs a command, and is read only with --allow-exec", execShown(ref))
 		}
-		sh, flag := "sh", "-c"
-		if runtime.GOOS == "windows" {
-			sh, flag = "cmd", "/C"
-		}
-		out, _, err := exe(ctx, sh, flag, rest)
+		out, _, err := exe(ctx, shell, shellFlag, rest)
 		if err != nil {
 			// Not its stderr: a command of the user's own may print what
 			// it read.
@@ -321,8 +374,8 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 		out = bytes.TrimSuffix(out, []byte("\n"))
 		v = bytes.TrimSuffix(out, []byte("\r"))
 	}
-	if len(v) == 0 {
-		return nil, fmt.Errorf("%s: read, and empty", execShown(ref))
+	if len(v) == 0 && kind != "empty" {
+		return nil, fmt.Errorf("%s: read, and empty (a key that holds nothing is given  empty:)", execShown(ref))
 	}
 	if r.cache == nil {
 		r.cache = map[string][]byte{}
@@ -331,14 +384,12 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 	return v, nil
 }
 
-// execShown is a reference for a message: a command is shown to its first
-// word, as its arguments may be credentials of their own.
+// execShown is a reference for a message. A command is not shown at all:
+// any part of it may be a credential of its own, and the message names
+// the Secret and the key it is for.
 func execShown(ref string) string {
-	if rest, ok := strings.CutPrefix(ref, "exec:"); ok {
-		word, _, more := strings.Cut(strings.TrimSpace(rest), " ")
-		if more {
-			return "exec:" + word + " …"
-		}
+	if strings.HasPrefix(ref, "exec:") {
+		return "exec: (the command is not shown)"
 	}
 	return ref
 }
@@ -349,9 +400,12 @@ func failed(ref, cli string, err error, stderr []byte) error {
 	if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
 		return fmt.Errorf("%s: the %s CLI is not installed or not on the PATH", ref, cli)
 	}
+	if errors.Is(err, errNoAnswer) {
+		return fmt.Errorf("%s: %s %v; is it signed in?", ref, cli, err)
+	}
 	line, _, _ := strings.Cut(strings.TrimSpace(string(stderr)), "\n")
-	if len(line) > 200 {
-		line = line[:200] + "…"
+	if r := []rune(line); len(r) > 200 {
+		line = string(r[:200]) + "…"
 	}
 	if line == "" {
 		line = err.Error()

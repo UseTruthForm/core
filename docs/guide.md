@@ -84,6 +84,15 @@ A snapshot directory holds `objects/` (one YAML file per resource),
 the same one). **REPORT.md** beside it says, in plain words, what was
 captured, what was not and why, and what a restore will need.
 
+What a GitOps source renders (a Flux HelmRelease or Kustomization, an Argo
+CD application, a Crossplane composite) is left to its source: restoring
+the source recreates it, and `--capture-rendered` keeps it anyway. Where
+GitOps starts is captured, since nothing else recreates it: the Flux
+Kustomization that applies itself (the one `flux bootstrap` makes) with
+the repository object it reads from, and an Argo CD application that
+manages itself. That is the repository, branch and path the cluster was
+built from. The credential to read it is a Secret, named and never held.
+
 What a snapshot does not hold, by design:
 
 - **data**: S3 objects, blobs, database rows, queue messages, volume
@@ -379,11 +388,14 @@ document goes to stdout; `--out` is for the Markdown.
 
 1. **Install first.** What the capture left to a GitOps source (a Flux
    HelmRelease or Kustomization, an Argo CD application, a Crossplane
-   composite) that is not itself in the snapshot, with how many objects
-   each makes. The plan names the Flux repository objects the snapshot
-   holds, or says that where the sources are read from is not in it: the
-   repository, branch, path and its credential then come from your own
-   records.
+   composite), with how many objects each makes. Sources the snapshot
+   holds, and those they apply, are named apart: they are applied again
+   once the GitOps tool's own controllers are installed and the snapshot
+   is restored. The rest are to install by hand; one that makes objects
+   only in system namespaces is marked, as the cluster's platform may
+   install it itself. The plan names the Flux repository objects the
+   snapshot holds, or says that where the sources are read from is not in
+   it.
 2. **APIs to have served.** Types the snapshot has objects of and no
    CustomResourceDefinition for, by API group. The restore refuses those
    objects until something serves the type, usually an operator that
@@ -407,8 +419,6 @@ document goes to stdout; `--out` is for the Markdown.
 
 What it cannot see:
 
-- **A source that makes objects only in a system namespace.** The capture
-  leaves those namespaces out before it looks at who made what.
 - **Who uses a Secret**, when the user is something step 1 installs (an
   operator's own credential usually is), or an object with no namespace
   that names the Secret without one (a `ClusterIssuer`).

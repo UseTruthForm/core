@@ -69,7 +69,7 @@ func planMarkdown(p kube.Plan) string {
 	w("# Rebuild plan\n\n")
 	w("What rebuilding a cluster from this snapshot needs that the snapshot does not hold. Read from the snapshot alone: nothing was contacted, and no secret value is in it or here.\n\n")
 	w("| Step | | |\n|---|---|---:|\n")
-	w("| 1 | Install what a GitOps source makes | %d sources |\n", len(p.Sources))
+	w("| 1 | Install what a GitOps source makes | %d sources by hand, %d follow |\n", len(p.Sources), len(p.Follows))
 	w("| 2 | Have these APIs served before the restore | %d groups |\n", len(p.Operators))
 	w("| 3 | Supply by hand the secrets no store holds | %d secrets |\n", len(p.ByHand))
 	w("| 4 | Make the secret store reachable | %d items feed %d secrets |\n", len(p.FromStore), fromStore)
@@ -77,20 +77,32 @@ func planMarkdown(p kube.Plan) string {
 	w("| 6 | Point the names at the rebuilt cluster | %d hosts |\n\n", len(p.Hosts))
 
 	w("## 1. Install first: %d sources\n\n", len(p.Sources))
+	if len(p.Follows) > 0 {
+		made := 0
+		names := make([]string, len(p.Follows))
+		for i, s := range p.Follows {
+			made += s.Objects
+			names[i] = s.Kind + " " + code(s.Name)
+		}
+		w("**Applied again by the snapshot's own sources: %d sources, %d objects.** The snapshot holds where GitOps starts. Install the GitOps tool's own controllers, restore, and it applies these: %s.\n\n", len(p.Follows), made, strings.Join(names, ", "))
+	}
 	if len(p.Sources) == 0 {
-		w("The capture left nothing to a GitOps source that is not itself in the snapshot.\n\n")
+		w("Nothing else: the capture left nothing to a GitOps source that the snapshot's own sources do not apply.\n\n")
 	} else {
 		w("The capture left these out because their source recreates them. The snapshot holds neither the source nor what it makes.\n\n")
-		w("| Source | Objects it makes |\n|---|---:|\n")
+		w("| Source | Objects it makes | |\n|---|---:|---|\n")
 		for _, s := range p.Sources {
-			w("| %s %s | %d |\n", s.Kind, code(s.Name), s.Objects)
+			note := ""
+			if s.SystemOnly {
+				note = "only in system namespaces: the cluster's platform may install it itself"
+			}
+			w("| %s %s | %d | %s |\n", s.Kind, code(s.Name), s.Objects, note)
 		}
 		if len(p.Origins) > 0 {
 			w("\nThe snapshot holds these repository objects: %s. Check that they are where the sources above are read from.\n\n", md(strings.Join(p.Origins, ", ")))
 		} else {
 			w("\n**Not in the snapshot: where they are read from.** The repository, branch and path the cluster was bootstrapped from, and the credential to read them, have to come from your own records.\n\n")
 		}
-		w("A source that makes objects only in a system namespace is not listed: the capture leaves those namespaces out before it looks at who made what.\n\n")
 	}
 
 	w("## 2. APIs to have served: %d groups\n\n", len(p.Operators))

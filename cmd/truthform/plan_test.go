@@ -52,7 +52,7 @@ func TestPlanRebuildCommand(t *testing.T) {
 		"# Rebuild plan",
 		"| 4 | Make the secret store reachable | 2 items feed 2 secrets |",
 		"## 1. Install first: 1 sources",
-		"| Flux HelmRelease `ingress/proxy` | 1 |",
+		"| Flux HelmRelease `ingress/proxy` | 1 |  |",
 		"**Not in the snapshot: where they are read from.**",
 		"## 2. APIs to have served: 1 groups",
 		"| `onepassword.com` | 2 OnePasswordItem |",

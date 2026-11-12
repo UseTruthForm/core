@@ -512,7 +512,7 @@ func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *
 	sortSets(desired, map[string]any{"properties": t.Properties}, t.Definitions)
 	ops, replace := planUpdate(t, live, desired)
 	if len(replace) > 0 {
-		return false, "differs in " + strings.Join(replace, ", ") + ", which AWS can only change by replacing the resource; Truthform does not replace resources"
+		return false, "differs in " + strings.Join(replace, ", ") + ", which AWS can only change by replacing the resource; TruthForm does not replace resources"
 	}
 	if len(ops) == 0 {
 		return true, "already present; it differs only in how references are named"

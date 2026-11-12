@@ -55,7 +55,7 @@ jobs:
           TRUTHFORM_CLOUDFLARE_CLIENT_ID: ${{ vars.TRUTHFORM_CLOUDFLARE_CLIENT_ID }}
       - run: bash scripts/build-release.sh "$GITHUB_REF_NAME"
         env:
-          # Truthform's Cloudflare OAuth client: public, not a secret, kept
+          # TruthForm's Cloudflare OAuth client: public, not a secret, kept
           # out of the source. Unset, the build signs in to Cloudflare by
           # token only.
           TRUTHFORM_CLOUDFLARE_CLIENT_ID: ${{ vars.TRUTHFORM_CLOUDFLARE_CLIENT_ID }}
@@ -66,4 +66,4 @@ jobs:
           pre=""
           case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.tar.gz dist/SHA256SUMS \
-            --draft $pre --verify-tag --title "Truthform $GITHUB_REF_NAME" --generate-notes
+            --draft $pre --verify-tag --title "TruthForm $GITHUB_REF_NAME" --generate-notes

@@ -25,7 +25,7 @@ import (
 // It returns the renamed snapshot, and a warning for each object whose spec
 // still mentions an old name as text outside an ID or a reference (a host
 // name such as name.blob.core.windows.net): those are not changed, since
-// what such text means is the resource's, not Truthform's, to know.
+// what such text means is the resource's, not TruthForm's, to know.
 func Rename(s snapshot.Snapshot, names map[string]string) (snapshot.Snapshot, []string, error) {
 	if len(names) == 0 {
 		return s, nil, nil

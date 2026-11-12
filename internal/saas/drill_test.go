@@ -46,7 +46,7 @@ func TestGitHubDrill(t *testing.T) {
 	gitHub(src)
 	gitHub(dst)
 	// The description names the organisation in prose; it must survive
-	// unchanged (the Truthform organisation's repositories do this).
+	// unchanged (the TruthForm organisation's repositories do this).
 	src.seed(t, "/orgs/acme-src/repos", map[string]any{"name": "shop", "description": "acme-src shop: the storefront", "private": true, "has_wiki": false,
 		"homepage": "https://github.com/acme-src/shop"})
 	src.seed(t, "/repos/acme-src/shop/labels", map[string]any{"name": "priority", "color": "ff0000", "description": "do first"})

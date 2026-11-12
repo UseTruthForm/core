@@ -206,8 +206,8 @@ func TestRebuildPlan(t *testing.T) {
 		},
 		// shop/multi is made from three items and counts once.
 		StoreSecrets: 8,
-		Origins:      []string{},
-		Hosts:        []string{"gw.example.com", "old.example.com", "quoted.example.com", "shop.example.com", "www.example.com"},
+		Origins:      []string{}, OriginsWithheld: []string{},
+		Hosts: []string{"gw.example.com", "old.example.com", "quoted.example.com", "shop.example.com", "www.example.com"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("plan:\n got %+v\nwant %+v", got, want)
@@ -404,5 +404,50 @@ func TestSecretOrigins(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Encrypted, wantEncrypted) {
 		t.Errorf("encrypted:\n got %+v\nwant %+v", got.Encrypted, wantEncrypted)
+	}
+}
+
+// An Argo CD application outside Argo CD's namespace is named
+// namespace_name by what it makes: one the snapshot's root applies
+// follows, and is not installed by hand. A bare name that applications in
+// two namespaces share is not taken as held.
+func TestRebuildPlanArgoApplicationsByNamespace(t *testing.T) {
+	argo := func(app string) string {
+		return renderedBy(map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": app}})
+	}
+	app := func(ns, name string) snapshot.Object {
+		return planObject("argoproj.io/v1alpha1", "Application", ns, name, nil)
+	}
+	p := RebuildPlan(snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{app("argocd", "root")}, Skips: []snapshot.Skip{
+		{Resource: "argoproj.io/v1alpha1/applications", Namespace: "team", Name: "web", Reason: argo("root")},
+		{Resource: "deployments", Namespace: "shop", Name: "web", Reason: argo("team_web")},
+	}})
+	if len(p.Sources) != 0 || len(p.Follows) != 2 {
+		t.Errorf("a child application outside Argo CD's namespace: by hand %v, follow %v", p.Sources, p.Follows)
+	}
+
+	p = RebuildPlan(snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{app("team-a", "web"), app("team-b", "web")}, Skips: []snapshot.Skip{
+		{Resource: "deployments", Namespace: "shop", Name: "web", Reason: argo("web")},
+		{Resource: "deployments", Namespace: "shop", Name: "api", Reason: argo("team-a_web")},
+	}})
+	if len(p.Sources) != 1 || p.Sources[0].Name != "web" || len(p.Follows) != 1 || p.Follows[0].Name != "team-a_web" {
+		t.Errorf("a bare name two applications share: by hand %v, follow %v", p.Sources, p.Follows)
+	}
+}
+
+// A repository whose address was withheld is in the snapshot without
+// where it reads from, and the plan says which.
+func TestRebuildPlanSaysAnOriginsAddressWasWithheld(t *testing.T) {
+	repo := func(name, url string) snapshot.Object {
+		body := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
+			"metadata": map[string]any{"name": name, "namespace": "flux-system"}, "spec": map[string]any{"url": url}}
+		normalize("source.toolkit.fluxcd.io", "gitrepositories", body)
+		return snapshot.Object{Body: body}
+	}
+	p := RebuildPlan(snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		repo("fleet", "https://tok3n@example.com/o/fleet"), repo("open", "https://example.com/o/open"),
+	}})
+	if len(p.Origins) != 2 || len(p.OriginsWithheld) != 1 || p.OriginsWithheld[0] != "GitRepository flux-system/fleet" {
+		t.Errorf("origins %v, withheld %v", p.Origins, p.OriginsWithheld)
 	}
 }

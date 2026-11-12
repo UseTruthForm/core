@@ -1,4 +1,4 @@
-// Package onboard says what to grant Truthform on a platform and how, as
+// Package onboard says what to grant TruthForm on a platform and how, as
 // files to deploy and commands to run, with the customer's own values
 // filled in.
 //
@@ -46,7 +46,7 @@ type Request struct {
 
 	// aws
 	Account       string // aws: the account the role goes in; github: the organisation; cloudflare: the account ID
-	Principal     string // the IAM user or role that runs Truthform
+	Principal     string // the IAM user or role that runs TruthForm
 	ExternalID    string
 	Region        string // where the CloudFormation stack lives (IAM is global)
 	SourceProfile string // the shared-config profile of Principal, to set up a profile for the role
@@ -276,7 +276,7 @@ func render(name string, data any) ([]byte, error) {
 func (p Plan) Text() string {
 	var b strings.Builder
 	w := func(f string, a ...any) { fmt.Fprintf(&b, f, a...) }
-	w("Truthform %s access on %s\n\n", p.Access, p.Platform)
+	w("TruthForm %s access on %s\n\n", p.Access, p.Platform)
 	if len(p.Warnings) > 0 {
 		w("WARNINGS\n")
 		for _, x := range p.Warnings {

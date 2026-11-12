@@ -347,6 +347,10 @@ func TestAKSOwnInASystemNamespaceIsNotASource(t *testing.T) {
 	if r := (Policy{}).skipReason("apps", "deployments", o); r != "in system namespace kube-system" {
 		t.Errorf("reason %q", r)
 	}
+	// Asked for the system namespaces too, it is a source like another.
+	if r := (Policy{IncludeSystem: true}).skipReason("apps", "deployments", o); !strings.Contains(r, "Flux HelmRelease abc123/adapter") {
+		t.Errorf("--include-system: reason %q does not name the HelmRelease", r)
+	}
 	elsewhere := k8sObj("Deployment", "addons", "adapter", md, nil)
 	if r := (Policy{}).skipReason("apps", "deployments", elsewhere); !strings.Contains(r, "installed and upgraded by AKS itself") {
 		t.Errorf("outside a system namespace: reason %q", r)
@@ -637,5 +641,118 @@ func TestAKSLabelIsAFactEvenWhenEnoAppliedIt(t *testing.T) {
 	obj := k8sObj("ValidatingAdmissionPolicy", "", "aks-managed-x", md, nil)
 	if r := (Policy{}).skipReason("admissionregistration.k8s.io", "validatingadmissionpolicies", obj); strings.HasPrefix(r, TakenAsPlatform) || !strings.Contains(r, "upgraded by AKS") {
 		t.Errorf("reason %q", r)
+	}
+}
+
+// A URL that signs in is withheld however it does: with a password, with
+// a token and no password, with a password that has a slash in it. One
+// that does not is kept.
+func TestURLCredential(t *testing.T) {
+	for url, want := range map[string]bool{
+		"https://git:s3cr3t@example.com/o/fleet.git":   true,
+		"https://ghp_s3cr3ttoken@github.com/org/fleet": true, // a token and no password
+		"postgres://app:pa/ss@db:5432/shop":            true, // a slash in the password
+		"redis://:s3cr3t@cache:6379":                   true,
+		"https://org@dev.example.com/org/_git/fleet":   true, // nothing tells a name from a token
+		"ssh://git@example.com/o/fleet.git":            false,
+		"git+ssh://git@example.com/o/fleet.git":        false,
+		"https://example.com/o/fleet.git":              false,
+		"https://registry.example.com:443/@scope/pkg":  false, // a port, and an @ in the path
+		"https://example.com/a:b@c":                    false,
+		"git@example.com:o/fleet.git":                  false,
+		"oci://registry.example.com/charts":            false,
+	} {
+		if got := urlCredential(url); got != want {
+			t.Errorf("urlCredential(%q) = %v, want %v", url, got, want)
+		}
+	}
+	repo := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
+		"metadata": map[string]any{"name": "fleet", "namespace": "flux-system"},
+		"spec":     map[string]any{"url": "https://ghp_s3cr3ttoken@github.com/org/fleet"}}
+	normalize("source.toolkit.fluxcd.io", "gitrepositories", repo)
+	if b, _ := json.Marshal(repo); strings.Contains(string(b), "s3cr3t") {
+		t.Errorf("the token is in the snapshot: %s", b)
+	}
+}
+
+// What a GitOps source is told to install with is read for credentials
+// wherever its API lets one be written, and what only names a Secret is
+// kept.
+func TestWithholdsCredentialsInHelmValues(t *testing.T) {
+	withheld := func(o map[string]any) string {
+		return annotation(o["metadata"].(map[string]any), WithheldEnvAnnotation)
+	}
+	app := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Application",
+		"metadata": map[string]any{"name": "shop", "namespace": "argocd"},
+		"spec": map[string]any{"source": map[string]any{
+			"repoURL": "https://example.com/o/apps.git",
+			"helm": map[string]any{
+				"parameters": []any{
+					map[string]any{"name": "auth.token", "value": "s3cr3t-1"},
+					map[string]any{"name": "db.password", "value": "s3cr3t-2"},
+					map[string]any{"name": "auth.existingSecret", "value": "kept-name"},
+					map[string]any{"name": "replicas", "value": "2"},
+				},
+				"values": "db:\n  password: s3cr3t-3\nreplicas: 2\n",
+				"valuesObject": map[string]any{
+					"db":       map[string]any{"password": "s3cr3t-4", "host": "kept-host"},
+					"apiKey":   "s3cr3t-5",
+					"token":    []any{"s3cr3t-6"},
+					"auth":     map[string]any{"existingSecret": "kept-secret-name", "secretKeyRef": map[string]any{"name": "kept-ref", "key": "kept-key"}},
+					"extraEnv": map[string]any{"env": []any{map[string]any{"name": "API_TOKEN", "value": "s3cr3t-7"}}},
+				},
+			},
+			"plugin": map[string]any{"parameters": []any{
+				map[string]any{"name": "db_password", "string": "s3cr3t-8"},
+				map[string]any{"name": "settings", "map": map[string]any{"client-secret": "s3cr3t-9", "region": "kept-region"}},
+			}},
+		}}}
+	normalize("argoproj.io", "applications", app)
+	b, _ := json.Marshal(app)
+	if strings.Contains(string(b), "s3cr3t") {
+		t.Errorf("a credential is in the snapshot: %s", b)
+	}
+	for _, kept := range []string{"kept-name", "kept-host", "kept-secret-name", "kept-ref", "kept-key", "kept-region", `"value":"2"`} {
+		if !strings.Contains(string(b), kept) {
+			t.Errorf("%s was withheld: %s", kept, b)
+		}
+	}
+	want := "spec.source.helm.parameters[auth.token],spec.source.helm.parameters[db.password],spec.source.helm.values," +
+		"spec.source.helm.valuesObject.apiKey,spec.source.helm.valuesObject.db.password,spec.source.helm.valuesObject.extraEnv.env[API_TOKEN],spec.source.helm.valuesObject.token[0]," +
+		"spec.source.plugin.parameters[db_password],spec.source.plugin.parameters[settings].map.client-secret"
+	if got := withheld(app); got != want {
+		t.Errorf("withheld\n %s\nwant\n %s", got, want)
+	}
+
+	// Values as text with no credential in them are kept as they are.
+	plain := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Application", "metadata": map[string]any{"name": "p", "namespace": "argocd"},
+		"spec": map[string]any{"source": map[string]any{"helm": map[string]any{"values": "replicas: 2\nimage:\n  tag: v1\n"}}}}
+	normalize("argoproj.io", "applications", plain)
+	if got := withheld(plain); got != "" {
+		t.Errorf("values with no credential withheld: %q", got)
+	}
+
+	release := map[string]any{"apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "metadata": map[string]any{"name": "shop", "namespace": "shop"},
+		"spec": map[string]any{"interval": "5m", "values": map[string]any{"adminPassword": "s3cr3t-10", "auth": map[string]any{"token": "s3cr3t-11"}, "replicas": "kept-2"}}}
+	normalize("helm.toolkit.fluxcd.io", "helmreleases", release)
+	if got := withheld(release); got != "spec.values.adminPassword,spec.values.auth.token" {
+		t.Errorf("HelmRelease withheld %q", got)
+	}
+
+	// Only an application's parameters are name and value: a workflow's
+	// are its inputs.
+	wf := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "WorkflowTemplate", "metadata": map[string]any{"name": "w", "namespace": "x"},
+		"spec": map[string]any{"arguments": map[string]any{"parameters": []any{map[string]any{"name": "key", "value": "kept-input"}}}}}
+	normalize("argoproj.io", "workflowtemplates", wf)
+	if got := withheld(wf); got != "" {
+		t.Errorf("a workflow's parameter withheld: %q", got)
+	}
+
+	// A ConfigMap's key is one slot, under one name.
+	cm := map[string]any{"apiVersion": "v1", "kind": "ConfigMap", "metadata": map[string]any{"name": "c", "namespace": "x"},
+		"data": map[string]any{"url": "https://u:s3cr3t@example.com"}}
+	normalize("", "configmaps", cm)
+	if got := withheld(cm); got != "data[url]" {
+		t.Errorf("ConfigMap withheld %q, want data[url]", got)
 	}
 }

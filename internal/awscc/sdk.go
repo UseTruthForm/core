@@ -201,7 +201,7 @@ func classify(err error) error {
 	return err
 }
 
-// The reasons a list fails because of the account rather than Truthform are
+// The reasons a list fails because of the account rather than TruthForm are
 // only in the handlers' messages; there is no error code for them. These
 // patterns come from the full us-east-2 capture (2026-10-21). Anything they
 // do not match stays a failure, so a new message is loud, not hidden.

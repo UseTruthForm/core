@@ -1,6 +1,6 @@
 # Permissions
 
-What to grant Truthform on each platform. A capture only reads; for it,
+What to grant TruthForm on each platform. A capture only reads; for it,
 grant a read-only role and use the capture-only binary, which cannot send
 a write whatever it is given. A restore creates and changes resources, so
 it needs write access; grant that separately, for the restore only.
@@ -24,20 +24,20 @@ reported as **denied**, never as empty:
 truthform check --platform aws --region us-east-1 --profile truthform-reader
 ```
 
-Each line says whether it was **verified** (Truthform ran with exactly that
+Each line says whether it was **verified** (TruthForm ran with exactly that
 access) or is **expected** (from the platform's documentation and the
-calls Truthform makes, not yet run with exactly that access).
+calls TruthForm makes, not yet run with exactly that access).
 
 ## AWS
 
-Truthform reads and writes through Cloud Control, which calls each service
-on Truthform's behalf with the caller's own permissions. So a role needs
+TruthForm reads and writes through Cloud Control, which calls each service
+on TruthForm's behalf with the caller's own permissions. So a role needs
 Cloud Control's actions **and** the read (or write) actions of every
 service whose types are captured.
 
 | Use | Grant | Status |
 |---|---|---|
-| Capture, diff | The managed policy `ReadOnlyAccess`, **plus Truthform's read add-on**. `ReadOnlyAccess` covers most services' `Describe*`/`Get*`/`List*` but not every newer service's. The add-on is the reads the CloudFormation registry's list and read handlers name that `ReadOnlyAccess` (v190) lacks: 527 actions in three customer managed policies. A schema naming an action is not enough to grant it, because some reads return secrets that `ReadOnlyAccess` leaves out on purpose (`ivs:GetStreamKey`, `glue:GetConnection`). Each action must be named as a read; not be named like a secret or data read; not be on a reviewed deny list; not be marked by AWS's Service Reference as data plane or a write (except a short reviewed list of reads AWS files under permissions or tagging); and have no output field that AWS's API models mark sensitive and that is named like a secret (a password, credential, token, key value, URL). Wildcards are expanded to concrete actions. Actions no source could vouch for, and actions `ReadOnlyAccess` leaves out of a service it otherwise covers, are kept but listed in the file for review. Truthform generates it from AWS's public sources only, with no AWS credentials, regenerates it weekly, and reviews each change before it ships; `truthform permissions` puts it in the role. `ReadOnlyAccess` itself also reads data (S3 objects, DynamoDB items). | **Verified** (2026-10-24), same account: the role from `truthform permissions` captured us-east-2 of the sandbox with the same 97 resources as an identity holding `ReadOnlyAccess` and `PowerUserAccess` (no differences), and was refused 2 of 1,161 types, both on purpose: `AWS::Bedrock::Session` (data plane) and `AWS::BedrockAgentCore::PaymentCredentialProvider` (credentials); a capture reports them as refused, not empty. No sampled write was allowed. With `ReadOnlyAccess` alone it was refused 87 types. The add-on is generated from the us-east-1 and us-east-2 registries; the capture proof is us-east-2 only. The sandbox holds few resources, so that count is a floor: about 37 types need a refused action in their *list* handler (`AWS::Glue::Connection`, `AWS::SecretsManager::SecretTargetAttachment`, `AWS::DataZone::Connection` among them), and an account using those services sees them refused too, reported as such. Kept on purpose, as configuration: reads that return contact details within a resource's settings (B2B Data Interchange profiles, Chime app instance users, Oracle Database@AWS contacts, invoice contacts) and Wisdom quick responses; a few outputs are free-form documents the models cannot look inside (Control Tower landing zone manifests and control parameters). A trust from another account is not yet verified. |
+| Capture, diff | The managed policy `ReadOnlyAccess`, **plus TruthForm's read add-on**. `ReadOnlyAccess` covers most services' `Describe*`/`Get*`/`List*` but not every newer service's. The add-on is the reads the CloudFormation registry's list and read handlers name that `ReadOnlyAccess` (v190) lacks: 527 actions in three customer managed policies. A schema naming an action is not enough to grant it, because some reads return secrets that `ReadOnlyAccess` leaves out on purpose (`ivs:GetStreamKey`, `glue:GetConnection`). Each action must be named as a read; not be named like a secret or data read; not be on a reviewed deny list; not be marked by AWS's Service Reference as data plane or a write (except a short reviewed list of reads AWS files under permissions or tagging); and have no output field that AWS's API models mark sensitive and that is named like a secret (a password, credential, token, key value, URL). Wildcards are expanded to concrete actions. Actions no source could vouch for, and actions `ReadOnlyAccess` leaves out of a service it otherwise covers, are kept but listed in the file for review. TruthForm generates it from AWS's public sources only, with no AWS credentials, regenerates it weekly, and reviews each change before it ships; `truthform permissions` puts it in the role. `ReadOnlyAccess` itself also reads data (S3 objects, DynamoDB items). | **Verified** (2026-10-24), same account: the role from `truthform permissions` captured us-east-2 of the sandbox with the same 97 resources as an identity holding `ReadOnlyAccess` and `PowerUserAccess` (no differences), and was refused 2 of 1,161 types, both on purpose: `AWS::Bedrock::Session` (data plane) and `AWS::BedrockAgentCore::PaymentCredentialProvider` (credentials); a capture reports them as refused, not empty. No sampled write was allowed. With `ReadOnlyAccess` alone it was refused 87 types. The add-on is generated from the us-east-1 and us-east-2 registries; the capture proof is us-east-2 only. The sandbox holds few resources, so that count is a floor: about 37 types need a refused action in their *list* handler (`AWS::Glue::Connection`, `AWS::SecretsManager::SecretTargetAttachment`, `AWS::DataZone::Connection` among them), and an account using those services sees them refused too, reported as such. Kept on purpose, as configuration: reads that return contact details within a resource's settings (B2B Data Interchange profiles, Chime app instance users, Oracle Database@AWS contacts, invoice contacts) and Wisdom quick responses; a few outputs are free-form documents the models cannot look inside (Control Tower landing zone manifests and control parameters). A trust from another account is not yet verified. |
 | Restore | `cloudformation:CreateResource`, `cloudformation:UpdateResource`, `cloudformation:GetResourceRequestStatus`, plus each service's create and update actions. `PowerUserAccess` covers every service except IAM. | Verified with `PowerUserAccess` for the 15 non-IAM types the drill restores (Lambda since 2026-10-26; creating a function also needs `iam:PassRole` on its role). |
 | Restore IAM types | Add IAM write (`iam:CreateRole`, `iam:PutRolePolicy`, `iam:AttachRolePolicy`, `iam:CreatePolicy`, `iam:TagRole`, …) and `iam:PassRole` for anything that takes a role, scoped to the names being restored. | **Verified** (2026-10-24) for a role and a customer managed policy attached to it, with a grant limited to roles and policies named `truthform-drill*`: deleted and restored by the drill with no diff, and brought back from drift by `--update`. A role and its policy name each other, which is a reference cycle: restore creates the policy without its `Roles`, then sets them once the role exists. |
 
@@ -49,7 +49,7 @@ Control's handlers make, and those types are reported as failed in
 
 | Use | Grant | Status |
 |---|---|---|
-| Capture, diff | The built-in **Reader** role at the subscription. It reads every resource, and the extension resources Truthform captures: role assignments and custom role definitions, locks, policy assignments, diagnostic settings. | **Verified** (2026-10-23): a service principal holding only Reader captured the sandbox subscription to the same digest as its owner. The principal was deleted afterwards. |
+| Capture, diff | The built-in **Reader** role at the subscription. It reads every resource, and the extension resources TruthForm captures: role assignments and custom role definitions, locks, policy assignments, diagnostic settings. | **Verified** (2026-10-23): a service principal holding only Reader captured the sandbox subscription to the same digest as its owner. The principal was deleted afterwards. |
 | Restore | **Contributor**, plus **User Access Administrator** for role assignments and locks (`Microsoft.Authorization/*/write`, which Contributor does not have). **Owner** covers both. | Verified as Owner. |
 
 ## Google Cloud
@@ -95,7 +95,7 @@ The token comes from `CLOUDFLARE_API_TOKEN`: **Zone: Read** and
 restore, scoped to the account. Status: expected; not yet run against
 Cloudflare.
 
-## What Truthform does with access it is given
+## What TruthForm does with access it is given
 
 - **Capture and diff never write.** Every client sits behind the read-only
   guard, which refuses any request that is not a read before it leaves

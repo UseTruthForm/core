@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The GCP restore drill against a real project: the disaster case.
 #
-#   seed with gcloud (not Truthform); capture twice, the digests must match
+#   seed with gcloud (not TruthForm); capture twice, the digests must match
 #   DELETE what was seeded; restore it from the snapshot
 #   diff the project against the snapshot: no differences
 #   delete it again, and require the project to match its baseline
@@ -25,7 +25,7 @@ PROJECT="${PROJECT:?set PROJECT to a sandbox project ID}"
 BIN="${BIN:-bin/truthform}"
 OUT="${OUT:-.truthform/gcp-drill}"
 SA=truthform-drill
-CHANNEL="Truthform drill"
+CHANNEL="TruthForm drill"
 TYPES='iam.googleapis.com/ServiceAccount,monitoring.googleapis.com/NotificationChannel'
 
 # No MSYS_NO_PATHCONV here (unlike the AWS and Azure drills): gcloud's own
@@ -52,7 +52,7 @@ cleanup() {
 
 seed() {
   step "seed with gcloud"
-  gcloud iam service-accounts create "$SA" --display-name "Truthform drill" --project "$PROJECT" --quiet
+  gcloud iam service-accounts create "$SA" --display-name "TruthForm drill" --project "$PROJECT" --quiet
   mon -X POST "https://monitoring.googleapis.com/v3/projects/$PROJECT/notificationChannels" \
     -d '{"type":"email","displayName":"'"$CHANNEL"'","labels":{"email_address":"truthform-drill@example.com"}}' >/dev/null
   echo "seeded"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the release binaries: every platform a customer runs Truthform on,
+# Builds the release binaries: every platform a customer runs TruthForm on,
 # in two editions each.
 #
 #   full          capture, diff and restore
@@ -50,7 +50,7 @@ for target in $TARGETS; do
       -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.built=$BUILT -X github.com/usetruthform/core/internal/saas.CloudflareClientID=${TRUTHFORM_CLOUDFLARE_CLIENT_ID:-}" \
       -o "$OUT/$name/$exe" ./cmd/truthform
     # The customer's README and guides, not the repository's README: that
-    # one is for Truthform's developers (the dev loop, Tilt ports, internal
+    # one is for TruthForm's developers (the dev loop, Tilt ports, internal
     # drills), and a customer cannot reach the private repository's docs.
     cp packaging/README.md "$OUT/$name/README.md"
     mkdir -p "$OUT/$name/docs"

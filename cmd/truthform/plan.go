@@ -48,7 +48,7 @@ func planCmd(args []string) int {
 	// lists nothing is then no proof there is nothing.
 	notRead := gaps(s)
 	if jsonOut {
-		emit(map[string]any{"schema": jsonSchema, "command": "plan", "plan": p, "gaps": orEmptyList(notRead)})
+		emit(map[string]any{"schema": jsonSchema, "command": "plan", "plan": p, "gaps": orEmpty(notRead)})
 		return 0
 	}
 	text := planMarkdown(p, notRead)
@@ -64,13 +64,6 @@ func planCmd(args []string) int {
 		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the plan cannot count what is in them; it lists them first\n", len(notRead))
 	}
 	return 0
-}
-
-func orEmptyList(l []string) []string {
-	if l == nil {
-		return []string{}
-	}
-	return l
 }
 
 // planShown is how many of a long list a row names before it counts the rest.

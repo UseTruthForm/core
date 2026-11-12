@@ -81,7 +81,13 @@ func planSecrets(ctx context.Context, args []string) int {
 		return fail(fmt.Errorf("plan secrets: %s is a %s snapshot; secret sources are for kubernetes snapshots", *from, s.Platform))
 	}
 	needed, known := secretsNeeded(s, kube.RebuildPlan(s))
+	// What the capture could not read may hold Secrets to supply: neither
+	// a file to fill in nor a check of one can know of them.
+	notRead := gaps(s)
 	if *check == "" {
+		if len(notRead) > 0 {
+			fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the file lists no Secret that is in them; see REPORT.md\n", len(notRead))
+		}
 		text := sources.Skeleton(needed)
 		if *out == "" {
 			_, err = os.Stdout.Write(text)
@@ -106,6 +112,9 @@ func planSecrets(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	problems, notes := sources.Check(file, needed, known)
+	for _, g := range notRead {
+		problems = append(problems, "the capture could not read "+g+": a Secret to supply may be in it, and no file can be checked against what was not read")
+	}
 	read := 0
 	if *resolve {
 		r := &sources.Resolver{AllowExec: *allowExec}
@@ -128,7 +137,7 @@ func planSecrets(ctx context.Context, args []string) int {
 	if jsonOut {
 		doc := map[string]any{"schema": jsonSchema, "command": "plan", "secrets": map[string]any{
 			"needed": len(needed), "problems": orEmpty(problems), "notes": orEmpty(notes), "resolved": *resolve, "read": read,
-		}}
+		}, "gaps": orEmpty(notRead)}
 		emit(doc)
 	} else {
 		for _, p := range problems {

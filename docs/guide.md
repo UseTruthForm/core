@@ -500,7 +500,7 @@ secrets:
 | Reference | Read from |
 |---|---|
 | `op://<vault>/<item>/<field>` | 1Password, with the `op` CLI |
-| `azurekv://<vault>/<secret>[/<version>]` | Azure Key Vault, with the `az` CLI |
+| `azurekv://<vault>/<secret>[/<version>]` | Azure Key Vault, with the `az` CLI; each part is letters, digits and dashes |
 | `env:<NAME>` | an environment variable |
 | `file:<path>` | a file's whole content, byte for byte; a relative path is from where the command runs |
 | `exec:<command>` | what a command prints, less its last line end; only with `--allow-exec` |
@@ -529,6 +529,8 @@ restore takes one Secret's values from one place.
 `--check` exits 2 when a rebuild would lack something: a Secret to supply
 with no entry, a key with no reference, a key the Secret does not have.
 Run after each capture, it says so the day someone adds a Secret by hand.
+It also exits 2 for a snapshot whose capture could not read everything
+(`.gaps` with `--json`): a Secret to supply may be in what was not read.
 It reads only the snapshot and the file. `--resolve` also reads every
 value from its source and prints none of them: it proves the sign-ins and
 the items are there before the day they are needed.

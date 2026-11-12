@@ -34,9 +34,9 @@ type storeReader struct {
 
 var storeReaders = []storeReader{
 	{group: "onepassword.com", kind: "OnePasswordItem", store: "1Password", item: []string{"spec.itemPath"}},
-	{group: "secrets.hashicorp.com", kind: "VaultStaticSecret", store: "Vault", item: []string{"spec.mount", "spec.path"}, secret: "spec.destination.name"},
-	{group: "secrets.hashicorp.com", kind: "VaultDynamicSecret", store: "Vault", item: []string{"spec.mount", "spec.path"}, secret: "spec.destination.name"},
-	{group: "secrets.hashicorp.com", kind: "VaultPKISecret", store: "Vault", item: []string{"spec.mount", "spec.role"}, secret: "spec.destination.name"},
+	{group: "secrets.hashicorp.com", kind: "VaultStaticSecret", store: "Vault", item: []string{"spec.mount", "spec.path"}, secret: "spec.destination.name", refs: []string{"spec.mount", "spec.path", "spec.namespace"}},
+	{group: "secrets.hashicorp.com", kind: "VaultDynamicSecret", store: "Vault", item: []string{"spec.mount", "spec.path"}, secret: "spec.destination.name", refs: []string{"spec.mount", "spec.path", "spec.namespace"}},
+	{group: "secrets.hashicorp.com", kind: "VaultPKISecret", store: "Vault", item: []string{"spec.mount", "spec.role"}, secret: "spec.destination.name", refs: []string{"spec.mount", "spec.namespace"}},
 	{group: "spv.no", kind: "AzureKeyVaultSecret", store: "Azure Key Vault", named: "spec.vault.name", item: []string{"spec.vault.object.name"}, secret: "spec.output.secret.name", refs: []string{"spec.vault.name", "spec.vault.object.name"}},
 	// What a class reads is in a document its provider defines; the vault it
 	// reads from is a field for the providers that have one.

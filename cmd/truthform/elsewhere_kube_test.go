@@ -64,7 +64,7 @@ func TestKubernetesRestoreElsewhere(t *testing.T) {
 			t.Errorf("the restore does not say %q:\n%s", want, stdout)
 		}
 	}
-	if !strings.Contains(stderr, "rename: 1 store references point elsewhere") {
+	if !strings.Contains(stderr, "rename: 1 store references point elsewhere") || !strings.Contains(stderr, "OnePasswordItem shop/db spec.itemPath: vaults/apps/items/db -> vaults/apps-test/items/db") {
 		t.Errorf("stderr:\n%s", stderr)
 	}
 
@@ -98,6 +98,25 @@ func TestKubernetesRestoreElsewhere(t *testing.T) {
 	code, stdout, _ = output(t, func() int { return diff(ctx, base) })
 	if code != 2 || !strings.Contains(stdout, "ConfigMap|shop|root") || !strings.Contains(stdout, "OnePasswordItem|shop|db") {
 		t.Errorf("a diff without them: exit %d\n%s", code, stdout)
+	}
+
+	// As JSON, what was left out is named as an entry names it.
+	d := asJSON(t, func() { restore(ctx, append(base, "--leave-out", leave, "--rename", names)) })
+	if l, _ := d["left_out"].([]any); len(l) != 1 || l[0] != "ConfigMap/shop/root" {
+		t.Errorf("left_out: %v", d["left_out"])
+	}
+	wide := writeFile(t, files, "wide.yaml", "- Namespace/shop\n- \"*/shop/*\"\n- CustomResourceDefinition.apiextensions.k8s.io/onepassworditems.onepassword.com\n")
+	if _, err := leftOut(wide, "kubernetes", s); err != nil || strings.Join(heldBack, " ") != "ConfigMap/shop/kept ConfigMap/shop/root CustomResourceDefinition.apiextensions.k8s.io/onepassworditems.onepassword.com Namespace/shop OnePasswordItem.onepassword.com/shop/db" {
+		t.Errorf("left out, as entries: %q, %v", heldBack, err)
+	}
+	// Each label is an entry: given back, it leaves out the same.
+	again := writeFile(t, files, "again.yaml", "- "+strings.Join(heldBack, "\n- ")+"\n")
+	if out, err := leftOut(again, "kubernetes", s); err != nil || len(out.Objects) != 0 {
+		t.Errorf("the labels given back as entries: %d objects left, %v", len(out.Objects), err)
+	}
+	empty := writeFile(t, files, "empty.yaml", "# none yet\n")
+	if code := restore(ctx, append(base, "--rename", empty)); code != 1 || !strings.Contains(lastErr.Error(), "names nothing to rename") {
+		t.Errorf("an empty --rename: exit %d, %v", code, lastErr)
 	}
 
 	// Refused, and nothing guessed: an entry or a start that names nothing.

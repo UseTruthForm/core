@@ -73,12 +73,29 @@ func LeaveOut(s snapshot.Snapshot, entries []string) (snapshot.Snapshot, error) 
 	return out, nil
 }
 
-// externalSecretRefs are where an ExternalSecret says what it reads.
-var externalSecretRefs = []string{"secretStoreRef.name", "data[].remoteRef.key", "dataFrom[].extract.key"}
+// externalSecretRefs are where an ExternalSecret says what it reads. Not
+// which store object it reads through (secretStoreRef, sourceRef): that
+// names an object of the snapshot, which keeps its name, and which vault
+// that object is is the store's own field.
+var externalSecretRefs = []string{"data[].remoteRef.key", "dataFrom[].extract.key", "dataFrom[].find.path"}
+
+// providerRefs are the fields of a SecretStore's provider that say which
+// vault it is.
+var providerRefs = map[string][]string{
+	"azurekv":        {"vaultUrl"},
+	"vault":          {"server", "path", "namespace"},
+	"gcpsm":          {"projectID"},
+	"onepassword":    {"connectHost"},
+	"onepasswordSDK": {"vault"},
+}
+
+// onePasswordPath is the annotation by which the 1Password operator is
+// asked for a Secret from a workload, and marks the Secrets it made.
+const onePasswordPath = "operator.1password.io/item-path"
 
 // storeRefs are the fields of an object that say where in a secret store
-// it reads: what differs when the same objects are to read another
-// environment's items.
+// it reads or writes: what differs when the same objects are to use
+// another environment's items.
 func storeRefs(o snapshot.Object) []string {
 	group, _, _ := strings.Cut(o.APIVersion(), "/")
 	for _, r := range storeReaders {
@@ -89,38 +106,109 @@ func storeRefs(o snapshot.Object) []string {
 			return r.item
 		}
 	}
-	if group != "external-secrets.io" {
-		return nil
-	}
 	var out []string
-	switch o.Kind() {
-	case "ExternalSecret":
+	switch {
+	case group == "secrets.hashicorp.com" && o.Kind() == "VaultConnection":
+		out = []string{"spec.address"}
+	case group == "secrets.hashicorp.com" && o.Kind() == "VaultAuth":
+		out = []string{"spec.mount", "spec.namespace"}
+	case group != "external-secrets.io":
+	case o.Kind() == "ExternalSecret":
 		for _, f := range externalSecretRefs {
 			out = append(out, "spec."+f)
 		}
-	case "ClusterExternalSecret":
+	case o.Kind() == "ClusterExternalSecret":
 		for _, f := range externalSecretRefs {
 			out = append(out, "spec.externalSecretSpec."+f)
 		}
-	case "SecretStore", "ClusterSecretStore":
-		// Which vault a store is: the one field of each provider that has
-		// one, where the store and not each reader says it.
-		out = []string{"spec.provider.azurekv.vaultUrl", "spec.provider.vault.server", "spec.provider.vault.path", "spec.provider.gcpsm.projectID"}
+	case o.Kind() == "PushSecret":
+		// It writes to the store: unchanged, it writes to the source's.
+		out = []string{"spec.data[].match.remoteRef.remoteKey"}
+	case o.Kind() == "SecretStore" || o.Kind() == "ClusterSecretStore":
+		for provider, fs := range providerRefs {
+			for _, f := range fs {
+				out = append(out, "spec.provider."+provider+"."+f)
+			}
+		}
+		sort.Strings(out)
 	}
 	return out
+}
+
+// unreached says what of an object's use of a store a rename does not
+// reach, or "": said, so that a restore does not go on reading the
+// source's store without a word.
+func unreached(o snapshot.Object) string {
+	group, _, _ := strings.Cut(o.APIVersion(), "/")
+	spec, _ := o.Body["spec"].(map[string]any)
+	switch {
+	case group == "secrets-store.csi.x-k8s.io" && o.Kind() == "SecretProviderClass":
+		if params, _ := spec["parameters"].(map[string]any); params["objects"] != nil {
+			return "what it reads is listed in spec.parameters.objects, a document of its provider's"
+		}
+	case group == "external-secrets.io" && (o.Kind() == "SecretStore" || o.Kind() == "ClusterSecretStore"):
+		provider, _ := spec["provider"].(map[string]any)
+		var other []string
+		for name := range provider {
+			if providerRefs[name] == nil {
+				other = append(other, name)
+			}
+		}
+		sort.Strings(other)
+		if len(other) > 0 {
+			return "which store its provider (" + strings.Join(other, ", ") + ") reads is in fields this does not know"
+		}
+		if op, _ := provider["onepassword"].(map[string]any); op["vaults"] != nil {
+			return "its vaults are named as keys of spec.provider.onepassword.vaults"
+		}
+	case group == "external-secrets.io" && (o.Kind() == "ExternalSecret" || o.Kind() == "ClusterExternalSecret"):
+		for _, f := range []string{"spec.dataFrom[].find.name.regexp", "spec.externalSecretSpec.dataFrom[].find.name.regexp"} {
+			if len(fields(o.Body, f)) > 0 {
+				return "it finds what it reads by a pattern of names (dataFrom.find.name)"
+			}
+		}
+	}
+	return ""
+}
+
+// StoreRef is one reference to a secret store: the object and field that
+// hold it, what it was, and what it is after a rename (the same, if no
+// start fitted it).
+type StoreRef struct {
+	Object, Field, From, To string
+}
+
+// RenameReport is what a rename did and did not do.
+type RenameReport struct {
+	// Changed are the references that point elsewhere now, and Kept those
+	// no start fitted: they read where the source reads.
+	Changed, Kept []StoreRef
+	// Unreached are objects that use a store in a way a rename does not
+	// reach, each with why.
+	Unreached []string
 }
 
 // RenameStores rewrites where the snapshot's objects read their Secrets
 // from. names maps the start of a reference to what replaces it ("vaults/
 // apps/" to "vaults/apps-test/"; a whole reference is its own start), and
 // the longest start that fits a reference is the one applied. Only the
-// fields that name a store or an item in it are touched. It returns how
-// many references changed. A start that fits none is an error.
-func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapshot, int, error) {
+// fields that name a store or an item in it are touched. A start that
+// fits no reference is an error. The report says every reference changed,
+// every one left as it was, and what a rename cannot reach: a restore
+// into another environment that still reads the first one's secrets is
+// the thing to rule out, and it is ruled out by reading that list.
+func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapshot, RenameReport, error) {
+	var rep RenameReport
+	if len(names) == 0 {
+		return s, rep, fmt.Errorf("it names nothing to rename")
+	}
 	starts := make([]string, 0, len(names))
-	for k := range names {
+	for k, v := range names {
 		if k == "" {
-			return s, 0, fmt.Errorf("an empty start would rewrite every reference")
+			return s, rep, fmt.Errorf("an empty start would rewrite every reference")
+		}
+		if v == "" {
+			return s, rep, fmt.Errorf("%q is replaced by nothing; give what replaces it", k)
 		}
 		starts = append(starts, k)
 	}
@@ -131,45 +219,73 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 		}
 		return starts[i] < starts[j]
 	})
-	used := map[string]bool{}
-	changed := 0
+	fits := map[string]bool{}
 	out := s
 	out.Objects = make([]snapshot.Object, len(s.Objects))
 	for i, o := range s.Objects {
 		out.Objects[i] = o
-		refs := storeRefs(o)
-		if len(refs) == 0 {
-			continue
+		who := o.Kind() + " " + o.Name()
+		if o.Namespace() != "" {
+			who = o.Kind() + " " + o.Namespace() + "/" + o.Name()
+		}
+		if why := unreached(o); why != "" {
+			rep.Unreached = append(rep.Unreached, who+": "+why)
 		}
 		body := deepCopy(o.Body)
 		n := 0
-		for _, path := range refs {
-			n += setFields(body, path, func(v string) string {
+		rename := func(field string) func(string) string {
+			return func(v string) string {
+				to, applied := v, false
 				for _, st := range starts {
-					if strings.HasPrefix(v, st) {
-						used[st] = true
-						return names[st] + strings.TrimPrefix(v, st)
+					if !strings.HasPrefix(v, st) {
+						continue
+					}
+					// Every start that fits names something, though the
+					// longest alone is applied.
+					fits[st] = true
+					if !applied {
+						to, applied = names[st]+strings.TrimPrefix(v, st), true
 					}
 				}
-				return v
-			})
+				ref := StoreRef{Object: who, Field: field, From: v, To: to}
+				if to == v {
+					rep.Kept = append(rep.Kept, ref)
+				} else {
+					rep.Changed = append(rep.Changed, ref)
+				}
+				return to
+			}
+		}
+		for _, path := range storeRefs(o) {
+			n += setFields(body, path, rename(path))
+		}
+		// On any object: a workload asks the 1Password operator for a
+		// Secret by this annotation, and a Secret it made carries it.
+		if md, _ := body["metadata"].(map[string]any); md != nil {
+			if ann, _ := md["annotations"].(map[string]any); ann != nil {
+				if v, ok := ann[onePasswordPath].(string); ok && v != "" {
+					if to := rename("metadata.annotations[" + onePasswordPath + "]")(v); to != v {
+						ann[onePasswordPath] = to
+						n++
+					}
+				}
+			}
 		}
 		if n > 0 {
 			out.Objects[i].Body = body
-			changed += n
 		}
 	}
 	var none []string
 	for _, st := range starts {
-		if !used[st] {
+		if !fits[st] {
 			none = append(none, st)
 		}
 	}
 	sort.Strings(none)
 	if len(none) > 0 {
-		return s, 0, fmt.Errorf("no store reference in the snapshot starts with: %s", strings.Join(none, ", "))
+		return s, RenameReport{}, fmt.Errorf("no store reference in the snapshot starts with: %s", strings.Join(none, ", "))
 	}
-	return out, changed, nil
+	return out, rep, nil
 }
 
 // setFields passes each string at a dotted path (as fields reads them) to

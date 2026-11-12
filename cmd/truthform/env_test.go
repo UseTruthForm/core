@@ -328,7 +328,7 @@ func TestReportListsPlainCredentials(t *testing.T) {
 
 // --rename is Azure's and Kubernetes's: on another platform it is refused,
 // not ignored.
-func TestRenameIsAzureOnly(t *testing.T) {
+func TestRenameIsRefusedElsewhere(t *testing.T) {
 	f := writeFile(t, t.TempDir(), "names.yaml", "Microsoft.Storage/storageAccounts/a: b\n")
 	if _, _, err := renamed(f, "aws", snapshot.Snapshot{}); err == nil || !strings.Contains(err.Error(), "azure and kubernetes only") {
 		t.Errorf("aws: %v", err)

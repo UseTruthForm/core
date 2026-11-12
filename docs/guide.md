@@ -539,29 +539,57 @@ truthform diff    --context test --from snap/cluster --leave-out leave.yaml --re
 `--leave-out` is a list of objects the restore does not write and the diff
 does not expect: `Kind/namespace/name`, or `Kind/name` for an object with
 no namespace. `Kind.group` tells two APIs' kinds of one name apart, and
-`*` is any kind, namespace or name. The first to leave out is where
-GitOps starts: restored as it is, the new cluster would sync the path the
-source syncs.
+`*` is any kind, namespace or name (quote an entry that starts with one:
+YAML reads a bare `*` as something else). The first to leave out is
+where GitOps starts: restored as it is, the new cluster would sync the
+path the source syncs.
 
 ```yaml
 - Kustomization/flux-system/flux-system
 - GitRepository/flux-system/flux-system
+- "*/legacy/*"
 ```
+
+The diff then does not report those as missing. If the target has an
+object of the same name of its own (its own GitOps root), the diff lists
+it as `extra`, as it does anything the snapshot does not hold.
 
 `--rename` says where Secrets are read from instead: the start of a store
 reference, and what replaces it. The longest start that fits a reference
-is the one applied. Only fields that name a store or an item in it change
-(a `OnePasswordItem`'s path; an `ExternalSecret`'s keys and store; a
-`SecretStore`'s vault; the vault of a Vault Secrets Operator, Secrets
-Store CSI or akv2k8s object): the same text anywhere else is left alone.
+is the one applied. Only fields that name a store or an item in it
+change; the same text anywhere else is left alone:
+
+| Object | What changes |
+|---|---|
+| `OnePasswordItem`; any object's `operator.1password.io/item-path` annotation | the item path |
+| `ExternalSecret`, `ClusterExternalSecret` | `remoteRef.key`, `extract.key`, `find.path` |
+| `PushSecret` | `remoteRef.remoteKey` (unchanged, it writes to the source's store) |
+| `SecretStore`, `ClusterSecretStore` | Azure Key Vault's URL; Vault's server, path and namespace; the GCP project; 1Password's Connect host or SDK vault |
+| Vault Secrets Operator | a secret's mount, path and namespace; `VaultConnection`'s address; `VaultAuth`'s mount and namespace |
+| Secrets Store CSI `SecretProviderClass` | `keyvaultName`, `vaultAddress` |
+| akv2k8s `AzureKeyVaultSecret` | the vault's and the object's name |
+
+Which store object an `ExternalSecret` reads through (`secretStoreRef`)
+is not changed: that object is restored under its own name, and which
+vault it is is its own field, above.
+
+The rename lists on stderr every reference it changed, every reference
+no start fitted (it reads where the source reads), and each object that
+uses a store in a way it cannot reach: a CSI class's `objects` document,
+a 1Password store's `vaults`, a provider it has no field for, an
+`ExternalSecret` that finds by a pattern of names. **Read that list
+before the workloads start**: it is the whole of what still points at
+the source. A start is a plain prefix with no sense of where a name ends
+(`kv-dev` also fits `kv-dev-2`), so write starts long enough to mean one
+thing.
 
 ```yaml
 vaults/apps/items/: vaults/apps-test/items/
 https://kv-dev.vault.azure.net: https://kv-test.vault.azure.net
 ```
 
-An entry or a start that names nothing in the snapshot is refused, with
-nothing restored: a mistyped one would otherwise restore what it was
+An entry or a start that names nothing in the snapshot is refused, as is
+a rename file with nothing in it, with nothing restored: a mistyped one would otherwise restore what it was
 written to hold back, or leave the new environment reading the old one's
 secrets. Leaving out is not checked against what stays: an object left in
 that needs one left out fails, or waits, in the cluster.

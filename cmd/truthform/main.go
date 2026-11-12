@@ -696,9 +696,9 @@ func parseFlags(fs *flag.FlagSet, args []string) error {
 	return fs.Parse(args)
 }
 
-const renameHelp = "kubernetes: YAML file of where Secrets are read from instead, '<start of a store reference>: <what replaces it>' (a 1Password item path, a vault's name or address, an ExternalSecret's key or store); only fields that name a store or an item in it change, for a restore into another environment (give diff the same file). azure: YAML file of new names for resources whose names are unique across Azure (storage accounts, key vaults, registries), 'Type/name: newname'; renames each one in every group that has it, its children and every reference to it, for a restore into another subscription while the source exists (give diff the same file)"
+const renameHelp = "kubernetes: YAML file of where Secrets are read from instead, '<start of a store reference>: <what replaces it>' (a 1Password item path, a vault's address, an ExternalSecret's key); only fields that name a store or an item in it change, and each reference is listed as changed or not, for a restore into another environment (give diff the same file). azure: YAML file of new names for resources whose names are unique across Azure (storage accounts, key vaults, registries), 'Type/name: newname'; renames each one in every group that has it, its children and every reference to it, for a restore into another subscription while the source exists (give diff the same file)"
 
-const leaveOutHelp = "kubernetes: YAML list of objects a restore leaves out and a diff does not expect, 'Kind/namespace/name' or 'Kind/name' for one with no namespace; Kind may be Kind.group and '*' is any (give diff the same file). azure: YAML list of objects a restore leaves out and a diff does not expect, keyed 'Kind/resourceGroup/name' as --values is, with the names the snapshot has (before --rename); refused if anything left in still needs one (give diff the same file)"
+const leaveOutHelp = "kubernetes: YAML list of objects a restore leaves out and a diff does not expect, 'Kind/namespace/name' or 'Kind/name' for one with no namespace; Kind may be Kind.group and '*' is any (quote an entry that starts with one; give diff the same file). azure: YAML list of objects a restore leaves out and a diff does not expect, keyed 'Kind/resourceGroup/name' as --values is, with the names the snapshot has (before --rename); refused if anything left in still needs one (give diff the same file)"
 
 // leftOut applies --leave-out to a snapshot. Azure and Kubernetes have it;
 // elsewhere it is refused, never ignored.
@@ -734,8 +734,24 @@ func leftOut(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, err
 		kept[o.Key()] = true
 	}
 	for _, o := range s.Objects {
-		if !kept[o.Key()] {
+		if kept[o.Key()] {
+			continue
+		}
+		if platform != "kubernetes" {
 			heldBack = append(heldBack, o.Kind()+"/"+o.Namespace()+"/"+o.Name())
+			continue
+		}
+		// As an entry names it, with the group: two APIs may share a kind,
+		// and an object with no namespace has no part for one.
+		group, _, versioned := strings.Cut(o.APIVersion(), "/")
+		kind := o.Kind()
+		if versioned {
+			kind += "." + group
+		}
+		if o.Namespace() == "" {
+			heldBack = append(heldBack, kind+"/"+o.Name())
+		} else {
+			heldBack = append(heldBack, kind+"/"+o.Namespace()+"/"+o.Name())
 		}
 	}
 	sort.Strings(heldBack)
@@ -788,11 +804,28 @@ func renamed(file, platform string, s snapshot.Snapshot) (map[string]string, sna
 	}
 	if platform == "kubernetes" {
 		// Not names of objects, as Azure's are: where Secrets are read from.
-		out, n, err := kube.RenameStores(s, names)
+		out, rep, err := kube.RenameStores(s, names)
 		if err != nil {
 			return nil, s, fmt.Errorf("%s: %w", file, err)
 		}
-		fmt.Fprintf(os.Stderr, "rename: %d store references point elsewhere, as %s asks\n", n, file)
+		// Each one, changed or not: a restore that still read the source's
+		// secrets would otherwise look like one that did not.
+		fmt.Fprintf(os.Stderr, "rename: %d store references point elsewhere, as %s asks:\n", len(rep.Changed), file)
+		for _, r := range rep.Changed {
+			fmt.Fprintf(os.Stderr, "   %s %s: %s -> %s\n", r.Object, r.Field, r.From, r.To)
+		}
+		if len(rep.Kept) > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d store references are as the source's (no start fits them):\n", len(rep.Kept))
+			for _, r := range rep.Kept {
+				fmt.Fprintf(os.Stderr, "   %s %s: %s\n", r.Object, r.Field, r.From)
+			}
+		}
+		if len(rep.Unreached) > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d objects use a store in a way --rename does not reach; they are as the source's:\n", len(rep.Unreached))
+			for _, u := range rep.Unreached {
+				fmt.Fprintln(os.Stderr, "  ", u)
+			}
+		}
 		return nil, out, nil
 	}
 	out, warnings, err := azarm.Rename(s, names)

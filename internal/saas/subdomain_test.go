@@ -457,6 +457,17 @@ func TestAMarkTooLongForACommentIsRefused(t *testing.T) {
 	if _, _, err := (&Subdomain{Name: ok}).Map(src); err != nil {
 		t.Errorf("a %d-character mark refused: %v", len("truthform: "+ok), err)
 	}
+	// The edge itself. The mark is "truthform: " and the name, so the
+	// longest name is 89 characters. The guide said 90 after the rename:
+	// that was true of the old, shorter mark, and nothing here said so.
+	fits := strings.Repeat("a", 72) + ".test.example.com"
+	if _, _, err := (&Subdomain{Name: fits}).Map(src); len(fits) != 89 || err != nil {
+		t.Errorf("an %d-character name refused: %v", len(fits), err)
+	}
+	over := "a" + fits
+	if _, _, err := (&Subdomain{Name: over}).Map(src); err == nil {
+		t.Errorf("a %d-character name accepted", len(over))
+	}
 }
 
 // A record written before the tool was renamed carries the mark under the

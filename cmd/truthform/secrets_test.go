@@ -243,6 +243,9 @@ func sameSet(a, b []string) bool {
 // something else makes is not written; and flags that have nothing to act
 // on are refused.
 func TestRestoreReadsSecretSources(t *testing.T) {
+	if captureOnly {
+		t.Skip("a restore, which the capture-only build refuses")
+	}
 	_, dir := sourcesSnapshot(t)
 	s := kubetest.Start(t, "sources")
 	ctx := context.Background()

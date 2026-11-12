@@ -388,6 +388,10 @@ truthform plan rebuild --from snap/cluster --out PLAN.md
 truthform plan rebuild --from snap/cluster --json | jq '.plan.secretsByHand[].name'
 ```
 
+A snapshot whose capture could not read everything gives a plan that
+says so first and lists what was not read (`.gaps` with `--json`): a step
+that lists nothing is then no proof there is nothing.
+
 It reads the snapshot and nothing else: no login, no request, and it runs
 in the capture-only build. The same snapshot gives the same plan, so it
 can be kept beside the snapshot and compared like one. With `--json` the

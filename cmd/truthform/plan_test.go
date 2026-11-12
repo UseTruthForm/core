@@ -110,7 +110,7 @@ func TestPlanRebuildRefuses(t *testing.T) {
 		"the plan it gives is rebuild":  {},
 		"the plan it gives is rebuild:": {"restore", "--from", planSnapshot(t)},
 		"--from is required":            {"rebuild"},
-		"not a Truthform snapshot":      {"rebuild", "--from", filepath.Join(t.TempDir(), "none")},
+		"not a TruthForm snapshot":      {"rebuild", "--from", filepath.Join(t.TempDir(), "none")},
 		"is a azure snapshot":           {"rebuild", "--from", azure},
 		"no positional arguments":       {"rebuild", "--from", planSnapshot(t), "extra"},
 	} {
@@ -132,5 +132,58 @@ func TestPlanRebuildRefuses(t *testing.T) {
 	}
 	if _, err := os.Stat(out); err == nil {
 		t.Error("--json with --out wrote the file")
+	}
+}
+
+// A type the capture could not read may hold what a step would list: the
+// plan says so first, and no step says there is nothing.
+func TestPlanRebuildSaysWhatWasNotRead(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cluster")
+	s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Coverage: []snapshot.Coverage{
+		{Resource: "core/v1/secrets", Kind: "Secret", NotCaptured: "list failed: secrets is forbidden"},
+		{Resource: "networking.k8s.io/v1/ingresses", Kind: "Ingress", NotCaptured: "list failed: timeout"},
+		{Resource: "core/v1/configmaps", Kind: "ConfigMap", Captured: 3},
+	}}
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "plan.md")
+	if code := planCmd([]string{"rebuild", "--from", dir, "--out", out}); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	b, _ := os.ReadFile(out)
+	text := string(b)
+	for _, want := range []string{"**INCOMPLETE SNAPSHOT.** Its capture could not read 2 things", "- core/v1/secrets: list failed: secrets is forbidden", "None in what the capture read."} {
+		if !strings.Contains(text, want) {
+			t.Errorf("plan lacks %q:\n%s", want, text)
+		}
+	}
+	for _, allClear := range []string{"Every Secret in the snapshot", "No route in the snapshot", "The capture left nothing", "Every type in the snapshot", "has no object that reads"} {
+		if strings.Contains(text, allClear) {
+			t.Errorf("plan says %q of a snapshot whose capture could not read everything", allClear)
+		}
+	}
+	d := asJSON(t, func() {
+		if code := planCmd([]string{"rebuild", "--from", dir}); code != 0 {
+			t.Errorf("--json: exit %d", code)
+		}
+	})
+	if g, _ := d["gaps"].([]any); len(g) != 2 {
+		t.Errorf("gaps in --json: %v", d["gaps"])
+	}
+
+	// A capture that read everything: no warning, an empty list, and the
+	// steps say there is nothing.
+	whole := planSnapshot(t)
+	d = asJSON(t, func() { planCmd([]string{"rebuild", "--from", whole}) })
+	if g, ok := d["gaps"].([]any); !ok || len(g) != 0 {
+		t.Errorf("gaps of a whole snapshot: %v", d["gaps"])
+	}
+	if code := planCmd([]string{"rebuild", "--from", whole, "--out", out + "2"}); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	b, _ = os.ReadFile(out + "2")
+	if strings.Contains(string(b), "INCOMPLETE") || strings.Contains(string(b), "None in what the capture read") {
+		t.Errorf("a whole snapshot's plan warns:\n%s", b)
 	}
 }

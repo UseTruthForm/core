@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -126,6 +127,24 @@ func (o *OAuth) id() string {
 	return o.ClientID
 }
 
+// renamed refuses a run whose environment still names the client under the
+// tool's old name. Builds up to beta.20 read STACKDNA_...; this one reads
+// TRUTHFORM_... and would otherwise ignore the old variable without a word,
+// signing in as the built-in client while the person believes their own is
+// in use. With the new name set as well, the new one is used and there is
+// nothing to refuse.
+func (o *OAuth) renamed() error {
+	rest, ok := strings.CutPrefix(o.IDEnv, "TRUTHFORM_")
+	if !ok {
+		return nil
+	}
+	old := "STACKDNA_" + rest
+	if os.Getenv(old) != "" && os.Getenv(o.IDEnv) == "" {
+		return fmt.Errorf("%s is set, and this build reads %s: rename the variable, or unset it", old, o.IDEnv)
+	}
+	return nil
+}
+
 func (o *OAuth) config(redirect string) *oauth2.Config {
 	return &oauth2.Config{ClientID: o.id(), Scopes: o.Scopes, RedirectURL: redirect,
 		Endpoint: oauth2.Endpoint{AuthURL: o.AuthURL, TokenURL: o.TokenURL, AuthStyle: oauth2.AuthStyleInParams}}
@@ -136,6 +155,9 @@ func (o *OAuth) config(redirect string) *oauth2.Config {
 // exchanges the code the provider redirects back with. hc sends the
 // exchange, so a read-only build sends it behind its guard.
 func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string), write bool) (*oauth2.Token, error) {
+	if err := o.renamed(); err != nil {
+		return nil, err
+	}
 	if o.id() == "" {
 		return nil, fmt.Errorf("this build has no sign-in registered for the provider; set the API token environment variable instead, or %s to a registered client", o.IDEnv)
 	}
@@ -174,13 +196,13 @@ func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string
 		// A redirect without this sign-in's state is not its answer: it is
 		// refused, and the sign-in goes on waiting for the real one.
 		case q.Get("state") != state:
-			http.Error(w, "This is not the sign-in Truthform started.", http.StatusBadRequest)
+			http.Error(w, "This is not the sign-in TruthForm started.", http.StatusBadRequest)
 			return
 		case q.Get("error") != "":
 			page(w, "Sign-in was not completed. You can close this tab.")
 			finish(result{err: fmt.Errorf("sign-in refused: %s %s", q.Get("error"), q.Get("error_description"))})
 		default:
-			page(w, "Signed in to Truthform. You can close this tab and return to the terminal.")
+			page(w, "Signed in to TruthForm. You can close this tab and return to the terminal.")
 			finish(result{code: q.Get("code")})
 		}
 		if o.answered != nil {
@@ -259,6 +281,14 @@ func Tokens(p Provider, store TokenStore, hc *http.Client) (oauth2.TokenSource, 
 	}
 	if err != nil {
 		return nil, "", fmt.Errorf("reading the %s sign-in from the keychain: %w (%s)", p.Name, err, how)
+	}
+	// Only once there is a sign-in to use: its refresh goes out under the
+	// client ID. A run with no sign-in at all is told about the token
+	// above, which is what it lacks. Not left to the refresh either: the
+	// provider refuses the wrong client with an error that does not name
+	// the variable.
+	if err := p.OAuth.renamed(); err != nil {
+		return nil, "", err
 	}
 	var t oauth2.Token
 	if err := json.Unmarshal([]byte(s), &t); err != nil {

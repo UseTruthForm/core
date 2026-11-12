@@ -266,7 +266,7 @@ func hasString(list []string, s string) bool {
 
 // aliases lists properties AWS returns together but refuses together on
 // create, because one is another name for the other. The registry schemas
-// do not declare it, so this is the one place Truthform knows something about
+// do not declare it, so this is the one place TruthForm knows something about
 // a type that its schema does not say; each entry names the failure that
 // found it. The first property present is kept in spec; the others move to
 // status, where they stay visible but are never sent back.

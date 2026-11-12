@@ -125,7 +125,7 @@ func TestDrillOnAPIServer(t *testing.T) {
 }
 
 // seed creates the fixture with plain creates, deliberately not through
-// Truthform's restore, so a restore bug cannot hide behind the seeding path.
+// TruthForm's restore, so a restore bug cannot hide behind the seeding path.
 func seed(t *testing.T, c *kube.Clients, file string) {
 	t.Helper()
 	raw, err := os.ReadFile(file)

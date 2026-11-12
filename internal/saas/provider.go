@@ -40,7 +40,7 @@ type Provider struct {
 	// the account's plan does not include. Such a collection is recorded
 	// as not available, not as a failed read: GitHub answers rulesets on a
 	// private repository of a free organisation with "Upgrade to GitHub
-	// Pro" (seen capturing Truthform, 2026-10-22).
+	// Pro" (seen capturing TruthForm, 2026-10-22).
 	Unavailable []string
 	Collections []Collection
 	// Derive, if set, adds the collections the description offers under
@@ -64,6 +64,17 @@ type Collection struct {
 	Bind   map[string]string
 	// Name is the fields that name an item; joined with " ".
 	Name []string
+	// Slot, when set, is the Name fields that say where an item is, for a
+	// kind whose name also holds what it is set to (a DNS record: type and
+	// name are where, content is what). A restore then tells an item whose
+	// content changed from a new one: see Client.changed.
+	Slot []string
+	// OneAnswer, with Slot, reports whether an item is of a sort that
+	// normally has one value in its slot, so that another value there is
+	// taken to be the same item changed. Where it is false the slot is a
+	// bag of unrelated values (TXT records at a domain's root: SPF beside
+	// a site verification), and an item missing from it is new.
+	OneAnswer func(spec map[string]any) bool
 	// Array is the property holding the items when a list is wrapped
 	// ({"total_count": 2, "variables": [...]}); "" for a bare array.
 	Array string
@@ -120,6 +131,18 @@ func (c *Collection) updateMethod() string {
 	return "PATCH"
 }
 
+// oneAddress reports whether a DNS record is an address or an alias: A,
+// AAAA or CNAME. A name has one CNAME by rule and nearly always one
+// address, so another there is the record changed. TXT, MX, NS and the
+// rest hold several unrelated values at one name as a matter of course.
+func oneAddress(spec map[string]any) bool {
+	switch strings.ToUpper(stringOf(spec["type"])) {
+	case "A", "AAAA", "CNAME":
+		return true
+	}
+	return false
+}
+
 // GitHub is the descriptor for github.com organisations.
 var GitHub = Provider{
 	Name: "github", Spec: "github.json", Base: "https://api.github.com", Paging: "link", Account: "org",
@@ -146,7 +169,7 @@ var GitHub = Provider{
 	},
 }
 
-// CloudflareClientID is Truthform's registered Cloudflare OAuth client. It
+// CloudflareClientID is TruthForm's registered Cloudflare OAuth client. It
 // is public (PKCE, no secret), and set at release time rather than kept in
 // the source (scripts/build-release.sh); TRUTHFORM_CLOUDFLARE_CLIENT_ID
 // replaces it. A build with neither signs in by token only.
@@ -171,7 +194,7 @@ var Cloudflare = Provider{
 		// together name a record.
 		{Kind: "cloudflare/dns_record", Parent: "cloudflare/zone", List: "/zones/{zone_id}/dns_records",
 			Get: "/zones/{zone_id}/dns_records/{dns_record_id}", Create: "/zones/{zone_id}/dns_records", Update: "/zones/{zone_id}/dns_records/{dns_record_id}",
-			Bind: map[string]string{"zone_id": "parent:id", "dns_record_id": "item:id"}, Name: []string{"type", "name", "content"},
+			Bind: map[string]string{"zone_id": "parent:id", "dns_record_id": "item:id"}, Name: []string{"type", "name", "content"}, Slot: []string{"type", "name"}, OneAnswer: oneAddress,
 			Transient: acmeChallenge},
 	},
 }

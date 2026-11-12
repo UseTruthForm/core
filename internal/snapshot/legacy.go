@@ -2,7 +2,7 @@ package snapshot
 
 import "strings"
 
-// Truthform was called StackDNA until format 2, and a format 1 snapshot
+// TruthForm was called StackDNA until format 2, and a format 1 snapshot
 // carries that name in places a reader acts on. They are translated as the
 // snapshot is read, so everything past Read sees one spelling. The digest
 // is unaffected: it is over the files as written.
@@ -27,7 +27,7 @@ const (
 	token       = "{{truthform|"
 )
 
-// legacyGroups are the API groups Truthform itself writes objects under on
+// legacyGroups are the API groups TruthForm itself writes objects under on
 // a cloud or SaaS platform.
 var legacyGroups = []string{"aws", "azure", "gcp", "saas"}
 
@@ -57,7 +57,7 @@ func fromLegacy(s *Snapshot) {
 		return
 	}
 	// A cloud or SaaS object. Its apiVersion and its metadata.annotations
-	// are Truthform's own, and the capture put placeholders anywhere an ID
+	// are TruthForm's own, and the capture put placeholders anywhere an ID
 	// stood, in values and in map keys alike (a user-assigned identity is
 	// a key). User data keeps its names: a tag key under the old domain is
 	// a key in spec, not an annotation.

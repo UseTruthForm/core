@@ -475,7 +475,9 @@ is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
   IDs hold placeholders, which were renamed, so they do not match the IDs
   in a graph from an earlier build.
 - **Environment variables** that began `STACKDNA_` now begin `TRUTHFORM_`.
-  One set under the old name is ignored.
+  `STACKDNA_CLOUDFLARE_CLIENT_ID` set without the new name is refused by
+  `login` and by a run that would use the stored sign-in, with a message
+  naming both; it does not matter to a run that uses an API token.
 - **Kubernetes:** restore applies as the field manager `truthform`. A field
   an earlier build applied, and the snapshot no longer has, stays on the
   object under the old manager.

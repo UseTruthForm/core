@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -51,6 +52,16 @@ type Server struct {
 // Start launches etcd and kube-apiserver for the duration of the test.
 func Start(t *testing.T, name string) *Server {
 	t.Helper()
+	// Builds before the rename read these under STACKDNA_. Left under the
+	// old name they are read by nothing: the assets are not found, the
+	// "require" switch is off, and every test here skips, which CI shows
+	// as a pass.
+	for _, name := range []string{AssetsEnv, RequireEnv} {
+		old := "STACKDNA_" + strings.TrimPrefix(name, "TRUTHFORM_")
+		if os.Getenv(old) != "" && os.Getenv(name) == "" {
+			t.Fatalf("%s is set, and this build reads %s: rename the variable", old, name)
+		}
+	}
 	assets := os.Getenv(AssetsEnv)
 	if assets == "" {
 		assets = os.Getenv("KUBEBUILDER_ASSETS")

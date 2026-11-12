@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -126,6 +127,24 @@ func (o *OAuth) id() string {
 	return o.ClientID
 }
 
+// renamed refuses a run whose environment still names the client under the
+// tool's old name. Builds up to beta.20 read STACKDNA_...; this one reads
+// TRUTHFORM_... and would otherwise ignore the old variable without a word,
+// signing in as the built-in client while the person believes their own is
+// in use. With the new name set as well, the new one is used and there is
+// nothing to refuse.
+func (o *OAuth) renamed() error {
+	rest, ok := strings.CutPrefix(o.IDEnv, "TRUTHFORM_")
+	if !ok {
+		return nil
+	}
+	old := "STACKDNA_" + rest
+	if os.Getenv(old) != "" && os.Getenv(o.IDEnv) == "" {
+		return fmt.Errorf("%s is set, and this build reads %s: rename the variable, or unset it to use the built-in client", old, o.IDEnv)
+	}
+	return nil
+}
+
 func (o *OAuth) config(redirect string) *oauth2.Config {
 	return &oauth2.Config{ClientID: o.id(), Scopes: o.Scopes, RedirectURL: redirect,
 		Endpoint: oauth2.Endpoint{AuthURL: o.AuthURL, TokenURL: o.TokenURL, AuthStyle: oauth2.AuthStyleInParams}}
@@ -136,6 +155,9 @@ func (o *OAuth) config(redirect string) *oauth2.Config {
 // exchanges the code the provider redirects back with. hc sends the
 // exchange, so a read-only build sends it behind its guard.
 func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string), write bool) (*oauth2.Token, error) {
+	if err := o.renamed(); err != nil {
+		return nil, err
+	}
 	if o.id() == "" {
 		return nil, fmt.Errorf("this build has no sign-in registered for the provider; set the API token environment variable instead, or %s to a registered client", o.IDEnv)
 	}
@@ -252,6 +274,12 @@ func Tokens(p Provider, store TokenStore, hc *http.Client) (oauth2.TokenSource, 
 	}
 	if p.OAuth == nil || store == nil {
 		return nil, "", errors.New(how)
+	}
+	// Before the stored sign-in is read: its refresh goes out under the
+	// client ID, and the wrong one is refused by the provider with an
+	// error that does not name the variable.
+	if err := p.OAuth.renamed(); err != nil {
+		return nil, "", err
 	}
 	s, err := store.Get(p.Name)
 	if errors.Is(err, ErrNotSignedIn) {

@@ -211,3 +211,13 @@ func TestPlanRebuildSaysWhatWasNotRead(t *testing.T) {
 		t.Errorf("a whole snapshot's plan warns:\n%s", b)
 	}
 }
+
+// A repository whose address the capture withheld is named as one whose
+// address the snapshot does not hold.
+func TestPlanRebuildSaysAnAddressWasWithheld(t *testing.T) {
+	text := planMarkdown(kube.Plan{Follows: []kube.PlanSource{{Kind: "Flux Kustomization", Name: "flux-system/root", Objects: 1}},
+		Origins: []string{"GitRepository flux-system/fleet"}, OriginsWithheld: []string{"GitRepository flux-system/fleet"}}, nil)
+	if !strings.Contains(text, "**Not in the snapshot: the address of GitRepository flux-system/fleet.**") {
+		t.Errorf("the plan does not say the address was withheld:\n%s", text)
+	}
+}

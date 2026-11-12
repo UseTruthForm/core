@@ -109,12 +109,19 @@ What a snapshot does not hold, by design:
   same way: a value named like one (`*_PASSWORD`, `PGPASSWORD`,
   `*_TOKEN`, `*_SECRET`, `API_KEY`, `*_KEY`, `*_DSN`) in any `env` list
   (pod templates, Argo and Tekton steps, a HelmRelease's `values`) or as
-  a ConfigMap key, and any such value that is a URL with a password in it.
+  a ConfigMap key, and any such value that is a URL that signs in: with a
+  password, or with a name alone (`https://<token>@host`; over SSH a
+  name alone is the account, and is kept). A GitOps source's Helm values
+  are read the same way, by each value's name (`auth.token`,
+  `adminPassword`): a Flux HelmRelease's `values`, and an Argo CD
+  application's `valuesObject`, its Helm and plugin parameters, and its
+  `values` text, which is withheld whole when a credential is in it. A
+  value that names a Secret (`existingSecret`, a `secretKeyRef`) is kept.
   It is named in the snapshot and listed in REPORT.md as a finding: move it
   into a Secret. A restore reads it from the source with
   `--secrets-from-context`. Not caught: a credential passed as a command
-  argument, inside a config file a ConfigMap holds, or in Helm values
-  outside an `env` list. Because both sides are withheld, a diff does not
+  argument, inside a config file a ConfigMap holds, or under a name that
+  does not say it is one. Because both sides are withheld, a diff does not
   show a rotated credential, and a snapshot taken before TruthForm withheld
   these values still holds them in its git history;
 - **what the platform made itself**: default VPCs and their subnets,

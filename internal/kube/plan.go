@@ -25,6 +25,10 @@ type Plan struct {
 	// Origins are the Flux repository objects in the snapshot (kind
 	// namespace/name): where its sources may be read from.
 	Origins []string `json:"origins"`
+	// OriginsWithheld are those of them whose address the capture
+	// withheld, for the credential in it: the snapshot does not say where
+	// they read from.
+	OriginsWithheld []string `json:"originsWithheld"`
 	// Operators are API groups the snapshot has objects of and no
 	// CustomResourceDefinition for: the restore needs them served first.
 	Operators []PlanOperator `json:"operators"`
@@ -123,12 +127,21 @@ func (k secretKey) String() string { return k.ns + "/" + k.name }
 
 // RebuildPlan reads the plan out of a Kubernetes snapshot.
 func RebuildPlan(s snapshot.Snapshot) Plan {
-	p := Plan{Sources: []PlanSource{}, Follows: []PlanSource{}, Origins: []string{}, Operators: []PlanOperator{}, ByHand: []PlanSecret{}, Reissued: []string{}, FromStore: []PlanStoreItem{}, Hosts: []string{}}
+	p := Plan{Sources: []PlanSource{}, Follows: []PlanSource{}, Origins: []string{}, OriginsWithheld: []string{}, Operators: []PlanOperator{}, ByHand: []PlanSecret{}, Reissued: []string{}, FromStore: []PlanStoreItem{}, Hosts: []string{}}
 
 	// What the snapshot holds: a source that is in it is restored with it,
 	// and a type whose definition is in it is served by the restore.
 	held := map[source]bool{}
 	defined := map[string]bool{}
+	// An Argo CD application is named bare in Argo CD's own namespace, and
+	// which that is the snapshot does not say: a bare name shared by
+	// applications in several namespaces is held only if one is in argocd.
+	argoNamed := map[string][]string{}
+	for _, o := range s.Objects {
+		if group, _, _ := strings.Cut(o.APIVersion(), "/"); group == "argoproj.io" && o.Kind() == "Application" {
+			argoNamed[o.Name()] = append(argoNamed[o.Name()], o.Namespace())
+		}
+	}
 	for _, o := range s.Objects {
 		group, _, _ := strings.Cut(o.APIVersion(), "/")
 		for kind, obj := range sourceObject {
@@ -138,7 +151,9 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 			if kind == "Argo CD application" {
 				// By name, as a reason names it; namespace_name outside
 				// Argo CD's own namespace.
-				held[source{kind, o.Name()}] = true
+				if len(argoNamed[o.Name()]) == 1 || o.Namespace() == "argocd" {
+					held[source{kind, o.Name()}] = true
+				}
 				held[source{kind, o.Namespace() + "_" + o.Name()}] = true
 			} else {
 				held[source{kind, o.Namespace() + "/" + o.Name()}] = true
@@ -174,7 +189,10 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 			if strings.HasPrefix(sk.Resource, obj.group+"/") && strings.HasSuffix(sk.Resource, "/"+obj.resource) {
 				child := source{k, sk.Namespace + "/" + sk.Name}
 				if k == "Argo CD application" {
+					// As a reason names it: bare in Argo CD's own
+					// namespace, namespace_name outside it.
 					child.name = sk.Name
+					parent[source{k, sk.Namespace + "_" + sk.Name}] = source{kind, name}
 				}
 				parent[child] = source{kind, name}
 			}
@@ -253,6 +271,14 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 			p.Origins = append(p.Origins, o.Kind()+" "+o.Namespace()+"/"+o.Name())
 		}
 		spec, _ := o.Body["spec"].(map[string]any)
+		if versioned && strings.HasSuffix(group, ".toolkit.fluxcd.io") && originKinds[o.Kind()] {
+			md, _ := o.Body["metadata"].(map[string]any)
+			for _, path := range strings.Split(annotation(md, WithheldEnvAnnotation), ",") {
+				if path == "spec.url" {
+					p.OriginsWithheld = append(p.OriginsWithheld, o.Kind()+" "+o.Namespace()+"/"+o.Name())
+				}
+			}
+		}
 		switch o.Kind() {
 		case "OnePasswordItem":
 			from := origin{"1Password", strOf(spec["itemPath"])}
@@ -287,6 +313,7 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 		}
 	}
 	sort.Strings(p.Origins)
+	sort.Strings(p.OriginsWithheld)
 	for group, kinds := range operators {
 		p.Operators = append(p.Operators, PlanOperator{Group: group, Objects: kinds})
 	}

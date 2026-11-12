@@ -1,5 +1,5 @@
-// Package access says who Truthform is running as on a platform, and what
-// that identity holds beyond what Truthform needs. truthform check puts it
+// Package access says who TruthForm is running as on a platform, and what
+// that identity holds beyond what TruthForm needs. truthform check puts it
 // beside a trial capture, which shows what the identity can read, type by
 // type.
 //

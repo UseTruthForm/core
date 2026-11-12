@@ -107,7 +107,7 @@ type envDoc struct {
 // settle waits until each fresh API server captures to the same digest
 // twice running. A server still creating its own bootstrap objects after
 // /readyz differs between captures for a reason that has nothing to do
-// with Truthform: in CI (PR #14) the second of two fresh servers captured
+// with TruthForm: in CI (PR #14) the second of two fresh servers captured
 // to one digest and then another, objects identical, and the unchanged-
 // environment assertion failed. Which bootstrap object it was is not
 // pinned down (six local starts never showed it), so this waits for the

@@ -1,4 +1,4 @@
-// Package platform is the contract every Truthform adapter implements
+// Package platform is the contract every TruthForm adapter implements
 // (Kubernetes today; AWS, Azure, GCP and SaaS providers next). It is kept
 // to two operations on purpose: anything an adapter can capture it must be
 // able to restore, and diff needs no adapter code at all: capture the target

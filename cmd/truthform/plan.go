@@ -40,20 +40,33 @@ func planCmd(args []string) int {
 		return fail(fmt.Errorf("plan rebuild: %s is a %s snapshot; the plan is for kubernetes snapshots", *from, s.Platform))
 	}
 	p := kube.RebuildPlan(s)
+	// What the capture could not read, the plan cannot count: a step that
+	// lists nothing is then no proof there is nothing.
+	notRead := gaps(s)
 	if jsonOut {
-		emit(map[string]any{"schema": jsonSchema, "command": "plan", "plan": p})
+		emit(map[string]any{"schema": jsonSchema, "command": "plan", "plan": p, "gaps": orEmptyList(notRead)})
 		return 0
 	}
-	text := planMarkdown(p)
+	text := planMarkdown(p, notRead)
 	if *out == "" {
 		_, err = os.Stdout.WriteString(text)
-	} else {
-		err = os.WriteFile(*out, []byte(text), 0o644)
+	} else if err = os.WriteFile(*out, []byte(text), 0o644); err == nil {
+		fmt.Printf("wrote %s\n", *out)
 	}
 	if err != nil {
 		return fail(err)
 	}
+	if len(notRead) > 0 {
+		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the plan cannot count what is in them; it lists them first\n", len(notRead))
+	}
 	return 0
+}
+
+func orEmptyList(l []string) []string {
+	if l == nil {
+		return []string{}
+	}
+	return l
 }
 
 // planShown is how many of a long list a row names before it counts the rest.
@@ -62,12 +75,27 @@ const planShown = 3
 // planMarkdown is the plan for a person, in the order to act on it.
 // Nothing time- or machine-dependent goes in, not the directory's name
 // either: an unchanged snapshot gives an unchanged plan, wherever it is.
-func planMarkdown(p kube.Plan) string {
+func planMarkdown(p kube.Plan, notRead []string) string {
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
+	// none is what a step with nothing to list says: that there is nothing,
+	// or, when the capture could not read everything, only that it saw none.
+	none := func(allClear string) {
+		if len(notRead) > 0 {
+			allClear = "None in what the capture read. It could not read everything (see the top), so there may be some."
+		}
+		w("%s\n\n", allClear)
+	}
 	fromStore := p.StoreSecrets
 	w("# Rebuild plan\n\n")
 	w("What rebuilding a cluster from this snapshot needs that the snapshot does not hold. Read from the snapshot alone: nothing was contacted, and no secret value is in it or here.\n\n")
+	if len(notRead) > 0 {
+		w("**INCOMPLETE SNAPSHOT.** Its capture could not read %d things. This plan counts only what was read: a step may be missing sources, secrets or hosts that are in these.\n\n", len(notRead))
+		for _, g := range notRead {
+			w("- %s\n", md(g))
+		}
+		w("\n")
+	}
 	w("| Step | | |\n|---|---|---:|\n")
 	w("| 1 | Install what a GitOps source makes | %d sources by hand, %d follow |\n", len(p.Sources), len(p.Follows))
 	w("| 2 | Have these APIs served before the restore | %d groups |\n", len(p.Operators))
@@ -87,7 +115,11 @@ func planMarkdown(p kube.Plan) string {
 		w("**Applied again by sources the snapshot holds: %d sources, %d objects.** Install the GitOps tool's own controllers and restore: the sources in the snapshot then apply these, from where they read. %s.\n\n", len(p.Follows), made, strings.Join(names, ", "))
 	}
 	if len(p.Sources) == 0 {
-		w("Nothing else: the capture left nothing to a GitOps source that the snapshot's own sources do not apply.\n\n")
+		if len(p.Follows) > 0 {
+			none("Nothing else: the capture left nothing to a GitOps source that the snapshot's own sources do not apply.")
+		} else {
+			none("The capture left nothing to a GitOps source.")
+		}
 	} else {
 		w("The capture left these out because their source recreates them. The snapshot holds neither the source nor what it makes.\n\n")
 		w("| Source | Objects it makes | |\n|---|---:|---|\n")
@@ -110,7 +142,7 @@ func planMarkdown(p kube.Plan) string {
 
 	w("## 2. APIs to have served: %d groups\n\n", len(p.Operators))
 	if len(p.Operators) == 0 {
-		w("Every type in the snapshot is built in, or its definition is in the snapshot.\n\n")
+		none("Every type in the snapshot is built in, or its definition is in the snapshot.")
 	} else {
 		w("The snapshot has objects of these types and not their definitions: the restore refuses them until something serves the type, usually an operator that step 1 installs.\n\n")
 		w("| API group | Objects |\n|---|---|\n")
@@ -130,7 +162,7 @@ func planMarkdown(p kube.Plan) string {
 
 	w("## 3. Secrets to supply by hand: %d\n\n", len(p.ByHand))
 	if len(p.ByHand) == 0 {
-		w("Every Secret in the snapshot is made from a store.\n\n")
+		none("Every Secret in the snapshot is made from a store.")
 	} else {
 		w("No store in the snapshot supplies these, and a snapshot never holds a value. Each needs its value from where you keep it. One with no user here may still be read by what step 1 installs, or named from an object with no namespace.\n\n")
 		w("| Secret | Keys | Used by |\n|---|---|---|\n")
@@ -146,7 +178,7 @@ func planMarkdown(p kube.Plan) string {
 
 	w("## 4. Secrets a store supplies: %d, from %d items\n\n", fromStore, len(p.FromStore))
 	if len(p.FromStore) == 0 {
-		w("The snapshot has no object that reads a secret store.\n\n")
+		none("The snapshot has no object that reads a secret store.")
 	} else {
 		w("The restore recreates the objects that ask for these; the store's operator then makes the Secrets. That needs the store reachable from the rebuilt cluster, and the operator's own credential, which is one of step 3's. An item holds the settings of the cluster it was written for: one that feeds many Secrets is where to look for addresses and keys that must differ in a rebuild.\n\n")
 		w("| Store | Item | Secrets | |\n|---|---|---:|---|\n")
@@ -161,7 +193,7 @@ func planMarkdown(p kube.Plan) string {
 
 	w("## 6. Names to point at the rebuilt cluster: %d\n\n", len(p.Hosts))
 	if len(p.Hosts) == 0 {
-		w("No route in the snapshot names a host.\n")
+		none("No route in the snapshot names a host.")
 	} else {
 		w("The routes in the snapshot answer to these. Their DNS records point at the cluster the snapshot was taken from. A route that matches hosts by pattern names none here.\n\n")
 		for _, h := range p.Hosts {

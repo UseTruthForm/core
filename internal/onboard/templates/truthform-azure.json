@@ -2,12 +2,12 @@
   "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "metadata": {
-    "description": "Truthform's access to one subscription, written by truthform permissions --platform azure. Deploy it as a deployment stack: deleting the stack with --action-on-unmanage deleteAll removes the role assignments. A plain deployment would not: deleting a deployment leaves what it created in place."
+    "description": "TruthForm's access to one subscription, written by truthform permissions --platform azure. Deploy it as a deployment stack: deleting the stack with --action-on-unmanage deleteAll removes the role assignments. A plain deployment would not: deleting a deployment leaves what it created in place."
   },
   "parameters": {
     "principalId": {
       "type": "string",
-      "metadata": { "description": "Object ID of the user, group or service principal that runs Truthform." }
+      "metadata": { "description": "Object ID of the user, group or service principal that runs TruthForm." }
     },
     "principalType": {
       "type": "string",
@@ -37,7 +37,7 @@
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roles')[copyIndex()])]",
         "principalId": "[parameters('principalId')]",
         "principalType": "[parameters('principalType')]",
-        "description": "[format('Truthform {0} access (truthform permissions)', parameters('access'))]"
+        "description": "[format('TruthForm {0} access (truthform permissions)', parameters('access'))]"
       }
     }
   ]

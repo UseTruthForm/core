@@ -28,7 +28,7 @@ type saasFlags struct {
 func (s *saasFlags) registerSubdomain(fs *flag.FlagSet, restore bool) {
 	what := "cloudflare: compare the zone's records as a --subdomain restore put them, against the records under that name"
 	if restore {
-		what = "cloudflare: restore one zone's records one level down, under this name in the same zone (www.example.com becomes www.test.example.com for test.example.com), each marked as Truthform's; mail, delegations and ACME records stay out, and a conflict with a record already there stops the restore before it writes"
+		what = "cloudflare: restore one zone's records one level down, under this name in the same zone (www.example.com becomes www.test.example.com for test.example.com), each marked as TruthForm's; mail, delegations and ACME records stay out, and a conflict with a record already there stops the restore before it writes"
 	}
 	fs.StringVar(&s.subdomain, "subdomain", "", what)
 	fs.Func("address", "cloudflare --subdomain: comma-separated <source-ip>=<target-ip>; an A or AAAA record a subdomain restore makes points at the target's address, not the source's (a restore that would keep a source address stops)", func(v string) error {

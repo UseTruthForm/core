@@ -143,7 +143,7 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 		}
 		if need := azarm.AccessElsewhere(s, ""); len(need) > 0 {
 			w("## Access a restore needs outside its target: %d\n\n", len(need))
-			w("Azure checks the caller's access to what these name when it writes them, so the identity that restores needs each action below on the resource it names, in its own subscription. Grant it before the restore, or leave the object out with `--leave-out`; without it, Azure refuses that object. Only the checks Truthform knows are listed: any reference to another subscription may need access there. From Azure's documentation; not yet verified by a Truthform restore.\n\n")
+			w("Azure checks the caller's access to what these name when it writes them, so the identity that restores needs each action below on the resource it names, in its own subscription. Grant it before the restore, or leave the object out with `--leave-out`; without it, Azure refuses that object. Only the checks TruthForm knows are listed: any reference to another subscription may need access there. From Azure's documentation; not yet verified by a TruthForm restore.\n\n")
 			for _, x := range need {
 				w("- %s\n", md(x))
 			}

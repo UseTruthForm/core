@@ -13,13 +13,13 @@ import (
 	"github.com/usetruthform/core/internal/snapshot"
 )
 
-// WithheldAnnotation lists the keys of a Secret whose values Truthform did not
+// WithheldAnnotation lists the keys of a Secret whose values TruthForm did not
 // write to the snapshot. A backup is copied, committed and shared far more
 // freely than a cluster, so secret values never go into it; restore has to be
 // given them from somewhere else (a vault, or the live source cluster).
 const WithheldAnnotation = "truthform.org/withheld-keys"
 
-// WithheldEnvAnnotation lists the values Truthform did not write to the
+// WithheldEnvAnnotation lists the values TruthForm did not write to the
 // snapshot because they are credentials set as plain configuration: an env
 // variable of a workload, or a ConfigMap key, named like one, or any such
 // value that is a URL with a password in it. A key written straight into a

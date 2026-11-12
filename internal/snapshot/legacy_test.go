@@ -47,7 +47,7 @@ func TestAFormat1AzureSnapshotIsReadUnderTheNewNames(t *testing.T) {
 
 	site := by["Microsoft.Web/sites/web"]
 	if got := site.APIVersion(); got != "azure.truthform.org/v1" {
-		t.Errorf("apiVersion %q, want Truthform's own group renamed", got)
+		t.Errorf("apiVersion %q, want TruthForm's own group renamed", got)
 	}
 	wantAnn := map[string]any{
 		"truthform.org/api-version": "2024-04-01",
@@ -128,7 +128,7 @@ func TestAFormat1KubernetesSnapshotKeepsWhatIsTheClusters(t *testing.T) {
 		t.Errorf("a ConfigMap's content was rewritten: %v", got)
 	}
 	// A CRD's group is asked of the cluster under the name the cluster
-	// knows, even one spelled like a group Truthform writes elsewhere.
+	// knows, even one spelled like a group TruthForm writes elsewhere.
 	if got := by["Widget/blue-widget"].APIVersion(); got != "azure.stackdna.org/v1" {
 		t.Errorf("a CRD's group became %q", got)
 	}

@@ -20,6 +20,9 @@ import (
 // --rename says, and a diff given the same two files finds the cluster as
 // the restore left it. Without them the same diff says what differs.
 func TestKubernetesRestoreElsewhere(t *testing.T) {
+	if captureOnly {
+		t.Skip("a restore, which the capture-only build refuses")
+	}
 	obj := func(apiVersion, kind, ns, name string, rest map[string]any) snapshot.Object {
 		md := map[string]any{"name": name}
 		if ns != "" {

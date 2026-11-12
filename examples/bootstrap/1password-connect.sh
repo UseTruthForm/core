@@ -8,8 +8,9 @@
 # server's credentials file and an access token. This makes both for one
 # environment, saves them as one item in a vault you name, and prints the
 # references a secret sources file needs (docs/guide.md, "Where the
-# secrets are read from"). Neither value is printed, passed as an
-# argument, or left on disk.
+# secrets are read from"). Neither value is printed or passed as an
+# argument; while it runs they are in a directory only you can read, which
+# is removed when it ends.
 #
 # It is run once for each new environment. A rebuild of an environment
 # that has had it run needs nothing made: the credentials are 1Password's
@@ -20,6 +21,10 @@
 #     --server test-cluster --reads "App Config Test" --keep-in "Break Glass" \
 #     --credentials-secret onepassword/op-credentials \
 #     --token-secret onepassword/onepassword-token
+#
+# Names (server, vaults, item) hold letters, digits, spaces, dots, dashes
+# and underscores, and start with a letter or digit: that is what a
+# 1Password reference can name.
 #
 #   --server <name>     the Connect server to make; refused if one has the name
 #   --reads <vault>     a vault the server and its token may read (repeatable).
@@ -38,9 +43,9 @@
 #                       (keys default to 1password-credentials.json and token)
 #   --dry-run           check everything, and make nothing
 #
-# Needs: op (signed in as a person allowed to manage Connect servers) and jq.
-# If a step fails after the server is made, the server is removed again, so
-# the same command can be run a second time.
+# Needs: op (signed in as a person allowed to manage Connect servers), jq
+# (1.6 or later) and cmp. If a step fails after the server is made, the
+# server is removed again, so the same command can be run a second time.
 set -euo pipefail
 umask 077
 
@@ -61,7 +66,7 @@ while [ $# -gt 0 ]; do
     --token-secret) need "$@"; toksec=$2; shift 2 ;;
     --create-vaults) create=1; shift ;;
     --dry-run) dry=1; shift ;;
-    -h|--help) sed -n '3,43p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '3,48p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument $1 (see --help)" ;;
   esac
 done
@@ -71,18 +76,18 @@ done
 [ -n "$keep" ] || die "--keep-in is required: the vault the credentials are kept in"
 [ -n "$item" ] || item="$server Connect credentials"
 
-# A name is used in a reference (op://vault/item/field) and in a list, so
-# it cannot hold what would end either early.
+# A name is used in a reference (op://vault/item/field), which can name
+# only these; anything else would be made and then not found again.
 plain() {
   case "$2" in
-    *"/"*|*","*|*$'\n'*|*$'\r'*|"") die "$1 \"$2\" cannot be empty or hold a slash, a comma or a line break" ;;
+    ""|[!A-Za-z0-9]*|*[!A-Za-z0-9\ ._-]*) die "$1 \"$2\": a name holds letters, digits, spaces, dots, dashes and underscores, and starts with a letter or digit" ;;
   esac
 }
 plain --server "$server"; plain --keep-in "$keep"; plain --item "$item"
-for v in "${reads[@]}"; do
-  plain --reads "$v"
-  [ "$v" != "$keep" ] || die "--keep-in \"$keep\" is a vault the server reads: the cluster would hold the way to its own credentials"
-done
+for v in "${reads[@]}"; do plain --reads "$v"; done
+case "$expires" in
+  *[!0-9smhdw]*) die "--expires-in \"$expires\" is not a length of time as op takes it (90d, 12w)" ;;
+esac
 
 # A Secret is named namespace/name, with the key after a colon.
 secret_of() { printf '%s' "${1%%:*}"; }
@@ -101,25 +106,122 @@ done
 
 command -v op >/dev/null || die "the 1Password CLI (op) is not installed"
 command -v jq >/dev/null || die "jq is not installed"
+command -v cmp >/dev/null || die "cmp is not installed"
 
-# Everything below reads 1Password before it makes anything.
+# Everything below reads 1Password before it makes anything. A list that
+# does not read as one stops it: nothing is taken as absent because a
+# question went unanswered.
+listed() { # <what> <op arguments...>: a JSON list, or the end
+  local what=$1 out; shift
+  out=$(op "$@" --format json) || die "could not list $what${hint:+. $hint}"
+  [ -n "$out" ] || out='[]'
+  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$out" || die "op's list of $what does not read as a list: this script does not know this version of op"
+  printf '%s' "$out"
+}
 op whoami >/dev/null || die "not signed in to 1Password: run 'op signin' first"
-servers_before=$(op connect server list --format json) ||
-  die "could not list Connect servers. One is made by a person signed in (op signin) who may manage them; a service account or a Connect token cannot"
-if jq -e --arg n "$server" 'any(.[]?; .name == $n)' >/dev/null <<<"$servers_before"; then
+hint="One is made by a person signed in (op signin) who may manage them; a service account or a Connect token cannot"
+servers_before=$(listed "Connect servers" connect server list)
+hint=""
+if jq -e --arg n "$server" 'any(.[]; (.name // "" | ascii_downcase) == ($n | ascii_downcase))' >/dev/null <<<"$servers_before"; then
   die "a Connect server named \"$server\" is there already. Nothing was made. Its credentials cannot be read again: use another name, or remove it first if nothing uses it"
 fi
-op vault get "$keep" >/dev/null || die "--keep-in vault \"$keep\" is not there, or you cannot see it. It is not made for you: who can open it is yours to decide"
-if op item get "$item" --vault "$keep" --format json >/dev/null 2>&1; then
-  die "vault \"$keep\" already has an item \"$item\". Nothing was made, and nothing is written over: give another --item"
-fi
+
+# A vault is found by its name or its id, and known from here by its id:
+# two spellings of one vault are one vault.
+vaults=$(listed vaults vault list)
+vault_id() {
+  jq -r --arg v "$1" '[.[] | select((.name // "" | ascii_downcase) == ($v | ascii_downcase) or .id == $v) | .id] | if length > 1 then "*" else (.[0] // "") end' <<<"$vaults"
+}
+keep_id=$(vault_id "$keep")
+[ "$keep_id" != "*" ] || die "more than one vault is named \"$keep\": give --keep-in its id"
+[ -n "$keep_id" ] || die "--keep-in vault \"$keep\" is not there, or you cannot see it. It is not made for you: who can open it is yours to decide"
 missing=()
 for v in "${reads[@]}"; do
-  op vault get "$v" >/dev/null 2>&1 || missing+=("$v")
+  id=$(vault_id "$v")
+  [ "$id" != "*" ] || die "more than one vault is named \"$v\": give --reads its id"
+  [ "$id" != "$keep_id" ] || die "--keep-in \"$keep\" is a vault the server reads: the cluster would hold the way to its own credentials"
+  [ -n "$id" ] || missing+=("$v")
 done
 if [ ${#missing[@]} -gt 0 ] && [ $create -eq 0 ]; then
   die "no vault named: $(printf '"%s" ' "${missing[@]}"). Nothing was made. --create-vaults makes them"
 fi
+
+# item_there: 0 if the vault has an item of the title, 1 if not, 2 if that
+# cannot be told.
+item_there() {
+  local l
+  l=$(op item list --vault "$keep_id" --format json 2>/dev/null) || return 2
+  [ -n "$l" ] || l='[]'
+  jq -e 'type == "array"' >/dev/null 2>&1 <<<"$l" || return 2
+  jq -e --arg t "$item" 'any(.[]; (.title // "" | ascii_downcase) == ($t | ascii_downcase))' >/dev/null <<<"$l" || return 1
+}
+there=0; item_there || there=$?
+[ $there -ne 0 ] || die "vault \"$keep\" already has an item \"$item\". Nothing was made, and nothing is written over: give another --item"
+[ $there -eq 1 ] || die "could not list the items of vault \"$keep\". Nothing was made"
+
+work=$(mktemp -d)
+trying=0 kept=0
+made_vaults=()
+
+# new_server is the id of the one server of the name that the list has now
+# and did not have before; a name alone could be another server's.
+new_server() {
+  local now
+  now=$(op connect server list --format json 2>/dev/null) || return 1
+  [ -n "$now" ] || now='[]'
+  jq -r --arg n "$server" --argjson before "$servers_before" \
+    'if type != "array" then error("not a list") else ([.[] | select(.name == $n) | .id] - [$before[].id] | if length == 1 then .[0] else "" end) end' <<<"$now" 2>/dev/null
+}
+
+finish() {
+  code=$?
+  trap - EXIT
+  rm -rf "$work"
+  if [ $trying -eq 1 ] && [ $kept -eq 0 ]; then
+    for v in ${made_vaults[@]+"${made_vaults[@]}"}; do
+      echo "1password-connect: vault \"$v\" was made and is left as it is" >&2
+    done
+    there=0; item_there || there=$?
+    id=$(new_server) || id=""
+    if [ $there -ne 1 ]; then
+      # op said the item was not saved, and it may have been all the same.
+      echo "1password-connect: failed, and vault \"$keep\" may hold an item \"$item\" from this run. Nothing was removed: look at the item, and remove it and Connect server \"$server\" before you run this again" >&2
+    elif [ -z "$id" ]; then
+      echo "1password-connect: failed. No one new Connect server named \"$server\" is listed, so none was removed: if 1Password shows one, remove it (its credentials are lost)" >&2
+    elif op connect server delete "$id" >/dev/null 2>&1; then
+      echo "1password-connect: failed before the credentials were kept; Connect server \"$server\" was removed again" >&2
+    else
+      echo "1password-connect: failed before the credentials were kept, and Connect server \"$server\" could not be removed: remove it in 1Password (its credentials are lost)" >&2
+    fi
+  fi
+  exit $code
+}
+trap finish EXIT
+
+# The item is given to op on its input, never as arguments: those show in
+# a process list. The credentials are kept twice, as the JSON and as its
+# base64, which is the form the Connect chart's Secret holds.
+item_of() { # <credentials file> <token file>
+  jq -n --rawfile creds "$1" --rawfile token "$2" \
+    --arg title "$item" --arg server "$server" --arg reads "$(printf '%s\n' "${reads[@]}")" '{
+      title: $title, category: "SECURE_NOTE",
+      fields: [
+        {id: "notesPlain", type: "STRING", purpose: "NOTES", label: "notesPlain",
+         value: ("The credentials file and access token of 1Password Connect server \"" + $server + "\". A cluster rebuild reads them from here; nothing else holds a copy.")},
+        {label: "server", type: "STRING", value: $server},
+        {label: "reads", type: "STRING", value: ($reads | rtrimstr("\n"))},
+        {label: "credentials-json", type: "CONCEALED", value: ($creds | rtrimstr("\n"))},
+        {label: "credentials-base64", type: "CONCEALED", value: ($creds | @base64)},
+        {label: "token", type: "CONCEALED", value: ($token | rtrimstr("\n"))}
+      ]}'
+}
+
+# Would op take the item? Asked with made-up values, before there is a
+# server whose credentials depend on the answer.
+echo '{"made":"up"}' >"$work/try-creds"; echo made-up >"$work/try-token"
+item_of "$work/try-creds" "$work/try-token" >"$work/try.json"
+op item create --vault "$keep_id" --dry-run - <"$work/try.json" >/dev/null ||
+  die "op would not save the item this makes in vault \"$keep\". Nothing was made"
 
 if [ $dry -eq 1 ]; then
   for v in ${missing[@]+"${missing[@]}"}; do echo "would make vault \"$v\""; done
@@ -130,68 +232,35 @@ if [ $dry -eq 1 ]; then
   exit 0
 fi
 
-work=$(mktemp -d)
-made_id="" made=0 kept=0
-finish() {
-  code=$?
-  rm -rf "$work"
-  if [ $made -eq 1 ] && [ $kept -eq 0 ]; then
-    # The credentials are gone with $work, so the server is of no use.
-    if [ -n "$made_id" ] && op connect server delete "$made_id" >/dev/null 2>&1; then
-      echo "1password-connect: failed before the credentials were kept; Connect server \"$server\" was removed again" >&2
-    else
-      echo "1password-connect: failed before the credentials were kept, and Connect server \"$server\" could not be removed: remove it in 1Password (its credentials are lost)" >&2
-    fi
-  fi
-  exit $code
-}
-trap finish EXIT
-
+trying=1
 for v in ${missing[@]+"${missing[@]}"}; do
   op vault create "$v" >/dev/null
+  made_vaults+=("$v")
   echo "made vault \"$v\""
 done
 
 # op writes 1password-credentials.json into the directory it is run in.
-made=1
 (cd "$work" && op connect server create "$server" --vaults "$(IFS=,; echo "${reads[*]}")" >/dev/null)
-# Which one is it? The one the list has now and did not have before: a
-# name alone could be another server's.
-made_id=$(op connect server list --format json | jq -r --arg n "$server" --argjson before "$servers_before" \
-  '[.[]? | select(.name == $n) | .id] - [$before[]?.id] | if length == 1 then .[0] else "" end') || made_id=""
 jq -e . "$work/1password-credentials.json" >/dev/null 2>&1 || die "op made no credentials file that reads as JSON"
+# The token is asked for by the server's id where that is known.
+made_id=$(new_server) || made_id=""
 
 token_args=()
 for v in "${reads[@]}"; do token_args+=(--vault "$v,r"); done
 [ -z "$expires" ] || token_args+=(--expires-in "$expires")
-op connect token create "$server cluster token" --server "$server" "${token_args[@]}" >"$work/token"
+op connect token create "$server cluster token" --server "${made_id:-$server}" "${token_args[@]}" >"$work/token"
 [ -s "$work/token" ] || die "op made no token"
 
-# The item is given to op on its input, never as arguments: those show in
-# a process list. The credentials are kept twice, as the JSON and as its
-# base64, which is the form the Connect chart's Secret holds.
-jq -n --rawfile creds "$work/1password-credentials.json" --rawfile token "$work/token" \
-  --arg title "$item" --arg server "$server" --arg reads "$(printf '%s\n' "${reads[@]}")" '{
-    title: $title, category: "SECURE_NOTE",
-    fields: [
-      {id: "notesPlain", type: "STRING", purpose: "NOTES", label: "notesPlain",
-       value: ("The credentials file and access token of 1Password Connect server \"" + $server + "\". A cluster rebuild reads them from here; nothing else holds a copy.")},
-      {label: "server", type: "STRING", value: $server},
-      {label: "reads", type: "STRING", value: ($reads | rtrimstr("\n"))},
-      {label: "credentials-json", type: "CONCEALED", value: $creds},
-      {label: "credentials-base64", type: "CONCEALED", value: ($creds | @base64)},
-      {label: "token", type: "CONCEALED", value: ($token | rtrimstr("\n"))}
-    ]}' >"$work/item.json"
-op item create --vault "$keep" - <"$work/item.json" >/dev/null
+item_of "$work/1password-credentials.json" "$work/token" >"$work/item.json"
+op item create --vault "$keep_id" - <"$work/item.json" >/dev/null
 kept=1
 
 # Read each back the way a rebuild will, and compare without showing it.
-sum() { sha256sum | cut -d' ' -f1; }
-same() { [ "$(op read --no-newline "op://$keep/$item/$1" | sum)" = "$2" ]; }
 ok=1
-same credentials-json "$(jq -j -n --rawfile c "$work/1password-credentials.json" '$c' | sum)" || ok=0
-same credentials-base64 "$(jq -j -n --rawfile c "$work/1password-credentials.json" '$c | @base64' | sum)" || ok=0
-same token "$(jq -j -n --rawfile t "$work/token" '$t | rtrimstr("\n")' | sum)" || ok=0
+for f in credentials-json credentials-base64 token; do
+  jq -j --arg f "$f" '.fields[] | select(.label == $f) | .value' "$work/item.json" >"$work/want"
+  op read --no-newline "op://$keep/$item/$f" 2>/dev/null | cmp -s - "$work/want" || ok=0
+done
 [ $ok -eq 1 ] || die "item \"$item\" was made in vault \"$keep\", but what reads back from it is not what was saved. The server is left as it is: look at the item before you use it"
 
 echo "made Connect server \"$server\" and a read-only token; both read: $(printf '"%s" ' "${reads[@]}")"

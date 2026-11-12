@@ -120,7 +120,7 @@ func freePort(t *testing.T) int {
 	return p
 }
 
-// browser follows the sign-in page's redirect back to Truthform, as a person
+// browser follows the sign-in page's redirect back to TruthForm, as a person
 // approving the sign-in does.
 func browser(t *testing.T) func(string) {
 	return func(u string) {
@@ -474,7 +474,7 @@ func TestTheBrowserGetsItsAnswerAndLoginDoesNotWait(t *testing.T) {
 	}
 	select {
 	case p := <-got:
-		if p.err != nil || p.status != http.StatusOK || !strings.Contains(p.body, "Signed in to Truthform") {
+		if p.err != nil || p.status != http.StatusOK || !strings.Contains(p.body, "Signed in to TruthForm") {
 			t.Errorf("the browser got status %d, body %q, error %v", p.status, p.body, p.err)
 		}
 		// The listener is gone by now: a browser that kept the connection

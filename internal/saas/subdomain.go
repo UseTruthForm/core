@@ -44,13 +44,13 @@ const maxComment = 100
 type Left struct{ Name, Reason string }
 
 // Mark is the comment on every record a subdomain restore writes. Only a
-// record that carries it is Truthform's to change.
+// record that carries it is TruthForm's to change.
 func (d *Subdomain) Mark() string { return "truthform: " + d.Name }
 
 // ours reports whether a record's comment is the mark. A record written
 // before the tool was renamed carries the mark under the old name. Without
 // this it would read as someone else's: every restore would stop on it as a
-// conflict, and --update would refuse to touch a record Truthform made.
+// conflict, and --update would refuse to touch a record TruthForm made.
 func (d *Subdomain) ours(comment string) bool {
 	return comment == d.Mark() || comment == d.legacyMark()
 }
@@ -250,10 +250,10 @@ func (d *Subdomain) isTarget(addr string) bool {
 
 // Check compares the planned records with what the target zone holds now.
 // A conflict stops the restore before it writes anything: a record at a
-// planned name Truthform did not make, the subdomain delegated or a zone
+// planned name TruthForm did not make, the subdomain delegated or a zone
 // of its own, a CNAME beside other records. A warning does not: a
 // wildcard above the subdomain that answers for it today, and a record
-// Truthform made earlier that the snapshot no longer has.
+// TruthForm made earlier that the snapshot no longer has.
 func (d *Subdomain) Check(planned, target snapshot.Snapshot) (conflicts, warnings []string) {
 	byName := map[string][]map[string]any{}
 	keys := map[string]bool{}
@@ -307,7 +307,7 @@ func (d *Subdomain) Check(planned, target snapshot.Snapshot) (conflicts, warning
 				shadowed = true
 			}
 		case len(byName[n]) > 0 && !ours:
-			conflicts = append(conflicts, desc+": already there, and Truthform did not make it (no "+fmt.Sprintf("%q", d.Mark())+" comment)")
+			conflicts = append(conflicts, desc+": already there, and TruthForm did not make it (no "+fmt.Sprintf("%q", d.Mark())+" comment)")
 		case ours && !keys[strings.ToLower(d.zone+"/"+t+" "+n+" "+c)] && clashes(t, byName[n]):
 			conflicts = append(conflicts, desc+": made by an earlier restore with other content; the restore would put a second record beside it (DNS would answer with both), so delete it first")
 		case ours && !keys[strings.ToLower(d.zone+"/"+t+" "+n+" "+c)]:
@@ -382,7 +382,7 @@ func (d *Subdomain) Allow(o snapshot.Object, existing map[string]any) string {
 	case !under(n, d.Name):
 		return n + " is not under " + d.Name
 	case existing != nil && !d.ours(stringOf(existing["comment"])):
-		return "Truthform did not make it (no " + fmt.Sprintf("%q", d.Mark()) + " comment)"
+		return "TruthForm did not make it (no " + fmt.Sprintf("%q", d.Mark()) + " comment)"
 	}
 	return ""
 }

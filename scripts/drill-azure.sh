@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The Azure restore drill against a real subscription: the disaster case.
 #
-#   seed an app with the az CLI (not Truthform)
+#   seed an app with the az CLI (not TruthForm)
 #   capture it twice; the digests must match
 #   DELETE the app's resource group
 #   restore it from the snapshot; every resource must be applied
@@ -85,7 +85,7 @@ seed() {
   az network vnet create -g "$RG" -n "$N-vnet2" -l "$LOCATION" --address-prefixes 10.43.0.0/16 -o none
   az network vnet peering create -g "$RG" --vnet-name "$N-vnet" -n to-2 --remote-vnet "$N-vnet2" --allow-vnet-access -o none
   az network vnet peering create -g "$RG" --vnet-name "$N-vnet2" -n to-1 --remote-vnet "$N-vnet" --allow-vnet-access -o none
-  az lock create --name "$N-lock" --lock-type CanNotDelete --resource-group "$RG" --notes "Truthform drill" -o none
+  az lock create --name "$N-lock" --lock-type CanNotDelete --resource-group "$RG" --notes "TruthForm drill" -o none
   echo "seeded $RG"
 }
 

@@ -178,7 +178,7 @@ func TestADryRunWritesNothing(t *testing.T) {
 	}
 }
 
-// A record already at a planned name that Truthform did not make stops
+// A record already at a planned name that TruthForm did not make stops
 // the restore; so does the subdomain delegated away. A wildcard above the
 // subdomain, and an address left as the source's, are reported.
 func TestASubdomainRestoreFindsWhatIsInTheWay(t *testing.T) {
@@ -189,7 +189,7 @@ func TestASubdomainRestoreFindsWhatIsInTheWay(t *testing.T) {
 	d := &Subdomain{Name: "test.example.com"}
 	mapped, _, _ := d.Map(src)
 	conflicts, warnings := d.Check(mapped, capture(t, f))
-	if len(conflicts) != 1 || !strings.Contains(conflicts[0], "A test.example.com 203.0.113.9: already there, and Truthform did not make it") {
+	if len(conflicts) != 1 || !strings.Contains(conflicts[0], "A test.example.com 203.0.113.9: already there, and TruthForm did not make it") {
 		t.Errorf("conflicts %v", conflicts)
 	}
 	ws := strings.Join(warnings, "\n")
@@ -215,7 +215,7 @@ func TestASubdomainRestoreFindsWhatIsInTheWay(t *testing.T) {
 }
 
 // The guard refuses what Check should have stopped: a change to a record
-// Truthform did not make, a record outside the subdomain, the zone.
+// TruthForm did not make, a record outside the subdomain, the zone.
 func TestASubdomainRestoreWritesOnlyItsOwnRecords(t *testing.T) {
 	f, zid := dnsZone(t)
 	src := capture(t, f)
@@ -226,7 +226,7 @@ func TestASubdomainRestoreWritesOnlyItsOwnRecords(t *testing.T) {
 	f.seed(t, "/zones/"+zid+"/dns_records", map[string]any{"type": "A", "name": "test.example.com", "content": "198.51.100.7", "ttl": 1, "proxied": false, "comment": "theirs"})
 	f.writes = 0
 	for _, r := range subRestore(f, d, mapped, RestoreOptions{Update: true}) {
-		if strings.Contains(r.Key, "A test.example.com") && (r.OK || !strings.Contains(r.Detail, "Truthform did not make it")) {
+		if strings.Contains(r.Key, "A test.example.com") && (r.OK || !strings.Contains(r.Detail, "TruthForm did not make it")) {
 			t.Errorf("someone's record: ok=%v %s", r.OK, r.Detail)
 		}
 	}

@@ -1,4 +1,4 @@
-# Applied after the CRD is established: a custom resource no Truthform code
+# Applied after the CRD is established: a custom resource no TruthForm code
 # knows about, captured and restored purely through discovery.
 apiVersion: example.truthform.org/v1
 kind: Widget

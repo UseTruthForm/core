@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// ARM is the slice of Azure Resource Manager Truthform uses: generic list,
+// ARM is the slice of Azure Resource Manager TruthForm uses: generic list,
 // GET and PUT by resource ID, which serve every resource type, and the
 // provider registrations, which say which API versions each type offers.
 type ARM interface {

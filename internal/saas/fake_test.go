@@ -237,7 +237,7 @@ func (f *fake) create(w http.ResponseWriter, col *Collection, path string, ps ma
 		return
 	}
 	if strings.Contains(string(raw), "{{truthform") {
-		f.fail(w, 422, "unresolved Truthform token sent to the provider")
+		f.fail(w, 422, "unresolved TruthForm token sent to the provider")
 		return
 	}
 	for _, it := range f.colls[path] {

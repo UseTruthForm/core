@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The AWS restore drill against a real account: the disaster case.
 #
-#   seed an app with the plain AWS CLI (not Truthform)
+#   seed an app with the plain AWS CLI (not TruthForm)
 #   capture it twice; the digests must match
 #   DELETE the app
 #   restore it from the snapshot; every resource must be applied
@@ -180,7 +180,7 @@ seed() {
     --tag-specifications "ResourceType=vpc,Tags=[{Key=Name,Value=$N},{Key=team,Value=shop}]" --query Vpc.VpcId --output text)
   aws ec2 create-subnet --vpc-id "$vpc" --cidr-block 10.42.1.0/24 --availability-zone "${REGION}a" \
     --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=$N-app}]" --query Subnet.SubnetId --output text
-  sg=$(aws ec2 create-security-group --vpc-id "$vpc" --group-name "$N-web" --description "Truthform drill"     --tag-specifications "ResourceType=security-group,Tags=[{Key=Name,Value=$N-web}]" --query GroupId --output text)
+  sg=$(aws ec2 create-security-group --vpc-id "$vpc" --group-name "$N-web" --description "TruthForm drill"     --tag-specifications "ResourceType=security-group,Tags=[{Key=Name,Value=$N-web}]" --query GroupId --output text)
   # A rule AWS also lists as its own AWS::EC2::SecurityGroupIngress.
   aws ec2 authorize-security-group-ingress --group-id "$sg" --protocol tcp --port 443 --cidr 10.42.0.0/16 >/dev/null
   # SQS refuses a queue name for 60 seconds after it was deleted.
@@ -197,7 +197,7 @@ seed() {
     done
   done
   topic=$(aws sns create-topic --name "$N-alerts" --query TopicArn --output text)
-  aws events put-rule --name "$N-nightly" --schedule-expression "cron(0 3 * * ? *)" --state DISABLED --description "Truthform drill" >/dev/null
+  aws events put-rule --name "$N-nightly" --schedule-expression "cron(0 3 * * ? *)" --state DISABLED --description "TruthForm drill" >/dev/null
   aws events put-targets --rule "$N-nightly" --targets "Id"="alerts","Arn"="$topic" >/dev/null
   aws logs create-log-group --log-group-name "/$N/app"
   aws logs put-retention-policy --log-group-name "/$N/app" --retention-in-days 7
@@ -206,15 +206,15 @@ seed() {
   aws ssm put-parameter --name "/$N/env" --type String --value prod --tags Key=team,Value=shop --output text
   if [ "$IAM" = 1 ]; then
     printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}' > "$OUT/trust.json"
-    aws iam create-role --role-name "$N-app" --assume-role-policy-document "file://$OUT/trust.json"       --description "Truthform drill" --tags Key=team,Value=shop --query Role.Arn --output text
+    aws iam create-role --role-name "$N-app" --assume-role-policy-document "file://$OUT/trust.json"       --description "TruthForm drill" --tags Key=team,Value=shop --query Role.Arn --output text
     jobs_arn=$(aws sqs get-queue-attributes --queue-url "$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)" --attribute-names QueueArn --query Attributes.QueueArn --output text)
     printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["sqs:ReceiveMessage","sqs:DeleteMessage"],"Resource":"%s"}]}' "$jobs_arn" > "$OUT/policy.json"
-    pol=$(aws iam create-policy --policy-name "$N-read" --policy-document "file://$OUT/policy.json" --description "Truthform drill" --query Policy.Arn --output text)
+    pol=$(aws iam create-policy --policy-name "$N-read" --policy-document "file://$OUT/policy.json" --description "TruthForm drill" --query Policy.Arn --output text)
     aws iam attach-role-policy --role-name "$N-app" --policy-arn "$pol"
     # A function: its role is named by ARN, and its environment names the
     # queue by URL, two more references to remap. Never invoked, so free.
     printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}' > "$OUT/fn-trust.json"
-    fnrole=$(aws iam create-role --role-name "$N-fn" --assume-role-policy-document "file://$OUT/fn-trust.json" --description "Truthform drill" --query Role.Arn --output text)
+    fnrole=$(aws iam create-role --role-name "$N-fn" --assume-role-policy-document "file://$OUT/fn-trust.json" --description "TruthForm drill" --query Role.Arn --output text)
     jobs_url=$(aws sqs get-queue-url --queue-name "$N-jobs" --query QueueUrl --output text)
     # python3 first: Linux and macOS often have no "python".
     "$(command -v python3 || command -v python)" - "$OUT/fn.zip" <<'PY'

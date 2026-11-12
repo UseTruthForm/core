@@ -1,7 +1,7 @@
 # Drill accounts (internal)
 
-How Truthform's own test accounts are set up for the real restore drills
-(`scripts/drill-*.sh`). This is about testing Truthform, not about a
+How TruthForm's own test accounts are set up for the real restore drills
+(`scripts/drill-*.sh`). This is about testing TruthForm, not about a
 customer's setup: for that, see [permissions.md](permissions.md) and
 `truthform permissions`.
 
@@ -20,7 +20,7 @@ the owner's go-ahead first.
 IAM types need their own grant. Two inline policies on
 `tf-pilot-automation` give it, each limited by name:
 
-- `tf-pilot-iam-scoped` (not Truthform's): roles and instance profiles named
+- `tf-pilot-iam-scoped` (not TruthForm's): roles and instance profiles named
   `tf-pilot-*`.
 - `truthform-drill-iam`: roles and policies named `truthform-drill*`, plus
   IAM read. The policy is kept outside the repository in the handoff
@@ -52,4 +52,4 @@ exactly the role under test, deleted afterwards and checked to be gone.
 that refreshes itself through the sign-in service. The read-only guard
 let that refresh through only from 2026-10-23 on: before, such a profile
 worked until its first cached credentials expired, then every capture
-failed with "refused by Truthform's read-only guard".
+failed with "refused by TruthForm's read-only guard".

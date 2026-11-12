@@ -98,7 +98,7 @@ func logoutCmd(args []string) int {
 	if err := keychain.Delete(p.Name); err != nil {
 		return fail(err)
 	}
-	fmt.Printf("Signed out of %s on this machine. To end the grant itself, revoke Truthform in the %s dashboard.\n", p.Name, p.Name)
+	fmt.Printf("Signed out of %s on this machine. To end the grant itself, revoke TruthForm in the %s dashboard.\n", p.Name, p.Name)
 	return 0
 }
 

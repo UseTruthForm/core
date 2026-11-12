@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-# The role Truthform runs as in one AWS account. Written by
+# The role TruthForm runs as in one AWS account. Written by
 # "truthform permissions --platform aws"; deploying it is one stack, and
 # deleting the stack removes everything it granted.
 #
@@ -15,14 +15,14 @@ AWSTemplateFormatVersion: "2010-09-09"
 # - No IAM write for restore. PowerUserAccess restores every service except
 #   IAM; restoring IAM roles and policies needs a grant scoped by the
 #   customer to the names being restored (docs/permissions.md).
-# - No permission for Truthform to change this role or its trust: the role
+# - No permission for TruthForm to change this role or its trust: the role
 #   cannot widen itself.
-Description: Truthform access role (truthform permissions). Delete this stack to remove it.
+Description: TruthForm access role (truthform permissions). Delete this stack to remove it.
 
 Parameters:
   TrustedPrincipalArn:
     Type: String
-    Description: The IAM user or role that runs Truthform and may assume this role.
+    Description: The IAM user or role that runs TruthForm and may assume this role.
     # A whole account (":root") is accepted only because AWS accepts it;
     # truthform permissions warns when given one, since it lets every
     # principal in that account that is allowed sts:AssumeRole in.
@@ -52,7 +52,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Ref RoleName
-      Description: !Sub "Truthform ${Access} access (truthform permissions)"
+      Description: !Sub "TruthForm ${Access} access (truthform permissions)"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -79,7 +79,7 @@ Resources:
     Condition: Capture
     Properties:
       ManagedPolicyName: !Sub "${RoleName}-reads-{{$i}}"
-      Description: Reads Truthform needs that ReadOnlyAccess lacks (generated; truthform permissions)
+      Description: Reads TruthForm needs that ReadOnlyAccess lacks (generated; truthform permissions)
       Roles: [!Ref Role]
       PolicyDocument:
         Version: "2012-10-17"

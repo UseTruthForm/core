@@ -1,4 +1,4 @@
-# Truthform's access to one Google Cloud project, written by
+# TruthForm's access to one Google Cloud project, written by
 # "truthform permissions --platform gcp" with its values in terraform.tfvars
 # beside it. Apply grants it; destroy removes it.
 #
@@ -16,12 +16,12 @@ terraform {
 
 variable "project" {
   type        = string
-  description = "The project Truthform reads."
+  description = "The project TruthForm reads."
 }
 
 variable "member" {
   type        = string
-  description = "Who runs Truthform: user:..., serviceAccount:... or group:..."
+  description = "Who runs TruthForm: user:..., serviceAccount:... or group:..."
 }
 
 variable "access" {
@@ -46,7 +46,7 @@ provider "google" {
 }
 
 # The APIs a capture lists through. disable_on_destroy is false because
-# removing Truthform's access must not switch off an API the project itself
+# removing TruthForm's access must not switch off an API the project itself
 # depends on.
 resource "google_project_service" "truthform" {
   for_each           = toset(["cloudasset.googleapis.com", "cloudresourcemanager.googleapis.com"])

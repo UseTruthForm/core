@@ -86,6 +86,7 @@ func Capture(ctx context.Context, c *Clients, p Policy) (snapshot.Snapshot, erro
 		}
 	}
 
+	p.roots = fluxRoots(ctx, c, lists)
 	own := newOwnership()
 	for _, rl := range lists {
 		gv, err := schema.ParseGroupVersion(rl.GroupVersion)
@@ -131,6 +132,54 @@ func Capture(ctx context.Context, c *Clients, p Policy) (snapshot.Snapshot, erro
 	}
 	snap.Schemas = schemas
 	return snap, nil
+}
+
+// fluxRoots finds what each Flux Kustomization that applies itself reads
+// from (its sourceRef), as kind|namespace|name: those are captured, see
+// Policy.root. It lists Kustomizations once more than the capture does. A
+// cluster without Flux has none, and a list that fails finds none: the
+// capture of that type then says why.
+func fluxRoots(ctx context.Context, c *Clients, lists []*metav1.APIResourceList) map[string]bool {
+	roots := map[string]bool{}
+	for _, rl := range lists {
+		gv, err := schema.ParseGroupVersion(rl.GroupVersion)
+		if err != nil || gv.Group != "kustomize.toolkit.fluxcd.io" {
+			continue
+		}
+		for _, r := range rl.APIResources {
+			if r.Name != "kustomizations" || !has(r.Verbs, "list") {
+				continue
+			}
+			cont := ""
+			for {
+				ul, err := c.Dynamic.Resource(gv.WithResource(r.Name)).List(ctx, metav1.ListOptions{Limit: 500, Continue: cont})
+				if err != nil {
+					return roots
+				}
+				for i := range ul.Items {
+					obj := ul.Items[i].Object
+					obj["apiVersion"], obj["kind"] = gv.String(), r.Kind
+					if !selfApplied(obj) {
+						continue
+					}
+					md, _ := obj["metadata"].(map[string]any)
+					spec, _ := obj["spec"].(map[string]any)
+					ref, _ := spec["sourceRef"].(map[string]any)
+					ns := strOf(ref["namespace"])
+					if ns == "" {
+						ns = strOf(md["namespace"])
+					}
+					if strOf(ref["kind"]) != "" && strOf(ref["name"]) != "" {
+						roots[strOf(ref["kind"])+"|"+ns+"|"+strOf(ref["name"])] = true
+					}
+				}
+				if cont = ul.GetContinue(); cont == "" {
+					break
+				}
+			}
+		}
+	}
+	return roots
 }
 
 func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVersionResource, kind string, cov *snapshot.Coverage, snap *snapshot.Snapshot, own *ownership) error {

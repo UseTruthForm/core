@@ -130,6 +130,9 @@ type Policy struct {
 	// captured.
 	Baseline       map[string]map[string]any
 	BaselineDigest string
+	// roots are what a source that applies itself reads from (a Flux
+	// GitRepository), as kind|namespace|name: see root. Capture finds them.
+	roots map[string]bool
 }
 
 // WithBaseline loads a baseline snapshot into the policy.
@@ -198,18 +201,21 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		return ownedReason(kind, name)
 	}
 
+	// Before the system namespaces, so what a source makes there is listed
+	// under the source: a HelmRelease that installs into kube-system was
+	// otherwise named nowhere, and a rebuild did not know to install it.
+	if !p.CaptureRendered {
+		if why := renderedBy(md); why != "" && !p.root(obj) {
+			return why
+		}
+	}
+
 	if !p.IncludeSystem {
 		if systemNamespaces[ns] {
 			return "in system namespace " + ns
 		}
 		if group == "" && resource == "namespaces" && (systemNamespaces[name] || name == "default") {
 			return "namespace created by the cluster itself"
-		}
-	}
-
-	if !p.CaptureRendered {
-		if why := renderedBy(md); why != "" {
-			return why
 		}
 	}
 
@@ -299,6 +305,38 @@ func ownedReason(kind, name string) string {
 	return "owned by " + kind + "/" + name + ", whose controller recreates it"
 }
 
+// root reports whether a rendered object is where GitOps starts: a source
+// that applies itself (the Kustomization "flux bootstrap" makes, an Argo
+// CD application that manages itself), or what such a Kustomization reads
+// from. Restoring the source recreates what it renders, and nothing
+// recreates these: skipped as rendered, the snapshot did not say which
+// repository, branch and path the cluster was built from.
+func (p Policy) root(obj map[string]any) bool {
+	md, _ := obj["metadata"].(map[string]any)
+	kind, ns, name := strOf(obj["kind"]), strOf(md["namespace"]), strOf(md["name"])
+	return selfApplied(obj) || p.roots[kind+"|"+ns+"|"+name]
+}
+
+// selfApplied reports whether an object is the source that applied it.
+func selfApplied(obj map[string]any) bool {
+	md, _ := obj["metadata"].(map[string]any)
+	labels, _ := md["labels"].(map[string]any)
+	l := func(k string) string { return strOf(labels[k]) }
+	group, _, _ := strings.Cut(strOf(obj["apiVersion"]), "/")
+	name := strOf(md["name"])
+	switch {
+	case group == "kustomize.toolkit.fluxcd.io" && strOf(obj["kind"]) == "Kustomization":
+		return l("kustomize.toolkit.fluxcd.io/name") == name && l("kustomize.toolkit.fluxcd.io/namespace") == strOf(md["namespace"])
+	case group == "argoproj.io" && strOf(obj["kind"]) == "Application":
+		app := l("argocd.argoproj.io/instance")
+		if app == "" {
+			app = strings.SplitN(annotation(md, "argocd.argoproj.io/tracking-id"), ":", 2)[0]
+		}
+		return app == name
+	}
+	return false
+}
+
 // renderedBy reports which higher-level source applied an object, from the
 // labels those tools stamp on everything they create, or "".
 func renderedBy(md map[string]any) string {
@@ -342,6 +380,9 @@ var serverAnnotations = []string{
 	"volume.beta.kubernetes.io/storage-provisioner",
 	"volume.kubernetes.io/storage-provisioner",
 	"volume.kubernetes.io/selected-node",
+	// "flux reconcile" stamps the time it was asked for: a request, not
+	// configuration, and it differed after every manual sync.
+	"reconcile.fluxcd.io/requestedAt",
 }
 
 // normalize strips what the server generated, so the snapshot holds only

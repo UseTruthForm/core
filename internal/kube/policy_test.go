@@ -117,6 +117,14 @@ func TestNormalize(t *testing.T) {
 			t.Fatal("headless clusterIP None is configuration and must be kept")
 		}
 	})
+	t.Run("a Flux object drops the time a sync was asked for", func(t *testing.T) {
+		ks := k8sObj("Kustomization", "flux-system", "flux-system", map[string]any{"annotations": map[string]any{"reconcile.fluxcd.io/requestedAt": "2026-01-01T00:00:00Z", "team": "platform"}}, nil)
+		normalize("kustomize.toolkit.fluxcd.io", "kustomizations", ks)
+		a := ks["metadata"].(map[string]any)["annotations"].(map[string]any)
+		if _, ok := a["reconcile.fluxcd.io/requestedAt"]; ok || a["team"] != "platform" {
+			t.Fatalf("annotations: %+v", a)
+		}
+	})
 	t.Run("namespace drops server label and finalizer spec", func(t *testing.T) {
 		ns := k8sObj("Namespace", "", "shop", map[string]any{"labels": map[string]any{"kubernetes.io/metadata.name": "shop", "team": "platform"}}, map[string]any{"spec": map[string]any{"finalizers": []any{"kubernetes"}}})
 		normalize("", "namespaces", ns)
@@ -220,6 +228,64 @@ func TestRenderedObjectsAreSkipped(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Where GitOps starts is captured: the Kustomization that applies itself
+// and what it reads from, an Argo CD application that manages itself.
+// Skipped as rendered ("restoring it recreates this", of itself), the
+// snapshot of a bootstrapped cluster did not say which repository, branch
+// and path it was built from.
+func TestGitOpsRootsAreCaptured(t *testing.T) {
+	flux := map[string]any{"labels": map[string]any{"kustomize.toolkit.fluxcd.io/name": "flux-system", "kustomize.toolkit.fluxcd.io/namespace": "flux-system"}}
+	obj := func(apiVersion, kind, ns, name string, md map[string]any) map[string]any {
+		o := k8sObj(kind, ns, name, md, nil)
+		o["apiVersion"] = apiVersion
+		return o
+	}
+	p := Policy{roots: map[string]bool{"GitRepository|flux-system|flux-system": true}}
+	for name, c := range map[string]struct {
+		obj  map[string]any
+		kept bool
+	}{
+		"the Kustomization that applies itself": {obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "flux-system", flux), true},
+		"what it reads from":                    {obj("source.toolkit.fluxcd.io/v1", "GitRepository", "flux-system", "flux-system", flux), true},
+		"another Kustomization it applies":      {obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "apps", flux), false},
+		"one of the same name elsewhere":        {obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "tenant", "flux-system", flux), false},
+		"another repository it applies":         {obj("source.toolkit.fluxcd.io/v1", "GitRepository", "flux-system", "charts", flux), false},
+		"another kind of the same name":         {obj("v1", "ConfigMap", "flux-system", "flux-system", flux), false},
+		"an Argo CD application that manages itself": {obj("argoproj.io/v1alpha1", "Application", "argocd", "root",
+			map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": "root"}}), true},
+		"one tracked by annotation": {obj("argoproj.io/v1alpha1", "Application", "argocd", "root",
+			map[string]any{"annotations": map[string]any{"argocd.argoproj.io/tracking-id": "root:argoproj.io/Application:argocd/root"}}), true},
+		"an application the root manages": {obj("argoproj.io/v1alpha1", "Application", "argocd", "shop",
+			map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": "root"}}), false},
+	} {
+		reason := p.skipReason("", "", c.obj)
+		if c.kept && reason != "" {
+			t.Errorf("%s: skipped (%s)", name, reason)
+		}
+		if !c.kept && !strings.Contains(reason, "restoring") {
+			t.Errorf("%s: reason %q, want it left to its source", name, reason)
+		}
+	}
+}
+
+// What a source makes in a system namespace is listed under the source:
+// "in system namespace kube-system" named no HelmRelease, and a rebuild
+// did not know to install it. With --capture-rendered the namespace still
+// leaves it out.
+func TestRenderedInASystemNamespaceNamesItsSource(t *testing.T) {
+	md := map[string]any{"labels": map[string]any{"helm.toolkit.fluxcd.io/name": "metrics", "helm.toolkit.fluxcd.io/namespace": "kube-system"}}
+	o := k8sObj("Deployment", "kube-system", "metrics-server", md, nil)
+	if r := (Policy{}).skipReason("apps", "deployments", o); !strings.Contains(r, "Flux HelmRelease kube-system/metrics") {
+		t.Errorf("reason %q does not name the HelmRelease", r)
+	}
+	if r := (Policy{CaptureRendered: true}).skipReason("apps", "deployments", o); r != "in system namespace kube-system" {
+		t.Errorf("--capture-rendered: reason %q", r)
+	}
+	if r := (Policy{CaptureRendered: true, IncludeSystem: true}).skipReason("apps", "deployments", o); r != "" {
+		t.Errorf("--capture-rendered --include-system: skipped (%s)", r)
 	}
 }
 

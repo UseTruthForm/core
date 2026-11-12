@@ -120,7 +120,7 @@ func freePort(t *testing.T) int {
 	return p
 }
 
-// browser follows the sign-in page's redirect back to Truthform, as a person
+// browser follows the sign-in page's redirect back to TruthForm, as a person
 // approving the sign-in does.
 func browser(t *testing.T) func(string) {
 	return func(u string) {
@@ -474,7 +474,7 @@ func TestTheBrowserGetsItsAnswerAndLoginDoesNotWait(t *testing.T) {
 	}
 	select {
 	case p := <-got:
-		if p.err != nil || p.status != http.StatusOK || !strings.Contains(p.body, "Signed in to Truthform") {
+		if p.err != nil || p.status != http.StatusOK || !strings.Contains(p.body, "Signed in to TruthForm") {
 			t.Errorf("the browser got status %d, body %q, error %v", p.status, p.body, p.err)
 		}
 		// The listener is gone by now: a browser that kept the connection
@@ -515,5 +515,64 @@ func TestARefusedSignInStillAnswersTheBrowser(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Error("the browser never got an answer")
+	}
+}
+
+// A client ID still set under the tool's old name is refused, by the sign-in
+// and by a run that would use a stored sign-in.
+//
+// The failure this pins: after the rename STACKDNA_CLOUDFLARE_CLIENT_ID was
+// read by nothing. A run with it set signed in as the built-in client and
+// said nothing, which reads as the person's own client being in use.
+func TestAClientIDUnderTheOldNameIsRefused(t *testing.T) {
+	a := newAuthServer(t)
+	o := a.oauth(freePort(t))
+	o.IDEnv = "TRUTHFORM_TEST_RENAMED_ID"
+	t.Setenv("STACKDNA_TEST_RENAMED_ID", "old-client")
+	t.Setenv("TRUTHFORM_TEST_RENAMED_ID", "")
+	want := "STACKDNA_TEST_RENAMED_ID is set, and this build reads TRUTHFORM_TEST_RENAMED_ID"
+
+	opened := false
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := o.Login(ctx, http.DefaultClient, func(string) { opened = true }, true)
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Login error %v, want it to name both variables", err)
+	}
+	if opened {
+		t.Error("Login opened the sign-in before refusing")
+	}
+
+	p := Provider{Name: "test", TokenEnv: "TRUTHFORM_TEST_RENAMED_TOKEN", OAuth: o}
+	t.Setenv("TRUTHFORM_TEST_RENAMED_TOKEN", "")
+
+	// With no sign-in stored there is no client to get wrong: the run is
+	// told what it lacks, the token, as it was before.
+	store := &memStore{}
+	if _, _, err := Tokens(p, store, http.DefaultClient); err == nil || !strings.Contains(err.Error(), "TRUTHFORM_TEST_RENAMED_TOKEN is not set") || strings.Contains(err.Error(), "STACKDNA_") {
+		t.Errorf("with nothing stored: error %v, want only the missing token", err)
+	}
+
+	if err := Save(store, "test", &oauth2.Token{AccessToken: "stored", RefreshToken: "r"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Tokens(p, store, http.DefaultClient); err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("Tokens error %v, want it to name both variables", err)
+	}
+
+	// An API token needs no client, so the old variable does not matter.
+	t.Setenv("TRUTHFORM_TEST_RENAMED_TOKEN", "api-token")
+	if _, from, err := Tokens(p, store, http.DefaultClient); err != nil || from != "TRUTHFORM_TEST_RENAMED_TOKEN" {
+		t.Errorf("with an API token set: from %q, error %v", from, err)
+	}
+	t.Setenv("TRUTHFORM_TEST_RENAMED_TOKEN", "")
+
+	// With the new name set too, the new one is used.
+	t.Setenv("TRUTHFORM_TEST_RENAMED_ID", "new-client")
+	if err := o.renamed(); err != nil {
+		t.Errorf("both names set: %v", err)
+	}
+	if o.id() != "new-client" {
+		t.Errorf("client %q, want the one under the new name", o.id())
 	}
 }

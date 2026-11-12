@@ -14,7 +14,7 @@ import (
 	"github.com/usetruthform/core/internal/snapshot"
 )
 
-// checkCmd says who Truthform is running as and what that identity can
+// checkCmd says who TruthForm is running as and what that identity can
 // read, type by type, by running a capture that is written nowhere. It is
 // the step after a grant: an exit code of 0 from the grant says the
 // platform accepted it, not that a capture can now read everything.

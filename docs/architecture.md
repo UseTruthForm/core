@@ -4,7 +4,7 @@
 
 Infrastructure-as-code goes from code to cloud and keeps a state file that
 records what it believes it created. That state drifts, gets corrupted and has
-to be locked, imported and migrated. Truthform goes the other way. It reads what
+to be locked, imported and migrated. TruthForm goes the other way. It reads what
 is actually running and writes a snapshot that can recreate it. The live system
 is the source of truth, so nothing has to be kept in sync.
 
@@ -70,7 +70,7 @@ live system ──discover──▶ list every type ──policy──▶ normal
 
 This is the one thing other IaC tools struggle with. A provider release
 freezes each API's fields, and keeping up means shipping releases forever.
-Truthform's rule is that no adapter may contain a field list:
+TruthForm's rule is that no adapter may contain a field list:
 
 - **Values** come from the live API as-is (the Kubernetes dynamic client).
 - **Shape** comes from the schema the API publishes (Kubernetes OpenAPI v3).
@@ -136,7 +136,7 @@ source comes next.
 CRUD API across the CloudFormation registry, and each type's registry schema
 says everything the adapter needs:
 
-| Schema says | Truthform does |
+| Schema says | TruthForm does |
 |---|---|
 | `primaryIdentifier` | How to read it, and whether the user chose the ID (`BucketName`) or AWS generated it (`VpcId`) |
 | `readOnlyProperties` | Moves those values out of `spec` into `status`. They are never sent back, and they are the targets of references |
@@ -192,7 +192,7 @@ what is missing, in reference order:
 - An object that already exists and is identical is reported as applied.
   This makes a second restore a no-op.
 - An object that exists but differs is reported as not applied, with the
-  differing fields. Truthform doesn't update or delete anything.
+  differing fields. TruthForm doesn't update or delete anything.
 - A token can resolve to a resource that wasn't in the snapshot but exists in
   the target. The target's default VPC is one example.
 - Write-only values come from `--values <file>` and go only to AWS.
@@ -659,8 +659,8 @@ Everything else comes from the description:
   never kept. They are annotated, supplied at restore with `--values`, and
   named in the result when missing.
 - **The account is tokenized only where it is structural**: an exact value,
-  or a path or URL segment. The Truthform organisation's repository
-  describes itself as "Truthform core: ...", and replacing the name in prose
+  or a path or URL segment. The TruthForm organisation's repository
+  describes itself as "TruthForm core: ...", and replacing the name in prose
   would rewrite the description in every target.
 - **A feature the plan lacks is not a failure.** Each provider lists its own
   refusal messages ("Upgrade to GitHub Pro"), and those collections are
@@ -671,9 +671,9 @@ Everything else comes from the description:
 
 | | Proof |
 |---|---|
-| GitHub: repositories, labels, webhooks, rulesets | A fake drill. Plus a real read-only capture of the Truthform organisation: 2 repositories, 19 labels, rulesets correctly "not available on this plan", complete |
+| GitHub: repositories, labels, webhooks, rulesets | A fake drill. Plus a real read-only capture of the TruthForm organisation: 2 repositories, 19 labels, rulesets correctly "not available on this plan", complete |
 | Cloudflare: zones, DNS records | A fake drill only; no API token on the dev machine |
-| GitHub, derived (Actions settings, variables, secrets, environments, org issue fields, code-security configurations, ...) | A derived drill. Plus a real capture of Truthform: 36 items across 18 collections; 10 organisation collections need an org-admin token |
+| GitHub, derived (Actions settings, variables, secrets, environments, org issue fields, code-security configurations, ...) | A derived drill. Plus a real capture of TruthForm: 36 items across 18 collections; 10 organisation collections need an org-admin token |
 
 **GitHub's collections are derived, not listed.** The description tags
 every operation with a category. The descriptor names the configuration
@@ -732,21 +732,21 @@ return, dropped it without a word, and the earlier drill passed because
 both sides lacked it. Each object now carries a
 `truthform.org/unreadable` annotation naming such fields (state both the
 create and the update accept, absent from the read's response schema), and
-a restore says it could not carry them. In the real Truthform organisation
+a restore says it could not carry them. In the real TruthForm organisation
 it names one: a code-security configuration's `code_security` and
 `secret_protection`.
 
 ## Agents: the MCP server
 
-`truthform mcp` serves Truthform to an agent over the Model Context Protocol
+`truthform mcp` serves TruthForm to an agent over the Model Context Protocol
 (JSON-RPC on stdin and stdout; no MCP dependency in the binary). An agent
 building on a platform needs to know what a resource takes before it
-writes one. Truthform already reads that from each platform's published
+writes one. TruthForm already reads that from each platform's published
 schemas to capture and restore, so it says it:
 
 | Tool | What it does |
 |---|---|
-| `platforms` | What Truthform covers on each platform, and each platform's own MCP server |
+| `platforms` | What TruthForm covers on each platform, and each platform's own MCP server |
 | `list_types` | Resource types from the published schemas (AWS registry, Azure definitions, a GCP API's Discovery document, a SaaS description) |
 | `describe_type` | Every field of a type: required, read-only (set by the platform), write-only, secret, create-only (changing it replaces the resource), with the platform's documentation links |
 | `capture`, `diff` | Read a live target into a snapshot, or compare one with it |
@@ -766,7 +766,7 @@ Verified against real systems through the protocol: `describe_type` for
 `AWS::SQS::Queue` (FifoQueue and QueueName create-only, Arn and QueueUrl
 read-only), `Microsoft.Compute/virtualMachines` (159 fields to depth 3,
 `properties.osProfile.adminPassword` secret), IAM service accounts, and
-GitHub environments; a capture of the Truthform organisation (36 items,
+GitHub environments; a capture of the TruthForm organisation (36 items,
 honestly incomplete for want of `admin:org`), a diff of it (no
 differences), its report, and an AWS capture. The first real describe
 showed an environment's `name` as read-only; it names the item in the
@@ -780,7 +780,7 @@ resolve: AWS's CloudFormation template reference
 themselves) and Azure's template reference
 (`/azure/templates/microsoft.compute/<version>/virtualmachines`).
 
-**Companion servers.** Truthform says what exists and what each field
+**Companion servers.** TruthForm says what exists and what each field
 means; each platform's own MCP server acts on it. As listed by the
 providers on 2026-10-22:
 

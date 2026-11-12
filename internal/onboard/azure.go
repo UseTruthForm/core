@@ -5,10 +5,10 @@ import "fmt"
 func buildAzure(r Request) (Plan, error) {
 	var miss MissingError
 	if r.Subscription == "" {
-		miss = append(miss, Missing{"subscription", "the ID of the subscription Truthform reads", "az account list --query '[].[id,name]' --output tsv"})
+		miss = append(miss, Missing{"subscription", "the ID of the subscription TruthForm reads", "az account list --query '[].[id,name]' --output tsv"})
 	}
 	if r.PrincipalID == "" {
-		miss = append(miss, Missing{"principal-id", "the object ID of the user, group or service principal that will run Truthform",
+		miss = append(miss, Missing{"principal-id", "the object ID of the user, group or service principal that will run TruthForm",
 			"az ad signed-in-user show --query id --output tsv   (yourself), or the Object ID on the service principal's Enterprise application page"})
 	}
 	if r.PrincipalType == "" {
@@ -61,8 +61,8 @@ func buildAzure(r Request) (Plan, error) {
 		{Title: "Check the administrator is signed in to subscription " + r.Subscription + " (it prints its ID)",
 			Command: az("az", "account", "show", "--query", "id", "--output", "tsv")},
 		{Title: "List the roles the principal already holds in it", Command: roles,
-			Note: "Truthform's grant is added beside these, never in place of them. If it already holds more than this grant, it does not need this one."},
-		{Title: "Check no Truthform stack is there already (expect DeploymentStackNotFound)", Command: az("az", "stack", "sub", "show", "--name", stack)},
+			Note: "TruthForm's grant is added beside these, never in place of them. If it already holds more than this grant, it does not need this one."},
+		{Title: "Check no TruthForm stack is there already (expect DeploymentStackNotFound)", Command: az("az", "stack", "sub", "show", "--name", stack)},
 	}
 	p.Grant = []Step{{
 		Title: "Deploy the role assignments as a deployment stack",

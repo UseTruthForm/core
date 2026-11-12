@@ -133,15 +133,42 @@ func planMarkdown(p kube.Plan) string {
 		w("Every Secret in the snapshot is made from a store.\n\n")
 	} else {
 		w("No store in the snapshot supplies these, and a snapshot never holds a value. Each needs its value from where you keep it. One with no user here may still be read by what step 1 installs, or named from an object with no namespace.\n\n")
-		w("| Secret | Keys | Used by |\n|---|---|---|\n")
+		w("| Secret | Keys | Used by | What it says of itself |\n|---|---|---|---|\n")
 		for _, s := range p.ByHand {
-			w("| %s | %s | %s |\n", code(s.Namespace+"/"+s.Name), codes(s.Keys), md(some(s.UsedBy)))
+			w("| %s | %s | %s | %s |\n", code(s.Namespace+"/"+s.Name), codes(s.Keys), md(some(s.UsedBy)), md(s.Note))
 		}
 		w("\n")
 	}
 
+	for _, e := range p.Encrypted {
+		w("**Kept encrypted: %s", md(e.By))
+		if e.Objects > 0 {
+			w(", %d objects", e.Objects)
+		}
+		w(".** ")
+		if len(e.Keys) == 0 {
+			w("No Secret in the snapshot is named as the key: it is outside the cluster (a cloud key service), or where the capture did not look.")
+		} else {
+			w("The key is in %s.", codes(e.Keys))
+		}
+		w(" A snapshot never holds a key's value: without a copy of the key kept outside the cluster, what it encrypts cannot be read again.\n\n")
+	}
+
 	if len(p.Reissued) > 0 {
-		w("Not for you to supply: %d that cert-manager issues again once it runs (%s).\n\n", len(p.Reissued), md(strings.Join(p.Reissued, ", ")))
+		// By what makes them, in the order of the first of each.
+		var makers []string
+		by := map[string][]string{}
+		for _, m := range p.Reissued {
+			if by[m.By] == nil {
+				makers = append(makers, m.By)
+			}
+			by[m.By] = append(by[m.By], m.Secret)
+		}
+		parts := make([]string, len(makers))
+		for i, m := range makers {
+			parts[i] = fmt.Sprintf("%s (%s)", codes(by[m]), md(m))
+		}
+		w("Not for you to supply: %d that something in the cluster makes again once it runs: %s.\n\n", len(p.Reissued), strings.Join(parts, "; "))
 	}
 
 	w("## 4. Secrets a store supplies: %d, from %d items\n\n", fromStore, len(p.FromStore))

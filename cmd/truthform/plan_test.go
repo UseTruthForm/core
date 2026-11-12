@@ -26,6 +26,13 @@ func planSnapshot(t *testing.T) string {
 		obj("v1", "Secret", "shop", "db", map[string]any{"data": map[string]any{"password": ""}}),
 		obj("v1", "Secret", "shop", "token", map[string]any{"data": map[string]any{"_a_": "", "b": "", "c": "", "d": ""}}),
 		obj("onepassword.com/v1", "OnePasswordItem", "shop", "bare", nil),
+		// What a controller makes again, what is kept encrypted, and a key to it.
+		obj("v1", "Secret", "keda", "kedaorg-certs", map[string]any{"data": map[string]any{"ca.crt": "", "tls.key": ""}}),
+		obj("v1", "Secret", "shop", "azure-storage-account-a|b-secret", map[string]any{"data": map[string]any{"azurestorageaccountkey": "", "azurestorageaccountname": ""}}),
+		obj("bitnami.com/v1alpha1", "SealedSecret", "shop", "card", nil),
+		obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "kms", map[string]any{"spec": map[string]any{"decryption": map[string]any{"provider": "sops"}}}),
+		obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "apps", map[string]any{"spec": map[string]any{"decryption": map[string]any{"secretRef": map[string]any{"name": "sops-age"}}}}),
+		obj("v1", "Secret", "flux-system", "sops-age", map[string]any{"data": map[string]any{"age.agekey": ""}}),
 		obj("networking.k8s.io/v1", "Ingress", "shop", "web", map[string]any{"spec": map[string]any{"rules": []any{map[string]any{"host": "shop.example.com"}}}}),
 	}}
 	dir := filepath.Join(t.TempDir(), "cluster")
@@ -55,10 +62,15 @@ func TestPlanRebuildCommand(t *testing.T) {
 		"## 1. Install first: 1 sources",
 		"| Flux HelmRelease `ingress/proxy` | 1 |  |",
 		"**Not in the snapshot: where the sources are read from.**",
-		"## 2. APIs to have served: 1 groups",
+		"## 2. APIs to have served: 3 groups",
 		"| `onepassword.com` | 2 OnePasswordItem |",
-		"## 3. Secrets to supply by hand: 1",
-		"| `shop/token` | `_a_`, `b`, `c`, and 1 more |  |", // a key is a code span, not emphasis
+		"## 3. Secrets to supply by hand: 2",
+		"| `flux-system/sops-age` | `age.agekey` | Kustomization/apps | the key Flux Kustomization flux-system/apps decrypts with (SOPS) |",
+		"| `shop/token` | `_a_`, `b`, `c`, and 1 more |  |  |", // a key is a code span, not emphasis
+		"**Kept encrypted: SOPS, read by Flux Kustomization flux-system/apps.** The key is in `flux-system/sops-age`. A snapshot never holds",
+		"**Kept encrypted: SOPS, read by Flux Kustomization flux-system/kms.** No Secret in the snapshot is named as the key:",
+		"**Kept encrypted: Sealed Secrets, 1 objects.** No Secret in the snapshot is named as the key:",
+		"Not for you to supply: 2 that something in the cluster makes again once it runs: `keda/kedaorg-certs` (KEDA); `shop/azure-storage-account-a\\|b-secret` (the Azure Files driver).",
 		"## 4. Secrets a store supplies: 2, from 2 items",
 		"| 1Password | (none named) | 1 | shop/bare |",                          // an item with no path is said, not an empty code span
 		`| 1Password | ` + "`vaults/apps/items/ba'se\\|x`" + ` | 1 | shop/db |`, // a "|" or a backtick in a value breaks neither table nor span
@@ -91,11 +103,11 @@ func TestPlanRebuildCommand(t *testing.T) {
 		}
 	})
 	plan, _ := d["plan"].(map[string]any)
-	if d["command"] != "plan" || len(plan["installFirst"].([]any)) != 1 || len(plan["secretsByHand"].([]any)) != 1 || len(plan["hosts"].([]any)) != 1 {
+	if d["command"] != "plan" || len(plan["installFirst"].([]any)) != 1 || len(plan["secretsByHand"].([]any)) != 2 || len(plan["secretsEncrypted"].([]any)) != 3 || len(plan["hosts"].([]any)) != 1 {
 		t.Errorf("document: %v", d)
 	}
 	// Nothing to say is an empty list, not null: "| length" reads either, ".[]" does not.
-	if l, ok := plan["secretsReissued"].([]any); !ok || len(l) != 0 {
+	if l, ok := plan["secretsReissued"].([]any); !ok || len(l) != 2 || l[0].(map[string]any)["by"] != "KEDA" {
 		t.Errorf("secretsReissued: %v", plan["secretsReissued"])
 	}
 }

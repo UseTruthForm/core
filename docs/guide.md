@@ -406,12 +406,22 @@ document goes to stdout; `--out` is for the Markdown.
    step 1 installs.
 3. **Secrets to supply by hand.** A snapshot never holds a secret's value.
    These are the Secrets no store in the snapshot supplies: each one's
-   keys, and what in the snapshot names it. Secrets cert-manager issues
-   again by itself are named apart, and a service account's token is left
-   out.
-4. **Secrets a store supplies.** The store items that `OnePasswordItem`,
-   `ExternalSecret` and `ClusterExternalSecret` objects read, most-used
-   first. The restore recreates those objects and the operator makes the
+   keys, what in the snapshot names it, and what the Secret says of
+   itself (a registry login, a Helm release's, the key a Flux
+   Kustomization decrypts with). Named apart, and not for a person to
+   supply: what something in the cluster makes again by itself
+   (cert-manager's certificates and ACME accounts, the Azure Files
+   driver's copy of a storage key, KEDA's own certificates); a service
+   account's token is left out. Secrets kept encrypted are named with the
+   key that opens them (Sealed Secrets, SOPS read by a Flux
+   Kustomization): that key is the one thing only a copy kept outside the
+   cluster brings back. A tool the plan does not know is listed here, by
+   hand, never as something that looks after itself.
+4. **Secrets a store supplies.** The store items read by the 1Password
+   operator, External Secrets, the Vault Secrets Operator, the Secrets
+   Store CSI driver and akv2k8s, most-used first. A Secret that says a
+   store made it counts too when the object that asked for it is a GitOps
+   source's and not in the snapshot. The restore recreates those objects and the operator makes the
    Secrets, once the store is reachable from the rebuilt cluster. An item
    holds the settings of the cluster it was written for: one that feeds
    many Secrets is where to look for the addresses and keys that must

@@ -419,9 +419,9 @@ document goes to stdout; `--out` is for the Markdown.
    hand, never as something that looks after itself.
 4. **Secrets a store supplies.** The store items read by the 1Password
    operator, External Secrets, the Vault Secrets Operator, the Secrets
-   Store CSI driver and akv2k8s, most-used first. A Secret that says a
-   store made it counts too when the object that asked for it is a GitOps
-   source's and not in the snapshot. The restore recreates those objects and the operator makes the
+   Store CSI driver and akv2k8s, most-used first. A Secret the 1Password
+   operator marked as its own counts too when the object that asked for
+   it is a GitOps source's and not in the snapshot. The restore recreates those objects and the operator makes the
    Secrets, once the store is reachable from the rebuilt cluster. An item
    holds the settings of the cluster it was written for: one that feeds
    many Secrets is where to look for the addresses and keys that must

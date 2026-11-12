@@ -71,7 +71,15 @@ func planMarkdown(p kube.Plan) string {
 	w("| Step | | |\n|---|---|---:|\n")
 	w("| 1 | Install what a GitOps source makes | %d sources by hand, %d follow |\n", len(p.Sources), len(p.Follows))
 	w("| 2 | Have these APIs served before the restore | %d groups |\n", len(p.Operators))
-	w("| 3 | Supply by hand the secrets no store holds | %d secrets |\n", len(p.ByHand))
+	keysOut := 0
+	for _, e := range p.Encrypted {
+		keysOut += len(e.KeysNotHeld)
+	}
+	if keysOut > 0 {
+		w("| 3 | Supply by hand the secrets no store holds | %d secrets, and %d keys the snapshot does not hold |\n", len(p.ByHand), keysOut)
+	} else {
+		w("| 3 | Supply by hand the secrets no store holds | %d secrets |\n", len(p.ByHand))
+	}
 	w("| 4 | Make the secret store reachable | %d items feed %d secrets |\n", len(p.FromStore), fromStore)
 	w("| 5 | Restore the snapshot | |\n")
 	w("| 6 | Point the names at the rebuilt cluster | %d hosts |\n\n", len(p.Hosts))
@@ -130,7 +138,7 @@ func planMarkdown(p kube.Plan) string {
 
 	w("## 3. Secrets to supply by hand: %d\n\n", len(p.ByHand))
 	if len(p.ByHand) == 0 {
-		w("Every Secret in the snapshot is made from a store.\n\n")
+		w("No Secret in the snapshot is left for a person to supply: each is made from a store, made again by something in the cluster, or opened with a key named below.\n\n")
 	} else {
 		w("No store in the snapshot supplies these, and a snapshot never holds a value. Each needs its value from where you keep it. One with no user here may still be read by what step 1 installs, or named from an object with no namespace.\n\n")
 		w("| Secret | Keys | Used by | What it says of itself |\n|---|---|---|---|\n")
@@ -146,12 +154,18 @@ func planMarkdown(p kube.Plan) string {
 			w(", %d objects", e.Objects)
 		}
 		w(".** ")
-		if len(e.Keys) == 0 {
-			w("No Secret in the snapshot is named as the key: it is outside the cluster (a cloud key service), or where the capture did not look.")
-		} else {
-			w("The key is in %s.", codes(e.Keys))
+		switch {
+		case len(e.Keys) > 0:
+			w("The key is in %s, of step 3. ", codes(e.Keys))
+		case len(e.KeysNotHeld) == 0 && e.By == kube.SealedSecrets:
+			w("The capture saw no Secret that holds the controller's key. ")
+		case len(e.KeysNotHeld) == 0:
+			w("No Secret in the snapshot is named as the key: it is outside the cluster (a cloud key service). ")
 		}
-		w(" A snapshot never holds a key's value: without a copy of the key kept outside the cluster, what it encrypts cannot be read again.\n\n")
+		if len(e.KeysNotHeld) > 0 {
+			w("**The key is in %s, which the capture left out with its namespace: it is not in the snapshot, and no restore brings it back.** ", codes(e.KeysNotHeld))
+		}
+		w("A snapshot never holds a key's value: without a copy of the key kept outside the cluster, what it encrypts cannot be read again.\n\n")
 	}
 
 	if len(p.Reissued) > 0 {

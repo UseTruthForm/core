@@ -76,13 +76,15 @@ type PlanMade struct {
 }
 
 // PlanEncrypted is one way Secrets are kept encrypted. Objects counts the
-// encrypted objects where the snapshot shows them, and Keys are the
-// Secrets (namespace/name) that hold the key: none when the key is not a
-// Secret in the cluster (a cloud key service).
+// encrypted objects where the snapshot shows them. Keys are the Secrets
+// (namespace/name) in the snapshot that hold the key, and KeysNotHeld
+// those the capture saw and left out (in kube-system). Neither: the key
+// is not a Secret the capture saw (for SOPS, a cloud key service).
 type PlanEncrypted struct {
-	By      string   `json:"by"`
-	Objects int      `json:"objects"`
-	Keys    []string `json:"keys"`
+	By          string   `json:"by"`
+	Objects     int      `json:"objects,omitempty"`
+	Keys        []string `json:"keys"`
+	KeysNotHeld []string `json:"keysNotInSnapshot"`
 }
 
 // PlanStoreItem is one item of a secret store and the Secrets made from
@@ -297,19 +299,18 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 		}
 		switch {
 		case group == "bitnami.com" && o.Kind() == "SealedSecret":
-			// The controller makes the Secret, of the name its template
-			// gives, from what the object holds encrypted.
-			name := first(fields(o.Body, "spec.template.metadata.name"))
-			if name == "" {
-				name = o.Name()
-			}
-			supplied[secretKey{o.Namespace(), name}] = true
+			// The controller makes the Secret, of the object's own name
+			// whatever its template says, from what it holds encrypted.
+			supplied[secretKey{o.Namespace(), o.Name()}] = true
 		case group == "cert-manager.io" && (o.Kind() == "Issuer" || o.Kind() == "ClusterIssuer"):
 			// The account an ACME issuer registers: its key is made, and
 			// made again, in the issuer's namespace, or for a ClusterIssuer
 			// in the one cert-manager is set to, which the snapshot does
 			// not say.
-			if n := first(fields(o.Body, "spec.acme.privateKeySecretRef.name")); n != "" {
+			// Not one the issuer is told not to make: that key is brought
+			// to it.
+			acmeSpec, _ := spec["acme"].(map[string]any)
+			if n := first(fields(o.Body, "spec.acme.privateKeySecretRef.name")); n != "" && acmeSpec["disableAccountKeyGeneration"] != true {
 				acme[secretKey{o.Namespace(), n}] = o.Kind() + " " + o.Name()
 			}
 		case group == "kustomize.toolkit.fluxcd.io" && o.Kind() == "Kustomization":
@@ -386,6 +387,13 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 		return a.Store+" "+a.Item < b.Store+" "+b.Item
 	})
 
+	// lone counts, by name, the Secrets that hold a private key alone.
+	lone := map[secretKey]int{}
+	for _, o := range s.Objects {
+		if k := secretKeys(o); isSecret(o) && len(k) == 1 && k[0] == "tls.key" {
+			lone[secretKey{"", o.Name()}]++
+		}
+	}
 	for _, o := range s.Objects {
 		key := secretKey{o.Namespace(), o.Name()}
 		// A service account's token is the cluster's to make.
@@ -394,13 +402,22 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 		}
 		keys := secretKeys(o)
 		by := madeAgain(o)
+		if by == azureFiles && len(usedBy[key]) > 0 {
+			// The driver makes one for a share it provisions. One that a
+			// volume in the snapshot names is looked up, not made: where
+			// the cluster cannot list the account's keys, a person put it
+			// there.
+			by = ""
+		}
 		if by == "" && len(keys) == 1 && keys[0] == "tls.key" {
-			// An ACME account key holds that and nothing else. A
-			// ClusterIssuer's is in whichever namespace cert-manager keeps
-			// such things in: taken by name, with that shape.
+			// An ACME account key holds that and nothing else.
 			issuer := acme[key]
-			if issuer == "" {
-				issuer = acme[secretKey{"", o.Name()}]
+			if name := (secretKey{"", o.Name()}); issuer == "" && lone[name] == 1 && len(usedBy[key]) == 0 {
+				// A ClusterIssuer's is in whichever namespace cert-manager
+				// keeps such things in, which the snapshot does not say:
+				// taken by name when one Secret alone has the name and the
+				// shape, and nothing else uses it.
+				issuer = acme[name]
 			}
 			if issuer != "" {
 				by = "cert-manager, as the ACME account of " + issuer

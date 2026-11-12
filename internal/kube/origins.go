@@ -103,6 +103,8 @@ func first(l []string) string {
 	return l[0]
 }
 
+const azureFiles = "the Azure Files driver"
+
 // azureFilesSecret is the name the Azure Files driver gives the Secret it
 // keeps a storage account's key in.
 var azureFilesSecret = regexp.MustCompile(`^azure-storage-account-.+-secret$`)
@@ -132,8 +134,10 @@ func madeAgain(o snapshot.Object) string {
 	case azureFilesSecret.MatchString(o.Name()) && keys == "azurestorageaccountkey,azurestorageaccountname":
 		// Made when the driver provisions a share, from the account it
 		// made or was pointed at.
-		return "the Azure Files driver"
-	case o.Name() == "kedaorg-certs" && strings.Contains(keys, "ca.crt") && strings.Contains(keys, "tls.key"):
+		return azureFiles
+	case o.Name() == "kedaorg-certs" && keys == "ca.crt,ca.key,tls.crt,tls.key":
+		// With its CA's key: certificates brought to KEDA have the name
+		// and not that.
 		return "KEDA"
 	}
 	return ""
@@ -146,9 +150,9 @@ func storeMade(o snapshot.Object) (store, item string, ok bool) {
 	if p := annotation(md, "operator.1password.io/item-path"); p != "" {
 		return "1Password", p, true
 	}
-	if annotation(md, "reconcile.external-secrets.io/data-hash") != "" {
-		return "External Secrets", "(its ExternalSecret is not in the snapshot)", true
-	}
+	// External Secrets marks what it writes to as well, and that is no
+	// evidence: it marks a Secret it only adds to (creationPolicy Merge),
+	// which a person made, and one it owns is not in a snapshot at all.
 	return "", "", false
 }
 
@@ -164,20 +168,23 @@ func noteOf(o snapshot.Object) string {
 	case strOf(o.Body["type"]) == "kubernetes.io/dockerconfigjson" || strOf(o.Body["type"]) == "kubernetes.io/dockercfg":
 		return "a registry login"
 	case strings.Join(secretKeys(o), ",") == "tls.key":
-		return "has the shape of an ACME account key, which cert-manager makes again by registering a new account; no issuer in the snapshot names it"
+		return "holds a private key and nothing else, as an ACME account key does; no issuer in the snapshot names it, so it is taken as yours to supply"
 	}
 	return ""
 }
 
-// sealedKey is how the Sealed Secrets controller names its keys.
+// sealedKeyPrefix is how the Sealed Secrets controller names its keys.
 const sealedKeyPrefix = "sealed-secrets-key"
+
+// SealedSecrets is PlanEncrypted.By for Sealed Secrets.
+const SealedSecrets = "Sealed Secrets"
 
 // encrypted are the ways the snapshot shows Secrets kept encrypted, and
 // the keys that open them: the one thing of each that only a copy kept
 // outside the cluster brings back.
 func encrypted(s snapshot.Snapshot) []PlanEncrypted {
 	out := []PlanEncrypted{}
-	sealed, keys := 0, map[string]bool{}
+	sealed, keys, unheld := 0, map[string]bool{}, map[string]bool{}
 	for _, o := range s.Objects {
 		group, _, _ := strings.Cut(o.APIVersion(), "/")
 		md, _ := o.Body["metadata"].(map[string]any)
@@ -193,7 +200,7 @@ func encrypted(s snapshot.Snapshot) []PlanEncrypted {
 			if dec == nil {
 				continue
 			}
-			e := PlanEncrypted{By: "SOPS, read by Flux Kustomization " + o.Namespace() + "/" + o.Name(), Keys: []string{}}
+			e := PlanEncrypted{By: "SOPS, read by Flux Kustomization " + o.Namespace() + "/" + o.Name(), Keys: []string{}, KeysNotHeld: []string{}}
 			if ref, _ := dec["secretRef"].(map[string]any); strOf(ref["name"]) != "" {
 				e.Keys = append(e.Keys, o.Namespace()+"/"+strOf(ref["name"]))
 			}
@@ -207,15 +214,19 @@ func encrypted(s snapshot.Snapshot) []PlanEncrypted {
 		case strings.HasPrefix(sk.Resource, "core/") && strings.HasSuffix(sk.Resource, "/secrets") && strings.HasPrefix(sk.Name, sealedKeyPrefix):
 			// The controller's namespace is often kube-system, which a
 			// capture leaves out: the key is named, and not in the snapshot.
-			keys[sk.Namespace+"/"+sk.Name+" (not in the snapshot)"] = true
+			unheld[sk.Namespace+"/"+sk.Name] = true
 		}
 	}
 	if sealed > 0 {
-		e := PlanEncrypted{By: "Sealed Secrets", Objects: sealed, Keys: make([]string, 0, len(keys))}
+		e := PlanEncrypted{By: SealedSecrets, Objects: sealed, Keys: make([]string, 0, len(keys)), KeysNotHeld: make([]string, 0, len(unheld))}
 		for k := range keys {
 			e.Keys = append(e.Keys, k)
 		}
+		for k := range unheld {
+			e.KeysNotHeld = append(e.KeysNotHeld, k)
+		}
 		sort.Strings(e.Keys)
+		sort.Strings(e.KeysNotHeld)
 		out = append(out, e)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].By < out[j].By })

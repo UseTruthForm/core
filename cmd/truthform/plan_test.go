@@ -27,7 +27,7 @@ func planSnapshot(t *testing.T) string {
 		obj("v1", "Secret", "shop", "token", map[string]any{"data": map[string]any{"_a_": "", "b": "", "c": "", "d": ""}}),
 		obj("onepassword.com/v1", "OnePasswordItem", "shop", "bare", nil),
 		// What a controller makes again, what is kept encrypted, and a key to it.
-		obj("v1", "Secret", "keda", "kedaorg-certs", map[string]any{"data": map[string]any{"ca.crt": "", "tls.key": ""}}),
+		obj("v1", "Secret", "keda", "kedaorg-certs", map[string]any{"data": map[string]any{"ca.crt": "", "ca.key": "", "tls.crt": "", "tls.key": ""}}),
 		obj("v1", "Secret", "shop", "azure-storage-account-a|b-secret", map[string]any{"data": map[string]any{"azurestorageaccountkey": "", "azurestorageaccountname": ""}}),
 		obj("bitnami.com/v1alpha1", "SealedSecret", "shop", "card", nil),
 		obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "kms", map[string]any{"spec": map[string]any{"decryption": map[string]any{"provider": "sops"}}}),
@@ -67,9 +67,9 @@ func TestPlanRebuildCommand(t *testing.T) {
 		"## 3. Secrets to supply by hand: 2",
 		"| `flux-system/sops-age` | `age.agekey` | Kustomization/apps | the key Flux Kustomization flux-system/apps decrypts with (SOPS) |",
 		"| `shop/token` | `_a_`, `b`, `c`, and 1 more |  |  |", // a key is a code span, not emphasis
-		"**Kept encrypted: SOPS, read by Flux Kustomization flux-system/apps.** The key is in `flux-system/sops-age`. A snapshot never holds",
-		"**Kept encrypted: SOPS, read by Flux Kustomization flux-system/kms.** No Secret in the snapshot is named as the key:",
-		"**Kept encrypted: Sealed Secrets, 1 objects.** No Secret in the snapshot is named as the key:",
+		"**Kept encrypted: SOPS, read by Flux Kustomization flux-system/apps.** The key is in `flux-system/sops-age`, of step 3. A snapshot never holds",
+		"**Kept encrypted: SOPS, read by Flux Kustomization flux-system/kms.** No Secret in the snapshot is named as the key: it is outside the cluster (a cloud key service).",
+		"**Kept encrypted: Sealed Secrets, 1 objects.** The capture saw no Secret that holds the controller's key.",
 		"Not for you to supply: 2 that something in the cluster makes again once it runs: `keda/kedaorg-certs` (KEDA); `shop/azure-storage-account-a\\|b-secret` (the Azure Files driver).",
 		"## 4. Secrets a store supplies: 2, from 2 items",
 		"| 1Password | (none named) | 1 | shop/bare |",                          // an item with no path is said, not an empty code span
@@ -109,6 +109,30 @@ func TestPlanRebuildCommand(t *testing.T) {
 	// Nothing to say is an empty list, not null: "| length" reads either, ".[]" does not.
 	if l, ok := plan["secretsReissued"].([]any); !ok || len(l) != 2 || l[0].(map[string]any)["by"] != "KEDA" {
 		t.Errorf("secretsReissued: %v", plan["secretsReissued"])
+	}
+}
+
+// A key the capture left out with kube-system is no row of step 3, and is
+// still counted and said where a person looks: with nothing else to
+// supply, the plan does not say there is nothing.
+func TestPlanRebuildCountsAKeyTheSnapshotDoesNotHold(t *testing.T) {
+	s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Skips: []snapshot.Skip{
+		{Resource: "core/v1/secrets", Namespace: "kube-system", Name: "sealed-secrets-keyab12c", Reason: "in system namespace kube-system"},
+	}, Objects: []snapshot.Object{
+		{Body: map[string]any{"apiVersion": "bitnami.com/v1alpha1", "kind": "SealedSecret", "metadata": map[string]any{"name": "card", "namespace": "pay"}}},
+	}}
+	text := planMarkdown(kube.RebuildPlan(s))
+	for _, want := range []string{
+		"| 3 | Supply by hand the secrets no store holds | 0 secrets, and 1 keys the snapshot does not hold |",
+		"No Secret in the snapshot is left for a person to supply:",
+		"**Kept encrypted: Sealed Secrets, 1 objects.** **The key is in `kube-system/sealed-secrets-keyab12c`, which the capture left out with its namespace: it is not in the snapshot, and no restore brings it back.**",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the plan lacks %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "Every Secret in the snapshot is made from a store") {
+		t.Error("the plan says a store makes every Secret")
 	}
 }
 

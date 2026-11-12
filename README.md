@@ -45,6 +45,7 @@ truthform restore --context kind-dst --from snap/ [--secrets-from-context kind-s
 truthform diff    --context kind-dst --from snap/ [--baseline base/]
 truthform compare snap-a/ snap-b/
 truthform schema-diff old/ new/
+truthform plan rebuild --from snap/   # offline: what a rebuild needs that the snapshot does not hold
 
 truthform capture --platform aws --region eu-west-1 --profile sandbox --out snap/ [--types 'AWS::S3::*,AWS::IAM::Role']
 truthform restore --platform aws --region eu-west-1 --profile dr --from snap/ [--values write-only.yaml]

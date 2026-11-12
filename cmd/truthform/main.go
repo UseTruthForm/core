@@ -61,7 +61,7 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN, or C
       checks the zone first and stops on any conflict, before it writes
   truthform diff    --platform cloudflare --account <account-id> --from <dir> [--subdomain test.example.com [--address ...] [--target ...]]
 
-Machine-readable: add --json to capture, diff, restore, compare, check or permissions; stdout is then
+Machine-readable: add --json to capture, diff, restore, compare, check, permissions or plan; stdout is then
 one JSON document (everything else goes to stderr) and the exit code is unchanged.
 
 Access (what to grant, and what a grant can read):
@@ -73,6 +73,10 @@ Access (what to grant, and what a grant can read):
 As a graph (resources and their relationships, for an asset inventory or a security graph):
   truthform graph --from <dir> [--types security|none|<file>] [--subscription <id>] [--tenant <id>] [--out <file>]
       Azure; JSON nodes and edges from the snapshot alone, no request made
+
+Before a rebuild (what the snapshot does not hold: what to install first, the secrets, the names):
+  truthform plan rebuild --from <dir> [--out <file>]
+      Kubernetes; Markdown, or --json; from the snapshot alone, no request made
 
 For agents (MCP on stdin/stdout; every tool read-only, no restore tool):
   truthform mcp
@@ -103,7 +107,7 @@ func main() {
 		// run quietly: "mcp --json" served the protocol on stderr and
 		// "version --json" printed nothing (review of #21).
 		if !jsonCommands[command] {
-			code := fail(fmt.Errorf("--json is supported by capture, diff, restore, compare, check and permissions, not %s", command))
+			code := fail(fmt.Errorf("--json is supported by capture, diff, restore, compare, check, permissions and plan, not %s", command))
 			emitError(code)
 			os.Exit(code)
 		}
@@ -133,6 +137,8 @@ func main() {
 		code = reportCmd(args)
 	case "graph":
 		code = graphCmd(args)
+	case "plan":
+		code = planCmd(args)
 	case "mcp":
 		code = mcpCmd(ctx, args)
 	case "check":

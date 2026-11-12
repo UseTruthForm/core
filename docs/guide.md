@@ -267,7 +267,7 @@ becomes `www.test.example.com`, and a CNAME to a name in the zone follows.
     the zone (an app service, a load balancer). The same host twice keeps
     it.
 - The record comment it adds has to fit in the 100 characters Cloudflare's
-  free plan takes, so a subdomain name longer than 90 characters is refused.
+  free plan takes, so a subdomain name longer than 89 characters is refused.
 - **Mail, delegations and ACME records stay out:** MX, SPF, DKIM, DMARC,
   MTA-STS and autodiscovery records, NS records, `_acme-challenge`.
 - **It warns of a wildcard above the subdomain** (`*.example.com`). Today it

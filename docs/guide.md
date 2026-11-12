@@ -525,6 +525,47 @@ The file to fill in is written from what the cluster's objects say, and
 only as comments and names: read it before you fill it in, as you would
 any file a tool wrote for you to run.
 
+### Into another environment
+
+A snapshot restored beside its source (a drill, or one environment rebuilt
+as another) needs two things changed, and nothing else.
+
+```sh
+truthform restore --context test --from snap/cluster \
+  --leave-out leave.yaml --rename stores.yaml --secrets-from secrets.yaml
+truthform diff    --context test --from snap/cluster --leave-out leave.yaml --rename stores.yaml
+```
+
+`--leave-out` is a list of objects the restore does not write and the diff
+does not expect: `Kind/namespace/name`, or `Kind/name` for an object with
+no namespace. `Kind.group` tells two APIs' kinds of one name apart, and
+`*` is any kind, namespace or name. The first to leave out is where
+GitOps starts: restored as it is, the new cluster would sync the path the
+source syncs.
+
+```yaml
+- Kustomization/flux-system/flux-system
+- GitRepository/flux-system/flux-system
+```
+
+`--rename` says where Secrets are read from instead: the start of a store
+reference, and what replaces it. The longest start that fits a reference
+is the one applied. Only fields that name a store or an item in it change
+(a `OnePasswordItem`'s path; an `ExternalSecret`'s keys and store; a
+`SecretStore`'s vault; the vault of a Vault Secrets Operator, Secrets
+Store CSI or akv2k8s object): the same text anywhere else is left alone.
+
+```yaml
+vaults/apps/items/: vaults/apps-test/items/
+https://kv-dev.vault.azure.net: https://kv-test.vault.azure.net
+```
+
+An entry or a start that names nothing in the snapshot is refused, with
+nothing restored: a mistyped one would otherwise restore what it was
+written to hold back, or leave the new environment reading the old one's
+secrets. Leaving out is not checked against what stays: an object left in
+that needs one left out fails, or waits, in the cluster.
+
 ## As a graph (Azure)
 
 `truthform graph --from <snapshot>` writes an Azure snapshot as resources

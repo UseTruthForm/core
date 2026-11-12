@@ -592,16 +592,188 @@ func (c *Client) Restore(ctx context.Context, s snapshot.Snapshot, opt RestoreOp
 	targets := map[string]map[string]any{}  // kind|fullName -> raw item in the target
 	listed := map[string]map[string]*item{} // kind|parentFullName -> existing items by name
 	made := map[string]bool{}               // kind|fullName created by this restore
+	// What the snapshot holds of each kind that has a Slot, to tell an item
+	// that changed from one that is new.
+	want := wanted{names: map[string]map[string]bool{}, slots: map[string]map[string][]string{}}
+	for _, o := range objs {
+		i, ok := kindIndex[o.Kind()]
+		if !ok || len(c.P.Collections[i].Slot) == 0 {
+			continue
+		}
+		col := &c.P.Collections[i]
+		parentName, own := place(col, o)
+		lk := col.Kind + "|" + parentName
+		if want.names[lk] == nil {
+			want.names[lk], want.slots[lk] = map[string]bool{}, map[string][]string{}
+		}
+		spec, _ := o.Body["spec"].(map[string]any)
+		own = nameKey(col, spec, own)
+		want.names[lk][own] = true
+		want.slots[lk][slotOf(col, spec)] = append(want.slots[lk][slotOf(col, spec)], own)
+	}
 	var results []snapshot.Result
 	for _, o := range objs {
 		res := snapshot.Result{Key: o.Key()}
-		res.OK, res.Detail = c.restoreOne(ctx, o, targets, listed, made, opt)
+		res.OK, res.Detail = c.restoreOne(ctx, o, targets, listed, made, want, opt)
 		results = append(results, res)
 	}
 	return results
 }
 
-func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[string]map[string]any, listed map[string]map[string]*item, made map[string]bool, opt RestoreOptions) (bool, string) {
+// wanted is the snapshot's items of the kinds that have a Slot, by where
+// they are listed (kind|parentFullName): their names, and the names in
+// each slot.
+type wanted struct {
+	names map[string]map[string]bool
+	slots map[string]map[string][]string
+}
+
+// place is an object's parent's full name and its own name under it.
+func place(col *Collection, o snapshot.Object) (parentName, own string) {
+	full := o.Name()
+	if col.Parent == "" {
+		return "", full
+	}
+	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+	parentName, _ = ann[annParent].(string)
+	return parentName, strings.TrimPrefix(full, parentName+"/")
+}
+
+// nameKey is the name an item is looked up by. An address or an alias is
+// the same record whatever the case of its content (a CNAME's host, an
+// IPv6 address's hex digits), and a provider may store it in another case
+// than it was given. Looked up exactly, the snapshot's record was then
+// "missing" beside its own twin: a restore reported it as changed, and
+// --update sent the same write on every run without ever matching.
+func nameKey(col *Collection, spec map[string]any, name string) string {
+	if col.OneAnswer != nil && col.OneAnswer(spec) {
+		return strings.ToLower(name)
+	}
+	return name
+}
+
+// sameButCase returns the target's spec with each naming field that
+// differs from the snapshot's only by case set to the snapshot's, for an
+// item nameKey folds: that difference is not a difference.
+func sameButCase(col *Collection, spec, exSpec map[string]any) map[string]any {
+	if col.OneAnswer == nil || !col.OneAnswer(spec) {
+		return exSpec
+	}
+	out := exSpec
+	for _, f := range col.Name {
+		a, b := stringOf(spec[f]), stringOf(exSpec[f])
+		if a != b && strings.EqualFold(a, b) {
+			if canon(out) == canon(exSpec) {
+				out = deepCopy(exSpec)
+			}
+			out[f] = spec[f]
+		}
+	}
+	return out
+}
+
+// slotOf is where an item is: its Slot fields. DNS compares names and
+// types without regard to case.
+func slotOf(col *Collection, spec map[string]any) string {
+	var out []string
+	for _, f := range col.Slot {
+		out = append(out, strings.ToLower(stringOf(field(spec, f))))
+	}
+	return strings.Join(out, " ")
+}
+
+// changed handles a snapshot item that is not in the target by name, of a
+// kind whose name holds its content (a DNS record). handled is false when
+// the item is simply new, and the caller creates it.
+//
+// Without this, a record whose address changed since the capture was only
+// ever "missing": the restore created the snapshot's beside the one
+// there, reported success, and DNS answered with both, the stale address
+// included. The same happened with --update, which had nothing to update.
+//
+// In the item's slot (a record's type and name) the target may hold items
+// the snapshot does not have. With none, the item is new: several records
+// at one name is ordinary DNS. With exactly one, and exactly one of the
+// snapshot's missing there, that one is this item with other content: it
+// is reported, and --update changes it where it is. With any other count
+// which replaces which cannot be known, and a guess would point a name at
+// the wrong server, so nothing is written there.
+//
+// That holds for a kind of item with one answer per slot (an address, an
+// alias). For the rest (TXT, MX) another value in the slot says nothing
+// about this one: the item is created, and note names what is beside it.
+func (c *Client) changed(ctx context.Context, col *Collection, o snapshot.Object, lk, own string, spec, parentRaw map[string]any,
+	targets map[string]map[string]any, listed map[string]map[string]*item, want wanted, opt RestoreOptions) (handled, ok bool, detail, note string) {
+	slot := slotOf(col, spec)
+	var others []string
+	for name, it := range listed[lk] {
+		if slotOf(col, it.spec) == slot && !want.names[lk][name] {
+			others = append(others, name)
+		}
+	}
+	if len(others) == 0 {
+		return false, false, "", ""
+	}
+	sort.Strings(others)
+	missing := 0
+	for _, n := range want.slots[lk][slot] {
+		if _, there := listed[lk][n]; !there {
+			missing++
+		}
+	}
+	// What an item holds beyond where it is: a record's content.
+	holds := func(it *item) string {
+		var out []string
+		for _, f := range col.Name {
+			if !hasString(col.Slot, f) {
+				out = append(out, stringOf(field(it.spec, f)))
+			}
+		}
+		return strings.Join(out, " ")
+	}
+	var there []string
+	for _, n := range others {
+		there = append(there, holds(listed[lk][n]))
+	}
+	if col.OneAnswer != nil && !col.OneAnswer(spec) {
+		return false, false, "", "; the target also holds " + strings.Join(there, ", ") + " there, which the snapshot does not have"
+	}
+	if missing != 1 || len(others) != 1 {
+		return true, false, fmt.Sprintf("not created: the target holds %s there, which the snapshot does not have, and %d of the snapshot's are missing; which replaces which is not known, so nothing is written there. Delete what should go, then run again",
+			strings.Join(there, ", "), missing), ""
+	}
+	ex := listed[lk][others[0]]
+	exSpec := ex.spec
+	if opt.Existing != nil {
+		exSpec = opt.Existing(col.Kind, exSpec)
+	}
+	exSpec = sameButCase(col, spec, exSpec)
+	var keys []string
+	for _, k := range sortedKeys(spec) {
+		if canon(spec[k]) != canon(exSpec[k]) {
+			keys = append(keys, k)
+		}
+	}
+	differs := "already exists and differs (" + strings.Join(keys, ", ") + "; the target holds " + holds(ex) + ")"
+	if !opt.Update {
+		return true, false, differs + "; not modified (--update modifies it)", ""
+	}
+	if opt.Allow != nil {
+		if why := opt.Allow(o, ex.raw); why != "" {
+			return true, false, differs + "; not modified: " + why, ""
+		}
+	}
+	if opt.DryRun {
+		return true, true, "would update (" + strings.Join(keys, ", ") + ")", ""
+	}
+	// listed is left as it was read: an update needs exactly one of the
+	// snapshot's missing in the slot, so no later item of this run looks
+	// there again.
+	ok, detail = c.update(ctx, col, o, ex, spec, parentRaw, keys, targets, opt)
+	return true, ok, detail, ""
+}
+
+func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[string]map[string]any, listed map[string]map[string]*item, made map[string]bool, want wanted, opt RestoreOptions) (bool, string) {
 	idx := -1
 	for i, col := range c.P.Collections {
 		if col.Kind == o.Kind() {
@@ -625,6 +797,9 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		}
 	}
 	spec, _ := o.Body["spec"].(map[string]any)
+	// beside is added to what a create reports: what the target already
+	// holds in the item's slot that the snapshot does not have.
+	beside := ""
 
 	// What exists under this parent in the target, read once.
 	lk := col.Kind + "|" + parentName
@@ -659,9 +834,10 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 			}
 			it := &item{col: col, raw: raw}
 			it.spec = c.specOf(col, w, raw, &it.masked)
-			listed[lk][itemName(col, raw)] = it
+			listed[lk][nameKey(col, it.spec, itemName(col, raw))] = it
 		}
 	}
+	own = nameKey(col, spec, own)
 	if ex, ok := listed[lk][own]; ok && opt.Present[col.Kind] {
 		targets[col.Kind+"|"+full] = ex.raw
 		return true, "present; used as it is"
@@ -674,6 +850,7 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		if opt.Existing != nil {
 			exSpec = opt.Existing(col.Kind, exSpec)
 		}
+		exSpec = sameButCase(col, spec, exSpec)
 		if canon(exSpec) == canon(spec) {
 			return true, "already present and identical"
 		}
@@ -698,6 +875,12 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		if !col.Singleton {
 			return c.update(ctx, col, o, ex, spec, parentRaw, changed, targets, opt)
 		}
+	} else if len(col.Slot) > 0 {
+		handled, ok, detail, note := c.changed(ctx, col, o, lk, own, spec, parentRaw, targets, listed, want, opt)
+		if handled {
+			return ok, detail
+		}
+		beside = note
 	}
 
 	desired := rewrite(deepCopy(spec), func(s string) string { return strings.ReplaceAll(s, tokAccount, c.Account) }).(map[string]any)
@@ -741,7 +924,7 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 	if opt.DryRun {
 		targets[col.Kind+"|"+full] = desired
 		made[col.Kind+"|"+full] = true
-		return true, "would create"
+		return true, "would create" + beside
 	}
 	created, _, err := c.do(ctx, col.createMethod(), path, body)
 	if err != nil {
@@ -786,7 +969,7 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 	}
 	targets[col.Kind+"|"+full] = raw
 	made[col.Kind+"|"+full] = true
-	detail := "created"
+	detail := "created" + beside
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	if u, _ := ann[annUnreadable].(string); u != "" {
 		var unset []string

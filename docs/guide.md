@@ -525,6 +525,27 @@ The file to fill in is written from what the cluster's objects say, and
 only as comments and names: read it before you fill it in, as you would
 any file a tool wrote for you to run.
 
+### The secrets a secret store starts from
+
+A cluster that reads its Secrets from a store still starts from a
+credential for that store, and the plan lists it by hand. How much work
+that is depends on the store:
+
+- **A cloud vault read with the cluster's own identity** (workload
+  identity): there is no such Secret. Restoring the cloud snapshot brings
+  the identity and its grants back.
+- **Sealed Secrets, SOPS**: the key is the Secret, and a copy of it is the
+  entry in the sources file.
+- **1Password Connect**: the credentials file and the access token are
+  issued by 1Password and not by the cluster, so the ones an environment
+  was given still work after it is rebuilt: keep them, and name them in
+  the sources file. A new environment needs its own, made by a person
+  signed in. `examples/bootstrap/1password-connect.sh` does that in one
+  command: it makes the server and a read-only token for the vaults you
+  name, keeps both as one item in another vault, reads them back, and
+  prints the sources-file entries. It prints neither value, and
+  `--dry-run` makes nothing.
+
 ### Into another environment
 
 A snapshot restored beside its source (a drill, or one environment rebuilt

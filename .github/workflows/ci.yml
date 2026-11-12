@@ -12,7 +12,7 @@ on:
     types: [opened, synchronize, reopened, labeled]
     # templates: the AWS read add-on is generated JSON, and a pull request
     # changing only it must still be tested (review of #24).
-    paths: ["**.go", "go.mod", "go.sum", "testdata/**", "scripts/**", ".github/workflows/**", "internal/onboard/templates/**"]
+    paths: ["**.go", "go.mod", "go.sum", "testdata/**", "scripts/**", "examples/**", ".github/workflows/**", "internal/onboard/templates/**"]
   workflow_dispatch:
     inputs:
       full-drill:

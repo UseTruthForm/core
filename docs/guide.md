@@ -244,8 +244,10 @@ truthform restore --platform aws --region us-east-2 --from snap/aws --values sec
   the target holds and left alone; `--update` changes it where it is. It is
   not created beside the old one, which would make DNS answer with both.
   With any other count (two the snapshot does not have, say) which replaces
-  which is not known: nothing is written at that name, and the restore
-  says to delete what should go. A TXT, MX or other record is created
+  which is not known: nothing of that type is written at that name, and
+  the restore says to delete what should go. Either way the restore is
+  then incomplete (exit 3). Content that differs only by case (a CNAME's
+  host, an IPv6 address) is the same record. A TXT, MX or other record is created
   beside whatever is there, since such a name holds unrelated values, and
   the restore names what it is beside. A CNAME beside a record of another
   type is left to Cloudflare, which refuses it.

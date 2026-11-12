@@ -607,6 +607,7 @@ func (c *Client) Restore(ctx context.Context, s snapshot.Snapshot, opt RestoreOp
 			want.names[lk], want.slots[lk] = map[string]bool{}, map[string][]string{}
 		}
 		spec, _ := o.Body["spec"].(map[string]any)
+		own = nameKey(col, spec, own)
 		want.names[lk][own] = true
 		want.slots[lk][slotOf(col, spec)] = append(want.slots[lk][slotOf(col, spec)], own)
 	}
@@ -636,6 +637,39 @@ func place(col *Collection, o snapshot.Object) (parentName, own string) {
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	parentName, _ = ann[annParent].(string)
 	return parentName, strings.TrimPrefix(full, parentName+"/")
+}
+
+// nameKey is the name an item is looked up by. An address or an alias is
+// the same record whatever the case of its content (a CNAME's host, an
+// IPv6 address's hex digits), and a provider may store it in another case
+// than it was given. Looked up exactly, the snapshot's record was then
+// "missing" beside its own twin: a restore reported it as changed, and
+// --update sent the same write on every run without ever matching.
+func nameKey(col *Collection, spec map[string]any, name string) string {
+	if col.OneAnswer != nil && col.OneAnswer(spec) {
+		return strings.ToLower(name)
+	}
+	return name
+}
+
+// sameButCase returns the target's spec with each naming field that
+// differs from the snapshot's only by case set to the snapshot's, for an
+// item nameKey folds: that difference is not a difference.
+func sameButCase(col *Collection, spec, exSpec map[string]any) map[string]any {
+	if col.OneAnswer == nil || !col.OneAnswer(spec) {
+		return exSpec
+	}
+	out := exSpec
+	for _, f := range col.Name {
+		a, b := stringOf(spec[f]), stringOf(exSpec[f])
+		if a != b && strings.EqualFold(a, b) {
+			if canon(out) == canon(exSpec) {
+				out = deepCopy(exSpec)
+			}
+			out[f] = spec[f]
+		}
+	}
+	return out
 }
 
 // slotOf is where an item is: its Slot fields. DNS compares names and
@@ -713,6 +747,7 @@ func (c *Client) changed(ctx context.Context, col *Collection, o snapshot.Object
 	if opt.Existing != nil {
 		exSpec = opt.Existing(col.Kind, exSpec)
 	}
+	exSpec = sameButCase(col, spec, exSpec)
 	var keys []string
 	for _, k := range sortedKeys(spec) {
 		if canon(spec[k]) != canon(exSpec[k]) {
@@ -731,15 +766,10 @@ func (c *Client) changed(ctx context.Context, col *Collection, o snapshot.Object
 	if opt.DryRun {
 		return true, true, "would update (" + strings.Join(keys, ", ") + ")", ""
 	}
-	full := o.Name()
+	// listed is left as it was read: an update needs exactly one of the
+	// snapshot's missing in the slot, so no later item of this run looks
+	// there again.
 	ok, detail = c.update(ctx, col, o, ex, spec, parentRaw, keys, targets, opt)
-	if ok {
-		// It now goes by the snapshot's name: a later item in this slot
-		// must not take it for one the snapshot does not have.
-		delete(listed[lk], others[0])
-		raw := targets[col.Kind+"|"+full]
-		listed[lk][own] = &item{col: col, raw: raw, spec: spec}
-	}
 	return true, ok, detail, ""
 }
 
@@ -804,9 +834,10 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 			}
 			it := &item{col: col, raw: raw}
 			it.spec = c.specOf(col, w, raw, &it.masked)
-			listed[lk][itemName(col, raw)] = it
+			listed[lk][nameKey(col, it.spec, itemName(col, raw))] = it
 		}
 	}
+	own = nameKey(col, spec, own)
 	if ex, ok := listed[lk][own]; ok && opt.Present[col.Kind] {
 		targets[col.Kind+"|"+full] = ex.raw
 		return true, "present; used as it is"
@@ -819,6 +850,7 @@ func (c *Client) restoreOne(ctx context.Context, o snapshot.Object, targets map[
 		if opt.Existing != nil {
 			exSpec = opt.Existing(col.Kind, exSpec)
 		}
+		exSpec = sameButCase(col, spec, exSpec)
 		if canon(exSpec) == canon(spec) {
 			return true, "already present and identical"
 		}

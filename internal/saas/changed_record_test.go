@@ -135,7 +135,7 @@ func TestARecordWhoseContentChangedIsNotRestoredBesideTheOldOne(t *testing.T) {
 
 	// Two records at app that the snapshot does not have, and one of the
 	// snapshot's missing: which one it replaces cannot be known, so
-	// nothing is written there, with or without --update.
+	// nothing is written there, even with --update (res is that run).
 	if r := res[app]; r.OK || !strings.Contains(r.Detail, "192.0.2.12") || !strings.Contains(r.Detail, "192.0.2.13") {
 		t.Errorf("app: ok=%v %q; want it not applied, naming both records there", r.OK, r.Detail)
 	}
@@ -209,5 +209,130 @@ func TestATXTRecordIsNotTakenForAnotherOneChanged(t *testing.T) {
 	}
 	if got := at(f, recs, "example.com"); got != "\"site-verification=abc\",\"v=spf1 -all\"" {
 		t.Errorf("the root holds %s; want both", got)
+	}
+}
+
+// zoneWith is a zone holding the given records, and the path of its
+// records with each record's ID by "TYPE name".
+func zoneWith(t *testing.T, records ...map[string]any) (*fake, string, map[string]string) {
+	t.Helper()
+	f := newFake(t, Cloudflare, spec(t, "cloudflare.json"), "acct-1111")
+	cloudflare(f)
+	zone := f.seed(t, "/zones", map[string]any{"name": "example.com", "type": "full", "account": map[string]any{"id": "acct-1111"}})
+	recs := "/zones/" + stringOf(zone["id"]) + "/dns_records"
+	ids := map[string]string{}
+	for _, r := range records {
+		r["ttl"], r["proxied"] = 300, false
+		ids[stringOf(r["type"])+" "+stringOf(r["name"])] = stringOf(f.seed(t, recs, r)["id"])
+	}
+	return f, recs, ids
+}
+
+// set changes one field of a record in place, as the provider's own
+// dashboard would.
+func set(t *testing.T, f *fake, recs, id, content string) {
+	t.Helper()
+	if _, _, err := f.client(false).do(t.Context(), "PATCH", recs+"/"+id, map[string]any{"content": content}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An alias and an IPv6 address are changed where they are too, and a
+// refusal from the caller's Allow is honoured before any write.
+func TestAChangedAliasAndIPv6AddressAreUpdatedInPlace(t *testing.T) {
+	f, recs, ids := zoneWith(t,
+		map[string]any{"type": "CNAME", "name": "docs.example.com", "content": "pages.example.net"},
+		map[string]any{"type": "AAAA", "name": "v6.example.com", "content": "2001:db8::1"})
+	snap := snapshotOf{capture(t, f)}
+	set(t, f, recs, ids["CNAME docs.example.com"], "elsewhere.example.net")
+	set(t, f, recs, ids["AAAA v6.example.com"], "2001:db8::9")
+	const docs = "example.com/CNAME docs.example.com pages.example.net"
+	const v6 = "example.com/AAAA v6.example.com 2001:db8::1"
+
+	// The caller may refuse a change to a record (a subdomain restore
+	// does, for one it did not make): nothing is sent.
+	writes := f.writes
+	no := func(o snapshot.Object, existing map[string]any) string {
+		if existing != nil {
+			return "not ours"
+		}
+		return ""
+	}
+	if r := snap.restore(f, RestoreOptions{Update: true, Allow: no})[docs]; r.OK || !strings.Contains(r.Detail, "not modified: not ours") {
+		t.Errorf("refused by Allow: ok=%v %q", r.OK, r.Detail)
+	}
+	if f.writes != writes {
+		t.Errorf("%d writes sent although Allow refused", f.writes-writes)
+	}
+
+	res := snap.restore(f, RestoreOptions{Update: true})
+	for _, k := range []string{docs, v6} {
+		if r := res[k]; !r.OK || r.Detail != "updated (content)" {
+			t.Errorf("%s: ok=%v %q; want updated (content)", k, r.OK, r.Detail)
+		}
+	}
+	if got := at(f, recs, "docs.example.com") + " " + at(f, recs, "v6.example.com"); got != "pages.example.net 2001:db8::1" {
+		t.Errorf("the zone holds %s", got)
+	}
+}
+
+// Two of the snapshot's records missing at a name that holds one record
+// the snapshot does not have: either could be the one that changed, so
+// neither is written.
+func TestTwoMissingAndOneUnknownIsNotGuessed(t *testing.T) {
+	f, recs, ids := zoneWith(t,
+		map[string]any{"type": "A", "name": "app.example.com", "content": "192.0.2.10"},
+		map[string]any{"type": "A", "name": "app.example.com", "content": "192.0.2.11"})
+	snap := snapshotOf{capture(t, f)}
+	// Both records share a name, so ids holds the second; the first is
+	// dropped, and the second changed.
+	f.mu.Lock()
+	f.colls[recs] = f.colls[recs][1:]
+	f.mu.Unlock()
+	set(t, f, recs, ids["A app.example.com"], "192.0.2.99")
+
+	writes := f.writes
+	res := snap.restore(f, RestoreOptions{Update: true})
+	for _, k := range []string{"example.com/A app.example.com 192.0.2.10", "example.com/A app.example.com 192.0.2.11"} {
+		if r := res[k]; r.OK || !strings.Contains(r.Detail, "192.0.2.99") || !strings.Contains(r.Detail, "2 of the snapshot's are missing") {
+			t.Errorf("%s: ok=%v %q", k, r.OK, r.Detail)
+		}
+	}
+	if f.writes != writes || at(f, recs, "app.example.com") != "192.0.2.99" {
+		t.Errorf("%d writes sent; app holds %s", f.writes-writes, at(f, recs, "app.example.com"))
+	}
+}
+
+// A provider that stores an alias's host or an IPv6 address in another
+// case than the snapshot has it still holds the same record.
+//
+// The failure this pins (review of the change above): the record was
+// looked up by its exact name, content included, so the snapshot's
+// "Pages.Example.net" was missing from a zone holding
+// "pages.example.net". It was reported as changed, and --update sent the
+// same write on every run without the two ever matching.
+func TestContentThatDiffersOnlyByCaseIsTheSameRecord(t *testing.T) {
+	f, recs, ids := zoneWith(t,
+		map[string]any{"type": "CNAME", "name": "docs.example.com", "content": "Pages.Example.net"},
+		map[string]any{"type": "AAAA", "name": "v6.example.com", "content": "2001:DB8::1"},
+		map[string]any{"type": "TXT", "name": "example.com", "content": "\"Key=AbC\""})
+	snap := snapshotOf{capture(t, f)}
+	set(t, f, recs, ids["CNAME docs.example.com"], "pages.example.net")
+	set(t, f, recs, ids["AAAA v6.example.com"], "2001:db8::1")
+
+	writes := f.writes
+	for k, r := range snap.restore(f, RestoreOptions{Update: true}) {
+		if !r.OK || r.Detail != "already present and identical" {
+			t.Errorf("%s: ok=%v %q; want identical", k, r.OK, r.Detail)
+		}
+	}
+	if f.writes != writes {
+		t.Errorf("%d writes sent for records that only differ by case", f.writes-writes)
+	}
+
+	// A TXT record's content is not folded: its case is its meaning.
+	set(t, f, recs, ids["TXT example.com"], "\"key=abc\"")
+	if r := snap.restore(f, RestoreOptions{})["example.com/TXT example.com \"Key=AbC\""]; !r.OK || !strings.HasPrefix(r.Detail, "created; the target also holds") {
+		t.Errorf("TXT differing by case: ok=%v %q; want it created beside", r.OK, r.Detail)
 	}
 }

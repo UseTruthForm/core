@@ -58,6 +58,9 @@ var filePathRE = regexp.MustCompile(`^(/|[A-Za-z]:\\)\S*$`)
 // *_URL.
 var urlPasswordRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://[^/@:\s]*:[^@\s/]+@`)
 
+// urlFields are fields that hold a URL someone may have put a password in.
+var urlFields = map[string]bool{"url": true, "repoURL": true}
+
 // credential reports a value to withhold, by its name and its value.
 func credential(name, value string) bool {
 	if value == "" || envRefRE.MatchString(value) {
@@ -204,7 +207,9 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	// Before the system namespaces, so what a source makes there is listed
 	// under the source: a HelmRelease that installs into kube-system was
 	// otherwise named nowhere, and a rebuild did not know to install it.
-	if !p.CaptureRendered {
+	// What AKS labels as its own stays the cluster's to provide (below),
+	// though AKS installs some of it as a HelmRelease.
+	if !p.CaptureRendered && (p.IncludeSystem || !aksOwn(md)) {
 		if why := renderedBy(md); why != "" && !p.root(obj) {
 			return why
 		}
@@ -248,7 +253,7 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	}
 	// A fact before a guess: what AKS labels as its own is listed under the guess
 	// otherwise, with a flag offered that does not keep it.
-	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" {
+	if aksOwn(md) {
 		// AKS installs these (its add-ons, their namespaces and roles) and
 		// upgrades them on its own schedule: captured, every upgrade showed
 		// up as drift, and a restore would fight AKS for them.
@@ -305,6 +310,12 @@ func ownedReason(kind, name string) string {
 	return "owned by " + kind + "/" + name + ", whose controller recreates it"
 }
 
+// aksOwn reports what AKS labels as its own.
+func aksOwn(md map[string]any) bool {
+	labels, _ := md["labels"].(map[string]any)
+	return strOf(labels["kubernetes.azure.com/managedby"]) == "aks"
+}
+
 // root reports whether a rendered object is where GitOps starts: a source
 // that applies itself (the Kustomization "flux bootstrap" makes, an Argo
 // CD application that manages itself), or what such a Kustomization reads
@@ -328,11 +339,17 @@ func selfApplied(obj map[string]any) bool {
 	case group == "kustomize.toolkit.fluxcd.io" && strOf(obj["kind"]) == "Kustomization":
 		return l("kustomize.toolkit.fluxcd.io/name") == name && l("kustomize.toolkit.fluxcd.io/namespace") == strOf(md["namespace"])
 	case group == "argoproj.io" && strOf(obj["kind"]) == "Application":
-		app := l("argocd.argoproj.io/instance")
-		if app == "" {
-			app = strings.SplitN(annotation(md, "argocd.argoproj.io/tracking-id"), ":", 2)[0]
+		// The tracking id names the object tracked as well as the
+		// application (app:group/kind:namespace/name), and the application
+		// as namespace_name when it is outside Argo CD's own namespace. The
+		// label names the application only: one of the same name managed
+		// by another, elsewhere, reads the same.
+		if id := annotation(md, "argocd.argoproj.io/tracking-id"); id != "" {
+			app, tracked, _ := strings.Cut(id, ":")
+			ns := strOf(md["namespace"])
+			return tracked == "argoproj.io/Application:"+ns+"/"+name && (app == name || app == ns+"_"+name)
 		}
-		return app == name
+		return l("argocd.argoproj.io/instance") == name
 	}
 	return false
 }
@@ -522,13 +539,24 @@ func slots(obj map[string]any) []slot {
 			}
 		}
 	}
+	argo := strings.HasPrefix(strOf(obj["apiVersion"]), "argoproj.io/")
 	var walk func(v any, path string)
 	walk = func(v any, path string) {
 		switch x := v.(type) {
 		case map[string]any:
 			for k, c := range x {
 				p := join(path, k)
-				if k == "env" {
+				// Where a repository or a chart is read from: a credential
+				// only when the URL has a password in it, which a Flux
+				// GitRepository's url and an Argo CD application's repoURL
+				// can.
+				if s, isStr := c.(string); isStr && urlFields[k] {
+					out = append(out, slot{path: p, name: k, value: s, set: func(v string) { x[k] = v }})
+					continue
+				}
+				// An Argo CD application's Helm parameters are name and
+				// value, as env is.
+				if k == "env" || (k == "parameters" && argo) {
 					for i, e := range list(c) {
 						m, ok := e.(map[string]any)
 						s, isStr := m["value"].(string)

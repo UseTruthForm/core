@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/usetruthform/core/internal/kube"
 	"github.com/usetruthform/core/internal/snapshot"
 )
 
@@ -53,7 +54,7 @@ func TestPlanRebuildCommand(t *testing.T) {
 		"| 4 | Make the secret store reachable | 2 items feed 2 secrets |",
 		"## 1. Install first: 1 sources",
 		"| Flux HelmRelease `ingress/proxy` | 1 |  |",
-		"**Not in the snapshot: where they are read from.**",
+		"**Not in the snapshot: where the sources are read from.**",
 		"## 2. APIs to have served: 1 groups",
 		"| `onepassword.com` | 2 OnePasswordItem |",
 		"## 3. Secrets to supply by hand: 1",
@@ -96,6 +97,29 @@ func TestPlanRebuildCommand(t *testing.T) {
 	// Nothing to say is an empty list, not null: "| length" reads either, ".[]" does not.
 	if l, ok := plan["secretsReissued"].([]any); !ok || len(l) != 0 {
 		t.Errorf("secretsReissued: %v", plan["secretsReissued"])
+	}
+}
+
+// When every source follows from one the snapshot holds, the plan still
+// says where they are read from, or that the snapshot does not hold it,
+// and claims no more than that the sources are held.
+func TestPlanRebuildWhenEverySourceFollows(t *testing.T) {
+	root := snapshot.Object{Body: map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization", "metadata": map[string]any{"name": "root", "namespace": "flux-system"}}}
+	repo := snapshot.Object{Body: map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository", "metadata": map[string]any{"name": "fleet", "namespace": "flux-system"}}}
+	skips := []snapshot.Skip{{Resource: "configmaps", Namespace: "shop", Name: "c", Reason: "applied by Flux Kustomization flux-system/root; restoring it recreates this"}}
+	for want, objects := range map[string][]snapshot.Object{
+		"The snapshot holds these repository objects: GitRepository flux-system/fleet.": {root, repo},
+		"**Not in the snapshot: where the sources are read from.**":                     {root},
+	} {
+		text := planMarkdown(kube.RebuildPlan(snapshot.Snapshot{Platform: "kubernetes", Skips: skips, Objects: objects}))
+		for _, line := range []string{"| 1 | Install what a GitOps source makes | 0 sources by hand, 1 follow |", "**Applied again by sources the snapshot holds: 1 sources, 1 objects.**", "Nothing else:", want} {
+			if !strings.Contains(text, line) {
+				t.Errorf("the plan lacks %q:\n%s", line, text)
+			}
+		}
+		if strings.Contains(text, "where GitOps starts") {
+			t.Errorf("claims more than that the sources are held:\n%s", text)
+		}
 	}
 }
 

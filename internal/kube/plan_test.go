@@ -29,6 +29,9 @@ func TestRebuildPlan(t *testing.T) {
 	kustomized := func(ns, name string) string {
 		return renderedBy(map[string]any{"labels": map[string]any{"kustomize.toolkit.fluxcd.io/namespace": ns, "kustomize.toolkit.fluxcd.io/name": name}})
 	}
+	argo := func(app string) string {
+		return renderedBy(map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": app}})
+	}
 	s := snapshot.Snapshot{Platform: "kubernetes", Skips: []snapshot.Skip{
 		{Resource: "deployments", Namespace: "ingress", Name: "proxy", Reason: helm("ingress", "proxy")},
 		{Resource: "services", Namespace: "ingress", Name: "proxy", Reason: helm("ingress", "proxy")},
@@ -42,6 +45,15 @@ func TestRebuildPlan(t *testing.T) {
 		{Resource: "kustomize.toolkit.fluxcd.io/v1/kustomizations", Namespace: "flux-system", Name: "tenant", Reason: kustomized("flux-system", "gone")},
 		{Resource: "configmaps", Namespace: "tenant", Name: "c", Reason: kustomized("flux-system", "tenant")},
 		{Resource: "deployments", Namespace: "kube-system", Name: "addon", Reason: helm("kube-system", "addon")}, // the platform's, perhaps
+		{Resource: "clusterroles", Name: "addon", Reason: helm("kube-system", "addon")},                          // no namespace: says neither
+		{Resource: "clusterroles", Name: "wide", Reason: helm("ops", "wide")},                                    // only that: not system-only
+		// Argo CD: the root application is in the snapshot and applies shop; another API's
+		// Application of the name of an Argo CD one is neither that one nor its skip.
+		{Resource: "argoproj.io/v1alpha1/applications", Namespace: "argocd", Name: "shop", Reason: argo("team_root")},
+		{Resource: "deployments", Namespace: "shop", Name: "argo-web", Reason: argo("shop")},
+		{Resource: "app.k8s.io/v1beta1/applications", Namespace: "pay", Name: "pay", Reason: kustomized("flux-system", "root")},
+		{Resource: "deployments", Namespace: "pay", Name: "pay", Reason: argo("pay")},
+		{Resource: "deployments", Namespace: "bill", Name: "bill", Reason: argo("bill")},
 		{Resource: "pods", Namespace: "shop", Name: "web-1", Reason: ownedReason("ReplicaSet", "web")},
 		{Resource: "configmaps", Namespace: "kube-system", Name: "x", Reason: "in system namespace kube-system"},
 	}, Objects: []snapshot.Object{
@@ -51,6 +63,8 @@ func TestRebuildPlan(t *testing.T) {
 		planObject("gateway.networking.k8s.io/v1", "Gateway", "shop", "gw", map[string]any{"spec": map[string]any{"listeners": []any{map[string]any{"hostname": "GW.example.com"}}}}),
 		planObject("helm.toolkit.fluxcd.io/v2", "HelmRelease", "shop", "held", nil),
 		planObject("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "root", nil),
+		planObject("argoproj.io/v1alpha1", "Application", "team", "root", nil),
+		planObject("app.k8s.io/v1beta1", "Application", "bill", "bill", nil),
 		// Three items make one Secret; Merge adds to one that has to be there; a search and a generator name no key.
 		planObject("external-secrets.io/v1", "ExternalSecret", "shop", "multi", map[string]any{"spec": map[string]any{
 			"secretStoreRef": map[string]any{"kind": "ClusterSecretStore", "name": "kv"},
@@ -140,17 +154,24 @@ func TestRebuildPlan(t *testing.T) {
 	want := Plan{
 		Sources: []PlanSource{
 			{Kind: "Flux HelmRelease", Name: "ingress/proxy", Objects: 2},
-			{Kind: "Flux HelmRelease", Name: "kube-system/addon", Objects: 1, SystemOnly: true},
+			{Kind: "Flux HelmRelease", Name: "kube-system/addon", Objects: 2, SystemOnly: true},
+			{Kind: "Argo CD application", Name: "bill", Objects: 1},
+			{Kind: "Argo CD application", Name: "pay", Objects: 1},
+			{Kind: "Flux HelmRelease", Name: "ops/wide", Objects: 1},
 			{Kind: "Flux HelmRelease", Name: "vault/connect", Objects: 1},
 			{Kind: "Flux Kustomization", Name: "flux-system/gone", Objects: 1},
 			{Kind: "Flux Kustomization", Name: "flux-system/tenant", Objects: 1},
 		},
 		Follows: []PlanSource{
+			{Kind: "Flux Kustomization", Name: "flux-system/root", Objects: 2},
+			{Kind: "Argo CD application", Name: "shop", Objects: 1},
+			{Kind: "Argo CD application", Name: "team_root", Objects: 1},
 			{Kind: "Flux HelmRelease", Name: "apps/web", Objects: 1},
 			{Kind: "Flux HelmRelease", Name: "shop/held", Objects: 1},
-			{Kind: "Flux Kustomization", Name: "flux-system/root", Objects: 1},
 		},
 		Operators: []PlanOperator{
+			{Group: "app.k8s.io", Objects: map[string]int{"Application": 1}},
+			{Group: "argoproj.io", Objects: map[string]int{"Application": 1}},
 			{Group: "cert-manager.io", Objects: map[string]int{"ClusterIssuer": 1, "Issuer": 1}},
 			{Group: "example.com", Objects: map[string]int{"Gadget": 1}},
 			{Group: "external-secrets.io", Objects: map[string]int{"ClusterExternalSecret": 1, "ClusterSecretStore": 1, "ExternalSecret": 5}},

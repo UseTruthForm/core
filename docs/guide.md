@@ -91,7 +91,11 @@ GitOps starts is captured, since nothing else recreates it: the Flux
 Kustomization that applies itself (the one `flux bootstrap` makes) with
 the repository object it reads from, and an Argo CD application that
 manages itself. That is the repository, branch and path the cluster was
-built from. The credential to read it is a Secret, named and never held.
+built from. The credential to read it is a Secret, named and never held; a
+password written into the repository's URL is withheld like any other
+(and so is one in an Argo CD application's Helm parameters). One of these
+in a system namespace is left out with the namespace, unless
+`--include-system` is given.
 
 What a snapshot does not hold, by design:
 

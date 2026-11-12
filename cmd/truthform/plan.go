@@ -84,7 +84,7 @@ func planMarkdown(p kube.Plan) string {
 			made += s.Objects
 			names[i] = s.Kind + " " + code(s.Name)
 		}
-		w("**Applied again by the snapshot's own sources: %d sources, %d objects.** The snapshot holds where GitOps starts. Install the GitOps tool's own controllers, restore, and it applies these: %s.\n\n", len(p.Follows), made, strings.Join(names, ", "))
+		w("**Applied again by sources the snapshot holds: %d sources, %d objects.** Install the GitOps tool's own controllers and restore: the sources in the snapshot then apply these, from where they read. %s.\n\n", len(p.Follows), made, strings.Join(names, ", "))
 	}
 	if len(p.Sources) == 0 {
 		w("Nothing else: the capture left nothing to a GitOps source that the snapshot's own sources do not apply.\n\n")
@@ -98,10 +98,13 @@ func planMarkdown(p kube.Plan) string {
 			}
 			w("| %s %s | %d | %s |\n", s.Kind, code(s.Name), s.Objects, note)
 		}
+		w("\n")
+	}
+	if len(p.Sources)+len(p.Follows) > 0 {
 		if len(p.Origins) > 0 {
-			w("\nThe snapshot holds these repository objects: %s. Check that they are where the sources above are read from.\n\n", md(strings.Join(p.Origins, ", ")))
+			w("The snapshot holds these repository objects: %s. Check that they are where the sources above are read from. The credential to read each is a Secret of step 3.\n\n", md(strings.Join(p.Origins, ", ")))
 		} else {
-			w("\n**Not in the snapshot: where they are read from.** The repository, branch and path the cluster was bootstrapped from, and the credential to read them, have to come from your own records.\n\n")
+			w("**Not in the snapshot: where the sources are read from.** The repository, branch and path the cluster was bootstrapped from, and the credential to read them, have to come from your own records.\n\n")
 		}
 	}
 

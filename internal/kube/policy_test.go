@@ -2,6 +2,8 @@ package kube
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -260,6 +262,13 @@ func TestGitOpsRootsAreCaptured(t *testing.T) {
 			map[string]any{"annotations": map[string]any{"argocd.argoproj.io/tracking-id": "root:argoproj.io/Application:argocd/root"}}), true},
 		"an application the root manages": {obj("argoproj.io/v1alpha1", "Application", "argocd", "shop",
 			map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": "root"}}), false},
+		"one outside Argo CD's namespace, named namespace_name": {obj("argoproj.io/v1alpha1", "Application", "team-a", "root",
+			map[string]any{"annotations": map[string]any{"argocd.argoproj.io/tracking-id": "team-a_root:argoproj.io/Application:team-a/root"}}), true},
+		"one of the same name that another manages": {obj("argoproj.io/v1alpha1", "Application", "team-a", "web",
+			map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": "web"},
+				"annotations": map[string]any{"argocd.argoproj.io/tracking-id": "web:argoproj.io/Application:argocd/web"}}), false},
+		"another API's Application": {obj("app.k8s.io/v1beta1", "Application", "argocd", "root",
+			map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": "root"}}), false},
 	} {
 		reason := p.skipReason("", "", c.obj)
 		if c.kept && reason != "" {
@@ -268,6 +277,79 @@ func TestGitOpsRootsAreCaptured(t *testing.T) {
 		if !c.kept && !strings.Contains(reason, "restoring") {
 			t.Errorf("%s: reason %q, want it left to its source", name, reason)
 		}
+	}
+}
+
+// The objects that say where GitOps starts are captured now, so what they
+// can hold is withheld: a password in the repository's URL, and an Argo CD
+// application's Helm parameters named like credentials. Without a
+// password, the URL is configuration and is kept.
+func TestRootCredentialsAreWithheld(t *testing.T) {
+	repo := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
+		"metadata": map[string]any{"name": "fleet", "namespace": "flux-system"},
+		"spec":     map[string]any{"url": "https://git:s3cr3t-token@example.com/o/fleet.git", "ref": map[string]any{"branch": "main"}}}
+	withheld := func(o map[string]any) string {
+		return annotation(o["metadata"].(map[string]any), WithheldEnvAnnotation)
+	}
+	normalize("source.toolkit.fluxcd.io", "gitrepositories", repo)
+	if got := withheld(repo); got != "spec.url" {
+		t.Errorf("withheld %q, want spec.url", got)
+	}
+	if b, _ := json.Marshal(repo); strings.Contains(string(b), "s3cr3t") {
+		t.Errorf("the password is in the snapshot: %s", b)
+	}
+	plain := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
+		"metadata": map[string]any{"name": "fleet", "namespace": "flux-system"}, "spec": map[string]any{"url": "ssh://git@example.com/o/fleet.git"}}
+	normalize("source.toolkit.fluxcd.io", "gitrepositories", plain)
+	if got := withheld(plain); got != "" || plain["spec"].(map[string]any)["url"] != "ssh://git@example.com/o/fleet.git" {
+		t.Errorf("a URL with no password: withheld %q, %v", got, plain["spec"])
+	}
+
+	app := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Application",
+		"metadata": map[string]any{"name": "root", "namespace": "argocd"},
+		"spec": map[string]any{"source": map[string]any{
+			"repoURL": "https://u:s3cr3t-token@example.com/o/apps.git",
+			"helm": map[string]any{"parameters": []any{
+				map[string]any{"name": "adminPassword", "value": "s3cr3t-admin"},
+				map[string]any{"name": "replicas", "value": "2"},
+			}},
+		}}}
+	normalize("argoproj.io", "applications", app)
+	if got := withheld(app); got != "spec.source.helm.parameters[adminPassword],spec.source.repoURL" {
+		t.Errorf("withheld %q", got)
+	}
+	// A restore finds the same slots to fill from the source cluster.
+	var paths []string
+	for _, sl := range slots(app) {
+		paths = append(paths, sl.path)
+	}
+	if !reflect.DeepEqual(paths, []string{"spec.source.helm.parameters[adminPassword]", "spec.source.helm.parameters[replicas]", "spec.source.repoURL"}) {
+		t.Errorf("slots %v", paths)
+	}
+	if b, _ := json.Marshal(app); strings.Contains(string(b), "s3cr3t") || !strings.Contains(string(b), `"value":"2"`) {
+		t.Errorf("after normalize: %s", b)
+	}
+	// "parameters" is name and value in Argo CD's API; in another it is not ours to read as that.
+	other := map[string]any{"apiVersion": "example.com/v1", "kind": "Job", "metadata": map[string]any{"name": "j", "namespace": "x"},
+		"spec": map[string]any{"parameters": []any{map[string]any{"name": "adminPassword", "value": "a-default"}}}}
+	normalize("example.com", "jobs", other)
+	if got := withheld(other); got != "" {
+		t.Errorf("another API's parameters withheld: %q", got)
+	}
+}
+
+// What AKS labels as its own stays the cluster's to provide, though AKS
+// installs some of it as a HelmRelease: named as a source, a rebuild would
+// be told to install what a new cluster brings.
+func TestAKSOwnInASystemNamespaceIsNotASource(t *testing.T) {
+	md := map[string]any{"labels": map[string]any{"helm.toolkit.fluxcd.io/name": "adapter", "helm.toolkit.fluxcd.io/namespace": "abc123", "kubernetes.azure.com/managedby": "aks"}}
+	o := k8sObj("Deployment", "kube-system", "adapter", md, nil)
+	if r := (Policy{}).skipReason("apps", "deployments", o); r != "in system namespace kube-system" {
+		t.Errorf("reason %q", r)
+	}
+	elsewhere := k8sObj("Deployment", "addons", "adapter", md, nil)
+	if r := (Policy{}).skipReason("apps", "deployments", elsewhere); !strings.Contains(r, "installed and upgraded by AKS itself") {
+		t.Errorf("outside a system namespace: reason %q", r)
 	}
 }
 

@@ -235,6 +235,20 @@ truthform restore --platform aws --region us-east-2 --from snap/aws --values sec
   exit 3) and keeps it when run again with `--update`; a retention inherited
   from the workspace is left to the workspace. One with only the workspace's
   defaults does not hold the restore up.
+- **A DNS record whose content changed (Cloudflare):** a record is named by
+  its type, name and content, so `www` pointing at a new address is, by
+  name, a different record. For an A, AAAA or CNAME record a restore takes
+  it for the same record changed when the target holds exactly one record
+  of that type at that name which the snapshot does not have, and exactly
+  one of the snapshot's is missing there. It is reported with the content
+  the target holds and left alone; `--update` changes it where it is. It is
+  not created beside the old one, which would make DNS answer with both.
+  With any other count (two the snapshot does not have, say) which replaces
+  which is not known: nothing is written at that name, and the restore
+  says to delete what should go. A TXT, MX or other record is created
+  beside whatever is there, since such a name holds unrelated values, and
+  the restore names what it is beside. A CNAME beside a record of another
+  type is left to Cloudflare, which refuses it.
 - **`--dry-run` (GitHub, Cloudflare)** reads the target and prints each
   write the restore would make (`would create`, `would update`), and makes
   none: its client refuses every write.

@@ -30,7 +30,7 @@ const usage = `truthform: capture what is running so it can be recreated.
 
 Kubernetes:
   truthform capture --context <kube-context> --out <dir> [--include-system] [--baseline <dir>]
-  truthform restore --context <kube-context> --from <dir> [--secrets-from-context <kube-context>]
+  truthform restore --context <kube-context> --from <dir> [--secrets-from <file>] [--secrets-from-context <kube-context>]
   truthform diff    --context <kube-context> --from <dir> [--baseline <dir>]
 
 AWS (Cloud Control, every type in the CloudFormation registry):
@@ -76,6 +76,7 @@ As a graph (resources and their relationships, for an asset inventory or a secur
 
 Before a rebuild (what the snapshot does not hold: what to install first, the secrets, the names):
   truthform plan rebuild --from <dir> [--out <file>] [--json]
+  truthform plan secrets --from <dir> [--out <file> | --check <file> [--resolve] [--allow-exec] [--json]]
       Kubernetes; Markdown, or one JSON document; from the snapshot alone, no request made
 
 For agents (MCP on stdin/stdout; every tool read-only, no restore tool):
@@ -256,6 +257,8 @@ func restore(ctx context.Context, args []string) int {
 	kctx := fs.String("context", "", "kubeconfig context to restore into")
 	from := fs.String("from", "", "snapshot directory")
 	secretsFrom := fs.String("secrets-from-context", "", "live cluster to read withheld secret values from")
+	secretSources := fs.String("secrets-from", "", "kubernetes: secret sources file (truthform plan secrets) saying where each withheld value is read from; read, sent to the cluster, never written")
+	allowExec := fs.Bool("allow-exec", false, allowExecHelp)
 	platform := fs.String("platform", "kubernetes", "kubernetes, aws, azure, gcp, github or cloudflare")
 	update := fs.Bool("update", false, "aws, azure, gcp, github, cloudflare: also bring existing resources that differ in line with the snapshot (never replaces one); without it, restore only creates what is missing. Kubernetes restore always applies (server-side apply)")
 	values := fs.String("values", "", "aws, azure, github, cloudflare: YAML file of values the platform never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the platform, never written. Refused elsewhere")
@@ -308,6 +311,12 @@ func restore(ctx context.Context, args []string) int {
 	if err := valuesAccepted(*platform, *values); err != nil {
 		return fail(err)
 	}
+	if *platform != "kubernetes" && (*secretSources != "" || *allowExec) {
+		return fail(fmt.Errorf("--secrets-from and --allow-exec are for a kubernetes restore; nothing was restored"))
+	}
+	if *allowExec && *secretSources == "" {
+		return fail(fmt.Errorf("--allow-exec is for --secrets-from; nothing was restored"))
+	}
 	// A staged --types that restored everything would create, and bill for,
 	// what was held back.
 	if aws.types != "" && *platform != "azure" {
@@ -332,6 +341,15 @@ func restore(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	var opt kube.RestoreOptions
+	if *secretSources != "" {
+		var left []string
+		if snap, opt, left, err = withSecretSources(ctx, snap, *secretSources, *allowExec, *secretsFrom != ""); err != nil {
+			return fail(err)
+		}
+		if len(left) > 0 {
+			fmt.Printf("left %d Secrets to what makes them (--secrets-from): %s\n", len(left), strings.Join(left, ", "))
+		}
+	}
 	if *secretsFrom != "" {
 		if opt.SecretSource, err = kube.Connect(*kubeconfig, *secretsFrom, true); err != nil {
 			return fail(err)

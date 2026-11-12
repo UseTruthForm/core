@@ -349,7 +349,7 @@ empty or denied: capture again later.
 |---|---|
 | 0 | Success: the capture is complete, the restore fully applied, or no differences |
 | 1 | Error: bad flags, cannot connect, cannot read a snapshot |
-| 2 | Differences found (diff, compare) |
+| 2 | Differences found (diff, compare), or a secret sources file that does not cover its snapshot (plan secrets --check) |
 | 3 | Incomplete: the snapshot was written but some types could not be read, or a restore applied only some resources |
 
 ## Machine-readable output
@@ -442,6 +442,67 @@ What it cannot see:
 - **A secret store of another kind.** Its Secrets are listed under step 3.
 - **Hosts matched by pattern** (`HostRegexp`).
 - **Data**: databases, volumes and queues are outside a snapshot.
+
+### Where the secrets are read from
+
+Step 3's Secrets are the ones a person has to keep a copy of. A secret
+sources file says where each copy is, so that a rebuild reads the values
+itself. It holds references and never a value, and can be kept in a
+repository beside the pipeline that uses it.
+
+```sh
+truthform plan secrets --from snap/cluster --out secrets.yaml      # a file to fill in; never written over one
+truthform plan secrets --from snap/cluster --check secrets.yaml    # does every Secret to supply have a source?
+truthform plan secrets --from snap/cluster --check secrets.yaml --resolve   # and does each source answer?
+truthform restore --context new --from snap/cluster --secrets-from secrets.yaml
+```
+
+```yaml
+secrets:
+  - secret: flux-system/flux-system
+    from:
+      username: env:GIT_USER
+      password: op://Break Glass/flux git/password
+  - secret: keda/bus
+    from:
+      connection: "exec:az servicebus namespace authorization-rule keys list -g rg --namespace-name bus -n send --query primaryConnectionString -o tsv"
+  - secret: tools/licence
+    leave: the vendor's operator makes it when it starts
+```
+
+| Reference | Read from |
+|---|---|
+| `op://<vault>/<item>/<field>` | 1Password, with the `op` CLI |
+| `azurekv://<vault>/<secret>[/<version>]` | Azure Key Vault, with the `az` CLI |
+| `env:<NAME>` | an environment variable |
+| `file:<path>` | a file's whole content, byte for byte |
+| `exec:<command>` | what a command prints, less its last line end; only with `--allow-exec` |
+
+`exec:` is for whatever has no reference of its own: another vault's CLI,
+or a value read from the cloud the cluster is rebuilt in (a storage key, a
+connection string), which is then the new resource's and not a copy of
+the old one's. It runs a command from the file with the access of whoever
+runs the restore, so it is refused without `--allow-exec`: give that flag
+only for a file you would run as a script.
+
+`leave:` is for a Secret the plan lists by hand that something does make:
+the restore does not write it, and the check does not ask for a source.
+
+`--check` exits 2 when a rebuild would lack something: a Secret to supply
+with no entry, a key with no reference, a key the Secret does not have.
+Run after each capture, it says so the day someone adds a Secret by hand.
+It reads only the snapshot and the file. `--resolve` also reads every
+value from its source and prints none of them: it proves the sign-ins and
+the items are there before the day they are needed.
+
+A restore with `--secrets-from` checks the file the same way and reads
+every value **before it writes anything** to the cluster; a source that
+does not answer stops it there. It then leaves out the Secrets that are
+not a restore's to write (those a store or a controller makes, by the
+plan, and the file's `leave:` entries) and says which. A value is read,
+sent to the cluster, and written nowhere else; no message repeats one.
+With `--secrets-from-context` as well, what the file does not name is
+read from that cluster.
 
 ## As a graph (Azure)
 

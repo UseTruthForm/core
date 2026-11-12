@@ -150,6 +150,10 @@ ships. Truthform keeps no field list in its code:
   Restore refuses to create a secret with empty values. Pass
   `--secrets-from-context` to read the values live from a source cluster;
   they go straight from one API to the other and are never written to disk.
+  For a rebuild with no source cluster left, `--secrets-from` reads each
+  from where a file of references says (1Password, Azure Key Vault, an
+  environment variable, a file, a command); `truthform plan secrets`
+  writes that file to fill in and checks it against each capture.
 - **The distribution baseline.** Capture a fresh, empty cluster of the same kind
   once (kind, EKS, AKS...) and pass it as `--baseline`. Objects identical to it
   are the distribution's own add-ons and are skipped. An add-on someone

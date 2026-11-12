@@ -167,8 +167,8 @@ func TestPlanRebuildRefuses(t *testing.T) {
 		t.Fatal(err)
 	}
 	for why, args := range map[string][]string{
-		"the plan it gives is rebuild":  {},
-		"the plan it gives is rebuild:": {"restore", "--from", planSnapshot(t)},
+		"it gives rebuild and secrets":  {},
+		"it gives rebuild and secrets:": {"restore", "--from", planSnapshot(t)},
 		"--from is required":            {"rebuild"},
 		"not a Truthform snapshot":      {"rebuild", "--from", filepath.Join(t.TempDir(), "none")},
 		"is a azure snapshot":           {"rebuild", "--from", azure},

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -14,8 +15,11 @@ import (
 // planCmd says what rebuilding from a snapshot needs that the snapshot
 // does not hold. It reads only the snapshot: no login, no request.
 func planCmd(args []string) int {
+	if len(args) > 0 && args[0] == "secrets" {
+		return planSecrets(context.Background(), args[1:])
+	}
 	if len(args) == 0 || args[0] != "rebuild" {
-		return fail(fmt.Errorf("plan: the plan it gives is rebuild: truthform plan rebuild --from <dir> [--out <file>] [--json]"))
+		return fail(fmt.Errorf("plan: it gives rebuild and secrets: truthform plan rebuild --from <dir> [--out <file>] [--json], truthform plan secrets --from <dir> [--out <file> | --check <file> [--resolve]]"))
 	}
 	fs := flag.NewFlagSet("plan rebuild", flag.ContinueOnError)
 	from := fs.String("from", "", "snapshot directory")
@@ -140,7 +144,7 @@ func planMarkdown(p kube.Plan) string {
 	if len(p.ByHand) == 0 {
 		w("No Secret in the snapshot is left for a person to supply: each is made from a store, made again by something in the cluster, or opened with a key named below.\n\n")
 	} else {
-		w("No store in the snapshot supplies these, and a snapshot never holds a value. Each needs its value from where you keep it. One with no user here may still be read by what step 1 installs, or named from an object with no namespace.\n\n")
+		w("No store in the snapshot supplies these, and a snapshot never holds a value. Each needs its value from where you keep it: `truthform plan secrets` writes a file to say where, which the restore reads with `--secrets-from`. One with no user here may still be read by what step 1 installs, or named from an object with no namespace.\n\n")
 		w("| Secret | Keys | Used by | What it says of itself |\n|---|---|---|---|\n")
 		for _, s := range p.ByHand {
 			w("| %s | %s | %s | %s |\n", code(s.Namespace+"/"+s.Name), codes(s.Keys), md(some(s.UsedBy)), md(s.Note))
@@ -198,7 +202,7 @@ func planMarkdown(p kube.Plan) string {
 	}
 
 	w("## 5. Restore\n\n")
-	w("`truthform restore --context <kube-context> --from <this snapshot>`, once steps 1 to 4 are in place.\n\n")
+	w("`truthform restore --context <kube-context> --from <this snapshot> --secrets-from <sources file>`, once steps 1 to 4 are in place. With the sources file the restore reads step 3's values from where the file says, and leaves to their makers the Secrets a store or a controller makes.\n\n")
 
 	w("## 6. Names to point at the rebuilt cluster: %d\n\n", len(p.Hosts))
 	if len(p.Hosts) == 0 {

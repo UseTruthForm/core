@@ -1,0 +1,360 @@
+// Package sources reads a secret sources file: for each Secret a rebuild
+// has to be given, where its value is read from when the rebuild runs. The
+// file holds references and never a value, so it can be kept in a
+// repository beside the pipeline that uses it. A value is read from where
+// the reference says, handed to the restore, and written nowhere.
+package sources
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
+	"sort"
+	"strings"
+	"time"
+
+	yaml "go.yaml.in/yaml/v3"
+)
+
+// File is a secret sources file.
+type File struct {
+	Secrets []Entry `yaml:"secrets" json:"secrets"`
+}
+
+// Entry is one Secret: where each of its keys is read from, or why the
+// rebuild leaves it to something else.
+type Entry struct {
+	// Secret is namespace/name.
+	Secret string `yaml:"secret" json:"secret"`
+	// From is a reference for each key.
+	From map[string]string `yaml:"from,omitempty" json:"from,omitempty"`
+	// Leave says what makes the Secret, so that the rebuild does not: a
+	// controller the plan could not tell makes it again.
+	Leave string `yaml:"leave,omitempty" json:"leave,omitempty"`
+}
+
+// schemes are the kinds of reference, and what each reads.
+var schemes = map[string]string{
+	"op":      "op://<vault>/<item>/<field>: 1Password, read with the op CLI",
+	"azurekv": "azurekv://<vault>/<secret>[/<version>]: Azure Key Vault, read with the az CLI",
+	"env":     "env:<NAME>: an environment variable",
+	"file":    "file:<path>: a file's whole content",
+	"exec":    "exec:<command>: a command's output, with --allow-exec",
+}
+
+// Schemes are the kinds of reference, for a message.
+func Schemes() []string {
+	out := make([]string, 0, len(schemes))
+	for _, s := range schemes {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// scheme splits a reference into its kind and the rest.
+func scheme(ref string) (kind, rest string, err error) {
+	for _, sep := range []string{"://", ":"} {
+		if k, r, ok := strings.Cut(ref, sep); ok && schemes[k] != "" {
+			if (sep == "://") != (k == "op" || k == "azurekv") {
+				continue
+			}
+			if strings.TrimSpace(r) == "" {
+				return "", "", fmt.Errorf("%q names nothing to read", ref)
+			}
+			return k, r, nil
+		}
+	}
+	// Not repeated: what is no reference may be a value put in the file by
+	// mistake.
+	return "", "", fmt.Errorf("what is given (%d characters) is not a reference this reads (%s)", len(ref), strings.Join(Schemes(), "; "))
+}
+
+// Read reads and checks a sources file. A reference left empty is read as
+// it is: Check says which those are.
+func Read(path string) (File, error) {
+	var f File
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return f, err
+	}
+	dec := yaml.NewDecoder(bytes.NewReader(b))
+	dec.KnownFields(true)
+	if err := dec.Decode(&f); err != nil {
+		return f, fmt.Errorf("%s: %w", path, err)
+	}
+	seen := map[string]bool{}
+	for _, e := range f.Secrets {
+		ns, name, ok := strings.Cut(e.Secret, "/")
+		switch {
+		case !ok || ns == "" || name == "" || strings.Contains(name, "/"):
+			return f, fmt.Errorf("%s: secret %q is not namespace/name", path, e.Secret)
+		case seen[e.Secret]:
+			return f, fmt.Errorf("%s: %s is listed twice", path, e.Secret)
+		case e.Leave != "" && len(e.From) > 0:
+			return f, fmt.Errorf("%s: %s has both from and leave; a Secret is supplied or left, not both", path, e.Secret)
+		case e.Leave == "" && len(e.From) == 0:
+			return f, fmt.Errorf("%s: %s has neither from nor leave", path, e.Secret)
+		}
+		seen[e.Secret] = true
+		for key, ref := range e.From {
+			if ref == "" {
+				continue
+			}
+			if _, _, err := scheme(ref); err != nil {
+				return f, fmt.Errorf("%s: %s, key %s: %w", path, e.Secret, key, err)
+			}
+		}
+	}
+	return f, nil
+}
+
+// Entry returns the entry for a Secret, if the file has one.
+func (f File) Entry(secret string) (Entry, bool) {
+	for _, e := range f.Secrets {
+		if e.Secret == secret {
+			return e, true
+		}
+	}
+	return Entry{}, false
+}
+
+// Needed is a Secret a rebuild has to be given, and its keys.
+type Needed struct {
+	Secret string
+	Keys   []string
+	// Note is what the plan says of it, written beside it in a skeleton.
+	Note string
+}
+
+// Skeleton is a sources file for the Secrets needed, every reference empty.
+func Skeleton(needed []Needed) []byte {
+	var b strings.Builder
+	b.WriteString("# Where a rebuild reads each Secret's value from. References only: no value\n")
+	b.WriteString("# belongs in this file. A reference is one of:\n")
+	for _, s := range Schemes() {
+		b.WriteString("#   " + s + "\n")
+	}
+	b.WriteString("# A Secret that something in the cluster makes is given no reference:\n")
+	b.WriteString("# replace its \"from\" with  leave: <what makes it>.\n")
+	if len(needed) == 0 {
+		b.WriteString("secrets: []\n")
+		return []byte(b.String())
+	}
+	b.WriteString("secrets:\n")
+	for _, n := range needed {
+		if n.Note != "" {
+			b.WriteString("  # " + strings.ReplaceAll(n.Note, "\n", " ") + "\n")
+		}
+		q, _ := json.Marshal(n.Secret)
+		b.WriteString("  - secret: " + string(q) + "\n    from:\n")
+		for _, k := range n.Keys {
+			q, _ := json.Marshal(k)
+			b.WriteString("      " + string(q) + ": \"\"\n")
+		}
+		if len(n.Keys) == 0 {
+			b.WriteString("      {}\n")
+		}
+	}
+	return []byte(b.String())
+}
+
+// Check says where the file does not cover what is needed: a Secret with
+// no entry, a key with no reference, a key the Secret does not have. known
+// are the other Secrets of the snapshot, which an entry may name. The
+// second list is of what is not wrong and worth saying: an entry for a
+// Secret the snapshot does not hold.
+func Check(f File, needed []Needed, known map[string]bool) (problems, notes []string) {
+	need := map[string]Needed{}
+	for _, n := range needed {
+		need[n.Secret] = n
+		e, ok := f.Entry(n.Secret)
+		if !ok {
+			problems = append(problems, n.Secret+": no entry; the rebuild has no source for it")
+			continue
+		}
+		if e.Leave != "" {
+			continue
+		}
+		for _, k := range n.Keys {
+			if ref, ok := e.From[k]; !ok {
+				problems = append(problems, n.Secret+": key "+k+" has no reference")
+			} else if ref == "" {
+				problems = append(problems, n.Secret+": the reference for key "+k+" is empty")
+			}
+		}
+		has := map[string]bool{}
+		for _, k := range n.Keys {
+			has[k] = true
+		}
+		extra := []string{}
+		for k := range e.From {
+			if !has[k] {
+				extra = append(extra, k)
+			}
+		}
+		sort.Strings(extra)
+		for _, k := range extra {
+			problems = append(problems, n.Secret+": names key "+k+", which the Secret in the snapshot does not have")
+		}
+	}
+	for _, e := range f.Secrets {
+		if _, ok := need[e.Secret]; ok {
+			continue
+		}
+		if !known[e.Secret] {
+			notes = append(notes, e.Secret+": not a Secret in the snapshot; the entry is not used")
+			continue
+		}
+		keys := make([]string, 0, len(e.From))
+		for k := range e.From {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if e.From[k] == "" {
+				problems = append(problems, e.Secret+": the reference for key "+k+" is empty")
+			}
+		}
+	}
+	return problems, notes
+}
+
+// Resolver reads the value a reference names.
+type Resolver struct {
+	// AllowExec lets an exec: reference run its command.
+	AllowExec bool
+	// Run runs a program and returns its output; nil runs it for real.
+	Run func(ctx context.Context, name string, args ...string) (stdout, stderr []byte, err error)
+
+	cache map[string][]byte
+}
+
+// timeout is how long one read may take: a CLI waiting for a sign-in that
+// nobody is there to give must not hang a rebuild.
+const timeout = 2 * time.Minute
+
+func run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		err = fmt.Errorf("gave no answer in %s", timeout)
+	}
+	return out.Bytes(), errb.Bytes(), err
+}
+
+// Resolve reads the value. An error names the reference and never holds
+// any of what was read.
+func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
+	if v, ok := r.cache[ref]; ok {
+		return v, nil
+	}
+	kind, rest, err := scheme(ref)
+	if err != nil {
+		return nil, err
+	}
+	exe := r.Run
+	if exe == nil {
+		exe = run
+	}
+	var v []byte
+	switch kind {
+	case "env":
+		s, ok := os.LookupEnv(rest)
+		if !ok {
+			return nil, fmt.Errorf("%s: the environment variable is not set", ref)
+		}
+		v = []byte(s)
+	case "file":
+		if v, err = os.ReadFile(rest); err != nil {
+			return nil, fmt.Errorf("%s: %w", ref, err)
+		}
+	case "op":
+		out, stderr, err := exe(ctx, "op", "read", "--no-newline", ref)
+		if err != nil {
+			return nil, failed(ref, "op", err, stderr)
+		}
+		v = out
+	case "azurekv":
+		parts := strings.Split(rest, "/")
+		if len(parts) < 2 || len(parts) > 3 || parts[0] == "" || parts[1] == "" {
+			return nil, fmt.Errorf("%s: an Azure Key Vault reference is azurekv://<vault>/<secret>[/<version>]", ref)
+		}
+		args := []string{"keyvault", "secret", "show", "--vault-name", parts[0], "--name", parts[1], "--query", "value", "--output", "json"}
+		if len(parts) == 3 && parts[2] != "" {
+			args = append(args, "--version", parts[2])
+		}
+		out, stderr, err := exe(ctx, "az", args...)
+		if err != nil {
+			return nil, failed(ref, "az", err, stderr)
+		}
+		// As JSON, so that a value of several lines is the value and not
+		// what a table of it looks like.
+		var s string
+		if json.Unmarshal(out, &s) != nil {
+			return nil, fmt.Errorf("%s: az did not answer with the secret's value", ref)
+		}
+		v = []byte(s)
+	case "exec":
+		if !r.AllowExec {
+			return nil, fmt.Errorf("%s: an exec: reference runs a command, and is read only with --allow-exec", execShown(ref))
+		}
+		sh, flag := "sh", "-c"
+		if runtime.GOOS == "windows" {
+			sh, flag = "cmd", "/C"
+		}
+		out, _, err := exe(ctx, sh, flag, rest)
+		if err != nil {
+			// Not its stderr: a command of the user's own may print what
+			// it read.
+			return nil, fmt.Errorf("%s: the command failed (%v); run it yourself to see why", execShown(ref), err)
+		}
+		// The line end a command prints after its answer is not the value.
+		out = bytes.TrimSuffix(out, []byte("\n"))
+		v = bytes.TrimSuffix(out, []byte("\r"))
+	}
+	if len(v) == 0 {
+		return nil, fmt.Errorf("%s: read, and empty", execShown(ref))
+	}
+	if r.cache == nil {
+		r.cache = map[string][]byte{}
+	}
+	r.cache[ref] = v
+	return v, nil
+}
+
+// execShown is a reference for a message: a command is shown to its first
+// word, as its arguments may be credentials of their own.
+func execShown(ref string) string {
+	if rest, ok := strings.CutPrefix(ref, "exec:"); ok {
+		word, _, more := strings.Cut(strings.TrimSpace(rest), " ")
+		if more {
+			return "exec:" + word + " …"
+		}
+	}
+	return ref
+}
+
+// failed is an error for a CLI that did not answer: its own first line of
+// complaint, which says a sign-in is missing or an item is not there.
+func failed(ref, cli string, err error, stderr []byte) error {
+	if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
+		return fmt.Errorf("%s: the %s CLI is not installed or not on the PATH", ref, cli)
+	}
+	line, _, _ := strings.Cut(strings.TrimSpace(string(stderr)), "\n")
+	if len(line) > 200 {
+		line = line[:200] + "…"
+	}
+	if line == "" {
+		line = err.Error()
+	}
+	return fmt.Errorf("%s: %s: %s", ref, cli, line)
+}

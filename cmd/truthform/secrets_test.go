@@ -306,3 +306,37 @@ func TestRestoreReadsSecretSources(t *testing.T) {
 		}
 	}
 }
+
+// A snapshot whose capture could not read Secrets holds none to supply,
+// and that is no proof there are none: the check does not pass, and says
+// what was not read.
+func TestPlanSecretsCheckOfAnIncompleteSnapshot(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cluster")
+	s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Coverage: []snapshot.Coverage{
+		{Resource: "core/v1/secrets", Kind: "Secret", NotCaptured: "list failed: secrets is forbidden"},
+	}}
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	file := writeFile(t, t.TempDir(), "secrets.yaml", "secrets: []\n")
+	code, stdout, _ := output(t, func() int { return planCmd([]string{"secrets", "--from", dir, "--check", file}) })
+	if code != 2 || !strings.Contains(stdout, "the capture could not read core/v1/secrets") || strings.Contains(stdout, "every one of the") {
+		t.Errorf("exit %d\n%s", code, stdout)
+	}
+	d := asJSON(t, func() { planCmd([]string{"secrets", "--from", dir, "--check", file}) })
+	if g, _ := d["gaps"].([]any); len(g) != 1 {
+		t.Errorf("gaps in --json: %v", d)
+	}
+	// The file to fill in is still written, with a warning beside it.
+	code, _, stderr := output(t, func() int { return planCmd([]string{"secrets", "--from", dir}) })
+	if code != 0 || !strings.Contains(stderr, "INCOMPLETE SNAPSHOT") {
+		t.Errorf("the file to fill in: exit %d, stderr %q", code, stderr)
+	}
+
+	// A whole snapshot: an empty list, and nothing said.
+	_, whole := sourcesSnapshot(t)
+	d = asJSON(t, func() { planCmd([]string{"secrets", "--from", whole, "--check", file}) })
+	if g, ok := d["gaps"].([]any); !ok || len(g) != 0 {
+		t.Errorf("gaps of a whole snapshot: %v", d["gaps"])
+	}
+}

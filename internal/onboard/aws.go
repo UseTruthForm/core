@@ -34,11 +34,11 @@ func loadAddOn() (addOn, error) {
 func buildAWS(r Request) (Plan, error) {
 	var miss MissingError
 	if r.Account == "" {
-		miss = append(miss, Missing{"account", "the 12-digit ID of the account Truthform reads (the role is created there)",
+		miss = append(miss, Missing{"account", "the 12-digit ID of the account TruthForm reads (the role is created there)",
 			"aws sts get-caller-identity --query Account --output text   (run with the administrator's credentials for that account)"})
 	}
 	if r.Principal == "" {
-		miss = append(miss, Missing{"principal", "the ARN of the IAM user or role that will run Truthform and assume the new role",
+		miss = append(miss, Missing{"principal", "the ARN of the IAM user or role that will run TruthForm and assume the new role",
 			"aws sts get-caller-identity --query Arn --output text   (run with that identity's credentials)"})
 	}
 	if len(miss) > 0 {
@@ -61,10 +61,10 @@ func buildAWS(r Request) (Plan, error) {
 		return Plan{}, fmt.Errorf("--principal: %q is not the ARN of an IAM user or role (arn:aws:iam::<account>:user/<name> or :role/<name>)", r.Principal)
 	}
 	if m[2] == "root" {
-		warn = append(warn, "--principal names a whole account: every user and role there that may call sts:AssumeRole could use this role. Name the one user or role that runs Truthform.")
+		warn = append(warn, "--principal names a whole account: every user and role there that may call sts:AssumeRole could use this role. Name the one user or role that runs TruthForm.")
 	}
 	if m[1] != r.Account && r.ExternalID == "" {
-		warn = append(warn, fmt.Sprintf("The principal is in another account (%s). Agree an external ID with whoever runs Truthform and pass it with --external-id: it stops anyone else that account acts for from using this role.", m[1]))
+		warn = append(warn, fmt.Sprintf("The principal is in another account (%s). Agree an external ID with whoever runs TruthForm and pass it with --external-id: it stops anyone else that account acts for from using this role.", m[1]))
 	}
 	if r.ExternalID != "" && (len(r.ExternalID) < 2 || len(r.ExternalID) > 1224 || !externalIDRE.MatchString(r.ExternalID)) {
 		return Plan{}, fmt.Errorf("--external-id: 2 to 1224 letters, digits or + = , . @ : / - _")
@@ -78,7 +78,7 @@ func buildAWS(r Request) (Plan, error) {
 	}
 	for flag, v := range map[string]string{"source-profile": r.SourceProfile, "admin-profile": r.AdminProfile} {
 		if v != "" && !profileRE.MatchString(v) {
-			return Plan{}, fmt.Errorf("--%s: %q is not a profile name Truthform can put in a command (letters, digits, . _ -)", flag, v)
+			return Plan{}, fmt.Errorf("--%s: %q is not a profile name TruthForm can put in a command (letters, digits, . _ -)", flag, v)
 		}
 	}
 
@@ -116,8 +116,8 @@ func buildAWS(r Request) (Plan, error) {
 			"IAM roles and policies in a snapshot are not restorable with this role: add an IAM grant scoped to the names being restored (docs/permissions.md).")
 	} else {
 		p.Grants = append(p.Grants, fmt.Sprintf("and %d customer managed policies, %s-reads-0 to -%d: %d reads AWS's ReadOnlyAccess (%s) lacks for newer services, generated from the CloudFormation registry and kept to reads of configuration (no secret values, no data)", len(add.Chunks), role, len(add.Chunks)-1, add.ActionCount, add.ReadOnlyAccess),
-			"Nothing that writes. Run Truthform's capture-only binary with it too: one that cannot send a write at all.")
-		p.Warnings = append(p.Warnings, "ReadOnlyAccess reads data as well as configuration: S3 objects, DynamoDB items, queue messages. Truthform reads configuration only and never writes data to a snapshot, but whoever holds this role could read the data.")
+			"Nothing that writes. Run TruthForm's capture-only binary with it too: one that cannot send a write at all.")
+		p.Warnings = append(p.Warnings, "ReadOnlyAccess reads data as well as configuration: S3 objects, DynamoDB items, queue messages. TruthForm reads configuration only and never writes data to a snapshot, but whoever holds this role could read the data.")
 	}
 	if r.Access == "restore" {
 		p.Status = "Expected. PowerUserAccess restored the drill's 14 types, held by a user, not through this role."

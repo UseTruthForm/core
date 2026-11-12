@@ -58,7 +58,7 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN, or C
   truthform restore --platform github --account <org> --from <dir> [--values <file>] [--update] [--dry-run]
   truthform restore --platform cloudflare --account <account-id> --from <dir> [--update] [--dry-run]
       [--subdomain test.example.com [--address <source-ip>=<target-ip>,...] [--target <source-host>=<target-host>,...]]
-      the zone's records one level down (www.example.com -> www.test.example.com), marked as Truthform's;
+      the zone's records one level down (www.example.com -> www.test.example.com), marked as TruthForm's;
       checks the zone first and stops on any conflict, before it writes
   truthform diff    --platform cloudflare --account <account-id> --from <dir> [--subdomain test.example.com [--address ...] [--target ...]]
 
@@ -69,7 +69,7 @@ Access (what to grant, and what a grant can read):
   truthform permissions --platform <p> [--access capture|restore] <the platform's values> [--write <dir>]
       the template to deploy and every command to grant, verify and remove it; grants nothing itself
   truthform check --platform <p> <the target, as for capture> [--types <patterns>] [--access capture|restore]
-      who Truthform runs as, what it holds beyond what it needs, and what it can read, type by type
+      who TruthForm runs as, what it holds beyond what it needs, and what it can read, type by type
 
 As a graph (resources and their relationships, for an asset inventory or a security graph):
   truthform graph --from <dir> [--types security|none|<file>] [--subscription <id>] [--tenant <id>] [--out <file>]

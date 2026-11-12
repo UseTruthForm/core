@@ -202,7 +202,7 @@ func TestYAML11SpecialScalarsAreQuoted(t *testing.T) {
 }
 
 // The point of schema fingerprints: an API adding a field must show up as
-// that field, with no field list maintained anywhere in Truthform.
+// that field, with no field list maintained anywhere in TruthForm.
 func TestCompareSchemasShowsAddedAndRemovedFields(t *testing.T) {
 	ts := func(kind, digest string, fields ...string) TypeSchema {
 		return TypeSchema{APIVersion: "example.truthform.org/v1", Kind: kind, Digest: digest, Fields: fields}

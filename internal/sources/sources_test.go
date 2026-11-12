@@ -208,17 +208,23 @@ func TestResolve(t *testing.T) {
 		t.Errorf("calls: %q", calls)
 	}
 	for ref, want := range map[string]string{
-		"env:SRC_TEST_UNSET":        "is not set",
-		"env:SRC_TEST_EMPTY":        "read, and empty",
-		"file:/no/such/file":        "no such file",
-		"op://v/missing/f":          "op: [ERROR] item not found",
-		"azurekv://bad/name":        "did not answer with the secret's value",
-		"azurekv://onlyvault":       "azurekv://<vault>/<secret>",
-		"exec:printf x --p=zz":      "only with --allow-exec",
-		"exec:TOKEN=zz1 printf x":   "only with --allow-exec",
-		"exec:printf\tx\t--p=zz2":   "only with --allow-exec",
-		"exec:printf x\n--p=zz3":    "only with --allow-exec",
-		"exec:printf;echo${IFS}zz4": "only with --allow-exec",
+		"env:SRC_TEST_UNSET":  "is not set",
+		"env:SRC_TEST_EMPTY":  "read, and empty",
+		"file:/no/such/file":  "file:/no/such/file: open ", // then what the system says, which differs by system
+		"op://v/missing/f":    "op: [ERROR] item not found",
+		"azurekv://bad/name":  "did not answer with the secret's value",
+		"azurekv://onlyvault": "azurekv://<vault>/<secret>",
+		// Not names: refused before az is run, which on Windows is a
+		// script whose arguments pass through a shell.
+		`azurekv://kv/x"&echo zz5>marker&"`: "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://kv/--file=zz6":           "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://kv zz7/name":             "azurekv://…/name: an Azure Key Vault reference names",
+		"azurekv://kv/name/1|zz8":           "azurekv://kv/name/…: an Azure Key Vault reference names",
+		"exec:printf x --p=zz":              "only with --allow-exec",
+		"exec:TOKEN=zz1 printf x":           "only with --allow-exec",
+		"exec:printf\tx\t--p=zz2":           "only with --allow-exec",
+		"exec:printf x\n--p=zz3":            "only with --allow-exec",
+		"exec:printf;echo${IFS}zz4":         "only with --allow-exec",
 	} {
 		_, err := r.Resolve(ctx, ref)
 		if err == nil || !strings.Contains(err.Error(), want) {
@@ -226,6 +232,11 @@ func TestResolve(t *testing.T) {
 		}
 		if err != nil && (strings.Contains(err.Error(), "partial-secret") || strings.Contains(err.Error(), "zz")) {
 			t.Errorf("the error holds what was read or a command's arguments: %v", err)
+		}
+	}
+	for _, c := range calls {
+		if strings.Contains(strings.Join(c, " "), "zz") {
+			t.Errorf("ran a command with what is not a name: %q", c)
 		}
 	}
 }

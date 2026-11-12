@@ -20,7 +20,7 @@ import (
 	"github.com/usetruthform/core/internal/snapshot"
 )
 
-// FieldManager is the server-side-apply owner Truthform writes as, so a later
+// FieldManager is the server-side-apply owner TruthForm writes as, so a later
 // diff or a human can see which fields a restore set.
 const FieldManager = "truthform"
 

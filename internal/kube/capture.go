@@ -1,4 +1,4 @@
-// Package kube captures a Kubernetes cluster into a Truthform snapshot and
+// Package kube captures a Kubernetes cluster into a TruthForm snapshot and
 // restores one back. It needs nothing but the cluster's own API: discovery
 // says which types exist, and the dynamic client reads and writes any of them,
 // including custom resources nobody has written code for.

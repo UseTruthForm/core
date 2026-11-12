@@ -308,6 +308,21 @@ func runFor(ctx context.Context, limit time.Duration, name string, args ...strin
 
 var errNoAnswer = errors.New("gave no answer")
 
+// azureName is what Azure Key Vault lets a vault, a secret or a version
+// be called.
+var azureName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*$`)
+
+// azureShown is a refused reference for a message: what in it is a name,
+// and not what is not, which may be a command.
+func azureShown(parts []string) string {
+	for i, part := range parts {
+		if part != "" && !azureName.MatchString(part) {
+			parts[i] = "…"
+		}
+	}
+	return "azurekv://" + strings.Join(parts, "/")
+}
+
 // Resolve reads the value. An error names the reference and never holds
 // any of what was read.
 func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
@@ -344,6 +359,14 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 		parts := strings.Split(rest, "/")
 		if len(parts) < 2 || len(parts) > 3 || parts[0] == "" || parts[1] == "" {
 			return nil, fmt.Errorf("%s: an Azure Key Vault reference is azurekv://<vault>/<secret>[/<version>]", ref)
+		}
+		// A vault, a secret and a version are named with these and nothing
+		// else. Anything more is refused before az is run: on Windows az
+		// is a script, and what it is given passes through a shell.
+		for _, part := range parts {
+			if part != "" && !azureName.MatchString(part) {
+				return nil, fmt.Errorf("%s: an Azure Key Vault reference names a vault, a secret and a version with letters, digits and dashes", azureShown(parts))
+			}
 		}
 		args := []string{"keyvault", "secret", "show", "--vault-name", parts[0], "--name", parts[1], "--query", "value", "--output", "json"}
 		if len(parts) == 3 && parts[2] != "" {

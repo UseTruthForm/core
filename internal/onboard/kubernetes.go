@@ -11,7 +11,7 @@ func buildKubernetes(r Request) (Plan, error) {
 		miss = append(miss, Missing{"context", "the kubeconfig context of the cluster, as the administrator", "kubectl config get-contexts"})
 	}
 	if r.Subject == "" {
-		miss = append(miss, Missing{"subject", "who will run Truthform: User:NAME, Group:NAME or ServiceAccount:NAMESPACE/NAME", ""})
+		miss = append(miss, Missing{"subject", "who will run TruthForm: User:NAME, Group:NAME or ServiceAccount:NAMESPACE/NAME", ""})
 	}
 	if len(miss) > 0 {
 		return Plan{}, miss

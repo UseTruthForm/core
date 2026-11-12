@@ -17,7 +17,7 @@ func tokenNote(env string) string {
 
 func buildGitHub(r Request) (Plan, error) {
 	if r.Account == "" {
-		return Plan{}, MissingError{{"account", "the GitHub organisation Truthform reads", ""}}
+		return Plan{}, MissingError{{"account", "the GitHub organisation TruthForm reads", ""}}
 	}
 	if !orgRE.MatchString(r.Account) {
 		return Plan{}, fmt.Errorf("--account: %q is not a GitHub organisation name", r.Account)
@@ -48,7 +48,7 @@ func buildGitHub(r Request) (Plan, error) {
 
 func buildCloudflare(r Request) (Plan, error) {
 	if r.Account == "" {
-		return Plan{}, MissingError{{"account", "the Cloudflare account ID Truthform reads (32 hex digits)", "the Account ID on the account's overview page in the Cloudflare dashboard"}}
+		return Plan{}, MissingError{{"account", "the Cloudflare account ID TruthForm reads (32 hex digits)", "the Account ID on the account's overview page in the Cloudflare dashboard"}}
 	}
 	if !cfAccountRE.MatchString(r.Account) {
 		return Plan{}, fmt.Errorf("--account: %q is not a Cloudflare account ID (32 hex digits)", r.Account)
@@ -59,7 +59,7 @@ func buildCloudflare(r Request) (Plan, error) {
 	}
 	p := Plan{
 		Grants: []string{"An API token with Zone: " + level + " and DNS: " + level + ", for every zone in account " + r.Account},
-		Status: "Expected. Truthform has not yet been run against Cloudflare.",
+		Status: "Expected. TruthForm has not yet been run against Cloudflare.",
 	}
 	p.Grant = []Step{
 		{Title: "Create a custom token at https://dash.cloudflare.com/profile/api-tokens",

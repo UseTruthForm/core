@@ -189,7 +189,7 @@ func TestPutRetriesOnlyThrottling(t *testing.T) {
 	}
 }
 
-// With Truthform's retry policy, the SDK waits the Retry-After ARM gives.
+// With TruthForm's retry policy, the SDK waits the Retry-After ARM gives.
 func TestRetryAfterIsHonoured(t *testing.T) {
 	var mu sync.Mutex
 	var at []time.Time

@@ -140,7 +140,7 @@ func (o *OAuth) renamed() error {
 	}
 	old := "STACKDNA_" + rest
 	if os.Getenv(old) != "" && os.Getenv(o.IDEnv) == "" {
-		return fmt.Errorf("%s is set, and this build reads %s: rename the variable, or unset it to use the built-in client", old, o.IDEnv)
+		return fmt.Errorf("%s is set, and this build reads %s: rename the variable, or unset it", old, o.IDEnv)
 	}
 	return nil
 }
@@ -275,18 +275,20 @@ func Tokens(p Provider, store TokenStore, hc *http.Client) (oauth2.TokenSource, 
 	if p.OAuth == nil || store == nil {
 		return nil, "", errors.New(how)
 	}
-	// Before the stored sign-in is read: its refresh goes out under the
-	// client ID, and the wrong one is refused by the provider with an
-	// error that does not name the variable.
-	if err := p.OAuth.renamed(); err != nil {
-		return nil, "", err
-	}
 	s, err := store.Get(p.Name)
 	if errors.Is(err, ErrNotSignedIn) {
 		return nil, "", errors.New(how)
 	}
 	if err != nil {
 		return nil, "", fmt.Errorf("reading the %s sign-in from the keychain: %w (%s)", p.Name, err, how)
+	}
+	// Only once there is a sign-in to use: its refresh goes out under the
+	// client ID. A run with no sign-in at all is told about the token
+	// above, which is what it lacks. Not left to the refresh either: the
+	// provider refuses the wrong client with an error that does not name
+	// the variable.
+	if err := p.OAuth.renamed(); err != nil {
+		return nil, "", err
 	}
 	var t oauth2.Token
 	if err := json.Unmarshal([]byte(s), &t); err != nil {

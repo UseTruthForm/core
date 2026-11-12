@@ -543,12 +543,19 @@ func TestAClientIDUnderTheOldNameIsRefused(t *testing.T) {
 		t.Error("Login opened the sign-in before refusing")
 	}
 
+	p := Provider{Name: "test", TokenEnv: "TRUTHFORM_TEST_RENAMED_TOKEN", OAuth: o}
+	t.Setenv("TRUTHFORM_TEST_RENAMED_TOKEN", "")
+
+	// With no sign-in stored there is no client to get wrong: the run is
+	// told what it lacks, the token, as it was before.
 	store := &memStore{}
+	if _, _, err := Tokens(p, store, http.DefaultClient); err == nil || !strings.Contains(err.Error(), "TRUTHFORM_TEST_RENAMED_TOKEN is not set") || strings.Contains(err.Error(), "STACKDNA_") {
+		t.Errorf("with nothing stored: error %v, want only the missing token", err)
+	}
+
 	if err := Save(store, "test", &oauth2.Token{AccessToken: "stored", RefreshToken: "r"}); err != nil {
 		t.Fatal(err)
 	}
-	p := Provider{Name: "test", TokenEnv: "TRUTHFORM_TEST_RENAMED_TOKEN", OAuth: o}
-	t.Setenv("TRUTHFORM_TEST_RENAMED_TOKEN", "")
 	if _, _, err := Tokens(p, store, http.DefaultClient); err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("Tokens error %v, want it to name both variables", err)
 	}

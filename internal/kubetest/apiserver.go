@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -40,6 +41,22 @@ const AssetsEnv = "TRUTHFORM_KUBE_ASSETS"
 // reads as a pass, so CI must never be allowed to skip.
 const RequireEnv = "TRUTHFORM_REQUIRE_KUBE_ASSETS"
 
+// renamed says which variable is still set under the tool's old name, if
+// one is. Builds before the rename read these under STACKDNA_. Left there
+// they are read by nothing: the assets are not found, the "require" switch
+// is off, and every test here skips, which CI shows as a pass. That holds
+// with KUBEBUILDER_ASSETS set as well, for the "require" switch; a
+// leftover is refused in every case so the rule stays one line.
+func renamed() string {
+	for _, env := range []string{AssetsEnv, RequireEnv} {
+		old := "STACKDNA_" + strings.TrimPrefix(env, "TRUTHFORM_")
+		if os.Getenv(old) != "" && os.Getenv(env) == "" {
+			return fmt.Sprintf("%s is set, and this build reads %s: rename the variable, or unset it", old, env)
+		}
+	}
+	return ""
+}
+
 // Server is a running API server and the kubeconfig that reaches it.
 type Server struct {
 	// Kubeconfig is a file with one context, named Context.
@@ -51,6 +68,9 @@ type Server struct {
 // Start launches etcd and kube-apiserver for the duration of the test.
 func Start(t *testing.T, name string) *Server {
 	t.Helper()
+	if msg := renamed(); msg != "" {
+		t.Fatal(msg)
+	}
 	assets := os.Getenv(AssetsEnv)
 	if assets == "" {
 		assets = os.Getenv("KUBEBUILDER_ASSETS")

@@ -293,15 +293,24 @@ func TestRestoreReadsSecretSources(t *testing.T) {
 			t.Errorf("shop/%s is something else's to make and was written: %v", name, err)
 		}
 	}
+}
+
+// Flags that nothing would read are refused before any cluster or cloud
+// is asked: in the capture-only build too.
+func TestRestoreRefusesSecretSourceFlagsNothingReads(t *testing.T) {
+	_, dir := sourcesSnapshot(t)
+	ctx := context.Background()
+	file := writeFile(t, t.TempDir(), "secrets.yaml", "secrets: []\n")
 	azure := filepath.Join(t.TempDir(), "azure")
 	if err := (snapshot.Snapshot{Platform: "azure", Policy: "default"}).Write(azure); err != nil {
 		t.Fatal(err)
 	}
 	for why, args := range map[string][]string{
-		"--allow-exec is for --secrets-from": append(base, "--allow-exec"),
+		"--allow-exec is for --secrets-from": {"--kubeconfig", filepath.Join(t.TempDir(), "none"), "--context", "none", "--from", dir, "--allow-exec"},
 		"are for a kubernetes restore":       {"--platform", "azure", "--subscription", "x", "--from", azure, "--secrets-from", file},
 	} {
-		if code := restore(ctx, args); code != 1 || !strings.Contains(lastErr.Error(), why) {
+		lastErr = nil
+		if code := restore(ctx, args); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), why) {
 			t.Errorf("%v: exit %d, %v; want 1 and %q", args, code, lastErr, why)
 		}
 	}

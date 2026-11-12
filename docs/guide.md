@@ -602,15 +602,30 @@ Which store object an `ExternalSecret` reads through (`secretStoreRef`)
 is not changed: that object is restored under its own name, and which
 vault it is is its own field, above.
 
-The rename lists on stderr every reference it changed, every reference
-no start fitted (it reads where the source reads), and each object that
-uses a store in a way it cannot reach: a CSI class's `objects` document,
-a 1Password store's `vaults`, a provider it has no field for, an
-`ExternalSecret` that finds by a pattern of names. **Read that list
-before the workloads start**: it is the whole of what still points at
-the source. A start is a plain prefix with no sense of where a name ends
+The rename lists on stderr, and gives under `store_references` with
+`--json`, what it did to every use of a store it knows:
+
+| | |
+|---|---|
+| changed | a reference that points elsewhere now |
+| kept | one a start names and replaces by itself: said to be the same in both environments |
+| unnamed | one that says **which store** (a vault's address, a 1Password item's path) and that no start fits: it is the source's still |
+| items unchanged | one that names an item in a store and that no start fits: the same name, read from whichever store its store object says |
+| unreached | an object that uses a store in a way a rename cannot change: a CSI class's `objects` document, a 1Password store's `vaults`, a provider it has no field for, an `ExternalSecret` that finds by a pattern of names or by tags, a pod that asks the Vault agent by annotation |
+
+**A restore is refused, with nothing written, while anything is unnamed
+or unreached**: what reads or writes through it (a `PushSecret` writes)
+would use the source's store. Give the store a start, replaced by itself
+if it is meant to be the same; leave the object out; or pass
+`--keep-source-stores` to restore all the same. A diff writes nothing,
+and only lists them.
+
+The list is of what this knows, and is not proof that nothing else
+reads the source: a store's address in a workload's own configuration, a
+plugin's environment, or an operator not in the table above is not seen.
+A start is a plain prefix with no sense of where a name ends
 (`kv-dev` also fits `kv-dev-2`), so write starts long enough to mean one
-thing.
+thing, and a start given twice is refused.
 
 ```yaml
 vaults/apps/items/: vaults/apps-test/items/

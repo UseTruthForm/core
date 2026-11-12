@@ -330,10 +330,10 @@ func TestReportListsPlainCredentials(t *testing.T) {
 // not ignored.
 func TestRenameIsRefusedElsewhere(t *testing.T) {
 	f := writeFile(t, t.TempDir(), "names.yaml", "Microsoft.Storage/storageAccounts/a: b\n")
-	if _, _, err := renamed(f, "aws", snapshot.Snapshot{}); err == nil || !strings.Contains(err.Error(), "azure and kubernetes only") {
+	if _, _, err := renamed(f, "aws", snapshot.Snapshot{}, true); err == nil || !strings.Contains(err.Error(), "azure and kubernetes only") {
 		t.Errorf("aws: %v", err)
 	}
-	if _, _, err := renamed(f, "azure", snapshot.Snapshot{}); err == nil || !strings.Contains(err.Error(), "not in the snapshot") {
+	if _, _, err := renamed(f, "azure", snapshot.Snapshot{}, true); err == nil || !strings.Contains(err.Error(), "not in the snapshot") {
 		t.Errorf("azure with a name not in the snapshot: %v", err)
 	}
 	r, w, _ := os.Pipe()

@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -16,8 +15,7 @@ import (
 // does not hold. It reads only the snapshot: no login, no request.
 func planCmd(args []string) int {
 	if len(args) == 0 || args[0] != "rebuild" {
-		fmt.Fprintln(os.Stderr, "plan: the plan to give is rebuild: truthform plan rebuild --from <dir> [--out <file>]")
-		return fail(fmt.Errorf("plan: no such plan"))
+		return fail(fmt.Errorf("plan: the plan it gives is rebuild: truthform plan rebuild --from <dir> [--out <file>] [--json]"))
 	}
 	fs := flag.NewFlagSet("plan rebuild", flag.ContinueOnError)
 	from := fs.String("from", "", "snapshot directory")
@@ -35,6 +33,9 @@ func planCmd(args []string) int {
 	if err != nil {
 		return fail(err)
 	}
+	if jsonOut && *out != "" {
+		return fail(fmt.Errorf("plan rebuild: --out is for the Markdown; with --json the document is on stdout"))
+	}
 	if s.Platform != "kubernetes" {
 		return fail(fmt.Errorf("plan rebuild: %s is a %s snapshot; the plan is for kubernetes snapshots", *from, s.Platform))
 	}
@@ -43,7 +44,7 @@ func planCmd(args []string) int {
 		emit(map[string]any{"schema": jsonSchema, "command": "plan", "plan": p})
 		return 0
 	}
-	text := planMarkdown(p, filepath.Base(filepath.Clean(*from)))
+	text := planMarkdown(p)
 	if *out == "" {
 		_, err = os.Stdout.WriteString(text)
 	} else {
@@ -59,16 +60,13 @@ func planCmd(args []string) int {
 const planShown = 3
 
 // planMarkdown is the plan for a person, in the order to act on it.
-// Nothing time- or machine-dependent goes in: an unchanged snapshot gives
-// an unchanged plan.
-func planMarkdown(p kube.Plan, title string) string {
+// Nothing time- or machine-dependent goes in, not the directory's name
+// either: an unchanged snapshot gives an unchanged plan, wherever it is.
+func planMarkdown(p kube.Plan) string {
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
-	fromStore := 0
-	for _, it := range p.FromStore {
-		fromStore += len(it.Secrets)
-	}
-	w("# %s: rebuild plan\n\n", md(title))
+	fromStore := p.StoreSecrets
+	w("# Rebuild plan\n\n")
 	w("What rebuilding a cluster from this snapshot needs that the snapshot does not hold. Read from the snapshot alone: nothing was contacted, and no secret value is in it or here.\n\n")
 	w("| Step | | |\n|---|---|---:|\n")
 	w("| 1 | Install what a GitOps source makes | %d sources |\n", len(p.Sources))
@@ -80,25 +78,26 @@ func planMarkdown(p kube.Plan, title string) string {
 
 	w("## 1. Install first: %d sources\n\n", len(p.Sources))
 	if len(p.Sources) == 0 {
-		w("The capture left nothing to a GitOps source: everything it found is in the snapshot.\n\n")
+		w("The capture left nothing to a GitOps source that is not itself in the snapshot.\n\n")
 	} else {
 		w("The capture left these out because their source recreates them. The snapshot holds neither the source nor what it makes.\n\n")
 		w("| Source | Objects it makes |\n|---|---:|\n")
 		for _, s := range p.Sources {
-			w("| %s `%s` | %d |\n", s.Kind, md(s.Name), s.Objects)
+			w("| %s %s | %d |\n", s.Kind, code(s.Name), s.Objects)
 		}
-		if p.OriginRecorded {
-			w("\nThe snapshot holds where they are read from (the repository objects).\n\n")
+		if len(p.Origins) > 0 {
+			w("\nThe snapshot holds these repository objects: %s. Check that they are where the sources above are read from.\n\n", md(strings.Join(p.Origins, ", ")))
 		} else {
 			w("\n**Not in the snapshot: where they are read from.** The repository, branch and path the cluster was bootstrapped from, and the credential to read them, have to come from your own records.\n\n")
 		}
+		w("A source that makes objects only in a system namespace is not listed: the capture leaves those namespaces out before it looks at who made what.\n\n")
 	}
 
 	w("## 2. APIs to have served: %d groups\n\n", len(p.Operators))
 	if len(p.Operators) == 0 {
 		w("Every type in the snapshot is built in, or its definition is in the snapshot.\n\n")
 	} else {
-		w("The snapshot has objects of these types and not their definitions: the restore refuses them until an operator from step 1 serves the type.\n\n")
+		w("The snapshot has objects of these types and not their definitions: the restore refuses them until something serves the type, usually an operator that step 1 installs.\n\n")
 		w("| API group | Objects |\n|---|---|\n")
 		for _, o := range p.Operators {
 			kinds := make([]string, 0, len(o.Objects))
@@ -109,7 +108,7 @@ func planMarkdown(p kube.Plan, title string) string {
 			for i, k := range kinds {
 				kinds[i] = fmt.Sprintf("%d %s", o.Objects[k], k)
 			}
-			w("| `%s` | %s |\n", md(o.Group), md(strings.Join(kinds, ", ")))
+			w("| %s | %s |\n", code(o.Group), md(strings.Join(kinds, ", ")))
 		}
 		w("\n")
 	}
@@ -118,10 +117,10 @@ func planMarkdown(p kube.Plan, title string) string {
 	if len(p.ByHand) == 0 {
 		w("Every Secret in the snapshot is made from a store.\n\n")
 	} else {
-		w("No store in the snapshot supplies these, and a snapshot never holds a value. Each needs its value from where you keep it. One that nothing in the snapshot uses may still be read by what step 1 installs.\n\n")
+		w("No store in the snapshot supplies these, and a snapshot never holds a value. Each needs its value from where you keep it. One with no user here may still be read by what step 1 installs, or named from an object with no namespace.\n\n")
 		w("| Secret | Keys | Used by |\n|---|---|---|\n")
 		for _, s := range p.ByHand {
-			w("| `%s/%s` | %s | %s |\n", md(s.Namespace), md(s.Name), md(some(s.Keys)), md(some(s.UsedBy)))
+			w("| %s | %s | %s |\n", code(s.Namespace+"/"+s.Name), codes(s.Keys), md(some(s.UsedBy)))
 		}
 		w("\n")
 	}
@@ -137,7 +136,7 @@ func planMarkdown(p kube.Plan, title string) string {
 		w("The restore recreates the objects that ask for these; the store's operator then makes the Secrets. That needs the store reachable from the rebuilt cluster, and the operator's own credential, which is one of step 3's. An item holds the settings of the cluster it was written for: one that feeds many Secrets is where to look for addresses and keys that must differ in a rebuild.\n\n")
 		w("| Store | Item | Secrets | |\n|---|---|---:|---|\n")
 		for _, it := range p.FromStore {
-			w("| %s | `%s` | %d | %s |\n", md(it.Store), md(it.Item), len(it.Secrets), md(some(it.Secrets)))
+			w("| %s | %s | %d | %s |\n", md(it.Store), code(it.Item), len(it.Secrets), md(some(it.Secrets)))
 		}
 		w("\n")
 	}
@@ -149,12 +148,31 @@ func planMarkdown(p kube.Plan, title string) string {
 	if len(p.Hosts) == 0 {
 		w("No route in the snapshot names a host.\n")
 	} else {
-		w("The routes in the snapshot answer to these. Their DNS records point at the cluster the snapshot was taken from.\n\n")
+		w("The routes in the snapshot answer to these. Their DNS records point at the cluster the snapshot was taken from. A route that matches hosts by pattern names none here.\n\n")
 		for _, h := range p.Hosts {
-			w("- `%s`\n", md(h))
+			w("- %s\n", code(h))
 		}
 	}
 	return b.String()
+}
+
+// code is a value as a code span that a backtick, a pipe or a line break
+// in it cannot end; a value that is empty says so.
+func code(s string) string {
+	if s == "" {
+		return "(none named)"
+	}
+	return "`" + md(strings.ReplaceAll(s, "`", "'")) + "`"
+}
+
+// codes is some(), each value a code span: a key such as _k_ is not
+// emphasis.
+func codes(l []string) string {
+	spans := make([]string, len(l))
+	for i, v := range l {
+		spans[i] = code(v)
+	}
+	return some(spans)
 }
 
 // some lists the first few of a sorted list and counts the rest.

@@ -75,8 +75,8 @@ As a graph (resources and their relationships, for an asset inventory or a secur
       Azure; JSON nodes and edges from the snapshot alone, no request made
 
 Before a rebuild (what the snapshot does not hold: what to install first, the secrets, the names):
-  truthform plan rebuild --from <dir> [--out <file>]
-      Kubernetes; Markdown, or --json; from the snapshot alone, no request made
+  truthform plan rebuild --from <dir> [--out <file>] [--json]
+      Kubernetes; Markdown, or one JSON document; from the snapshot alone, no request made
 
 For agents (MCP on stdin/stdout; every tool read-only, no restore tool):
   truthform mcp

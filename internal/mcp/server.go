@@ -1,7 +1,7 @@
 // Package mcp serves tools over the Model Context Protocol: JSON-RPC 2.0,
 // one message per line on stdin and stdout. It implements what a tool
 // server needs (initialize, ping, tools/list, tools/call) and nothing
-// else, so Truthform carries no MCP dependency.
+// else, so TruthForm carries no MCP dependency.
 package mcp
 
 import (

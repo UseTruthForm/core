@@ -1,6 +1,6 @@
-# Truthform
+# TruthForm
 
-Truthform reads the live configuration of a cloud account, a Kubernetes
+TruthForm reads the live configuration of a cloud account, a Kubernetes
 cluster or a SaaS organisation into a **snapshot**: plain YAML files you
 can review, commit and diff. From a snapshot it can **diff** what is
 running against what was captured, and **restore** what is missing, into
@@ -30,7 +30,7 @@ schemas.
         truthform permissions --platform aws --account 111122223333 --principal arn:aws:iam::111122223333:role/ops
 
    (Use your own account ID and the ARN of the user or role that will
-   run Truthform; `aws sts get-caller-identity` prints both.)
+   run TruthForm; `aws sts get-caller-identity` prints both.)
 
 2. **Check what it can read.** `truthform check` names the identity it
    runs as, warns about access it does not need, and lists every type it
@@ -53,7 +53,7 @@ The `docs` folder beside this file:
   restore, whole environments, exit codes, JSON output, known limits.
 - `docs/permissions.md`: what to grant on each platform, and which grants
   have been verified against real accounts.
-- `docs/agents.md`: using Truthform from an AI agent (`truthform mcp`), and
+- `docs/agents.md`: using TruthForm from an AI agent (`truthform mcp`), and
   how an agent should help someone set up access.
 
 ## Exit codes

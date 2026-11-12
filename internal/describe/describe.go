@@ -1,8 +1,8 @@
-// Package describe is what Truthform knows about a resource type, in one
+// Package describe is what TruthForm knows about a resource type, in one
 // shape for every platform: its fields, what each one is (required, set by
 // the platform, never returned, fixed at creation, secret), and where the
 // platform documents it. It is read from the same schemas capture and
-// restore are driven by, so what an agent is told is what Truthform does.
+// restore are driven by, so what an agent is told is what TruthForm does.
 package describe
 
 import "strings"
@@ -20,7 +20,7 @@ type Field struct {
 	// WriteOnly is accepted and never returned, so no snapshot holds it.
 	WriteOnly bool `json:"writeOnly,omitempty"`
 	// CreateOnly is fixed at creation; changing it replaces the resource,
-	// which Truthform refuses to do.
+	// which TruthForm refuses to do.
 	CreateOnly bool `json:"createOnly,omitempty"`
 	// Secret is never written to a snapshot; restore takes it from --values.
 	Secret      bool   `json:"secret,omitempty"`

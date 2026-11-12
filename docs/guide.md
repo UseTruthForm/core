@@ -1,6 +1,6 @@
-# Truthform user guide
+# TruthForm user guide
 
-Truthform reads the live configuration of a cloud account, a Kubernetes
+TruthForm reads the live configuration of a cloud account, a Kubernetes
 cluster or a SaaS organisation into a **snapshot**: plain YAML files you
 can review, commit and diff. From a snapshot it can **diff** what is
 running against what was captured, and **restore** what is missing, into
@@ -38,7 +38,7 @@ which have been verified.
 `truthform permissions --platform <p>` writes the grant as a template for
 the platform's own tool and prints every command to deploy, verify and
 remove it, with your values filled in; it grants nothing itself.
-`truthform check` then says who Truthform runs as, what that identity holds
+`truthform check` then says who TruthForm runs as, what that identity holds
 beyond what it needs, and what it can read, type by type: a type refused
 for want of permission shows as **denied**, never as empty. A type the
 platform throttled until the retries ran out shows as **throttled**: that
@@ -49,7 +49,7 @@ failed.
 ### Signing in to Cloudflare
 
 No token to make: `truthform login cloudflare` opens Cloudflare's sign-in
-in a browser, you approve Truthform, and the sign-in is kept in the OS
+in a browser, you approve TruthForm, and the sign-in is kept in the OS
 keychain (Secret Service, macOS Keychain, Windows Credential Manager) and
 refreshed as it expires. It asks for zone read and DNS read, plus DNS
 write in the full edition only: the capture-only edition's sign-in grants
@@ -61,11 +61,11 @@ sign-in made with the full edition.
 - Without a keychain (a bare server), login says so and stores nothing;
   set the token instead. No file is written in its place.
 - `truthform logout cloudflare` forgets the sign-in on this machine; revoke
-  Truthform in the Cloudflare dashboard to end the grant itself.
+  TruthForm in the Cloudflare dashboard to end the grant itself.
 - A capture-only build signs in too: its read-only guard lets
   Cloudflare's token endpoint through and nothing else on that host.
 - `TRUTHFORM_CLOUDFLARE_CLIENT_ID` signs in as another registered OAuth
-  client, such as your organisation's own, in place of Truthform's.
+  client, such as your organisation's own, in place of TruthForm's.
 
 ## Capture
 
@@ -102,7 +102,7 @@ What a snapshot does not hold, by design:
   `--secrets-from-context`. Not caught: a credential passed as a command
   argument, inside a config file a ConfigMap holds, or in Helm values
   outside an `env` list. Because both sides are withheld, a diff does not
-  show a rotated credential, and a snapshot taken before Truthform withheld
+  show a rotated credential, and a snapshot taken before TruthForm withheld
   these values still holds them in its git history;
 - **what the platform made itself**: default VPCs and their subnets,
   built-in roles, AWS-managed policies. Use `--baseline` with a capture of
@@ -270,7 +270,7 @@ becomes `www.test.example.com`, and a CNAME to a name in the zone follows.
 - **Only names under the subdomain are written.** The zone is used as it is
   and never created or changed; other zones in the snapshot are left out.
 - **Each record it writes carries the comment `truthform: test.example.com`.**
-  Only a record with that comment is Truthform's to change, with `--update`.
+  Only a record with that comment is TruthForm's to change, with `--update`.
 - **It reads the zone first and stops before writing anything** when:
   - a record it did not make is at a name it would write;
   - a record an earlier run made is at a name it would write, with other
@@ -324,7 +324,7 @@ flight at once; 8 by default), as `--parallel` does for one target.
 
 ## Throttling
 
-Every platform limits how fast it is read, and Truthform waits as each one
+Every platform limits how fast it is read, and TruthForm waits as each one
 asks. A read that stays throttled is reported as **throttled**, never as
 empty or denied: capture again later.
 
@@ -448,7 +448,7 @@ compare `nodes` and `edges`.
 
 ## For AI agents (MCP)
 
-`truthform mcp` serves Truthform's knowledge over the Model Context
+`truthform mcp` serves TruthForm's knowledge over the Model Context
 Protocol. For every field of a resource type it says whether the field is
 required, set by the platform, write-only, secret or fixed at creation,
 with the platform's documentation link. It can also capture, diff and
@@ -463,12 +463,12 @@ anything. An agent setting up someone's access should follow
 
 ## Snapshots from before the rename
 
-Truthform was called StackDNA up to v0.1.0-beta.20. A snapshot written then
+TruthForm was called StackDNA up to v0.1.0-beta.20. A snapshot written then
 is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
 
 - **Azure, Kubernetes, GitHub and Cloudflare:** a format 1 snapshot is read
   as it is by `diff`, `compare`, `restore`, `graph`, `report` and
-  `schema-diff`. What Truthform itself wrote under the old name is read
+  `schema-diff`. What TruthForm itself wrote under the old name is read
   under the new one; what the captured system called by the old name (a
   label, a tag, a CRD's group) is left as captured. Its digest differs from
   a new capture's, because the files on disk differ.
@@ -481,7 +481,7 @@ is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
   again; the old one is removed from the keychain when you do, or on
   `logout`.
 - **A DNS record a subdomain restore wrote before the rename** is still
-  Truthform's, and compares as unchanged. Its comment keeps the old name
+  TruthForm's, and compares as unchanged. Its comment keeps the old name
   until `--update` changes something else in the record.
 - **What `permissions` generates** is now named `truthform-...`. Roles and
   files made from an earlier build keep working; remove them with the
@@ -502,7 +502,7 @@ is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
 ## Known limits
 
 - A Log Analytics workspace's data sources can only be listed one kind at
-  a time. Truthform lists every kind Azure's definition names; a data
+  a time. TruthForm lists every kind Azure's definition names; a data
   source of a kind it does not name is not found. The change-tracking
   default registry keys Azure makes up on every read are counted in
   coverage, not captured.

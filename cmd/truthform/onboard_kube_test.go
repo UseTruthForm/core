@@ -169,7 +169,7 @@ func TestKubernetesGrantLetsACaptureReadAndNothingElse(t *testing.T) {
 		}
 	}
 
-	// Writes are refused by the cluster itself, not only by Truthform's
+	// Writes are refused by the cluster itself, not only by TruthForm's
 	// guard: this client has no guard.
 	reader, err := kube.Connect(asReader, s.Context, false)
 	if err != nil {

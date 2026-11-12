@@ -40,7 +40,7 @@ type Provider struct {
 	// the account's plan does not include. Such a collection is recorded
 	// as not available, not as a failed read: GitHub answers rulesets on a
 	// private repository of a free organisation with "Upgrade to GitHub
-	// Pro" (seen capturing Truthform, 2026-10-22).
+	// Pro" (seen capturing TruthForm, 2026-10-22).
 	Unavailable []string
 	Collections []Collection
 	// Derive, if set, adds the collections the description offers under
@@ -169,7 +169,7 @@ var GitHub = Provider{
 	},
 }
 
-// CloudflareClientID is Truthform's registered Cloudflare OAuth client. It
+// CloudflareClientID is TruthForm's registered Cloudflare OAuth client. It
 // is public (PKCE, no secret), and set at release time rather than kept in
 // the source (scripts/build-release.sh); TRUTHFORM_CLOUDFLARE_CLIENT_ID
 // replaces it. A build with neither signs in by token only.

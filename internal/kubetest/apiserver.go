@@ -1,12 +1,12 @@
 // Package kubetest starts a real Kubernetes API server (etcd plus
-// kube-apiserver, no nodes, no Docker) for tests. Truthform only talks to the
+// kube-apiserver, no nodes, no Docker) for tests. TruthForm only talks to the
 // API, so this is enough to exercise capture, restore and diff against real
 // discovery, real OpenAPI schemas and real validation, in seconds.
 //
 // It exists instead of controller-runtime's envtest because envtest's Go
 // library does not compile on Windows at v0.25.2 ("signalProcess redeclared"),
 // and the release that does (v0.23.3) pins older Kubernetes libraries than
-// Truthform uses. The binaries are the same ones envtest uses; fetch them with
+// TruthForm uses. The binaries are the same ones envtest uses; fetch them with
 // scripts/envtest-assets.sh.
 package kubetest
 

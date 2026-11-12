@@ -8,10 +8,10 @@ import (
 func buildGCP(r Request) (Plan, error) {
 	var miss MissingError
 	if r.Project == "" {
-		miss = append(miss, Missing{"project", "the ID of the project Truthform reads", "gcloud projects list --format 'value(projectId)'"})
+		miss = append(miss, Missing{"project", "the ID of the project TruthForm reads", "gcloud projects list --format 'value(projectId)'"})
 	}
 	if r.Member == "" {
-		miss = append(miss, Missing{"member", "who will run Truthform, as IAM writes it: user:EMAIL, serviceAccount:EMAIL or group:EMAIL",
+		miss = append(miss, Missing{"member", "who will run TruthForm, as IAM writes it: user:EMAIL, serviceAccount:EMAIL or group:EMAIL",
 			"gcloud config get-value account   (yourself)"})
 	}
 	if len(miss) > 0 {
@@ -40,7 +40,7 @@ func buildGCP(r Request) (Plan, error) {
 		p.Status = "Expected. Restores have run as the project's owner, not with these roles."
 	} else {
 		p.Grants = []string{"roles/viewer and roles/cloudasset.viewer on project " + r.Project + " for " + r.Member + ", read-only",
-			"The Cloud Asset and Cloud Resource Manager APIs enabled in the project if they are not (removing Truthform's access leaves them on)"}
+			"The Cloud Asset and Cloud Resource Manager APIs enabled in the project if they are not (removing TruthForm's access leaves them on)"}
 		p.Status = "Verified (2026-10-23) for the roles: a service account holding exactly these captured the sandbox project to the same digest as its owner. This Terraform has been validated, not yet applied."
 	}
 	p.Warnings = append(p.Warnings, "Keep "+dir+" after applying: the Terraform state in it is what destroy reads. Without it the grants stay until removed by hand.")
@@ -50,7 +50,7 @@ func buildGCP(r Request) (Plan, error) {
 	p.Before = []Step{
 		{Title: "Check the administrator can see project " + r.Project + " (it prints its ID)", Command: cmd("gcloud", "projects", "describe", r.Project, "--format", "value(projectId)")},
 		{Title: "List the roles " + r.Member + " already holds in it", Command: roles,
-			Note: "Truthform's grant is added beside these, never in place of them."},
+			Note: "TruthForm's grant is added beside these, never in place of them."},
 	}
 	p.Grant = []Step{
 		{Title: "Fetch the Google provider", Command: tfc("init")},

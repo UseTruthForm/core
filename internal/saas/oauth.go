@@ -196,13 +196,13 @@ func (o *OAuth) Login(ctx context.Context, hc *http.Client, open func(url string
 		// A redirect without this sign-in's state is not its answer: it is
 		// refused, and the sign-in goes on waiting for the real one.
 		case q.Get("state") != state:
-			http.Error(w, "This is not the sign-in Truthform started.", http.StatusBadRequest)
+			http.Error(w, "This is not the sign-in TruthForm started.", http.StatusBadRequest)
 			return
 		case q.Get("error") != "":
 			page(w, "Sign-in was not completed. You can close this tab.")
 			finish(result{err: fmt.Errorf("sign-in refused: %s %s", q.Get("error"), q.Get("error_description"))})
 		default:
-			page(w, "Signed in to Truthform. You can close this tab and return to the terminal.")
+			page(w, "Signed in to TruthForm. You can close this tab and return to the terminal.")
 			finish(result{code: q.Get("code")})
 		}
 		if o.answered != nil {

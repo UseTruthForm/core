@@ -281,7 +281,7 @@ func (it *item) fullName() string {
 // schema. A field only the create takes (auto_init, license_template) is
 // a one-time input, and one only the update takes (a label's new_name) is
 // an action; neither is state a snapshot could hold, and naming them made
-// every repository and label in the real Truthform capture look lossy.
+// every repository and label in the real TruthForm capture look lossy.
 // With no response schema nothing is claimed: absence of evidence is not
 // reported as a gap.
 func (c *Client) unreadable(col *Collection) []string {
@@ -469,8 +469,8 @@ func (c *Client) specOf(col *Collection, w *Fields, raw map[string]any, masked *
 
 // tokenize replaces the account where it is structural, so a snapshot of
 // one organisation or account restores into another: a value that is the
-// account, or a path or URL segment (/Truthform/). Never inside prose: the
-// Truthform organisation's repository describes itself as "Truthform core:
+// account, or a path or URL segment (/TruthForm/). Never inside prose: the
+// TruthForm organisation's repository describes itself as "TruthForm core:
 // ...", and replacing that would rewrite the description in every target.
 func tokenize(spec map[string]any, account string) map[string]any {
 	if account == "" {

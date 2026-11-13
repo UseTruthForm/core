@@ -284,21 +284,37 @@ func setSlots(body map[string]any, paths []string, values map[string]string) err
 	}
 	asked := map[string]bool{}
 	for _, p := range paths {
-		if twice[p] || asked[p] {
-			return fmt.Errorf("two values of the object are at %s; which is which cannot be told", p)
+		at := strings.TrimSuffix(p, numberMark)
+		if twice[at] || asked[at] {
+			return fmt.Errorf("two values of the object are at %s; which is which cannot be told", at)
 		}
-		asked[p] = true
+		asked[at] = true
 	}
+	// Every value is checked before any is written.
+	fill := map[string]any{}
 	for _, p := range paths {
+		at := strings.TrimSuffix(p, numberMark)
 		v, ok := values[p]
+		if !ok {
+			v, ok = values[at] // read from the object's own slots, which carry no mark
+		}
 		if !ok {
 			return fmt.Errorf("no value for %s", p)
 		}
-		t, ok := targets[p]
-		if !ok {
-			return fmt.Errorf("the snapshot has no slot %s", p)
+		if _, ok := targets[at]; !ok {
+			return fmt.Errorf("the snapshot has no slot %s", at)
 		}
-		t.set(v)
+		fill[at] = v
+		if at != p {
+			n, err := asNumber(strings.TrimSpace(v))
+			if err != nil {
+				return fmt.Errorf("%s: %w", at, err)
+			}
+			fill[at] = n
+		}
+	}
+	for at, v := range fill {
+		targets[at].set(v)
 	}
 	return nil
 }

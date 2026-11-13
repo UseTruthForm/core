@@ -148,9 +148,6 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 	if len(p.Sources)+len(p.Follows) > 0 {
 		if len(p.Origins) > 0 {
 			w("The snapshot holds these repository objects: %s. Check that they are where the sources above are read from. The credential to read each is a Secret of step 3.\n\n", md(strings.Join(p.Origins, ", ")))
-			if len(p.OriginsWithheld) > 0 {
-				w("**Not in the snapshot: the address of %s.** The capture withheld it whole, because it read as a URL that signs in: where it reads from has to come from your own records, and a credential belongs in the Secret the object names.\n\n", md(strings.Join(p.OriginsWithheld, ", ")))
-			}
 		} else {
 			w("**Not in the snapshot: where the sources are read from.** The repository, branch and path the cluster was bootstrapped from, and the credential to read them, have to come from your own records.\n\n")
 		}

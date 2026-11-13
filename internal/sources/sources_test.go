@@ -310,3 +310,58 @@ func TestReadRefusesAReferenceOfTheWrongShape(t *testing.T) {
 		}
 	}
 }
+
+// The settings of a sources file: the part written to fill in reads back
+// and covers nothing until filled; a check says each object with no
+// entry, each path with no reference, each path nothing was withheld at.
+func TestSettings(t *testing.T) {
+	needed := []NeededSetting{
+		{Object: "apps/v1/Deployment/shop/api", Paths: []string{"spec.template.spec.containers[api].env[DB_PASSWORD]", "spec.template.spec.containers[api].env[API_TOKEN]"}},
+		{Object: "source.toolkit.fluxcd.io/v1/GitRepository/flux-system/fleet\": x", Paths: []string{"spec.url"}},
+	}
+	text := append(Skeleton(nil), SettingsSkeleton(needed)...)
+	path := filepath.Join(t.TempDir(), "s.yaml")
+	if err := os.WriteFile(path, text, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Read(path)
+	if err != nil || len(f.Settings) != 2 || len(f.Secrets) != 0 {
+		t.Fatalf("the part to fill in does not read back: %v\n%s", err, text)
+	}
+	if problems, _ := CheckSettings(f, needed); len(problems) != 3 {
+		t.Errorf("an unfilled file: %q", problems)
+	}
+	if SettingsSkeleton(nil) != nil {
+		t.Error("something written for no settings")
+	}
+
+	filled := File{Settings: []Setting{
+		{Object: "apps/v1/Deployment/shop/api", From: map[string]string{"spec.template.spec.containers[api].env[DB_PASSWORD]": "env:X", "spec.template.spec.containers[api].env[OLD]": "env:Y"}},
+		{Object: "apps/v1/Deployment/shop/gone", From: map[string]string{"a": "env:Z"}},
+	}}
+	problems, notes := CheckSettings(filled, needed)
+	want := []string{
+		`source.toolkit.fluxcd.io/v1/GitRepository/flux-system/fleet": x: no entry under settings; the rebuild has no source for what was withheld from it`,
+		"apps/v1/Deployment/shop/api: spec.template.spec.containers[api].env[API_TOKEN] has no reference",
+		"apps/v1/Deployment/shop/api: names spec.template.spec.containers[api].env[OLD], at which nothing was withheld",
+	}
+	if !reflect.DeepEqual(problems, want) || len(notes) != 1 || !strings.Contains(notes[0], "shop/gone") {
+		t.Errorf("problems:\n %q\nwant\n %q\nnotes %q", problems, want, notes)
+	}
+
+	for body, want := range map[string]string{
+		"settings:\n  - object: a\n    from: {p: \"env:X\"}\n  - object: a\n    from: {p: \"env:X\"}\n": "a is listed twice under settings",
+		"settings:\n  - object: a\n":                                     "a has no from under settings",
+		"settings:\n  - from: {p: \"env:X\"}\n":                          "settings entry 1: object is not an object's key",
+		"settings:\n  - object: a\n    from: {p: \"op://v/%PATH%/f\"}\n": "a, p: op://v/…/f: a 1Password reference is",
+		"settings:\n  - object: a\n    from: {p: \"ftp://x\"}\n":         "a, p:",
+		"settings:\n  - object: a\n    form: {p: \"env:X\"}\n":           "form",
+	} {
+		if err := os.WriteFile(path, []byte("secrets: []\n"+body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Read(path); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: %v, want %q", body, err, want)
+		}
+	}
+}

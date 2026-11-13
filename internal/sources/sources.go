@@ -26,6 +26,97 @@ import (
 // File is a secret sources file.
 type File struct {
 	Secrets []Entry `yaml:"secrets" json:"secrets"`
+	// Settings are the credentials withheld from objects that are not
+	// Secrets: set as plain configuration, and read from here instead.
+	Settings []Setting `yaml:"settings,omitempty" json:"settings,omitempty"`
+}
+
+// Setting is one object that is not a Secret, and where each credential
+// withheld from it is read from.
+type Setting struct {
+	// Object is the object's key in the snapshot, as plan secrets writes
+	// it (apps/v1|Deployment|shop|api).
+	Object string `yaml:"object" json:"object"`
+	// From is a reference for each path a value was withheld at.
+	From map[string]string `yaml:"from" json:"from"`
+}
+
+// Setting is the entry for an object, if the file has one.
+func (f File) Setting(object string) (Setting, bool) {
+	for _, e := range f.Settings {
+		if e.Object == object {
+			return e, true
+		}
+	}
+	return Setting{}, false
+}
+
+// NeededSetting is an object with values withheld, and their paths.
+type NeededSetting struct {
+	Object string
+	Paths  []string
+}
+
+// SettingsSkeleton is the settings part of a sources file, every
+// reference empty; nothing where no object needs one.
+func SettingsSkeleton(needed []NeededSetting) []byte {
+	if len(needed) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("# Credentials that were set as plain configuration (a variable, a URL that\n")
+	b.WriteString("# signs in) and withheld from the snapshot: where each is read from, by the\n")
+	b.WriteString("# object and the place in it. Better still, move each into a Secret.\n")
+	b.WriteString("settings:\n")
+	for _, n := range needed {
+		q, _ := json.Marshal(n.Object)
+		b.WriteString("  - object: " + string(q) + "\n    from:\n")
+		for _, p := range n.Paths {
+			q, _ := json.Marshal(p)
+			b.WriteString("      " + string(q) + ": \"\"\n")
+		}
+	}
+	return []byte(b.String())
+}
+
+// CheckSettings says where the file does not cover the values withheld
+// from objects that are not Secrets: an object with no entry, a path with
+// no reference, a path nothing was withheld at.
+func CheckSettings(f File, needed []NeededSetting) (problems, notes []string) {
+	paths := map[string][]string{}
+	for _, n := range needed {
+		paths[n.Object] = n.Paths
+		if _, ok := f.Setting(n.Object); !ok {
+			problems = append(problems, n.Object+": no entry under settings; the rebuild has no source for what was withheld from it")
+		}
+	}
+	for _, e := range f.Settings {
+		want, ok := paths[e.Object]
+		if !ok {
+			notes = append(notes, e.Object+": nothing was withheld from an object of that key in the snapshot; the entry is not used")
+			continue
+		}
+		has := map[string]bool{}
+		for _, p := range want {
+			has[p] = true
+			if ref, ok := e.From[p]; !ok {
+				problems = append(problems, e.Object+": "+p+" has no reference")
+			} else if ref == "" {
+				problems = append(problems, e.Object+": the reference for "+p+" is empty")
+			}
+		}
+		extra := []string{}
+		for p := range e.From {
+			if !has[p] {
+				extra = append(extra, p)
+			}
+		}
+		sort.Strings(extra)
+		for _, p := range extra {
+			problems = append(problems, e.Object+": names "+p+", at which nothing was withheld")
+		}
+	}
+	return problems, notes
 }
 
 // Entry is one Secret: where each of its keys is read from, or why the
@@ -102,6 +193,33 @@ func Read(path string) (File, error) {
 	}
 	if dec.Decode(new(any)) != io.EOF {
 		return f, fmt.Errorf("%s: holds more than one YAML document; only one is read, so the rest would be ignored", path)
+	}
+	objects := map[string]bool{}
+	for i, e := range f.Settings {
+		switch {
+		case e.Object == "" || strings.ContainsAny(e.Object, "\n\r"):
+			return f, fmt.Errorf("%s: settings entry %d: object is not an object's key", path, i+1)
+		case objects[e.Object]:
+			return f, fmt.Errorf("%s: %s is listed twice under settings", path, e.Object)
+		case len(e.From) == 0:
+			return f, fmt.Errorf("%s: %s has no from under settings", path, e.Object)
+		}
+		objects[e.Object] = true
+		for at, ref := range e.From {
+			if at == "" {
+				return f, fmt.Errorf("%s: %s has a reference for no path", path, e.Object)
+			}
+			if ref == "" {
+				continue
+			}
+			kind, rest, err := scheme(ref)
+			if err == nil {
+				err = shape(kind, rest)
+			}
+			if err != nil {
+				return f, fmt.Errorf("%s: %s, %s: %w", path, e.Object, at, err)
+			}
+		}
 	}
 	seen := map[string]bool{}
 	for i, e := range f.Secrets {

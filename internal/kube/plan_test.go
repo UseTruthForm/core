@@ -206,8 +206,8 @@ func TestRebuildPlan(t *testing.T) {
 		},
 		// shop/multi is made from three items and counts once.
 		StoreSecrets: 8,
-		Origins:      []string{}, OriginsWithheld: []string{},
-		Hosts: []string{"gw.example.com", "old.example.com", "quoted.example.com", "shop.example.com", "www.example.com"},
+		Origins:      []string{},
+		Hosts:        []string{"gw.example.com", "old.example.com", "quoted.example.com", "shop.example.com", "www.example.com"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("plan:\n got %+v\nwant %+v", got, want)
@@ -433,22 +433,5 @@ func TestRebuildPlanArgoApplicationsByNamespace(t *testing.T) {
 	}})
 	if len(p.Sources) != 1 || p.Sources[0].Name != "web" || len(p.Follows) != 1 || p.Follows[0].Name != "team-a_web" {
 		t.Errorf("a bare name two applications share: by hand %v, follow %v", p.Sources, p.Follows)
-	}
-}
-
-// A repository whose address was withheld is in the snapshot without
-// where it reads from, and the plan says which.
-func TestRebuildPlanSaysAnOriginsAddressWasWithheld(t *testing.T) {
-	repo := func(name, url string) snapshot.Object {
-		body := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
-			"metadata": map[string]any{"name": name, "namespace": "flux-system"}, "spec": map[string]any{"url": url}}
-		normalize("source.toolkit.fluxcd.io", "gitrepositories", body)
-		return snapshot.Object{Body: body}
-	}
-	p := RebuildPlan(snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
-		repo("fleet", "https://ghp_tok3ntok3ntok3ntok3n@example.com/o/fleet"), repo("open", "https://example.com/o/open"),
-	}})
-	if len(p.Origins) != 2 || len(p.OriginsWithheld) != 1 || p.OriginsWithheld[0] != "GitRepository flux-system/fleet" {
-		t.Errorf("origins %v, withheld %v", p.Origins, p.OriginsWithheld)
 	}
 }

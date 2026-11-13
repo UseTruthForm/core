@@ -209,3 +209,201 @@ func TestReleaseOf(t *testing.T) {
 		}
 	}
 }
+
+// A Job is left out though its release is brought, and the report says
+// so; a release that is only a Job is still one the scope may name.
+func TestNarrowLeavesOutAJobOfAReleaseBrought(t *testing.T) {
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		planObject("v1", "Namespace", "", "team-a", nil),
+		released("apps/v1", "Deployment", "team-a", "a", "a", nil),
+		released("batch/v1", "Job", "team-a", "a-hook", "a", nil),
+		released("batch/v1", "Job", "team-a", "migrate", "migrate", nil),
+		released("example.com/v1", "Job", "team-a", "not-a-batch-job", "a", nil),
+	}}
+	sc := Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"a", "migrate"}}}}
+	out, rep, err := Narrow(s, sc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(keys(out), ", "); got != "Deployment team-a/a, Job team-a/not-a-batch-job, Namespace /team-a" {
+		t.Errorf("brought: %s", got)
+	}
+	if !reflect.DeepEqual(rep.Jobs, []string{"team-a/a-hook", "team-a/migrate"}) || rep.Kept != 3 || rep.Of != 5 {
+		t.Errorf("jobs %q, kept %d of %d", rep.Jobs, rep.Kept, rep.Of)
+	}
+	if len(rep.Brought) != 2 || rep.Brought[0].Objects != 3 || rep.Brought[1].Release != "team-a/migrate" || len(rep.LeftOut) != 0 {
+		t.Errorf("brought %+v, left out %+v", rep.Brought, rep.LeftOut)
+	}
+	sc.Jobs = true
+	if out, rep, err := Narrow(s, sc); err != nil || len(out.Objects) != 5 || len(rep.Jobs) != 0 {
+		t.Errorf("jobs: true: %v, %d objects, %q", err, len(out.Objects), rep.Jobs)
+	}
+	// A label only a Job carries chooses its release, and is no mistake.
+	hook := s.Objects[2].Body["metadata"].(map[string]any)["labels"].(map[string]any)
+	hook["tier"] = "drill"
+	if out, _, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Labels: map[string]string{"tier": "drill"}}}}); err != nil || !strings.Contains(strings.Join(keys(out), ","), "Deployment team-a/a") {
+		t.Errorf("a label on a Job: %v, %q", err, keys(out))
+	}
+}
+
+// A namespace nothing is chosen from is left out whole: what a release of
+// another namespace made in it too, and what the capture left there to a
+// GitOps source.
+func TestNarrowLeavesANamespaceOutWhole(t *testing.T) {
+	foreign := released("v1", "ConfigMap", "team-c", "api-cfg", "api", nil)
+	foreign.Body["metadata"].(map[string]any)["annotations"].(map[string]any)["meta.helm.sh/release-namespace"] = "core"
+	item := released("onepassword.com/v1", "OnePasswordItem", "team-c", "api-item", "api", map[string]any{"spec": map[string]any{"itemPath": "vaults/x/items/y"}})
+	item.Body["metadata"].(map[string]any)["annotations"].(map[string]any)["meta.helm.sh/release-namespace"] = "core"
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		planObject("v1", "Namespace", "", "core", nil),
+		planObject("v1", "Namespace", "", "team-c", nil),
+		released("apps/v1", "Deployment", "core", "api", "api", nil),
+		foreign, item,
+		planObject("v1", "Secret", "team-c", "api-item", map[string]any{"data": map[string]any{"k": ""}}),
+		planObject("v1", "ConfigMap", "team-c", "shared", nil),
+	}, Skips: []snapshot.Skip{
+		{Resource: "apps/v1/deployments", Namespace: "team-c", Name: "web", Reason: "rendered by Flux HelmRelease team-c/web; restoring the HelmRelease recreates it"},
+		{Resource: "apps/v1/deployments", Namespace: "core", Name: "x", Reason: "rendered by Flux HelmRelease core/x; restoring the HelmRelease recreates it"},
+	}}
+	out, rep, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-c"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(keys(out), ", "); got != "Deployment core/api, Namespace /core" {
+		t.Errorf("brought: %s", got)
+	}
+	if rep.Kept != 0 || rep.Of != 5 {
+		t.Errorf("kept %d of %d", rep.Kept, rep.Of)
+	}
+	if len(out.Skips) != 1 || out.Skips[0].Namespace != "core" || len(s.Skips) != 2 {
+		t.Errorf("what was left to a GitOps source: %+v", out.Skips)
+	}
+}
+
+// A release chosen keeps its namespace though all it made is elsewhere,
+// and what belongs to no release there with it.
+func TestNarrowKeepsTheNamespaceOfAReleaseMadeElsewhere(t *testing.T) {
+	binding := planObject("rbac.authorization.k8s.io/v1", "ClusterRoleBinding", "", "a", nil)
+	binding.Body["metadata"].(map[string]any)["annotations"] = map[string]any{"meta.helm.sh/release-name": "a", "meta.helm.sh/release-namespace": "team-a"}
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		planObject("v1", "Namespace", "", "team-a", nil),
+		planObject("v1", "ServiceAccount", "team-a", "runner", nil),
+		binding,
+	}}
+	out, _, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"a"}}}})
+	if err != nil || len(out.Objects) != 3 {
+		t.Errorf("%v: %q", err, keys(out))
+	}
+	// A namespace known only by where a release was installed is one a
+	// scope may name.
+	s.Objects = []snapshot.Object{binding}
+	if _, rep, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}}}}); err != nil || len(rep.LeftOut) != 1 {
+		t.Errorf("a namespace nothing of which is in the snapshot: %v, %+v", err, rep)
+	}
+}
+
+// A Secret goes where its maker goes, whatever kind makes it.
+func TestNarrowSecretsFollowEveryKindOfMaker(t *testing.T) {
+	secret := func(name string) snapshot.Object {
+		return planObject("v1", "Secret", "team-a", name, map[string]any{"data": map[string]any{"k": ""}})
+	}
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		released("apps/v1", "Deployment", "team-a", "search", "search", nil),
+		released("external-secrets.io/v1", "ExternalSecret", "team-a", "es", "lien", map[string]any{"spec": map[string]any{"target": map[string]any{"name": "from-es"}}}),
+		released("external-secrets.io/v1", "ExternalSecret", "team-a", "es-own-name", "lien", nil),
+		released("bitnami.com/v1alpha1", "SealedSecret", "team-a", "sealed", "lien", nil),
+		released("cert-manager.io/v1", "Certificate", "team-a", "cert", "lien", map[string]any{"spec": map[string]any{"secretName": "tls"}}),
+		secret("from-es"), secret("es-own-name"), secret("sealed"), secret("tls"), secret("by-hand"),
+	}}
+	out, _, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"search"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(keys(out), ", "); got != "Deployment team-a/search, Secret team-a/by-hand" {
+		t.Errorf("brought: %s", got)
+	}
+	if p := RebuildPlan(out); len(p.ByHand) != 1 || p.ByHand[0].Name != "by-hand" {
+		t.Errorf("the plan of the part asks for what a release left out makes: %+v", p.ByHand)
+	}
+}
+
+// A name given beside a pattern that also fits it is no mistake; every
+// label of an entry is required; two entries on one namespace choose
+// together.
+func TestNarrowPatternsAndLabels(t *testing.T) {
+	s := scopeSnapshot()
+	for _, releases := range [][]string{{"*-search", "a-search"}, {"a-search", "*-search"}, {"a-*", "a-lien"}} {
+		if _, _, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-*"}, Releases: releases}}}); err != nil {
+			t.Errorf("%q: %v", releases, err)
+		}
+	}
+	if _, _, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-b"}, Labels: map[string]string{"tier": "drill", "zone": "none"}}}}); err == nil || !strings.Contains(err.Error(), "carries its labels") {
+		t.Errorf("two labels, one of which nothing carries: %v", err)
+	}
+	out, _, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-b"}}, {Namespaces: []string{"team-*"}, Releases: []string{"b-lien"}}}})
+	if err != nil || !strings.Contains(strings.Join(keys(out), ","), "Deployment team-b/b-lien") {
+		t.Errorf("two entries on one namespace: %v, %q", err, keys(out))
+	}
+	if _, _, err := Narrow(s, Scope{}); err == nil {
+		t.Error("a file with nothing in it narrowed")
+	}
+	if out, _, err := Narrow(s, Scope{Narrow: []ScopeEntry{}}); err != nil || strings.Contains(strings.Join(keys(out), ","), "Job ") || len(out.Objects) != len(s.Objects)-1 {
+		t.Errorf("an empty list narrows nothing and leaves Jobs out: %v, %q", err, keys(out))
+	}
+}
+
+// The draft reads back as a scope that brings everything but Jobs, for
+// any snapshot: names that read as patterns, a release that is only a
+// Job, one that made nothing in its own namespace, no release at all.
+func TestScopeDraftRoundTrips(t *testing.T) {
+	far := planObject("rbac.authorization.k8s.io/v1", "ClusterRole", "", "addon", nil)
+	far.Body["metadata"].(map[string]any)["annotations"] = map[string]any{"meta.helm.sh/release-name": "addon", "meta.helm.sh/release-namespace": "kube-system"}
+	for name, s := range map[string]snapshot.Snapshot{
+		"the usual": scopeSnapshot(),
+		"odd names": {Objects: []snapshot.Object{
+			released("v1", "ConfigMap", "team-a", "x", "a[b", nil), released("v1", "ConfigMap", "team-a", "y", "a*", nil),
+			released("v1", "ConfigMap", "team-a", "z", "ab", nil), released("v1", "ConfigMap", "team-a", "w", "a\x01?\\b", nil),
+		}},
+		"only a job":        {Objects: []snapshot.Object{released("batch/v1", "Job", "team-a", "migrate", "migrate", nil), planObject("v1", "ConfigMap", "team-a", "shared", nil)}},
+		"made elsewhere":    {Objects: []snapshot.Object{far, planObject("v1", "ConfigMap", "team-a", "shared", nil)}},
+		"no release at all": {Objects: []snapshot.Object{planObject("v1", "ConfigMap", "team-a", "shared", nil)}},
+		"nothing":           {},
+	} {
+		text := ScopeDraft(s)
+		var sc Scope
+		if err := yaml.UnmarshalStrict(text, &sc); err != nil {
+			t.Errorf("%s: the draft is not a scope file: %v\n%s", name, err, text)
+			continue
+		}
+		out, rep, err := Narrow(s, sc)
+		if err != nil {
+			t.Errorf("%s: the draft is refused: %v\n%s", name, err, text)
+			continue
+		}
+		jobs := 0
+		for _, o := range s.Objects {
+			if isJob(o) {
+				jobs++
+			}
+		}
+		if len(out.Objects) != len(s.Objects)-jobs || len(rep.LeftOut) != 0 || len(rep.Jobs) != jobs {
+			t.Errorf("%s: the draft brings %d of %d objects (%d Jobs), leaves out %v\n%s", name, len(out.Objects), len(s.Objects), jobs, rep.LeftOut, text)
+		}
+	}
+}
+
+// A Job alone, chosen by a label and left out, does not bring its
+// namespace; and a namespace known only by its own object is one a scope
+// may name.
+func TestNarrowNamespaceWithOnlyAJobOrNothing(t *testing.T) {
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		planObject("v1", "Namespace", "", "team-a", nil),
+		planObject("batch/v1", "Job", "team-a", "once", map[string]any{"labels": map[string]any{"tier": "drill"}}),
+		planObject("v1", "ConfigMap", "team-a", "shared", nil),
+		planObject("v1", "Namespace", "", "team-z", nil),
+	}}
+	out, _, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Labels: map[string]string{"tier": "drill"}}, {Namespaces: []string{"team-z"}}}})
+	if err != nil || len(out.Objects) != 0 {
+		t.Errorf("%v: %q", err, keys(out))
+	}
+}

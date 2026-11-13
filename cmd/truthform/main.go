@@ -302,10 +302,12 @@ func restore(ctx context.Context, args []string) int {
 	if err := samePlatform(snap, *platform); err != nil {
 		return fail(err)
 	}
-	if snap, err = scoped(*scope, *platform, snap); err != nil {
+	// --leave-out first: its entries name objects of the snapshot as it
+	// is, whether or not the scope would have left them out too.
+	if snap, err = leftOut(*leaveOut, *platform, snap); err != nil {
 		return fail(err)
 	}
-	if snap, err = leftOut(*leaveOut, *platform, snap); err != nil {
+	if snap, err = scoped(*scope, *platform, snap); err != nil {
 		return fail(err)
 	}
 	if *keepStores && (*rename == "" || *platform != "kubernetes") {
@@ -425,7 +427,7 @@ func diff(ctx context.Context, args []string) int {
 	}
 	if *config != "" && *from != "" {
 		if *rename != "" || *leaveOut != "" || *values != "" || *scope != "" {
-			return fail(fmt.Errorf("diff: --rename, --leave-out and --values are for a diff against one target, not --config"))
+			return fail(fmt.Errorf("diff: --rename, --leave-out, --scope and --values are for a diff against one target, not --config"))
 		}
 		return diffEnvironment(ctx, *config, *from)
 	}
@@ -441,10 +443,10 @@ func diff(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	warnGaps(want)
-	if want, err = scoped(*scope, *platform, want); err != nil {
+	if want, err = leftOut(*leaveOut, *platform, want); err != nil {
 		return fail(err)
 	}
-	if want, err = leftOut(*leaveOut, *platform, want); err != nil {
+	if want, err = scoped(*scope, *platform, want); err != nil {
 		return fail(err)
 	}
 	_ = *keepStoresDiff // a diff lists and never refuses: the flag is taken so that a restore's arguments can be given to it

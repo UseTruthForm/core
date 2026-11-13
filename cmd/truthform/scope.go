@@ -60,7 +60,7 @@ func scoped(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, erro
 // scopeSaid is the report for a person.
 func scopeSaid(rep kube.ScopeReport, file string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "scope: %d of %d objects in %d narrowed namespaces are brought, as %s asks (%s)", rep.Kept, rep.Of, len(rep.Narrowed), file, strings.Join(rep.Narrowed, ", "))
+	fmt.Fprintf(&b, "scope: %d of the %d objects of %d narrowed namespaces are brought, as %s asks (%s)", rep.Kept, rep.Of, len(rep.Narrowed), file, strings.Join(rep.Narrowed, ", "))
 	list := func(what string, l []kube.ScopedRelease) {
 		if len(l) == 0 {
 			return
@@ -73,7 +73,7 @@ func scopeSaid(rep kube.ScopeReport, file string) string {
 	list("brought", rep.Brought)
 	list("left out", rep.LeftOut)
 	if len(rep.Jobs) > 0 {
-		fmt.Fprintf(&b, "\nscope: %d Jobs left out, which restored would run again (jobs: true brings them): %s", len(rep.Jobs), strings.Join(rep.Jobs, ", "))
+		fmt.Fprintf(&b, "\nscope: %d Jobs left out, those of a release brought among them: restored, a Job runs again (jobs: true brings them): %s", len(rep.Jobs), strings.Join(rep.Jobs, ", "))
 	}
 	return b.String()
 }

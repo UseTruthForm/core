@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"encoding/json"
 	"fmt"
 	"path"
 	"sort"
@@ -27,7 +28,8 @@ type Scope struct {
 }
 
 // ScopeEntry narrows the namespaces its patterns fit to the releases and
-// labels it names. With neither, nothing of those namespaces is brought.
+// labels it names. With neither, it brings nothing of those namespaces
+// (another entry that fits one of them may).
 type ScopeEntry struct {
 	// Namespaces are names, or patterns as a shell has them (team-*).
 	Namespaces []string `json:"namespaces"`
@@ -42,15 +44,18 @@ type ScopeEntry struct {
 type ScopeReport struct {
 	// Narrowed are the namespaces the scope narrowed.
 	Narrowed []string `json:"narrowed"`
-	// Kept is how many objects of those namespaces are brought, and Of
-	// how many the snapshot holds there.
+	// Of is how many objects the scope decides on (those in the narrowed
+	// namespaces, and what their releases made elsewhere), and Kept how
+	// many of them are brought.
 	Kept int `json:"kept"`
 	Of   int `json:"of"`
 	// Brought and LeftOut are the releases of those namespaces
-	// (namespace/release), each with its objects.
+	// (namespace/release), each with how many objects it has, Jobs
+	// included.
 	Brought []ScopedRelease `json:"brought"`
 	LeftOut []ScopedRelease `json:"leftOut"`
-	// Jobs are the Jobs left out because a restored Job runs again.
+	// Jobs are the Jobs left out because a restored Job runs again, those
+	// of a release that is brought among them.
 	Jobs []string `json:"jobsLeftOut"`
 }
 
@@ -76,32 +81,82 @@ func ReleaseOf(o snapshot.Object) (namespace, name string, ok bool) {
 	return "", "", false
 }
 
-func fitsAny(patterns []string, v string) (int, bool) {
-	for i, p := range patterns {
+// fits marks every pattern that fits v as used, and says whether any did.
+// Every one, not the first: a name given beside a pattern that also fits
+// it is not a mistake.
+func fits(patterns []string, v string, used map[string]bool) bool {
+	any := false
+	for _, p := range patterns {
 		if ok, _ := path.Match(p, v); ok {
-			return i, true
+			used[p] = true
+			any = true
 		}
 	}
-	return 0, false
+	return any
+}
+
+func isJob(o snapshot.Object) bool {
+	return o.Kind() == "Job" && strings.HasPrefix(o.APIVersion(), "batch/")
+}
+
+// secretMakers says, for each Secret an object of the snapshot makes,
+// which object: a store reader, an ExternalSecret, a SealedSecret, a
+// cert-manager Certificate. The Secret goes where its maker goes.
+func secretMakers(s snapshot.Snapshot) map[secretKey]int {
+	maker := map[secretKey]int{}
+	for i, o := range s.Objects {
+		group, _, _ := strings.Cut(o.APIVersion(), "/")
+		spec, _ := o.Body["spec"].(map[string]any)
+		for _, r := range storeReaders {
+			if r.group == group && r.kind == o.Kind() {
+				_, _, secrets := r.reads(o)
+				for _, k := range secrets {
+					maker[k] = i
+				}
+			}
+		}
+		switch {
+		case group == "external-secrets.io" && o.Kind() == "ExternalSecret":
+			target, _ := spec["target"].(map[string]any)
+			name := strOf(target["name"])
+			if name == "" {
+				name = o.Name()
+			}
+			maker[secretKey{o.Namespace(), name}] = i
+		case group == "bitnami.com" && o.Kind() == "SealedSecret":
+			maker[secretKey{o.Namespace(), o.Name()}] = i
+		case group == "cert-manager.io" && o.Kind() == "Certificate":
+			if name := strOf(spec["secretName"]); name != "" {
+				maker[secretKey{o.Namespace(), name}] = i
+			}
+		}
+	}
+	return maker
 }
 
 // Narrow returns the snapshot as the scope leaves it.
 //
-// In a namespace an entry fits: an object a release made is brought if
-// the entry names its release, or it carries the entry's labels. A Secret
-// that an object of the snapshot makes from a store goes where that
-// object goes. What belongs to no release (shared configuration) comes
-// with the namespace when anything of it is brought, and so does the
-// Namespace itself; a namespace from which nothing is chosen is left out
-// whole. What a release made outside its own namespace goes with the
-// release. Everything else in the snapshot is untouched.
+// A release belongs to the namespace Helm installed it in. Where the
+// scope narrows that namespace, the release is brought if an entry names
+// it or one of its objects carries an entry's labels, and it is brought
+// or left whole, wherever its objects are (a ClusterRole, an object in
+// another namespace). In a narrowed namespace, what belongs to no release
+// of a narrowed namespace (shared configuration, a Secret made by hand)
+// comes with the namespace when anything of it is brought, and so does
+// the Namespace itself; a namespace from which nothing is chosen is left
+// out whole, with what the capture left there to a GitOps source. A
+// Secret that an object of the snapshot makes goes where that object
+// goes. A Job is left out wherever it is, though its release is brought,
+// unless the scope says "jobs: true". Everything else is untouched.
+//
+// Two entries that fit one namespace choose from it together.
 //
 // A pattern that fits no namespace, and a release or a label that fits
 // nothing in the namespaces of its entry, is an error: a mistyped one
 // would otherwise leave out what it was written to bring.
 func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, error) {
 	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}}
-	if len(sc.Narrow) == 0 && !sc.Jobs {
+	if sc.Narrow == nil && !sc.Jobs {
 		return s, rep, fmt.Errorf("it narrows nothing: give at least one entry under narrow")
 	}
 	for i, e := range sc.Narrow {
@@ -115,16 +170,8 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		}
 	}
 
-	// entries(ns) are the entries that narrow a namespace.
-	entriesOf := func(ns string) []int {
-		var out []int
-		for i, e := range sc.Narrow {
-			if _, ok := fitsAny(e.Namespaces, ns); ok {
-				out = append(out, i)
-			}
-		}
-		return out
-	}
+	// Every namespace the snapshot knows of: where an object is, a
+	// Namespace object, where a release was installed.
 	namespaces := map[string]bool{}
 	for _, o := range s.Objects {
 		if o.Namespace() != "" {
@@ -133,61 +180,31 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		if o.Kind() == "Namespace" && o.APIVersion() == "v1" {
 			namespaces[o.Name()] = true
 		}
-	}
-	narrowed := map[string][]int{}
-	nsFits := make([]map[string]bool, len(sc.Narrow))
-	for ns := range namespaces {
-		if es := entriesOf(ns); len(es) > 0 {
-			narrowed[ns] = es
-			rep.Narrowed = append(rep.Narrowed, ns)
+		if rns, _, ok := ReleaseOf(o); ok && rns != "" {
+			namespaces[rns] = true
 		}
 	}
-	sort.Strings(rep.Narrowed)
+	narrowed := map[string][]int{}
 	for i, e := range sc.Narrow {
-		nsFits[i] = map[string]bool{}
 		for _, p := range e.Namespaces {
-			fits := false
+			any := false
 			for ns := range namespaces {
 				if ok, _ := path.Match(p, ns); ok {
-					fits = true
+					any = true
+					if l := narrowed[ns]; len(l) == 0 || l[len(l)-1] != i {
+						narrowed[ns] = append(narrowed[ns], i)
+					}
 				}
 			}
-			if !fits {
+			if !any {
 				return s, rep, fmt.Errorf("entry %d: no namespace in the snapshot fits %q", i+1, p)
 			}
 		}
 	}
-
-	// Which Secret each store-reading object makes, so that the Secret
-	// goes where its maker goes.
-	maker := map[secretKey]int{}
-	for i, o := range s.Objects {
-		group, _, _ := strings.Cut(o.APIVersion(), "/")
-		for _, r := range storeReaders {
-			if r.group == group && r.kind == o.Kind() {
-				_, _, secrets := r.reads(o)
-				for _, k := range secrets {
-					maker[k] = i
-				}
-			}
-		}
+	for ns := range narrowed {
+		rep.Narrowed = append(rep.Narrowed, ns)
 	}
-
-	const (
-		untouched = iota
-		brought
-		left
-		follows // what belongs to no release: as its namespace goes
-	)
-	state := make([]int, len(s.Objects))
-	releaseUsed := make([]map[string]bool, len(sc.Narrow))
-	labelsUsed := make([]bool, len(sc.Narrow))
-	for i := range sc.Narrow {
-		releaseUsed[i] = map[string]bool{}
-	}
-	type relKey struct{ ns, name string }
-	relObjects := map[relKey]int{}
-	relBrought := map[relKey]bool{}
+	sort.Strings(rep.Narrowed)
 
 	hasLabels := func(o snapshot.Object, want map[string]string) bool {
 		if len(want) == 0 {
@@ -202,66 +219,58 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		}
 		return true
 	}
-	// chosen says whether the entries of a namespace bring an object.
-	chosen := func(o snapshot.Object, es []int, release string, isRelease bool) bool {
+	releaseUsed := make([]map[string]bool, len(sc.Narrow))
+	labelsUsed := make([]bool, len(sc.Narrow))
+	for i := range sc.Narrow {
+		releaseUsed[i] = map[string]bool{}
+	}
+	labelled := func(o snapshot.Object, es []int) bool {
 		yes := false
 		for _, i := range es {
-			if isRelease {
-				if at, ok := fitsAny(sc.Narrow[i].Releases, release); ok {
-					releaseUsed[i][sc.Narrow[i].Releases[at]] = true
-					yes = true
-				}
-			}
 			if hasLabels(o, sc.Narrow[i].Labels) {
-				labelsUsed[i] = true
-				yes = true
+				labelsUsed[i], yes = true, true
 			}
 		}
 		return yes
 	}
+
+	const (
+		untouched = iota
+		brought
+		left
+		ofRelease // of a release of a narrowed namespace: as the release goes
+		follows   // of no such release, in a narrowed namespace: as the namespace goes
+	)
+	type relKey struct{ ns, name string }
+	state := make([]int, len(s.Objects))
+	rel := make([]relKey, len(s.Objects))
+	relObjects := map[relKey]int{}
+	relChosen := map[relKey]bool{}
 	for i, o := range s.Objects {
-		if o.Kind() == "Job" && strings.HasPrefix(o.APIVersion(), "batch/") && !sc.Jobs {
-			state[i] = left
-			rep.Jobs = append(rep.Jobs, o.Namespace()+"/"+o.Name())
-			continue
+		if o.Kind() == "Namespace" && o.APIVersion() == "v1" {
+			continue // goes as its namespace does, below
 		}
 		rns, rname, isRelease := ReleaseOf(o)
-		ns := o.Namespace()
-		if isRelease {
-			ns = rns // what a release made elsewhere goes with the release
-		}
-		es, in := narrowed[ns]
-		if !in || (o.Kind() == "Namespace" && o.APIVersion() == "v1") {
-			continue
-		}
 		switch {
-		case chosen(o, es, rname, isRelease):
-			state[i] = brought
-		case isRelease:
-			state[i] = left
-		default:
-			state[i] = follows
-		}
-		if isRelease {
+		case isRelease && narrowed[rns] != nil:
 			k := relKey{rns, rname}
+			rel[i], state[i] = k, ofRelease
 			relObjects[k]++
-			relBrought[k] = relBrought[k] || state[i] == brought
-		}
-	}
-	// A release is brought whole: an object of it chosen by a label brings
-	// the rest, which would not run without it.
-	for i, o := range s.Objects {
-		if rns, rname, ok := ReleaseOf(o); ok && state[i] == left && relBrought[relKey{rns, rname}] {
-			state[i] = brought
-		}
-	}
-	// A Secret made from a store goes where its maker goes.
-	for i, o := range s.Objects {
-		if state[i] != follows || o.Kind() != "Secret" || o.APIVersion() != "v1" {
-			continue
-		}
-		if m, ok := maker[secretKey{o.Namespace(), o.Name()}]; ok && state[m] != follows && state[m] != untouched {
-			state[i] = state[m]
+			for _, e := range narrowed[rns] {
+				if fits(sc.Narrow[e].Releases, rname, releaseUsed[e]) {
+					relChosen[k] = true
+				}
+			}
+			if labelled(o, narrowed[rns]) {
+				relChosen[k] = true
+			}
+		case o.Namespace() != "" && narrowed[o.Namespace()] != nil:
+			// Of no release, or of one installed in a namespace the scope
+			// does not narrow: it is here, and goes as here goes.
+			state[i] = follows
+			if labelled(o, narrowed[o.Namespace()]) {
+				state[i] = brought
+			}
 		}
 	}
 	for i, e := range sc.Narrow {
@@ -274,51 +283,88 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			return s, rep, fmt.Errorf("entry %d: nothing in %s carries its labels", i+1, strings.Join(e.Namespaces, ", "))
 		}
 	}
+	for i := range s.Objects {
+		if state[i] == ofRelease {
+			state[i] = left
+			if relChosen[rel[i]] {
+				state[i] = brought
+			}
+		}
+	}
+	// A Secret goes where its maker goes.
+	maker := secretMakers(s)
+	for i, o := range s.Objects {
+		if state[i] != follows || o.Kind() != "Secret" || o.APIVersion() != "v1" {
+			continue
+		}
+		if m, ok := maker[secretKey{o.Namespace(), o.Name()}]; ok && (state[m] == brought || state[m] == left) {
+			state[i] = state[m]
+		}
+	}
+	// A Job is left out wherever it is, and whatever chose it.
+	jobLeft := make([]bool, len(s.Objects))
+	for i, o := range s.Objects {
+		if isJob(o) && !sc.Jobs {
+			jobLeft[i] = true
+			rep.Jobs = append(rep.Jobs, o.Namespace()+"/"+o.Name())
+		}
+	}
 
-	// A namespace with anything brought keeps what belongs to no release,
-	// and itself.
+	// A namespace is brought when anything in it is, or a release
+	// installed in it is: the release needs its namespace though all it
+	// made is elsewhere.
 	alive := map[string]bool{}
 	for i, o := range s.Objects {
-		if state[i] == brought && o.Namespace() != "" {
+		if state[i] == brought && !jobLeft[i] && o.Namespace() != "" {
 			alive[o.Namespace()] = true
 		}
 	}
+	for k, chosen := range relChosen {
+		if chosen {
+			alive[k.ns] = true
+		}
+	}
+
 	out := s
 	out.Objects = nil
 	for i, o := range s.Objects {
-		ns := o.Namespace()
-		if o.Kind() == "Namespace" && o.APIVersion() == "v1" {
-			if _, in := narrowed[o.Name()]; in && !alive[o.Name()] {
-				rep.Of++
-				continue
-			} else if in {
-				rep.Of++
+		keep := true
+		switch {
+		case o.Kind() == "Namespace" && o.APIVersion() == "v1":
+			if narrowed[o.Name()] == nil {
+				break
+			}
+			rep.Of++
+			keep = alive[o.Name()]
+		case state[i] == untouched:
+			keep = !jobLeft[i]
+			if keep {
+				out.Objects = append(out.Objects, o)
+			}
+			continue
+		default:
+			rep.Of++
+			keep = (state[i] == brought || (state[i] == follows && alive[o.Namespace()])) && !jobLeft[i]
+		}
+		if keep {
+			if o.Kind() != "Namespace" || narrowed[o.Name()] != nil {
 				rep.Kept++
 			}
 			out.Objects = append(out.Objects, o)
+		}
+	}
+	// What the capture left to a GitOps source in a namespace the scope
+	// leaves out whole is not this restore's to plan for.
+	out.Skips = nil
+	for _, sk := range s.Skips {
+		if narrowed[sk.Namespace] != nil && !alive[sk.Namespace] {
 			continue
 		}
-		switch state[i] {
-		case follows:
-			rep.Of++
-			if !alive[ns] {
-				continue
-			}
-			rep.Kept++
-		case brought:
-			rep.Of++
-			rep.Kept++
-		case left:
-			if !(o.Kind() == "Job" && strings.HasPrefix(o.APIVersion(), "batch/") && !sc.Jobs) || narrowed[ns] != nil {
-				rep.Of++
-			}
-			continue
-		}
-		out.Objects = append(out.Objects, o)
+		out.Skips = append(out.Skips, sk)
 	}
 	for k, n := range relObjects {
 		r := ScopedRelease{Release: k.ns + "/" + k.name, Objects: n}
-		if relBrought[k] {
+		if relChosen[k] {
 			rep.Brought = append(rep.Brought, r)
 		} else {
 			rep.LeftOut = append(rep.LeftOut, r)
@@ -331,10 +377,11 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 	return out, rep, nil
 }
 
-// ScopeDraft is a scope file that brings everything a snapshot holds:
-// every namespace with a release in it, and each of its releases, to be
-// cut down by deleting lines. A namespace with no release is not listed,
-// and so not narrowed.
+// ScopeDraft is a scope file that brings everything a snapshot holds but
+// its Jobs: every namespace a release was installed in, and each of its
+// releases, to be cut down by deleting lines. A namespace with no release
+// is not listed, and so not narrowed. A name is written so that it is
+// read as that name and not as a pattern.
 func ScopeDraft(s snapshot.Snapshot) []byte {
 	type rel struct {
 		objects int
@@ -359,10 +406,16 @@ func ScopeDraft(s snapshot.Snapshot) []byte {
 	}
 	var b strings.Builder
 	b.WriteString("# What a restore brings (truthform restore --scope, and diff and plan with the same file).\n")
-	b.WriteString("# As written it brings everything: delete the releases a drill is not to bring.\n")
+	b.WriteString("# As written it brings everything but Jobs: delete the releases a drill is not to bring.\n")
 	b.WriteString("# A namespace not listed here is restored whole. One listed with no releases left\n")
 	b.WriteString("# is left out whole. Names may be patterns (\"team-*\"). Jobs are left out with any\n")
 	b.WriteString("# scope, since a Job restored runs again: add \"jobs: true\" to bring them.\n")
+	if len(byNS) == 0 {
+		b.WriteString("# The snapshot has nothing a Helm release made, so there is nothing listed to cut\n")
+		b.WriteString("# down: narrow by labels instead, as\n#   - namespaces: [shop]\n#     labels: {app.kubernetes.io/part-of: checkout}\n")
+		b.WriteString("narrow: []\n")
+		return []byte(b.String())
+	}
 	b.WriteString("narrow:\n")
 	nss := make([]string, 0, len(byNS))
 	for ns := range byNS {
@@ -370,7 +423,7 @@ func ScopeDraft(s snapshot.Snapshot) []byte {
 	}
 	sort.Strings(nss)
 	for _, ns := range nss {
-		fmt.Fprintf(&b, "  - namespaces: [%s]\n    releases:\n", quoted(ns))
+		fmt.Fprintf(&b, "  - namespaces: [%s]\n    releases:\n", quoted(literal(ns)))
 		names := make([]string, 0, len(byNS[ns]))
 		for n := range byNS[ns] {
 			names = append(names, n)
@@ -388,18 +441,22 @@ func ScopeDraft(s snapshot.Snapshot) []byte {
 					kinds[i] = fmt.Sprintf("%d %s", r.kinds[k], k)
 				}
 			}
-			fmt.Fprintf(&b, "      - %s # %s\n", quoted(n), commentSafe(strings.Join(kinds, ", ")))
+			fmt.Fprintf(&b, "      - %s # %s\n", quoted(literal(n)), commentSafe(strings.Join(kinds, ", ")))
 		}
-	}
-	if len(nss) == 0 {
-		b.WriteString("  []\n# The snapshot has nothing a Helm release made: narrow by labels instead, as\n#   - namespaces: [shop]\n#     labels: {app.kubernetes.io/part-of: checkout}\n")
 	}
 	return []byte(b.String())
 }
 
-// quoted is a name as a YAML string no name can break out of.
+// literal is a name as a pattern that fits it and nothing else.
+func literal(name string) string {
+	return strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`).Replace(name)
+}
+
+// quoted is a name as a YAML string no name can break out of: a JSON
+// string is one.
 func quoted(s string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`, "\u0085", `\N`, " ", `\L`, " ", `\P`).Replace(s) + `"`
+	b, _ := json.Marshal(s)
+	return string(b)
 }
 
 // commentSafe is text for the end of a YAML line: nothing in it ends the

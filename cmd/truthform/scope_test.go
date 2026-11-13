@@ -67,13 +67,13 @@ func TestPlanScopeCommand(t *testing.T) {
 	}
 	// As written, nothing is left out.
 	code, stdout, _ := output(t, func() int { return planCmd([]string{"scope", "--from", dir, "--check", file}) })
-	if code != 0 || strings.Contains(stdout, "left out") || !strings.Contains(stdout, "10 of 10 objects in 3 narrowed namespaces") {
+	if code != 0 || strings.Contains(stdout, "left out") || !strings.Contains(stdout, "10 of the 10 objects of 3 narrowed namespaces") {
 		t.Errorf("the draft, checked: exit %d\n%s", code, stdout)
 	}
 
 	drill := writeFile(t, t.TempDir(), "drill.yaml", drillScope)
 	code, stdout, _ = output(t, func() int { return planCmd([]string{"scope", "--from", dir, "--check", drill}) })
-	for _, want := range []string{"4 of 8 objects in 2 narrowed namespaces", "team-a/a-search (2 objects)", "2 releases left out:", "team-a/a-lien (2 objects)", "team-b/b-search (1 objects)"} {
+	for _, want := range []string{"4 of the 8 objects of 2 narrowed namespaces", "team-a/a-search (2 objects)", "2 releases left out:", "team-a/a-lien (2 objects)", "team-b/b-search (1 objects)"} {
 		if code != 0 || !strings.Contains(stdout, want) {
 			t.Errorf("--check: exit %d, lacks %q:\n%s", code, want, stdout)
 		}
@@ -131,7 +131,7 @@ func TestKubernetesDiffScope(t *testing.T) {
 	if code != 2 || strings.Contains(stdout, "a-lien") || strings.Contains(stdout, "team-b") || !strings.Contains(stdout, "ConfigMap|team-a|a-search") || !strings.Contains(stdout, "ConfigMap|core|api") {
 		t.Errorf("diff: exit %d\n%s", code, stdout)
 	}
-	if !strings.Contains(stderr, "scope: 4 of 8 objects in 2 narrowed namespaces") || !strings.Contains(stderr, "team-a/a-lien (2 objects)") {
+	if !strings.Contains(stderr, "scope: 4 of the 8 objects of 2 narrowed namespaces") || !strings.Contains(stderr, "team-a/a-lien (2 objects)") {
 		t.Errorf("the diff does not say what the scope left out:\n%s", stderr)
 	}
 	d := asJSON(t, func() { diff(ctx, append(base, "--scope", drill)) })
@@ -141,6 +141,24 @@ func TestKubernetesDiffScope(t *testing.T) {
 	d = asJSON(t, func() { diff(ctx, base) })
 	if _, there := d["scope"]; there {
 		t.Errorf("scope with no --scope: %v", d["scope"])
+	}
+	if _, err := scoped(drill, "azure", snapshot.Snapshot{Platform: "azure"}); err == nil || !strings.Contains(err.Error(), "--scope is for --platform kubernetes only") {
+		t.Errorf("a scope for another platform: %v", err)
+	}
+	// --leave-out names objects of the snapshot as it is: one the scope
+	// leaves out too is not a mistake in the file.
+	leave := writeFile(t, t.TempDir(), "leave.yaml", "- ConfigMap/team-a/a-lien\n- ConfigMap/team-a/shared\n")
+	code, stdout, _ = output(t, func() int { return diff(ctx, append(base, "--scope", drill, "--leave-out", leave)) })
+	if code != 2 || strings.Contains(stdout, "team-a|shared") || !strings.Contains(stdout, "ConfigMap|team-a|a-search") {
+		t.Errorf("diff with a scope and a leave-out file: exit %d, %v\n%s", code, lastErr, stdout)
+	}
+	for why, args := range map[string][]string{
+		"--scope and --values are for a diff against one target": {"--config", drill, "--from", dir, "--scope", drill},
+	} {
+		lastErr = nil
+		if code := diff(ctx, args); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), why) {
+			t.Errorf("%v: exit %d, %v; want 1 and %q", args, code, lastErr, why)
+		}
 	}
 	lastErr = nil
 	if code := diff(ctx, append(base, "--scope", writeFile(t, t.TempDir(), "none.yaml", "narrow:\n  - namespaces: [team-zz]\n"))); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), `no namespace in the snapshot fits "team-zz"`) {
@@ -162,7 +180,11 @@ func TestKubernetesRestoreScope(t *testing.T) {
 	base := []string{"--kubeconfig", srv.Kubeconfig, "--context", srv.Context, "--from", dir}
 	// The sources file names only the Secret of the part brought: the one
 	// left out needs no source.
-	code, stdout, stderr := output(t, func() int { return restore(ctx, append(base, "--scope", drill, "--secrets-from", sources)) })
+	// --leave-out names an object the scope leaves out too: no mistake.
+	leave := writeFile(t, t.TempDir(), "leave.yaml", "- ConfigMap/team-a/a-lien\n")
+	code, stdout, stderr := output(t, func() int {
+		return restore(ctx, append(base, "--scope", drill, "--leave-out", leave, "--secrets-from", sources))
+	})
 	if code != 0 || !strings.Contains(stdout, "applied 6 of 6 objects") {
 		t.Fatalf("restore: exit %d, %v\n%s\n%s", code, lastErr, stdout, stderr)
 	}

@@ -76,10 +76,17 @@ func scopeSaid(rep kube.ScopeReport, file string) string {
 		fmt.Fprintf(&b, "\nscope: %d Jobs left out, those of a release brought among them: restored, a Job runs again (jobs: true brings them): %s", len(rep.Jobs), strings.Join(rep.Jobs, ", "))
 	}
 	if len(rep.Held) > 0 {
-		fmt.Fprintf(&b, "\nscope: %d objects are brought with nothing running (hold: true); restoring without the hold starts them:", len(rep.Held))
+		what := "with nothing running"
+		if len(rep.NotHeld) > 0 {
+			what = "stopped"
+		}
+		fmt.Fprintf(&b, "\nscope: %d objects are brought %s (hold: true); restoring without the hold starts them:", len(rep.Held), what)
 		for _, h := range rep.Held {
 			fmt.Fprintf(&b, "\n   %s: %s", h.Object, h.How)
 		}
+	}
+	if len(rep.NotHeld) > 0 {
+		fmt.Fprintf(&b, "\nscope: NOTE: %d objects under hold: true are brought as they are. Nothing in one says it runs anything, but each is of an API this does not know, and its controller may run something for it (an operator's database). Look at each, and leave out (--leave-out) what would run: %s", len(rep.NotHeld), strings.Join(rep.NotHeld, ", "))
 	}
 	if len(rep.ObjectsBrought) > 0 {
 		fmt.Fprintf(&b, "\nscope: %d objects that no release made are brought, named under objects or by label: %s", len(rep.ObjectsBrought), strings.Join(rep.ObjectsBrought, ", "))

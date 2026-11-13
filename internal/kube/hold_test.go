@@ -108,9 +108,9 @@ func TestNarrowHolds(t *testing.T) {
 	want := []string{
 		"CronJob shop/worker-nightly: suspended",
 		"DaemonSet shop/worker-agent: a node selector no node has (truthform.org/held)",
-		"Deployment shop/by-hand: zero replicas",
-		"Deployment shop/worker: zero replicas",
-		"Rollout shop/worker-canary: zero replicas",
+		"Deployment shop/by-hand: zero replicas (it had 1)",
+		"Deployment shop/worker: zero replicas (it had 3)",
+		"Rollout shop/worker-canary: zero replicas (it had 2)",
 		"ScaledJob shop/worker-jobs: paused",
 		"ScaledObject shop/worker: paused at zero replicas",
 		"StatefulSet shop/worker-db: zero replicas",
@@ -203,5 +203,139 @@ func TestHoldRefusesWhatItCannotStop(t *testing.T) {
 	entry.Hold = false
 	if _, _, err := Narrow(s, Scope{Narrow: []ScopeEntry{entry}}); err != nil {
 		t.Errorf("without the hold: %v", err)
+	}
+}
+
+// Under a hold, what an operator or a GitOps source runs is held where
+// its object says how (a count, a suspend), what runs at once is
+// refused, and an object of another API with nothing to go by is named:
+// the hold is not said to be whole when it may not be.
+func TestHoldAndOtherAPIs(t *testing.T) {
+	rel := func(apiVersion, kind, name string, spec map[string]any) snapshot.Object {
+		return released(apiVersion, kind, "shop", name, "worker", map[string]any{"spec": spec})
+	}
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		rel("apps/v1", "Deployment", "worker", map[string]any{"replicas": float64(3), "template": map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"name": "c", "image": "x"}}}}}),
+		rel("monitoring.coreos.com/v1", "Alertmanager", "alerts", map[string]any{"replicas": float64(3)}),
+		rel("kafka.strimzi.io/v1beta2", "KafkaConnect", "connect", map[string]any{"replicas": float64(2), "image": "x"}),
+		rel("argoproj.io/v1alpha1", "CronWorkflow", "nightly", map[string]any{"schedule": "0 1 * * *", "suspend": false}),
+		rel("helm.toolkit.fluxcd.io/v2", "HelmRelease", "chart", map[string]any{"interval": "5m"}),
+		rel("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "apps", map[string]any{"path": "./apps"}),
+		rel("argoproj.io/v1alpha1", "Application", "app", map[string]any{"syncPolicy": map[string]any{"automated": map[string]any{"prune": true}, "syncOptions": []any{"CreateNamespace=true"}}}),
+		// Nothing in these says they run anything.
+		rel("postgresql.cnpg.io/v1", "Cluster", "db", map[string]any{"instances": float64(3)}),
+		rel("example.com/v1", "Gadget", "g", map[string]any{"size": "big"}),
+		// Known to run nothing.
+		rel("cert-manager.io/v1", "Certificate", "tls", map[string]any{"secretName": "tls"}),
+		rel("onepassword.com/v1", "OnePasswordItem", "db", map[string]any{"itemPath": "vaults/v/items/i"}),
+		// Kubernetes' own, which run nothing.
+		rel("v1", "ConfigMap", "cfg", nil),
+		rel("networking.k8s.io/v1", "Ingress", "web", map[string]any{}),
+		rel("rbac.authorization.k8s.io/v1", "Role", "r", nil),
+		rel("policy/v1", "PodDisruptionBudget", "pdb", map[string]any{"minAvailable": float64(1)}),
+	}}
+	out, rep, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"worker"}, Hold: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var held []string
+	for _, h := range rep.Held {
+		held = append(held, h.Object+": "+h.How)
+	}
+	want := []string{
+		"Alertmanager shop/alerts: zero replicas (it had 3)",
+		"Application shop/app: automated sync off",
+		"CronWorkflow shop/nightly: suspended",
+		"Deployment shop/worker: zero replicas (it had 3)",
+		"HelmRelease shop/chart: suspended",
+		"KafkaConnect shop/connect: zero replicas (it had 2)",
+		"Kustomization shop/apps: suspended",
+	}
+	if !reflect.DeepEqual(held, want) {
+		t.Errorf("held:\n got %q\nwant %q", held, want)
+	}
+	if want := []string{"Cluster shop/db", "Gadget shop/g"}; !reflect.DeepEqual(rep.NotHeld, want) {
+		t.Errorf("named as not held: %q, want %q", rep.NotHeld, want)
+	}
+	for key, c := range map[string]struct {
+		path []string
+		want any
+	}{
+		"Alertmanager shop/alerts":     {[]string{"spec", "replicas"}, int64(0)},
+		"KafkaConnect shop/connect":    {[]string{"spec", "replicas"}, int64(0)},
+		"CronWorkflow shop/nightly":    {[]string{"spec", "suspend"}, true},
+		"HelmRelease shop/chart":       {[]string{"spec", "suspend"}, true},
+		"Kustomization shop/apps":      {[]string{"spec", "suspend"}, true},
+		"Application shop/app":         {[]string{"spec", "syncPolicy"}, map[string]any{"syncOptions": []any{"CreateNamespace=true"}}},
+		"Cluster shop/db":              {[]string{"spec", "instances"}, float64(3)},
+		"PodDisruptionBudget shop/pdb": {[]string{"spec", "minAvailable"}, float64(1)},
+	} {
+		if got := at(find(t, out, key), c.path...); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s %s: got %#v, want %#v", key, strings.Join(c.path, "."), got, c.want)
+		}
+	}
+	// What runs as soon as it is there is refused.
+	for _, o := range []snapshot.Object{
+		rel("argoproj.io/v1alpha1", "Workflow", "once", map[string]any{"entrypoint": "main"}),
+		rel("tekton.dev/v1", "PipelineRun", "run", map[string]any{"pipelineRef": map[string]any{"name": "p"}}),
+		rel("tekton.dev/v1", "TaskRun", "task", map[string]any{"taskRef": map[string]any{"name": "t"}}),
+	} {
+		_, _, err := Narrow(snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{o}}, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"worker"}, Hold: true}}})
+		if err == nil || !strings.Contains(err.Error(), "runs as soon as it is restored") {
+			t.Errorf("%s under a hold: %v", o.Kind(), err)
+		}
+	}
+}
+
+// A KEDA scaler brought without a hold would start what it scales from
+// zero: it is paused with its target, and one whose target runs is not.
+func TestHoldPausesTheScalerOfWhatIsHeld(t *testing.T) {
+	tmpl := map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"name": "c", "image": "x"}}}}
+	scaler := func(name, release string, ref map[string]any) snapshot.Object {
+		return released("keda.sh/v1alpha1", "ScaledObject", "shop", name, release, map[string]any{"spec": map[string]any{"scaleTargetRef": ref, "minReplicaCount": float64(1)}})
+	}
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		released("apps/v1", "Deployment", "shop", "worker", "worker", map[string]any{"spec": map[string]any{"replicas": float64(3), "template": tmpl}}),
+		released("apps/v1", "StatefulSet", "shop", "store", "worker", map[string]any{"spec": map[string]any{"replicas": float64(1), "template": tmpl}}),
+		released("apps/v1", "Deployment", "shop", "api", "api", map[string]any{"spec": map[string]any{"replicas": float64(2), "template": tmpl}}),
+		scaler("for-worker", "scaling", map[string]any{"name": "worker"}), // a Deployment where no kind is given
+		scaler("for-store", "scaling", map[string]any{"name": "store", "kind": "StatefulSet"}),
+		scaler("for-api", "scaling", map[string]any{"name": "api"}),                              // its target runs
+		scaler("for-other-kind", "scaling", map[string]any{"name": "worker", "kind": "Rollout"}), // not the Deployment
+	}}
+	out, rep, err := Narrow(s, Scope{Narrow: []ScopeEntry{
+		{Namespaces: []string{"shop"}, Releases: []string{"api", "scaling"}},
+		{Namespaces: []string{"shop"}, Releases: []string{"worker"}, Hold: true},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, paused := range map[string]bool{"for-worker": true, "for-store": true, "for-api": false, "for-other-kind": false} {
+		got := at(find(t, out, "ScaledObject shop/"+name), "metadata", "annotations", "autoscaling.keda.sh/paused-replicas")
+		if (got == "0") != paused {
+			t.Errorf("%s: paused-replicas is %v, want paused %v", name, got, paused)
+		}
+	}
+	said := ""
+	for _, h := range rep.Held {
+		said += h.Object + ": " + h.How + "\n"
+	}
+	if !strings.Contains(said, "ScaledObject shop/for-worker: paused at zero replicas, since what it scales is held") || strings.Contains(said, "for-api") {
+		t.Errorf("held:\n%s", said)
+	}
+}
+
+// The annotations KEDA reads, as KEDA writes them: a constant compared
+// with itself proves nothing.
+func TestTheNamesOfWhatHolds(t *testing.T) {
+	if kedaPausedReplicas != "autoscaling.keda.sh/paused-replicas" || kedaPaused != "autoscaling.keda.sh/paused" || heldSelector != "truthform.org/held" {
+		t.Error("an annotation or a label that holds was renamed")
+	}
+	for kind, apiVersion := range map[string]string{"ReplicaSet": "apps/v1", "ReplicationController": "v1"} {
+		o := planObject(apiVersion, kind, "shop", "x", map[string]any{"spec": map[string]any{"replicas": float64(2)}})
+		ho, how, why, unknown := held(o)
+		if how != "zero replicas (it had 2)" || why != "" || unknown || at(ho, "spec", "replicas") != int64(0) {
+			t.Errorf("%s: %q %q %v", kind, how, why, unknown)
+		}
 	}
 }

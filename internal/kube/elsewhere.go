@@ -546,7 +546,7 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 		eachImage(body, "", func(field, v string) string {
 			to, applied := v, false
 			for _, st := range starts {
-				if !strings.HasPrefix(v, st) {
+				if !startsImage(v, st) {
 					continue
 				}
 				fits[st] = true
@@ -649,4 +649,23 @@ func setFields(body map[string]any, path string, f func(string) string) int {
 		return 0
 	}
 	return walk(body, names)
+}
+
+// startsImage reports an image reference that a start begins, ending
+// where a part of the reference does: registry.corp begins
+// registry.corp/app and not registry.corp.other.com/app, nor
+// registry.corp:5000/app, which is another registry; registry.corp/team
+// begins registry.corp/team/app and registry.corp/team:1, and not
+// registry.corp/team-b/app. A start that ends in a slash says where it
+// ends itself.
+func startsImage(image, start string) bool {
+	rest, ok := strings.CutPrefix(image, start)
+	if !ok {
+		return false
+	}
+	if rest == "" || strings.HasSuffix(start, "/") || rest[0] == '/' || rest[0] == '@' {
+		return true
+	}
+	// A colon after a path is a tag; after a host alone it is a port.
+	return rest[0] == ':' && strings.Contains(start, "/")
 }

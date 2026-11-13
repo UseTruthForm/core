@@ -66,6 +66,10 @@ type ScopeReport struct {
 	Jobs []string `json:"jobsLeftOut"`
 	// Held are the objects brought with nothing running, each with how.
 	Held []ScopeHeld `json:"held"`
+	// NotHeld are objects of other APIs under a hold that are brought as
+	// they are: nothing in one says it runs anything, and its controller
+	// may run something for it all the same.
+	NotHeld []string `json:"broughtNotHeld"`
 	// SharedName are objects with no namespace brought because a release
 	// of their name is, though another release of that name is left out:
 	// which of the two made one, the object does not say.
@@ -203,7 +207,7 @@ func secretMakers(s snapshot.Snapshot) map[secretKey]int {
 // that fits nothing in the namespaces of its entry, is an error: a
 // mistyped one would otherwise leave out what it was written to bring.
 func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, error) {
-	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}}
+	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}, NotHeld: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}}
 	if sc.Narrow == nil && !sc.Jobs {
 		return s, rep, fmt.Errorf("it narrows nothing: give at least one entry under narrow")
 	}
@@ -501,10 +505,13 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 				rep.Kept++
 			}
 			if holdIt[i] {
-				ho, how, why := held(o)
+				ho, how, why, unknown := held(o)
 				who := o.Kind() + " " + o.Namespace() + "/" + o.Name()
 				if why != "" {
 					cannot = append(cannot, who+": "+why)
+				}
+				if unknown {
+					rep.NotHeld = append(rep.NotHeld, who)
 				}
 				if how != "" {
 					rep.Held = append(rep.Held, ScopeHeld{Object: who, How: how})
@@ -518,6 +525,32 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		sort.Strings(cannot)
 		return s, rep, fmt.Errorf("these are to be held, and would run all the same; leave each out (--leave-out), or bring its release without the hold: %s", strings.Join(cannot, "; "))
 	}
+	// A KEDA scaler that is brought without a hold, and scales what is
+	// held, would start it again from zero: it is paused with it.
+	isHeld := map[string]bool{}
+	for _, h := range rep.Held {
+		isHeld[h.Object] = true
+	}
+	for i, o := range out.Objects {
+		group, _, _ := strings.Cut(o.APIVersion(), "/")
+		who := o.Kind() + " " + o.Namespace() + "/" + o.Name()
+		if group != "keda.sh" || o.Kind() != "ScaledObject" || isHeld[who] {
+			continue
+		}
+		spec, _ := o.Body["spec"].(map[string]any)
+		ref, _ := spec["scaleTargetRef"].(map[string]any)
+		kind := strOf(ref["kind"])
+		if kind == "" {
+			kind = "Deployment"
+		}
+		if !isHeld[kind+" "+o.Namespace()+"/"+strOf(ref["name"])] {
+			continue
+		}
+		ho, how, _, _ := held(o)
+		out.Objects[i] = ho
+		rep.Held = append(rep.Held, ScopeHeld{Object: who, How: how + ", since what it scales is held"})
+	}
+	sort.Strings(rep.NotHeld)
 	sort.Slice(rep.Held, func(i, j int) bool { return rep.Held[i].Object < rep.Held[j].Object })
 	// What the capture left to a GitOps source in a namespace the scope
 	// leaves out whole is not this restore's to plan for.
@@ -638,7 +671,7 @@ func ScopeDraft(s snapshot.Snapshot) []byte {
 	b.WriteString("# is left out whole. Names may be patterns (\"team-*\"). Under objects is what no\n")
 	b.WriteString("# release made (Kind/name): one not listed is left out too. Jobs are left out with any\n")
 	b.WriteString("# scope, since a Job restored runs again: add \"jobs: true\" to bring them.\n")
-	b.WriteString("# \"hold: true\" on an entry brings its releases with nothing running (zero\n")
+	b.WriteString("# \"hold: true\" on an entry brings its releases with their workloads stopped (zero\n")
 	b.WriteString("# replicas, autoscalers paused): split an entry in two to hold some and run others.\n")
 	if len(byNS) == 0 {
 		b.WriteString("# The snapshot has nothing a Helm release made, so there is nothing listed to cut\n")

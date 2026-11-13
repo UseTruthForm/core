@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/usetruthform/core/internal/snapshot"
@@ -32,12 +33,26 @@ func hasPods(spec map[string]any) bool {
 	return len(list(pod["containers"])) > 0
 }
 
+// inertGroups are other APIs whose objects are known to run nothing:
+// they describe a secret to fetch, a certificate, a route, what to
+// scrape. An API not here is not known, and is named under a hold.
+var inertGroups = map[string]bool{"onepassword.com": true, "external-secrets.io": true, "secrets-store.csi.x-k8s.io": true, "bitnami.com": true,
+	"cert-manager.io": true, "acme.cert-manager.io": true, "traefik.io": true, "traefik.containo.us": true, "networking.istio.io": true, "security.istio.io": true}
+
+// inert reports an API whose objects run nothing: Kubernetes' own
+// (configuration, access, networking, storage), and those known.
+func inert(group string) bool {
+	return group == "" || !strings.Contains(group, ".") || strings.HasSuffix(group, ".k8s.io") || inertGroups[group]
+}
+
 // held returns an object as it is restored with nothing of it running,
 // and how that was done ("" for an object that runs nothing: it is
 // returned as it is). An object that runs something this cannot stop is
-// an error, never passed: a hold that held most of a release would read
-// as one that held it.
-func held(o snapshot.Object) (snapshot.Object, string, string) {
+// an error (why), never passed: a hold that held most of a release would
+// read as one that held it. unknown says an object of another API that is
+// passed as it is because nothing in it says it runs anything, though
+// its controller may: it is named, and the hold is not said to be whole.
+func held(o snapshot.Object) (out snapshot.Object, said, why string, unknown bool) {
 	group, _, versioned := strings.Cut(o.APIVersion(), "/")
 	if !versioned {
 		group = ""
@@ -49,9 +64,12 @@ func held(o snapshot.Object) (snapshot.Object, string, string) {
 		suspend
 		pausedAtZero
 		paused
+		manual
 		nothing
 	)
-	how, said := 0, ""
+	how := 0
+	_, counted := spec["replicas"]
+	_, suspends := spec["suspend"].(bool)
 	switch {
 	case group == "apps" && (o.Kind() == "Deployment" || o.Kind() == "StatefulSet" || o.Kind() == "ReplicaSet"),
 		group == "" && o.Kind() == "ReplicationController":
@@ -68,19 +86,38 @@ func held(o snapshot.Object) (snapshot.Object, string, string) {
 		// It stops by itself while what it scales is at zero.
 		how = nothing
 	case group == "" && o.Kind() == "Pod":
-		return o, "", "a Pod runs as soon as it is restored, and nothing holds one"
-	case hasPods(spec):
-		// Another API's workload. One that counts its pods as the
-		// built-in ones do is held as they are.
-		if _, counted := spec["replicas"]; !counted {
-			return o, "", "it has a pod template and no spec.replicas, and how its kind is stopped is not known"
-		}
-		how, said = zero, "zero replicas"
-	default:
+		return o, "", "a Pod runs as soon as it is restored, and nothing holds one", false
+	case group == "argoproj.io" && o.Kind() == "Workflow", group == "tekton.dev" && (o.Kind() == "PipelineRun" || o.Kind() == "TaskRun"):
+		return o, "", "it runs as soon as it is restored, and nothing holds one", false
+	case strings.HasSuffix(group, ".toolkit.fluxcd.io") && spec != nil:
+		// A Flux source or what applies one: suspended, it makes nothing.
+		how, said = suspend, "suspended"
+	case group == "argoproj.io" && o.Kind() == "Application":
+		how, said = manual, "automated sync off"
+	case inert(group):
 		how = nothing
+	case counted:
+		// Another API's workload, or an operator's object that counts
+		// what it runs as the built-in ones do (an Alertmanager, a
+		// Rollout): held as they are.
+		how, said = zero, "zero replicas"
+	case suspends:
+		// One that can be suspended says so (an Argo CronWorkflow).
+		how, said = suspend, "suspended"
+	case hasPods(spec):
+		return o, "", "it has a pod template and no spec.replicas, and how its kind is stopped is not known", false
+	default:
+		// Another API's object with nothing in it this reads as running:
+		// a certificate, a route, or a database an operator runs.
+		return o, "", "", true
 	}
 	if how == nothing {
-		return o, "", ""
+		return o, "", "", false
+	}
+	if how == zero {
+		if n, ok := spec["replicas"]; ok && n != nil {
+			said += " (it had " + replicasText(n) + ")"
+		}
 	}
 	body := deepCopy(o.Body)
 	spec, _ = body["spec"].(map[string]any)
@@ -110,7 +147,7 @@ func held(o snapshot.Object) (snapshot.Object, string, string) {
 		tmpl, _ := spec["template"].(map[string]any)
 		pod, _ := tmpl["spec"].(map[string]any)
 		if pod == nil {
-			return o, "", "it has no pod template to hold"
+			return o, "", "it has no pod template to hold", false
 		}
 		sel, _ := pod["nodeSelector"].(map[string]any)
 		if sel == nil {
@@ -122,7 +159,19 @@ func held(o snapshot.Object) (snapshot.Object, string, string) {
 		annotate(kedaPausedReplicas, "0")
 	case paused:
 		annotate(kedaPaused, "true")
+	case manual:
+		if policy, _ := spec["syncPolicy"].(map[string]any); policy != nil {
+			delete(policy, "automated")
+		}
 	}
 	o.Body = body
-	return o, said, ""
+	return o, said, "", false
+}
+
+// replicasText is a count as it is written, however it was read.
+func replicasText(v any) string {
+	if f, ok := v.(float64); ok && f == float64(int64(f)) {
+		return fmt.Sprint(int64(f))
+	}
+	return fmt.Sprint(v)
 }

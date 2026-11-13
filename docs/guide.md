@@ -698,24 +698,57 @@ narrow:
 
 | Object | Held as |
 |---|---|
-| `Deployment`, `StatefulSet`, `ReplicaSet`, `ReplicationController`; another API's workload with a pod template and `spec.replicas` (an Argo `Rollout`) | zero replicas |
+| `Deployment`, `StatefulSet`, `ReplicaSet`, `ReplicationController` | zero replicas |
+| another API's object with `spec.replicas` (an Argo `Rollout`, a Prometheus operator's `Alertmanager`, a `KafkaConnect`) | zero replicas |
 | `DaemonSet` | a node selector no node has (`truthform.org/held`) |
 | `CronJob`, and a `Job` brought with `jobs: true` | suspended |
+| a Flux object (`HelmRelease`, `Kustomization`, a source), and another API's object with `spec.suspend` (an Argo `CronWorkflow`) | `spec.suspend: true` |
+| Argo CD `Application` | `spec.syncPolicy.automated` taken out |
 | KEDA `ScaledObject` | `autoscaling.keda.sh/paused-replicas: "0"` |
 | KEDA `ScaledJob` | `autoscaling.keda.sh/paused: "true"` |
 | `HorizontalPodAutoscaler` | as it is: it stops while what it scales is at zero |
+| what Kubernetes itself serves and runs nothing (`ConfigMap`, `Service`, `Ingress`, RBAC), and APIs known to run nothing (secret operators' items, cert-manager, Traefik and Istio routes) | as it is |
 
 A hold is of what its entry chooses: the releases it names, the objects
 it names, what carries its labels. Hold wins: what two entries choose is
-held if either holds. What a hold cannot stop is refused with
-nothing restored, by name: a `Pod`, and another API's workload that does
-not count its pods. Restore and diff list what is held (`scope.held` with
-`--json`); a diff given the same file expects it held. **Restoring again
-with the hold taken out of the file starts it.** A hold is of the objects
-in the snapshot: what a GitOps source or an operator makes from its own
-object (a chart's Deployment, a database operator's pods) is not held,
-and with no pod made, a held workload does not show that its image can
-be pulled.
+held if either holds. A KEDA `ScaledObject` brought without a hold is
+paused all the same when what it scales is held: it would start it from
+zero.
+
+**What a hold cannot stop is refused**, with nothing restored, by name:
+a `Pod`, an Argo `Workflow`, a Tekton `PipelineRun` or `TaskRun` (each
+runs as soon as it is there), and another API's workload with a pod
+template that does not count its pods.
+
+**What a hold does not know is named.** An object of another API with no
+`spec.replicas` and no `spec.suspend` is brought as it is, and the run
+lists it in a NOTE (`scope.broughtNotHeld` with `--json`): most run
+nothing (a certificate, a route), and some have a controller that runs
+something for them (a database operator's cluster, with its count under
+another name). The run then says "stopped", not "nothing running". Look
+at each, and leave out with `--leave-out` what would run.
+
+Restore and diff list what is held and how, with the count it had
+(`scope.held` with `--json`: "zero replicas (it had 3)"); a diff given
+the same file expects it held. **Restoring again with the hold taken out
+of the file starts it**, and that is how one is released: there is no
+other command.
+
+What to know before relying on a hold:
+
+- it is of the objects in the snapshot. What a GitOps source or an
+  operator makes from its own object once it runs is not held; a held
+  Flux or Argo CD source makes nothing until it is released, and then
+  makes all of it;
+- a GitOps source that is brought without a hold and applies a held
+  object puts it back as the source has it: hold the source too, or
+  leave it out;
+- a `CronJob` released may run at once what it missed while suspended,
+  unless it sets `startingDeadlineSeconds`;
+- KEDA before 2.13 does not read `autoscaling.keda.sh/paused` on a
+  `ScaledJob`: leave it out there;
+- with no pod made, a held workload does not show that its image can be
+  pulled.
 
 `plan scope --out` writes a file that lists every namespace a release
 was installed in, each release with what it is made of, and each object
@@ -817,7 +850,9 @@ https://kv-dev.vault.azure.net: https://kv-test.vault.azure.net
 
 **Images.** The starts are tried on image references too: every
 container, init container and image volume of a pod spec, wherever it is
-(a Deployment, a CronJob, a KEDA `ScaledJob`, another API's workload).
+(a Deployment, a CronJob, a KEDA `ScaledJob`, another API's workload),
+an Argo workflow template's `container` and `script`, and a Tekton
+task's `steps` and `sidecars`.
 There are two ways to rebuild, and the rename file is the difference:
 
 - **The registry the source pulls from is still there** (the quick way,
@@ -832,7 +867,15 @@ registry.example.io/shop/: drill.example.io/shop/
 ```
 
 A start is read against the reference as it is written: `nginx:1.27`
-does not start with `docker.io/`. The rename lists every image it
+does not start with `docker.io/`. It has to end where a part of the
+reference does: `registry.example.io` starts `registry.example.io/app`
+and not `registry.example.io.other.com/app`, nor
+`registry.example.io:5000/app`, which is another registry;
+`registry.example.io/team` does not start
+`registry.example.io/team-b/app`. An image pinned by digest and built
+again has another digest: copy such an image, or change the reference.
+A start that fits both a store reference and an image changes both, so
+write a registry's start with its host. The rename lists every image it
 changed, and counts by registry those no start fits, which are pulled
 from where the source pulls them (`store_references.images` with
 `--json`: `changed`, `kept`, `left`). An image no start fits is never a
@@ -840,7 +883,8 @@ reason to refuse: most are meant to stay. `plan rebuild` lists the
 registries a snapshot pulls from, and how many images have no digest: a
 tag is whatever was pushed to it last, so a rebuild from tags runs what
 is there now, which may not be what ran. An image named in a chart's
-values or an operator's own object is not seen. Giving `--rename` at all
+values or in an operator's own field (`spec.image` of a Prometheus or a
+KafkaConnect) is not seen, by the rename or by the plan. Giving `--rename` at all
 still means every secret store needs a start (above), so a file written
 for images names the stores too, each replaced by itself if it is the
 same.

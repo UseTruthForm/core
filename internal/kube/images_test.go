@@ -1,7 +1,10 @@
 package kube
 
 import (
+	"encoding/json"
+	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -124,5 +127,69 @@ func TestImagesOf(t *testing.T) {
 	}
 	if !reflect.DeepEqual(s, imageSnapshot()) {
 		t.Error("the snapshot given was changed")
+	}
+}
+
+// A start ends where a part of an image's reference does: a registry is
+// not the start of another whose name begins the same, nor of itself on
+// another port, and a path is not the start of its neighbour.
+func TestAStartEndsWhereAPartDoes(t *testing.T) {
+	for _, c := range []struct {
+		image, start string
+		want         bool
+	}{
+		{"registry.corp/app:1", "registry.corp", true},
+		{"registry.corp/app:1", "registry.corp/", true},
+		{"registry.corp.evil.com/app:1", "registry.corp", false},
+		{"registry.corp:5000/app@sha256:abc", "registry.corp", false},
+		{"registry.corp:5000/app:1", "registry.corp:5000", true},
+		{"registry.corp/team/app:1", "registry.corp/team", true},
+		{"registry.corp/team-b/app:1", "registry.corp/team", false},
+		{"registry.corp/team:1", "registry.corp/team", true},
+		{"registry.corp/team@sha256:abc", "registry.corp/team", true},
+		{"registry.corp/team", "registry.corp/team", true},
+		{"registry.corp/team-b/app:1", "registry.corp/team-", false},
+	} {
+		if got := startsImage(c.image, c.start); got != c.want {
+			t.Errorf("startsImage(%q, %q) = %v, want %v", c.image, c.start, got, c.want)
+		}
+	}
+	// In a rename: the neighbour is left and counted, not rewritten.
+	c := func(name, image string) map[string]any { return map[string]any{"name": name, "image": image} }
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		planObject("v1", "Pod", "shop", "p", map[string]any{"spec": map[string]any{"containers": []any{
+			c("a", "registry.corp/app:1"), c("b", "registry.corp.evil.com/app:1"), c("c", "registry.corp:5000/app:1")}}}),
+		// Containers under other names: a workflow's and a task's.
+		planObject("argoproj.io/v1alpha1", "WorkflowTemplate", "shop", "w", map[string]any{"spec": map[string]any{"templates": []any{
+			map[string]any{"name": "t", "container": map[string]any{"image": "registry.corp/step:1"}},
+			map[string]any{"name": "u", "script": map[string]any{"image": "registry.corp/script:1", "source": "echo"}}}}}),
+		planObject("tekton.dev/v1", "Task", "shop", "t", map[string]any{"spec": map[string]any{
+			"steps": []any{map[string]any{"name": "build", "image": "registry.corp/build:1"}}, "sidecars": []any{map[string]any{"name": "dind", "image": "registry.corp/dind:1"}}}}),
+	}}
+	out, rep, err := RenameStores(s, map[string]string{"registry.corp": "drill.corp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var changed []string
+	for _, r := range rep.Images {
+		changed = append(changed, r.From+" -> "+r.To)
+	}
+	sort.Strings(changed)
+	want := []string{"registry.corp/app:1 -> drill.corp/app:1", "registry.corp/build:1 -> drill.corp/build:1", "registry.corp/dind:1 -> drill.corp/dind:1",
+		"registry.corp/script:1 -> drill.corp/script:1", "registry.corp/step:1 -> drill.corp/step:1"}
+	if !reflect.DeepEqual(changed, want) {
+		t.Errorf("changed:\n got %q\nwant %q", changed, want)
+	}
+	b, _ := json.Marshal(out.Objects[0].Body)
+	if !strings.Contains(string(b), "registry.corp.evil.com/app:1") || !strings.Contains(string(b), "registry.corp:5000/app:1") {
+		t.Errorf("another registry's image was rewritten: %s", b)
+	}
+	if left := fmt.Sprint(rep.ImagesLeft); !strings.Contains(left, "registry.corp.evil.com") || !strings.Contains(left, "registry.corp:5000") || len(rep.ImagesLeft) != 2 {
+		t.Errorf("left: %v", left)
+	}
+	for image, want := range map[string]string{"Registry.Corp/app": "registry.corp", "index.docker.io/library/nginx": "docker.io", "nginx": "docker.io"} {
+		if got := RegistryOf(image); got != want {
+			t.Errorf("RegistryOf(%q) = %q, want %q", image, got, want)
+		}
 	}
 }

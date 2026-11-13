@@ -18,6 +18,14 @@ import (
 // containerLists are the fields of a pod's spec that list containers.
 var containerLists = []string{"containers", "initContainers", "ephemeralContainers"}
 
+// stepLists are lists of containers under other names (Tekton's steps
+// and sidecars), and containerKeys a single one (an Argo template's
+// container and script).
+var (
+	stepLists     = []string{"steps", "sidecars"}
+	containerKeys = []string{"container", "script"}
+)
+
 // eachImage passes every image reference in the object to f, with the
 // field it is in, and stores what f returns. It reads pod specs wherever
 // they are (a Deployment's template, a CronJob's, a ScaledJob's, another
@@ -47,6 +55,24 @@ func eachImage(v any, at string, f func(field, image string) string) {
 				}
 			}
 		}
+		// Containers under other names, where there is no pod spec.
+		if _, pod := x["containers"].([]any); !pod {
+			for _, l := range stepLists {
+				for _, c := range list(x[l]) {
+					m, _ := c.(map[string]any)
+					if img, ok := m["image"].(string); ok && img != "" {
+						m["image"] = f(at+"."+l+"[].image", img)
+					}
+				}
+			}
+		}
+		for _, k := range containerKeys {
+			if m, _ := x[k].(map[string]any); m != nil {
+				if img, ok := m["image"].(string); ok && img != "" {
+					m["image"] = f(at+"."+k+".image", img)
+				}
+			}
+		}
 		keys := make([]string, 0, len(x))
 		for k := range x {
 			keys = append(keys, k)
@@ -68,6 +94,10 @@ func eachImage(v any, at string, f func(field, image string) string) {
 func RegistryOf(image string) string {
 	first, _, more := strings.Cut(image, "/")
 	if more && (strings.ContainsAny(first, ".:") || first == "localhost") {
+		// A host is the same in any case, and Docker Hub by either name.
+		if first = strings.ToLower(first); first == "index.docker.io" || first == "registry-1.docker.io" {
+			return "docker.io"
+		}
 		return first
 	}
 	return "docker.io"

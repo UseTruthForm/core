@@ -260,9 +260,26 @@ func fillEnv(ctx context.Context, src *Clients, mapping *meta.RESTMapping, body 
 	if err != nil {
 		return err
 	}
+	return fillFrom(live.Object, body, paths)
+}
+
+// fillFrom fills body's withheld slots with what the same slots of live
+// hold.
+func fillFrom(live, body map[string]any, paths []string) error {
+	// Read by each slot's own path, whatever the snapshot calls it.
+	targets, err := findSlots(body, paths)
+	if err != nil {
+		return fmt.Errorf("the source: %w", err)
+	}
+	own := map[string]string{}
+	for _, sl := range slots(live) {
+		own[sl.path] = sl.value
+	}
 	values := map[string]string{}
-	for _, sl := range slots(live.Object) {
-		values[sl.path] = sl.value
+	for _, p := range paths {
+		if v, ok := own[targets[strings.TrimSuffix(p, numberMark)].path]; ok {
+			values[p] = v
+		}
 	}
 	if err := setSlots(body, paths, values); err != nil {
 		return fmt.Errorf("the source: %w", err)
@@ -270,35 +287,101 @@ func fillEnv(ctx context.Context, src *Clients, mapping *meta.RESTMapping, body 
 	return nil
 }
 
-// setSlots writes a value into each withheld slot of body. Two slots of
-// one path, or a path asked for twice, is an error: one of them would be
-// left empty, and the object applied as if it were whole.
-func setSlots(body map[string]any, paths []string, values map[string]string) error {
-	targets := map[string]slot{}
+// findSlots finds the slot of body each path names. A path is a slot's
+// own, or the one the rule before gave it (slot.was): a snapshot taken by
+// that rule names its slots so. Where a path is one slot's own and was
+// another's (a key with a dot in it beside the same keys nested), it is
+// the one whose value is gone from the snapshot, if that is one of them;
+// and where that cannot be told, an error, so that no value is put where
+// another belongs.
+func findSlots(body map[string]any, paths []string) (map[string]slot, error) {
+	own := map[string]slot{}
 	twice := map[string]bool{}
+	was := map[string][]slot{}
 	for _, sl := range slots(body) {
-		if _, dup := targets[sl.path]; dup {
+		if _, dup := own[sl.path]; dup {
 			twice[sl.path] = true
 		}
-		targets[sl.path] = sl
+		own[sl.path] = sl
+		if sl.was != "" && sl.was != sl.path {
+			was[sl.was] = append(was[sl.was], sl)
+		}
 	}
 	asked := map[string]bool{}
 	for _, p := range paths {
-		if twice[p] || asked[p] {
-			return fmt.Errorf("two values of the object are at %s; which is which cannot be told", p)
+		at := strings.TrimSuffix(p, numberMark)
+		if twice[at] || asked[at] {
+			return nil, fmt.Errorf("two values of the object are at %s; which is which cannot be told", at)
 		}
-		asked[p] = true
+		asked[at] = true
 	}
+	out := map[string]slot{}
+	for at := range asked {
+		// Not one asked for by its own path as well.
+		var others []slot
+		for _, sl := range was[at] {
+			if !asked[sl.path] {
+				others = append(others, sl)
+			}
+		}
+		sl, isOwn := own[at]
+		switch {
+		case isOwn && len(others) == 0:
+		case isOwn && len(others) == 1 && sl.value != "" && others[0].value == "":
+			sl = others[0]
+		case isOwn && sl.value == "" && !anyEmpty(others):
+		case !isOwn && len(others) == 1:
+			sl = others[0]
+		case !isOwn && len(others) == 0:
+			return nil, fmt.Errorf("the snapshot has no slot %s", at)
+		default:
+			return nil, fmt.Errorf("two values of the object could be at %s; which is which cannot be told", at)
+		}
+		out[at] = sl
+	}
+	return out, nil
+}
+
+func anyEmpty(l []slot) bool {
+	for _, sl := range l {
+		if sl.value == "" {
+			return true
+		}
+	}
+	return false
+}
+
+// setSlots writes a value into each withheld slot of body, values being
+// by the paths asked for. Two slots of one path, or a path asked for twice,
+// is an error: one of them would be left empty, and the object applied as
+// if it were whole.
+func setSlots(body map[string]any, paths []string, values map[string]string) error {
+	targets, err := findSlots(body, paths)
+	if err != nil {
+		return err
+	}
+	// Every value is checked before any is written.
+	fill := map[string]any{}
 	for _, p := range paths {
+		at := strings.TrimSuffix(p, numberMark)
 		v, ok := values[p]
+		if !ok {
+			v, ok = values[at] // a line written without the mark of a number
+		}
 		if !ok {
 			return fmt.Errorf("no value for %s", p)
 		}
-		t, ok := targets[p]
-		if !ok {
-			return fmt.Errorf("the snapshot has no slot %s", p)
+		fill[at] = v
+		if at != p {
+			n, err := asNumber(strings.TrimSpace(v))
+			if err != nil {
+				return fmt.Errorf("%s: %w", at, err)
+			}
+			fill[at] = n
 		}
-		t.set(v)
+	}
+	for at, v := range fill {
+		targets[at].set(v)
 	}
 	return nil
 }

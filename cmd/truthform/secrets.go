@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/usetruthform/core/internal/kube"
 	"github.com/usetruthform/core/internal/snapshot"
@@ -85,6 +86,7 @@ func planSecrets(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	needed, known := secretsNeeded(s, kube.RebuildPlan(s))
+	settings := settingsNeeded(s)
 	// What the capture could not read may hold Secrets to supply: neither
 	// a file to fill in nor a check of one can know of them.
 	notRead := gaps(s)
@@ -92,7 +94,7 @@ func planSecrets(ctx context.Context, args []string) int {
 		if len(notRead) > 0 {
 			fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the file lists no Secret that is in them; see REPORT.md\n", len(notRead))
 		}
-		text := sources.Skeleton(needed)
+		text := append(sources.Skeleton(needed), sources.SettingsSkeleton(settings)...)
 		if *out == "" {
 			_, err = os.Stdout.Write(text)
 			return failIf(err)
@@ -116,6 +118,9 @@ func planSecrets(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	problems, notes := sources.Check(file, needed, known)
+	lacking, unused := sources.CheckSettings(file, settings)
+	problems = append(problems, lacking...)
+	notes = append(notes, unused...)
 	unread, unsure := secretsUnread(s, notRead)
 	problems = append(problems, unread...)
 	notes = append(notes, unsure...)
@@ -138,9 +143,38 @@ func planSecrets(ctx context.Context, args []string) int {
 			}
 		}
 	}
+	if *resolve {
+		r := &sources.Resolver{AllowExec: *allowExec}
+		wanted := map[string]bool{}
+		for _, n := range settings {
+			wanted[n.Object] = true
+		}
+		for _, e := range file.Settings {
+			if !wanted[e.Object] {
+				continue
+			}
+			for _, at := range sortedKeys(e.From) {
+				if e.From[at] == "" {
+					continue
+				}
+				v, err := r.Resolve(ctx, e.From[at])
+				if err == nil && !utf8.Valid(v) {
+					// As a restore refuses it: a check that passed it
+					// would say the file is ready when it is not.
+					err = fmt.Errorf("%s: what was read is not text, and a setting is", sources.Shown(e.From[at]))
+				}
+				if err != nil {
+					problems = append(problems, e.Object+": "+at+": "+err.Error())
+				} else {
+					read++
+				}
+			}
+		}
+	}
 	if jsonOut {
 		doc := map[string]any{"schema": jsonSchema, "command": "plan", "secrets": map[string]any{
-			"needed": len(needed), "problems": orEmpty(problems), "notes": orEmpty(notes), "resolved": *resolve, "read": read,
+			"settings": len(settings),
+			"needed":   len(needed), "problems": orEmpty(problems), "notes": orEmpty(notes), "resolved": *resolve, "read": read,
 		}, "gaps": orEmpty(notRead)}
 		if scopeDone != nil {
 			doc["scope"] = scopeDone
@@ -155,7 +189,7 @@ func planSecrets(ctx context.Context, args []string) int {
 		}
 		switch {
 		case len(problems) > 0:
-			fmt.Printf("%d problems: a rebuild from %s would lack these (%d Secrets to supply)\n", len(problems), *from, len(needed))
+			fmt.Printf("%d problems: a rebuild from %s would lack these (%d Secrets to supply, %d objects with settings withheld)\n", len(problems), *from, len(needed), len(settings))
 		case *resolve:
 			fmt.Printf("every one of the %d Secrets to supply has a source, and %d values were read from theirs (none printed)\n", len(needed), read)
 		case len(s.Coverage) == 0:
@@ -165,10 +199,23 @@ func planSecrets(ctx context.Context, args []string) int {
 			fmt.Printf("every one of the %d Secrets to supply has a source; --resolve reads each to prove it answers\n", len(needed))
 		}
 	}
+	if !jsonOut && len(settings) > 0 && len(problems) == 0 {
+		fmt.Printf("and each of the %d objects with credentials withheld from its settings has a source for every one\n", len(settings))
+	}
 	if len(problems) > 0 {
 		return 2
 	}
 	return 0
+}
+
+// settingsNeeded are the objects of a snapshot that are not Secrets and
+// had credentials withheld from them: a rebuild has to be given each.
+func settingsNeeded(s snapshot.Snapshot) []sources.NeededSetting {
+	var out []sources.NeededSetting
+	for _, w := range kube.WithheldSettings(s) {
+		out = append(out, sources.NeededSetting{Object: w.Key, Paths: w.Paths})
+	}
+	return out
 }
 
 // secretsUnread says what of a snapshot's capture bears on a check of its
@@ -251,7 +298,23 @@ func withSecretSources(ctx context.Context, snap snapshot.Snapshot, path string,
 		// A Secret the file does not name is read from the other cluster.
 		needed = nil
 	}
-	if problems, _ := sources.Check(file, needed, known); len(problems) > 0 {
+	settings := settingsNeeded(snap)
+	if fromContext {
+		// An object the file does not name is read from the other cluster.
+		// One it names is still checked: named, it is filled from the file
+		// alone, and a place the file misses would stop the restore at
+		// that object, with others already written.
+		var named []sources.NeededSetting
+		for _, n := range settings {
+			if _, ok := file.Setting(n.Object); ok {
+				named = append(named, n)
+			}
+		}
+		settings = named
+	}
+	problems, _ := sources.Check(file, needed, known)
+	lacking, _ := sources.CheckSettings(file, settings)
+	if problems = append(problems, lacking...); len(problems) > 0 {
 		return snap, opt, nil, fmt.Errorf("--secrets-from %s does not cover the snapshot; nothing was restored:\n   %s", path, strings.Join(problems, "\n   "))
 	}
 
@@ -293,6 +356,29 @@ func withSecretSources(ctx context.Context, snap snapshot.Snapshot, path string,
 			values[e.Secret][k] = v
 		}
 	}
+	withheld := map[string]bool{}
+	for _, w := range kube.WithheldSettings(snap) {
+		withheld[w.Key] = true
+	}
+	given := map[string]map[string]string{}
+	for _, e := range file.Settings {
+		if !withheld[e.Object] {
+			continue
+		}
+		given[e.Object] = map[string]string{}
+		for _, at := range sortedKeys(e.From) {
+			v, err := r.Resolve(ctx, e.From[at])
+			if err == nil && !utf8.Valid(v) {
+				// A setting is text in the object; a Secret's value is not.
+				err = fmt.Errorf("%s: what was read is not text, and a setting is", sources.Shown(e.From[at]))
+			}
+			if err != nil {
+				failed = append(failed, e.Object+": "+at+": "+err.Error())
+				continue
+			}
+			given[e.Object][at] = string(v)
+		}
+	}
 	if len(failed) > 0 {
 		return snap, opt, nil, fmt.Errorf("--secrets-from %s: %d values could not be read; nothing was restored:\n   %s", path, len(failed), strings.Join(failed, "\n   "))
 	}
@@ -316,6 +402,10 @@ func withSecretSources(ctx context.Context, snap snapshot.Snapshot, path string,
 		out.Objects = append(out.Objects, o)
 	}
 	sort.Strings(left)
+	opt.Settings = func(_ context.Context, key string, _ []string) (map[string]string, bool, error) {
+		v, ok := given[key]
+		return v, ok, nil
+	}
 	opt.Values = func(_ context.Context, ns, name string, _ []string) (map[string][]byte, bool, error) {
 		v, ok := values[ns+"/"+name]
 		return v, ok, nil

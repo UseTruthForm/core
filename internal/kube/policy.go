@@ -592,7 +592,7 @@ func slots(obj map[string]any) []slot {
 		switch x := v.(type) {
 		case map[string]any:
 			for k, c := range x {
-				p := join(path, k)
+				p := join(path, pathPart(k))
 				if k == "env" {
 					for i, e := range list(c) {
 						m, ok := e.(map[string]any)
@@ -617,11 +617,14 @@ func slots(obj map[string]any) []slot {
 }
 
 // item names list element i: by its "name" where no other element shares
-// it, else by its index.
+// it, else by its index. A name that is a number is not used: it could be
+// another element's index, and two values would have one path. A comma in
+// a name is written another way, since paths are kept as a list with
+// commas between them.
 func item(l []any, i int) string {
 	m, _ := l[i].(map[string]any)
 	n := strOf(m["name"])
-	if n == "" {
+	if n == "" || allDigits(n) {
 		return strconv.Itoa(i)
 	}
 	for j, o := range l {
@@ -629,7 +632,22 @@ func item(l []any, i int) string {
 			return strconv.Itoa(i)
 		}
 	}
-	return n
+	return pathPart(n)
+}
+
+func allDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
+}
+
+// pathPart is a name as a part of a slot's path, with what would end a
+// path in a list of them written another way.
+func pathPart(s string) string {
+	return strings.NewReplacer("%", "%25", ",", "%2C").Replace(s)
 }
 
 // WithheldDisplay shortens a withheld slot path for people: the container

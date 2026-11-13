@@ -26,6 +26,114 @@ import (
 // File is a secret sources file.
 type File struct {
 	Secrets []Entry `yaml:"secrets" json:"secrets"`
+	// Settings are the credentials withheld from objects that are not
+	// Secrets: set as plain configuration, and read from here instead.
+	Settings []Setting `yaml:"settings,omitempty" json:"settings,omitempty"`
+}
+
+// Setting is one object that is not a Secret, and where each credential
+// withheld from it is read from.
+type Setting struct {
+	// Object is the object's key in the snapshot, as plan secrets writes
+	// it (apps/v1|Deployment|shop|api).
+	Object string `yaml:"object" json:"object"`
+	// From is a reference for each path a value was withheld at.
+	From map[string]string `yaml:"from" json:"from"`
+}
+
+// Setting is the entry for an object, if the file has one.
+func (f File) Setting(object string) (Setting, bool) {
+	for _, e := range f.Settings {
+		if e.Object == object {
+			return e, true
+		}
+	}
+	return Setting{}, false
+}
+
+// objectKey is the shape of an object's key in a snapshot: apiVersion,
+// kind, namespace (none for one with no namespace) and name, with a bar
+// between.
+var objectKey = regexp.MustCompile(`^[A-Za-z0-9./-]+\|[A-Za-z0-9]+\|[a-z0-9.-]*\|[A-Za-z0-9.:_-]+$`)
+
+// NeededSetting is an object with values withheld, and their paths.
+type NeededSetting struct {
+	Object string
+	Paths  []string
+}
+
+// SettingsSkeleton is the settings part of a sources file, every
+// reference empty; nothing where no object needs one.
+func SettingsSkeleton(needed []NeededSetting) []byte {
+	if len(needed) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("# Credentials that were set as plain configuration (a variable, a URL that\n")
+	b.WriteString("# signs in) and withheld from the snapshot: where each is read from, by the\n")
+	b.WriteString("# object and the place in it. Better still, move each into a Secret.\n")
+	b.WriteString("settings:\n")
+	for _, n := range needed {
+		q, _ := json.Marshal(n.Object)
+		b.WriteString("  - object: " + string(q) + "\n    from:\n")
+		for _, p := range n.Paths {
+			q := yamlKey(p)
+			if len(q) > 900 {
+				// YAML reads a key written the short way only so far.
+				b.WriteString("      ? " + q + "\n      : \"\"\n")
+				continue
+			}
+			b.WriteString("      " + q + ": \"\"\n")
+		}
+	}
+	return []byte(b.String())
+}
+
+// yamlKey is text as a YAML string: a JSON string, with the few
+// characters JSON leaves as they are and YAML does not take.
+func yamlKey(s string) string {
+	q, _ := json.Marshal(s)
+	return strings.NewReplacer("\u007f", `\u007f`, "\u0085", `\u0085`, "\ufffe", `\ufffe`, "\uffff", `\uffff`).Replace(string(q))
+}
+
+// CheckSettings says where the file does not cover the values withheld
+// from objects that are not Secrets: an object with no entry, a path with
+// no reference, a path nothing was withheld at.
+func CheckSettings(f File, needed []NeededSetting) (problems, notes []string) {
+	paths := map[string][]string{}
+	for _, n := range needed {
+		paths[n.Object] = n.Paths
+		if _, ok := f.Setting(n.Object); !ok {
+			problems = append(problems, n.Object+": no entry under settings; the rebuild has no source for what was withheld from it")
+		}
+	}
+	for _, e := range f.Settings {
+		want, ok := paths[e.Object]
+		if !ok {
+			notes = append(notes, e.Object+": nothing was withheld from an object of that key in the snapshot; the entry is not used")
+			continue
+		}
+		has := map[string]bool{}
+		for _, p := range want {
+			has[p] = true
+			if ref, ok := e.From[p]; !ok {
+				problems = append(problems, e.Object+": "+p+" has no reference")
+			} else if ref == "" {
+				problems = append(problems, e.Object+": the reference for "+p+" is empty")
+			}
+		}
+		extra := []string{}
+		for p := range e.From {
+			if !has[p] {
+				extra = append(extra, p)
+			}
+		}
+		sort.Strings(extra)
+		for _, p := range extra {
+			problems = append(problems, e.Object+": names "+p+", at which nothing was withheld")
+		}
+	}
+	return problems, notes
 }
 
 // Entry is one Secret: where each of its keys is read from, or why the
@@ -103,6 +211,39 @@ func Read(path string) (File, error) {
 	if dec.Decode(new(any)) != io.EOF {
 		return f, fmt.Errorf("%s: holds more than one YAML document; only one is read, so the rest would be ignored", path)
 	}
+	objects := map[string]bool{}
+	for i, e := range f.Settings {
+		switch {
+		case !objectKey.MatchString(e.Object):
+			// By its place: what is there may not be a key at all.
+			return f, fmt.Errorf("%s: settings entry %d: object is not an object's key (apps/v1|Deployment|shop|api)", path, i+1)
+		case objects[e.Object]:
+			return f, fmt.Errorf("%s: %s is listed twice under settings", path, e.Object)
+		case len(e.From) == 0:
+			return f, fmt.Errorf("%s: %s has no from under settings", path, e.Object)
+		}
+		objects[e.Object] = true
+		for at, ref := range e.From {
+			if at == "" {
+				return f, fmt.Errorf("%s: %s has a reference for no path", path, e.Object)
+			}
+			if ref == "" {
+				continue
+			}
+			kind, rest, err := scheme(ref)
+			if err == nil {
+				err = shape(kind, rest)
+			}
+			if err == nil && kind == "empty" {
+				// Nothing empty is ever withheld: an empty value here would
+				// restore the object without its credential.
+				err = fmt.Errorf("empty: is for a Secret's key that holds nothing; what was withheld from a setting was not empty")
+			}
+			if err != nil {
+				return f, fmt.Errorf("%s: %s, %s: %w", path, e.Object, at, err)
+			}
+		}
+	}
 	seen := map[string]bool{}
 	for i, e := range f.Secrets {
 		ns, name, ok := strings.Cut(e.Secret, "/")
@@ -161,9 +302,9 @@ func unechoed(err error) string {
 	for _, e := range te.Errors {
 		switch {
 		case unknownField.MatchString(e):
-			out = append(out, unknownField.FindString(e)+" in a sources file (secret, from, leave)")
+			out = append(out, unknownField.FindString(e)+" in a sources file (under secrets: secret, from, leave; under settings: object, from)")
 		case lineOf.MatchString(e):
-			out = append(out, lineOf.FindString(e)+": not what a sources file has there (a secrets list; in each, secret, and from as key: reference, or leave)")
+			out = append(out, lineOf.FindString(e)+": not what a sources file has there (a secrets list: in each, secret, and from as key: reference, or leave; a settings list: in each, object, and from as path: reference)")
 		default:
 			out = append(out, "not what a sources file has")
 		}
@@ -473,7 +614,11 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 // execShown is a reference for a message. A command is not shown at all:
 // any part of it may be a credential of its own, and the message names
 // the Secret and the key it is for.
-func execShown(ref string) string {
+func execShown(ref string) string { return Shown(ref) }
+
+// Shown is a reference as a message may print it: as it is, but for an
+// exec: reference, whose command is never shown.
+func Shown(ref string) string {
 	if strings.HasPrefix(ref, "exec:") {
 		return "exec: (the command is not shown)"
 	}

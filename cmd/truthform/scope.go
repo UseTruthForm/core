@@ -13,7 +13,7 @@ import (
 	"github.com/usetruthform/core/internal/snapshot"
 )
 
-const scopeHelp = "kubernetes: scope file (truthform plan scope) saying which part of the snapshot is brought: it narrows the namespaces it names to the Helm releases and labels chosen, and leaves the rest as it is (give diff and plan the same file)"
+const scopeHelp = "kubernetes: scope file (truthform plan scope) saying which part of the snapshot is brought: it narrows the namespaces it names to the Helm releases, objects and labels chosen, and leaves the rest as it is (give diff and plan the same file)"
 
 // scopeDone is what --scope did to the snapshot, for the document; nil
 // where none was given.
@@ -81,7 +81,28 @@ func scopeSaid(rep kube.ScopeReport, file string) string {
 			fmt.Fprintf(&b, "\n   %s: %s", h.Object, h.How)
 		}
 	}
+	if len(rep.ObjectsBrought) > 0 {
+		fmt.Fprintf(&b, "\nscope: %d objects that no release made are brought, named under objects or by label: %s", len(rep.ObjectsBrought), strings.Join(rep.ObjectsBrought, ", "))
+	}
+	if len(rep.ObjectsLeftOut) > 0 {
+		fmt.Fprintf(&b, "\nscope: %d objects that no release made are left out (name one under objects, as Kind/name, to bring it): %s", len(rep.ObjectsLeftOut), strings.Join(rep.ObjectsLeftOut, ", "))
+	}
+	for _, m := range rep.StillMade {
+		fmt.Fprintf(&b, "\nscope: NOTE: %s is brought, and makes %d objects in %s, which the scope leaves out: once it runs they are there again. Leave the source out (--leave-out), or change what it applies.", m.Source, m.Objects, m.Namespace)
+	}
+	if rep.Kept < rep.Of {
+		b.WriteString("\nscope: nothing checks that what is brought does not need something left out (a ServiceAccount, a ConfigMap, a CustomResourceDefinition)")
+	}
 	return b.String()
+}
+
+// scopeLine is the scope in one line, for beside a total: "applied 5 of
+// 5" would otherwise read as the whole snapshot.
+func scopeLine() string {
+	if scopeDone == nil {
+		return ""
+	}
+	return fmt.Sprintf("a part only (--scope): %d of the %d objects of %s were in it", scopeDone.Kept, scopeDone.Of, strings.Join(scopeDone.Narrowed, ", "))
 }
 
 // planScope writes a scope file to cut down, or says what one brings and

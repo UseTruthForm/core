@@ -63,7 +63,7 @@ func TestNarrowHolds(t *testing.T) {
 	s := holdSnapshot()
 	out, rep, err := Narrow(s, Scope{Narrow: []ScopeEntry{
 		{Namespaces: []string{"shop"}, Releases: []string{"api"}},
-		{Namespaces: []string{"shop"}, Releases: []string{"worker"}, Hold: true},
+		{Namespaces: []string{"shop"}, Releases: []string{"worker"}, Objects: []string{"Deployment/by-hand"}, Hold: true},
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +83,7 @@ func TestNarrowHolds(t *testing.T) {
 		{"HorizontalPodAutoscaler shop/worker-db", []string{"spec", "minReplicas"}, float64(2)},
 		{"Deployment shop/api", []string{"spec", "replicas"}, float64(2)},
 		{"Deployment core/gateway", []string{"spec", "replicas"}, float64(2)},
-		// Hold wins for what the namespace brings along.
+		// What no release made, named by the entry that holds.
 		{"Deployment shop/by-hand", []string{"spec", "replicas"}, int64(0)},
 	} {
 		if got := at(find(t, out, c.key), c.path...); !reflect.DeepEqual(got, c.want) {

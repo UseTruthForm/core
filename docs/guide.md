@@ -595,6 +595,7 @@ truthform plan secrets --from snap/cluster --scope scope.yaml --out secrets.yaml
 narrow:
   - namespaces: ["team-*"]          # names, or patterns as a shell has them
     releases: [a-search, b-search]  # Helm releases, in any of those namespaces
+    objects: [ConfigMap/shared]     # what no release made, as Kind/name
   - namespaces: [batch]
     labels: {tier: drill}
 ```
@@ -612,25 +613,39 @@ namespace:
 - a **release** chosen comes whole, wherever what it made is (a
   ClusterRole, an object in another namespace): it is known by what Helm
   writes on what it makes. An object chosen by a **label** brings the
-  rest of its release. Its namespace comes with it;
+  rest of its release. Its namespace comes with it. An object with no
+  namespace that names its release by label alone does not say which
+  namespace the release is in: it goes with the releases of that name,
+  and is left out only when all of them are;
 - a **Secret** an object of the snapshot makes (from a store, from an
   ExternalSecret or a SealedSecret, a certificate's) goes where that
   object goes;
-- what belongs to no release of a narrowed namespace (shared
-  configuration, a Secret made by hand, what a release of another
-  namespace put there) comes with the namespace when anything of it is
-  brought, and so does the Namespace itself;
-- a namespace from which nothing is chosen is left out whole, with what
-  the capture left there to a GitOps source, which the plan then does
-  not ask for.
+- **what no release of a narrowed namespace made** (shared
+  configuration, a Secret made by hand, a workload applied by hand, a
+  GitOps source's own object) is **left out unless an entry names it**
+  under `objects`, as `Kind/name`, or it carries an entry's labels.
+  Either part may be a pattern (`ConfigMap/*`, `"*/*"` for all of them),
+  and `Kind.group` tells two APIs' kinds of one name apart. Restore and
+  diff list those brought and those left out;
+- the Namespace itself comes when anything of it is brought. A namespace
+  from which nothing is chosen is left out whole, with what the capture
+  left there to a GitOps source, which the plan then does not ask for;
+- **a scope cannot stop a GitOps source that is brought** from making
+  what it makes: if the snapshot's root Kustomization applies a
+  HelmRelease in a namespace the scope leaves out, the release is
+  installed again once the source runs. The run says so by name
+  (`scope.stillMade` with `--json`), and the plan goes on listing it:
+  leave the source out with `--leave-out`, or have it apply less.
 
 Two entries that fit one namespace choose from it together. A release or
 a label is looked for in the namespaces of its own entry: one that fits
 nothing there is refused, as a pattern that fits no namespace is, and as
 a mistyped `--leave-out` is.
 
-**Jobs are left out** whenever a scope is given, those of a release that
-is brought among them: a Job restored runs again. `jobs: true` in the
+**Jobs are left out** whenever a scope is given, in every namespace and
+whether or not they had finished (a snapshot does not say), those of a
+release that is brought among them: a Job restored runs again. A CronJob
+is not a Job: it comes with its release and keeps its schedule. `jobs: true` in the
 file brings them.
 
 **`hold: true` on an entry brings what it chooses with nothing
@@ -657,9 +672,9 @@ narrow:
 | KEDA `ScaledJob` | `autoscaling.keda.sh/paused: "true"` |
 | `HorizontalPodAutoscaler` | as it is: it stops while what it scales is at zero |
 
-Hold wins: a release two entries choose is held if either holds, and what
-a namespace brings along with no release of its own is held if any entry
-that fits the namespace holds. What a hold cannot stop is refused with
+A hold is of what its entry chooses: the releases it names, the objects
+it names, what carries its labels. Hold wins: what two entries choose is
+held if either holds. What a hold cannot stop is refused with
 nothing restored, by name: a `Pod`, and another API's workload that does
 not count its pods. Restore and diff list what is held (`scope.held` with
 `--json`); a diff given the same file expects it held. **Restoring again
@@ -670,8 +685,8 @@ and with no pod made, a held workload does not show that its image can
 be pulled.
 
 `plan scope --out` writes a file that lists every namespace a release
-was installed in and each release, with what it is made of: as written
-it brings everything but Jobs, and you delete what a drill is not to
+was installed in, each release with what it is made of, and each object
+there that no release made: as written it brings everything but Jobs, and you delete what a drill is not to
 bring. Restore and diff say on stderr what the scope left out (`scope`
 with `--json`), and the plans given the file are of the part it brings:
 the secrets to supply and the store items are those of what was chosen.

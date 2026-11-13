@@ -242,6 +242,13 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		if len(e.AsTheyAre) > 0 && !e.Hold {
 			return s, rep, fmt.Errorf("entry %d: asTheyAre is for an entry with hold: true", i+1)
 		}
+		for _, p := range e.AsTheyAre {
+			// Any kind would take in whatever API a later snapshot has:
+			// what is looked at is at least a kind.
+			if kind, _, _ := strings.Cut(p, "/"); strings.Trim(kind, "*?") == "" && kind != "" {
+				return s, rep, fmt.Errorf("entry %d: asTheyAre %q names no kind: name the kind looked at (Certificate/*)", i+1, p)
+			}
+		}
 		for _, p := range append(append([]string{}, e.Objects...), e.AsTheyAre...) {
 			kind, name, ok := strings.Cut(p, "/")
 			_, errK := path.Match(kind, "")
@@ -323,9 +330,11 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		}
 		return yes, hold
 	}
-	// asItIs says whether a holding entry of the object's namespace names
-	// it under asTheyAre. One with no namespace is any holding entry's to
-	// name.
+	// asItIs says whether a holding entry names the object under
+	// asTheyAre: an entry of the object's namespace, or of the namespace
+	// of the release that made it (a release may make an object in a
+	// namespace other than its own, or with none). Nothing is held but by
+	// one of the two.
 	asUsed := make([]map[string]bool, len(sc.Narrow))
 	for i := range sc.Narrow {
 		asUsed[i] = map[string]bool{}
@@ -335,12 +344,9 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		if !versioned {
 			group = ""
 		}
-		es := narrowed[o.Namespace()]
-		if o.Namespace() == "" {
-			es = nil
-			for i := range sc.Narrow {
-				es = append(es, i)
-			}
+		es := append([]int{}, narrowed[o.Namespace()]...)
+		if rns, _, ok := ReleaseOf(o); ok && rns != o.Namespace() {
+			es = append(es, narrowed[rns]...)
 		}
 		for _, i := range es {
 			for _, p := range sc.Narrow[i].AsTheyAre {
@@ -731,6 +737,8 @@ func ScopeDraft(s snapshot.Snapshot) []byte {
 	b.WriteString("# scope, since a Job restored runs again: add \"jobs: true\" to bring them.\n")
 	b.WriteString("# \"hold: true\" on an entry brings its releases with their workloads stopped (zero\n")
 	b.WriteString("# replicas, autoscalers paused): split an entry in two to hold some and run others.\n")
+	b.WriteString("# What a hold does not know how to hold is named, and the run does not end 0 until\n")
+	b.WriteString("# each is left out or, looked at, listed under \"asTheyAre\" on that entry (Kind/name).\n")
 	if len(byNS) == 0 {
 		b.WriteString("# The snapshot has nothing a Helm release made, so there is nothing listed to cut\n")
 		b.WriteString("# down: narrow by labels instead, as\n#   - namespaces: [shop]\n#     labels: {app.kubernetes.io/part-of: checkout}\n")

@@ -369,9 +369,10 @@ func TestAsTheyAre(t *testing.T) {
 	}
 	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
 		rel("apps/v1", "Deployment", "worker", map[string]any{"replicas": float64(3)}),
-		rel("cert-manager.io/v1", "Certificate", "tls", map[string]any{"secretName": "tls"}),
-		rel("postgresql.cnpg.io/v1", "Cluster", "db", map[string]any{"instances": float64(3)}),
+		// Not in the order they are listed in.
 		rel("example.com/v1", "Cluster", "other", map[string]any{"size": "big"}),
+		rel("postgresql.cnpg.io/v1", "Cluster", "db", map[string]any{"instances": float64(3)}),
+		rel("cert-manager.io/v1", "Certificate", "tls", map[string]any{"secretName": "tls"}),
 		rel("v1", "ConfigMap", "cfg", nil),
 	}}
 	entry := func(as ...string) Scope {
@@ -404,6 +405,9 @@ func TestAsTheyAre(t *testing.T) {
 		`asTheyAre names "ConfigMap/cfg"`:     entry("ConfigMap/cfg"),
 		`asTheyAre names "Certificate/tsl"`:   entry("Certificate/tls", "Certificate/tsl"),
 		"is not Kind/name":                    entry("tls"),
+		// Any kind at all is not something looked at.
+		`asTheyAre "*/*" names no kind`:       entry("*/*"),
+		`asTheyAre "*/tls" names no kind`:     entry("Cluster/*", "*/tls"),
 		"asTheyAre is for an entry with hold": {Narrow: []ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"worker"}, AsTheyAre: []string{"Certificate/tls"}}}},
 	} {
 		if _, _, err := Narrow(s, sc); err == nil || !strings.Contains(err.Error(), want) {
@@ -417,6 +421,30 @@ func TestAsTheyAre(t *testing.T) {
 	if _, _, err := Narrow(s, two); err == nil || !strings.Contains(err.Error(), `entry 2: asTheyAre names "Certificate/tls"`) {
 		t.Errorf("an entry of another namespace: %v", err)
 	}
+	// What the held release made in a namespace another entry narrows,
+	// the entry that holds it names: the other entry has no hold.
+	far := released("example.com/v1", "Gadget", "other", "far", "worker", map[string]any{"spec": map[string]any{"size": "big"}})
+	far.Body["metadata"].(map[string]any)["annotations"].(map[string]any)["meta.helm.sh/release-namespace"] = "shop"
+	// And what it made with no namespace.
+	wide := released("example.com/v1", "GadgetClass", "", "wide", "worker", map[string]any{"spec": map[string]any{"size": "big"}})
+	wide.Body["metadata"].(map[string]any)["annotations"].(map[string]any)["meta.helm.sh/release-namespace"] = "shop"
+	s.Objects = append(s.Objects, far, wide)
+	both := func(as ...string) Scope {
+		sc := entry(as...)
+		sc.Narrow = append(sc.Narrow, ScopeEntry{Namespaces: []string{"other"}, Releases: []string{"api"}})
+		return sc
+	}
+	_, rep, err := Narrow(s, both("Certificate/*", "Cluster/*"))
+	if want := []string{"Gadget other/far", "GadgetClass /wide"}; err != nil || !reflect.DeepEqual(rep.NotHeld, want) {
+		t.Errorf("made elsewhere, not named: %q, %v; want %q", rep.NotHeld, err, want)
+	}
+	for _, name := range []string{"Gadget/far", "GadgetClass/wide"} {
+		_, rep, err = Narrow(s, both("Certificate/*", "Cluster/*", name))
+		if err != nil || len(rep.NotHeld) != 1 || len(rep.AsTheyAre) != 4 {
+			t.Errorf("%s made elsewhere, named: not held %q, as they are %q, %v", name, rep.NotHeld, rep.AsTheyAre, err)
+		}
+	}
+	s.Objects = s.Objects[:len(s.Objects)-2]
 	// What a hold refuses stays refused.
 	s.Objects = append(s.Objects, rel("v1", "Pod", "once", map[string]any{"containers": []any{map[string]any{"name": "c", "image": "x"}}}))
 	if _, _, err := Narrow(s, entry("Certificate/*", "Cluster/*", "Pod/once")); err == nil || !strings.Contains(err.Error(), "Pod shop/once") {

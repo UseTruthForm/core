@@ -53,12 +53,17 @@ var numberedRE = regexp.MustCompile(`_\d+$`)
 // (GOOGLE_APPLICATION_CREDENTIALS=/var/run/key.json).
 var filePathRE = regexp.MustCompile(`^(/|[A-Za-z]:\\)\S*$`)
 
+// urlPasswordRE is a URL with a password in it (postgres://u:p@host,
+// redis://:p@host): a credential whatever the variable is called, even a
+// *_URL.
+var urlPasswordRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://[^/@:\s]*:[^@\s/]+@`)
+
 // credential reports a value to withhold, by its name and its value.
 func credential(name, value string) bool {
 	if value == "" || envRefRE.MatchString(value) {
 		return false
 	}
-	if urlCredential(value) || bearer(value) {
+	if urlPasswordRE.MatchString(value) {
 		return true
 	}
 	base := numberedRE.ReplaceAllString(name, "")
@@ -202,8 +207,16 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	// What AKS labels as its own stays the cluster's to provide (below),
 	// though AKS installs some of it as a HelmRelease.
 	if !p.CaptureRendered && (p.IncludeSystem || !aksOwn(md)) {
-		if why := renderedBy(md); why != "" && !p.root(obj) {
-			return why
+		if why := renderedBy(md); why != "" {
+			if !p.root(obj) {
+				return why
+			}
+			// Where GitOps starts is kept, since nothing else recreates it,
+			// unless a credential is written into it: an object main never
+			// captured must not bring one into a snapshot.
+			if rootCredential(obj) {
+				return why + " (where GitOps starts, and not captured: a credential is written into it; move it into the Secret the object names)"
+			}
 		}
 	}
 
@@ -318,6 +331,49 @@ func (p Policy) root(obj map[string]any) bool {
 	md, _ := obj["metadata"].(map[string]any)
 	kind, ns, name := strOf(obj["kind"]), strOf(md["namespace"]), strOf(md["name"])
 	return selfApplied(obj) || p.roots[kind+"|"+ns+"|"+name]
+}
+
+// signsInRE is a URL that signs in, with a password or with a name alone
+// (https://<token>@host); over SSH a name alone is the account.
+var signsInRE = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9+.-]*)://([^/\s]*)@`)
+
+func signsIn(url string) bool {
+	m := signsInRE.FindStringSubmatch(url)
+	if m == nil {
+		return false
+	}
+	return strings.Contains(m[2], ":") || !strings.Contains(strings.ToLower(m[1]), "ssh")
+}
+
+// rootCredential reports a credential written into an object that is
+// where GitOps starts: in the address it reads from, or in an Argo CD
+// application's Helm parameters (by the rule for variables). Generous: a
+// root that is not captured costs the plan saying where the sources are
+// read from is not in the snapshot, which is what it said before roots
+// were captured at all.
+func rootCredential(obj map[string]any) bool {
+	spec, _ := obj["spec"].(map[string]any)
+	sources := []any{spec["source"]}
+	sources = append(sources, list(spec["sources"])...)
+	for _, field := range []string{"url", "endpoint"} {
+		if signsIn(strOf(spec[field])) {
+			return true
+		}
+	}
+	for _, src := range sources {
+		m, _ := src.(map[string]any)
+		if signsIn(strOf(m["repoURL"])) {
+			return true
+		}
+		helm, _ := m["helm"].(map[string]any)
+		for _, e := range list(helm["parameters"]) {
+			pm, _ := e.(map[string]any)
+			if credential(strOf(pm["name"]), strOf(pm["value"])) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // selfApplied reports whether an object is the source that applied it.
@@ -481,7 +537,7 @@ func withhold(obj map[string]any) []string {
 func withholdEnv(obj map[string]any) []string {
 	var paths []string
 	for _, sl := range slots(obj) {
-		if sl.withheld() {
+		if credential(sl.name, sl.value) {
 			sl.set("")
 			paths = append(paths, sl.path)
 		}
@@ -504,6 +560,60 @@ func hasWithheld(obj map[string]any) bool {
 	md, _ := obj["metadata"].(map[string]any)
 	ann, _ := md["annotations"].(map[string]any)
 	return strOf(ann[WithheldEnvAnnotation]) != ""
+}
+
+// slot is one value withholdEnv may withhold: an env entry, or a
+// ConfigMap key.
+type slot struct {
+	path, name, value string
+	set               func(string)
+}
+
+// slots finds every env entry with a literal value anywhere in obj (any
+// list under "env" whose items are {name, value}: pod templates, Argo's
+// container and script, Tekton's steps, a HelmRelease's values), and every
+// key of a ConfigMap's data. Each has a path unique within obj: a list
+// item is named by its "name" where that is unique in its list, and by its
+// index otherwise, so two templates that each have a container "main"
+// setting DB_PASSWORD are two slots (review of #41).
+func slots(obj map[string]any) []slot {
+	var out []slot
+	if strOf(obj["kind"]) == "ConfigMap" {
+		if d, ok := obj["data"].(map[string]any); ok {
+			for k, v := range d {
+				if s, ok := v.(string); ok {
+					out = append(out, slot{path: "data[" + k + "]", name: k, value: s, set: func(x string) { d[k] = x }})
+				}
+			}
+		}
+	}
+	var walk func(v any, path string)
+	walk = func(v any, path string) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, c := range x {
+				p := join(path, k)
+				if k == "env" {
+					for i, e := range list(c) {
+						m, ok := e.(map[string]any)
+						s, isStr := m["value"].(string)
+						if ok && isStr {
+							out = append(out, slot{path: p + "[" + item(list(c), i) + "]", name: strOf(m["name"]), value: s, set: func(v string) { m["value"] = v }})
+						}
+					}
+					continue
+				}
+				walk(c, p)
+			}
+		case []any:
+			for i, c := range x {
+				walk(c, path+"["+item(x, i)+"]")
+			}
+		}
+	}
+	walk(obj, "")
+	sort.Slice(out, func(i, j int) bool { return out[i].path < out[j].path })
+	return out
 }
 
 // item names list element i: by its "name" where no other element shares

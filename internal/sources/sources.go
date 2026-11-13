@@ -614,7 +614,11 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 // execShown is a reference for a message. A command is not shown at all:
 // any part of it may be a credential of its own, and the message names
 // the Secret and the key it is for.
-func execShown(ref string) string {
+func execShown(ref string) string { return Shown(ref) }
+
+// Shown is a reference as a message may print it: as it is, but for an
+// exec: reference, whose command is never shown.
+func Shown(ref string) string {
 	if strings.HasPrefix(ref, "exec:") {
 		return "exec: (the command is not shown)"
 	}

@@ -157,7 +157,13 @@ func planSecrets(ctx context.Context, args []string) int {
 				if e.From[at] == "" {
 					continue
 				}
-				if _, err := r.Resolve(ctx, e.From[at]); err != nil {
+				v, err := r.Resolve(ctx, e.From[at])
+				if err == nil && !utf8.Valid(v) {
+					// As a restore refuses it: a check that passed it
+					// would say the file is ready when it is not.
+					err = fmt.Errorf("%s: what was read is not text, and a setting is", sources.Shown(e.From[at]))
+				}
+				if err != nil {
 					problems = append(problems, e.Object+": "+at+": "+err.Error())
 				} else {
 					read++
@@ -364,7 +370,7 @@ func withSecretSources(ctx context.Context, snap snapshot.Snapshot, path string,
 			v, err := r.Resolve(ctx, e.From[at])
 			if err == nil && !utf8.Valid(v) {
 				// A setting is text in the object; a Secret's value is not.
-				err = fmt.Errorf("%s: what was read is not text, and a setting is", e.From[at])
+				err = fmt.Errorf("%s: what was read is not text, and a setting is", sources.Shown(e.From[at]))
 			}
 			if err != nil {
 				failed = append(failed, e.Object+": "+at+": "+err.Error())

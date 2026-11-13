@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,6 +128,18 @@ func TestRestoreFillsWithheldSettings(t *testing.T) {
 	lastErr = nil
 	if code := restore(ctx, append(nowhere, "--secrets-from", notText)); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), "what was read is not text") {
 		t.Errorf("a value that is not text: exit %d, %v", code, lastErr)
+	}
+	// Read by a command, the message does not show the command: people
+	// put tokens in those.
+	byCommand := writeFile(t, t.TempDir(), "by-command.yaml", strings.Replace(settingsFile, "env:TF_SETTING_URL", "exec:cat "+binary+" # token=SUPERSECRETCMD", 1))
+	lastErr = nil
+	if code := restore(ctx, append(nowhere, "--secrets-from", byCommand, "--allow-exec")); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), "what was read is not text") || strings.Contains(lastErr.Error(), "SUPERSECRETCMD") || strings.Contains(lastErr.Error(), "cat ") {
+		t.Errorf("a value that is not text, read by a command: exit %d, %v", code, lastErr)
+	}
+	// A check that reads the values refuses it as the restore does.
+	lastErr = nil
+	if code, stdout, stderr := output(t, func() int { return planCmd([]string{"secrets", "--from", dir, "--check", notText, "--resolve"}) }); code == 0 || !strings.Contains(stdout+stderr+fmt.Sprint(lastErr), "what was read is not text") {
+		t.Errorf("plan secrets --check --resolve of a value that is not text: exit %d\n%s\n%s\n%v", code, stdout, stderr, lastErr)
 	}
 	os.Unsetenv("TF_SETTING_PASSWORD")
 

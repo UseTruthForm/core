@@ -624,19 +624,23 @@ The rename lists on stderr, and gives under `store_references` with
 |---|---|
 | changed | a reference that points elsewhere now |
 | kept | one a start names and replaces by itself: said to be the same in both environments |
-| unnamed | one that says **which store** (a vault's address, a 1Password item's path) and that no start fits: it is the source's still |
+| unnamed | one that says **which store** (a vault's address, a 1Password item's path), or what a `PushSecret` writes to, and that no start fits: it is the source's still |
 | items unchanged | one that names an item in a store and that no start fits: the same name, read from whichever store its store object says |
-| unreached | an object that uses a store in a way a rename cannot change: a CSI class's `objects` document, a 1Password store's `vaults`, a provider it has no field for, an `ExternalSecret` that finds by a pattern of names or by tags, a pod that asks the Vault agent by annotation |
+| unreached | an object that uses a store in a way a rename cannot change: a CSI class's `objects` document, a 1Password store's `vaults`, a provider it has no field for, an `ExternalSecret` that finds by a pattern of names or by tags or reads from a generator, a pod that asks the Vault agent by annotation, an HCP Vault Secrets object, Vault Secrets Operator objects with no `VaultConnection` in the snapshot |
 
 **A restore is refused, with nothing written, while anything is unnamed
-or unreached**: what reads or writes through it (a `PushSecret` writes)
-would use the source's store. Give the store a start, replaced by itself
-if it is meant to be the same; leave the object out; or pass
-`--keep-source-stores` to restore all the same. A diff writes nothing,
-and only lists them.
+or unreached**: what reads or writes through it would use the source's
+store. A `PushSecret` writes, so the item it writes to needs a start of
+its own, whatever its store is. Give each a start, replaced by itself if
+it is meant to be the same (a start replaced by itself is a whole
+reference, or ends with a slash); leave the object out; or pass
+`--keep-source-stores` to restore all the same. The refused restore's
+`--json` document carries the same lists. A diff writes nothing, and
+only lists them.
 
-The list is of what this knows, and is not proof that nothing else
-reads the source: a store's address in a workload's own configuration, a
+The rename says on stderr which kinds of object it looked at
+(`kinds_read` with `--json`). The list is of what it knows, and is not
+proof that nothing else reads the source: a store's address in a workload's own configuration, a
 plugin's environment, or an operator not in the table above is not seen.
 A start is a plain prefix with no sense of where a name ends
 (`kv-dev` also fits `kv-dev-2`), so write starts long enough to mean one

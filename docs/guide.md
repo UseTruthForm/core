@@ -551,6 +551,97 @@ The file to fill in is written from what the cluster's objects say, and
 only as comments and names: read it before you fill it in, as you would
 any file a tool wrote for you to run.
 
+### Into another environment
+
+A snapshot restored beside its source (a drill, or one environment rebuilt
+as another) needs two things changed, and nothing else.
+
+```sh
+truthform restore --context test --from snap/cluster \
+  --leave-out leave.yaml --rename stores.yaml --secrets-from secrets.yaml
+truthform diff    --context test --from snap/cluster --leave-out leave.yaml --rename stores.yaml
+```
+
+`--leave-out` is a list of objects the restore does not write and the diff
+does not expect: `Kind/namespace/name`, or `Kind/name` for an object with
+no namespace. `Kind.group` tells two APIs' kinds of one name apart, and
+`*` is any kind, namespace or name (quote an entry that starts with one:
+YAML reads a bare `*` as something else). The first to leave out is
+where GitOps starts: restored as it is, the new cluster would sync the
+path the source syncs.
+
+```yaml
+- Kustomization/flux-system/flux-system
+- GitRepository/flux-system/flux-system
+- "*/legacy/*"
+```
+
+The diff then does not report those as missing. If the target has an
+object of the same name of its own (its own GitOps root), the diff lists
+it as `extra`, as it does anything the snapshot does not hold.
+
+`--rename` says where Secrets are read from instead: the start of a store
+reference, and what replaces it. The longest start that fits a reference
+is the one applied. Only fields that name a store or an item in it
+change; the same text anywhere else is left alone:
+
+| Object | What changes |
+|---|---|
+| `OnePasswordItem`; any object's `operator.1password.io/item-path` annotation | the item path |
+| `ExternalSecret`, `ClusterExternalSecret` | `remoteRef.key`, `extract.key`, `find.path` |
+| `PushSecret` | `remoteRef.remoteKey` (unchanged, it writes to the source's store) |
+| `SecretStore`, `ClusterSecretStore` | Azure Key Vault's URL; Vault's server, path and namespace; the GCP project; 1Password's Connect host or SDK vault |
+| Vault Secrets Operator | a secret's mount, path and namespace; `VaultConnection`'s address; `VaultAuth`'s mount and namespace |
+| Secrets Store CSI `SecretProviderClass` | `keyvaultName`, `vaultAddress` |
+| akv2k8s `AzureKeyVaultSecret` | the vault's and the object's name |
+
+Which store object an `ExternalSecret` reads through (`secretStoreRef`)
+is not changed: that object is restored under its own name, and which
+vault it is is its own field, above.
+
+The rename lists on stderr, and gives under `store_references` with
+`--json`, what it did to every use of a store it knows:
+
+| | |
+|---|---|
+| changed | a reference that points elsewhere now |
+| kept | one a start names and replaces by itself: said to be the same in both environments |
+| unnamed | one that says **which store** (a vault's address, a 1Password item's path), or what a `PushSecret` or `ClusterPushSecret` writes to, and that no start fits: it is the source's still |
+| items unchanged | one that names an item in a store and that no start fits: the same name, read from whichever store its store object says |
+| unreached | an object that uses a store in a way a rename cannot change: a CSI class's `objects` document, a 1Password store's `vaults`, a provider it has no field for, an `ExternalSecret` that finds by a pattern of names or by tags or reads from a generator, a pod that asks the Vault agent by annotation, an HCP Vault Secrets object, Vault Secrets Operator objects that read through no `VaultConnection` of the snapshot, a `PushSecret` that writes by `dataTo` or to a destination with no key |
+
+**A restore is refused, with nothing written, while anything is unnamed
+or unreached**: what reads or writes through it would use the source's
+store. A `PushSecret` writes, so the item it writes to needs a start of
+its own, whatever its store is. Give each a start, replaced by itself if
+it is meant to be the same (a start replaced by itself is a whole
+reference, or a path that ends with a slash: not `https://`, which is
+every URL); leave the object out; or pass
+`--keep-source-stores` to restore all the same; it then says how many of
+them a `PushSecret` writes to, which the new cluster would write, and
+delete where it is told to. The refused restore's
+`--json` document carries the same lists. A diff writes nothing, and
+only lists them.
+
+The rename says on stderr which kinds of object it looked at
+(`kinds_read` with `--json`). The list is of what it knows, and is not
+proof that nothing else reads the source: a store's address in a workload's own configuration, a
+plugin's environment, or an operator not in the table above is not seen.
+A start is a plain prefix with no sense of where a name ends
+(`kv-dev` also fits `kv-dev-2`), so write starts long enough to mean one
+thing, and a start given twice is refused.
+
+```yaml
+vaults/apps/items/: vaults/apps-test/items/
+https://kv-dev.vault.azure.net: https://kv-test.vault.azure.net
+```
+
+An entry or a start that names nothing in the snapshot is refused, as is
+a rename file with nothing in it, with nothing restored: a mistyped one would otherwise restore what it was
+written to hold back, or leave the new environment reading the old one's
+secrets. Leaving out is not checked against what stays: an object left in
+that needs one left out fails, or waits, in the cluster.
+
 ## As a graph (Azure)
 
 `truthform graph --from <snapshot>` writes an Azure snapshot as resources

@@ -27,14 +27,17 @@ type storeReader struct {
 	// secret is the field naming the Secret made. With none the Secret has
 	// the object's name; with one that is unset, the object makes none.
 	secret string
+	// refs are the fields a restore into another environment may point
+	// elsewhere (RenameStores), where they are not those of item.
+	refs []string
 }
 
 var storeReaders = []storeReader{
 	{group: "onepassword.com", kind: "OnePasswordItem", store: "1Password", item: []string{"spec.itemPath"}},
-	{group: "secrets.hashicorp.com", kind: "VaultStaticSecret", store: "Vault", item: []string{"spec.mount", "spec.path"}, secret: "spec.destination.name"},
-	{group: "secrets.hashicorp.com", kind: "VaultDynamicSecret", store: "Vault", item: []string{"spec.mount", "spec.path"}, secret: "spec.destination.name"},
-	{group: "secrets.hashicorp.com", kind: "VaultPKISecret", store: "Vault", item: []string{"spec.mount", "spec.role"}, secret: "spec.destination.name"},
-	{group: "spv.no", kind: "AzureKeyVaultSecret", store: "Azure Key Vault", named: "spec.vault.name", item: []string{"spec.vault.object.name"}, secret: "spec.output.secret.name"},
+	{group: "secrets.hashicorp.com", kind: "VaultStaticSecret", store: "Vault", item: []string{"spec.mount", "spec.path"}, secret: "spec.destination.name", refs: []string{"spec.mount", "spec.path", "spec.namespace"}},
+	{group: "secrets.hashicorp.com", kind: "VaultDynamicSecret", store: "Vault", item: []string{"spec.mount", "spec.path"}, secret: "spec.destination.name", refs: []string{"spec.mount", "spec.path", "spec.namespace"}},
+	{group: "secrets.hashicorp.com", kind: "VaultPKISecret", store: "Vault", item: []string{"spec.mount", "spec.role"}, secret: "spec.destination.name", refs: []string{"spec.mount", "spec.namespace"}},
+	{group: "spv.no", kind: "AzureKeyVaultSecret", store: "Azure Key Vault", named: "spec.vault.name", item: []string{"spec.vault.object.name"}, secret: "spec.output.secret.name", refs: []string{"spec.vault.name", "spec.vault.object.name"}},
 	// What a class reads is in a document its provider defines; the vault it
 	// reads from is a field for the providers that have one.
 	{group: "secrets-store.csi.x-k8s.io", kind: "SecretProviderClass", store: "Secrets Store CSI driver", named: "spec.provider", item: []string{"spec.parameters.keyvaultName", "spec.parameters.vaultAddress"}, secret: "spec.secretObjects[].secretName"},

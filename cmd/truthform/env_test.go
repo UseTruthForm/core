@@ -326,13 +326,14 @@ func TestReportListsPlainCredentials(t *testing.T) {
 	}
 }
 
-// --rename is Azure's: on another platform it is refused, not ignored.
-func TestRenameIsAzureOnly(t *testing.T) {
+// --rename is Azure's and Kubernetes's: on another platform it is refused,
+// not ignored.
+func TestRenameIsRefusedElsewhere(t *testing.T) {
 	f := writeFile(t, t.TempDir(), "names.yaml", "Microsoft.Storage/storageAccounts/a: b\n")
-	if _, _, err := renamed(f, "aws", snapshot.Snapshot{}); err == nil || !strings.Contains(err.Error(), "azure only") {
+	if _, _, err := renamed(f, "aws", snapshot.Snapshot{}, true); err == nil || !strings.Contains(err.Error(), "azure and kubernetes only") {
 		t.Errorf("aws: %v", err)
 	}
-	if _, _, err := renamed(f, "azure", snapshot.Snapshot{}); err == nil || !strings.Contains(err.Error(), "not in the snapshot") {
+	if _, _, err := renamed(f, "azure", snapshot.Snapshot{}, true); err == nil || !strings.Contains(err.Error(), "not in the snapshot") {
 		t.Errorf("azure with a name not in the snapshot: %v", err)
 	}
 	r, w, _ := os.Pipe()

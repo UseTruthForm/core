@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/usetruthform/core/internal/azarm"
+	"github.com/usetruthform/core/internal/kube"
 	"github.com/usetruthform/core/internal/snapshot"
 )
 
@@ -26,6 +27,9 @@ var (
 	// fail reported, for the document a failed run ends with.
 	emitted bool
 	lastErr error
+	// storeRefs is what a Kubernetes --rename did and did not do, for the
+	// document; nil where none ran.
+	storeRefs *kube.RenameReport
 	// heldBack is what --leave-out took out of the snapshot, named in the
 	// diff and restore documents so "no differences" says what it skipped.
 	heldBack []string
@@ -41,7 +45,14 @@ func emitError(code int) {
 	if lastErr != nil {
 		msg = lastErr.Error()
 	}
-	emit(map[string]any{"schema": jsonSchema, "command": command, "error": msg, "exit": code})
+	doc := map[string]any{"schema": jsonSchema, "command": command, "error": msg, "exit": code}
+	// A restore refused for what --rename would leave as the source's
+	// says which, as one that went ahead does.
+	if storeRefs != nil && command == "restore" {
+		doc["complete"] = false
+		doc["store_references"] = storeRefsJSON()
+	}
+	emit(doc)
 }
 
 // jsonSchema names the document's shape; it changes only with a new name.
@@ -86,6 +97,9 @@ func changesJSON(cs []snapshot.Change) []changeJSON {
 func emitDiff(changes []snapshot.Change, from, target string) {
 	doc := map[string]any{"schema": jsonSchema, "command": command, "from": from, "target": target,
 		"differences": len(changes), "changes": changesJSON(changes), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
+	if storeRefs != nil {
+		doc["store_references"] = storeRefsJSON()
+	}
 	if sizeCheck != nil {
 		doc["vm_sizes"] = sizeCheck
 	}
@@ -144,7 +158,27 @@ func emitRestore(results []snapshot.Result, target string) {
 	if namesHeld != nil {
 		doc["names_held"] = namesHeld
 	}
+	if storeRefs != nil {
+		doc["store_references"] = storeRefsJSON()
+	}
 	emit(doc)
+}
+
+// storeRefsJSON is what --rename did to the snapshot's uses of a secret
+// store: what points elsewhere, and what is still as the source's (kept
+// because the file says so, unnamed because no start fits a store,
+// unreached because a rename cannot change it), and the item names that
+// no start fits, which are read from whichever store their object says. Lists, empty rather than null.
+func storeRefsJSON() map[string]any {
+	refs := func(l []kube.StoreRef) []map[string]string {
+		out := []map[string]string{}
+		for _, r := range l {
+			out = append(out, map[string]string{"object": r.Object, "field": r.Field, "from": r.From, "to": r.To})
+		}
+		return out
+	}
+	return map[string]any{"kinds_read": kube.StoreKinds(), "changed": refs(storeRefs.Changed), "kept": refs(storeRefs.Kept), "unnamed": refs(storeRefs.Unnamed), "items_unchanged": refs(storeRefs.Within),
+		"unreached": append([]string{}, storeRefs.Unreached...)}
 }
 
 // needElsewhere is what the snapshot restored or compared needs outside its

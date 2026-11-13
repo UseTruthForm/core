@@ -31,6 +31,7 @@ const usage = `truthform: capture what is running so it can be recreated.
 Kubernetes:
   truthform capture --context <kube-context> --out <dir> [--include-system] [--baseline <dir>]
   truthform restore --context <kube-context> --from <dir> [--secrets-from <file>] [--secrets-from-context <kube-context>]
+      [--leave-out <file>] [--rename <file>]   into another environment: objects to hold back, and where its Secrets are read from
   truthform diff    --context <kube-context> --from <dir> [--baseline <dir>]
 
 AWS (Cloud Control, every type in the CloudFormation registry):
@@ -263,6 +264,7 @@ func restore(ctx context.Context, args []string) int {
 	update := fs.Bool("update", false, "aws, azure, gcp, github, cloudflare: also bring existing resources that differ in line with the snapshot (never replaces one); without it, restore only creates what is missing. Kubernetes restore always applies (server-side apply)")
 	values := fs.String("values", "", "aws, azure, github, cloudflare: YAML file of values the platform never returns (Lambda code, secrets, VM passwords), keyed 'Kind/name' (AWS) or 'Kind/resourceGroup/name' (Azure); read, sent to the platform, never written. Refused elsewhere")
 	rename := fs.String("rename", "", renameHelp)
+	keepStores := fs.Bool("keep-source-stores", false, "kubernetes, with --rename: restore though a use of a secret store that no start fits, or that --rename does not reach, stays as the source's")
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	dryRun := fs.Bool("dry-run", false, "github, cloudflare: read the target and print every write the restore would make; make none")
@@ -301,7 +303,10 @@ func restore(ctx context.Context, args []string) int {
 	if snap, err = leftOut(*leaveOut, *platform, snap); err != nil {
 		return fail(err)
 	}
-	names, snap, err := renamed(*rename, *platform, snap)
+	if *keepStores && (*rename == "" || *platform != "kubernetes") {
+		return fail(fmt.Errorf("--keep-source-stores is for a kubernetes restore with --rename; nothing was restored"))
+	}
+	names, snap, err := renamed(*rename, *platform, snap, !*keepStores)
 	if err != nil {
 		return fail(err)
 	}
@@ -367,6 +372,9 @@ func restore(ctx context.Context, args []string) int {
 		}
 		fmt.Printf("NOT APPLIED %s: %s\n", r.Key, r.Detail)
 	}
+	if len(heldBack) > 0 {
+		fmt.Printf("left out %d (--leave-out): %s\n", len(heldBack), strings.Join(heldBack, ", "))
+	}
 	fmt.Printf("applied %d of %d objects to %s\n", ok, len(results), *kctx)
 	if ok != len(results) {
 		return 3
@@ -386,6 +394,7 @@ func diff(ctx context.Context, args []string) int {
 	rename := fs.String("rename", "", renameHelp)
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
 	values := fs.String("values", "", "azure: the --values file the restore was given; what it sets is compared as it was sent, secrets aside, and a key that matches nothing is refused")
+	keepStoresDiff := fs.Bool("keep-source-stores", false, "taken as restore takes it, and changes nothing: a diff lists what --rename leaves as the source's, and never refuses")
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	var aws awsFlags
 	aws.register(fs)
@@ -429,7 +438,8 @@ func diff(ctx context.Context, args []string) int {
 	if want, err = leftOut(*leaveOut, *platform, want); err != nil {
 		return fail(err)
 	}
-	names, want, err := renamed(*rename, *platform, want)
+	_ = *keepStoresDiff // a diff lists and never refuses: the flag is taken so that a restore's arguments can be given to it
+	names, want, err := renamed(*rename, *platform, want, false)
 	if err != nil {
 		return fail(err)
 	}
@@ -692,29 +702,34 @@ func parseFlags(fs *flag.FlagSet, args []string) error {
 	return fs.Parse(args)
 }
 
-const renameHelp = "azure: YAML file of new names for resources whose names are unique across Azure (storage accounts, key vaults, registries), 'Type/name: newname'; renames each one in every group that has it, its children and every reference to it, for a restore into another subscription while the source exists (give diff the same file)"
+const renameHelp = "kubernetes: YAML file of where Secrets are read from instead, '<start of a store reference>: <what replaces it>' (a 1Password item path, a vault's address, an ExternalSecret's key); only fields that name a store or an item in it change, and each reference is listed as changed or not, for a restore into another environment (give diff the same file). azure: YAML file of new names for resources whose names are unique across Azure (storage accounts, key vaults, registries), 'Type/name: newname'; renames each one in every group that has it, its children and every reference to it, for a restore into another subscription while the source exists (give diff the same file)"
 
-const leaveOutHelp = "azure: YAML list of objects a restore leaves out and a diff does not expect, keyed 'Kind/resourceGroup/name' as --values is, with the names the snapshot has (before --rename); refused if anything left in still needs one (give diff the same file)"
+const leaveOutHelp = "kubernetes: YAML list of objects a restore leaves out and a diff does not expect, 'Kind/namespace/name' or 'Kind/name' for one with no namespace; Kind may be Kind.group and '*' is any (quote an entry that starts with one; give diff the same file). azure: YAML list of objects a restore leaves out and a diff does not expect, keyed 'Kind/resourceGroup/name' as --values is, with the names the snapshot has (before --rename); refused if anything left in still needs one (give diff the same file)"
 
-// leftOut applies --leave-out to a snapshot. Only Azure has it; elsewhere it
-// is refused, never ignored.
+// leftOut applies --leave-out to a snapshot. Azure and Kubernetes have it;
+// elsewhere it is refused, never ignored.
 func leftOut(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, error) {
 	heldBack = nil
 	if file == "" {
 		return s, nil
 	}
-	if platform != "azure" {
-		return s, fmt.Errorf("--leave-out is for --platform azure only")
+	if platform != "azure" && platform != "kubernetes" {
+		return s, fmt.Errorf("--leave-out is for --platform azure and kubernetes only")
 	}
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return s, err
 	}
 	var keys []string
-	if err := yaml.Unmarshal(b, &keys); err != nil {
-		return s, fmt.Errorf("%s: want a list of 'Kind/resourceGroup/name': %w", file, err)
+	if err := yaml.UnmarshalStrict(b, &keys); err != nil {
+		return s, fmt.Errorf("%s: want a list of 'Kind/resourceGroup/name' (azure) or 'Kind/namespace/name' (kubernetes): %w", file, err)
 	}
-	out, err := azarm.LeaveOut(s, keys)
+	var out snapshot.Snapshot
+	if platform == "kubernetes" {
+		out, err = kube.LeaveOut(s, keys)
+	} else {
+		out, err = azarm.LeaveOut(s, keys)
+	}
 	if err != nil {
 		return s, fmt.Errorf("%s: %w", file, err)
 	}
@@ -725,8 +740,24 @@ func leftOut(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, err
 		kept[o.Key()] = true
 	}
 	for _, o := range s.Objects {
-		if !kept[o.Key()] {
+		if kept[o.Key()] {
+			continue
+		}
+		if platform != "kubernetes" {
 			heldBack = append(heldBack, o.Kind()+"/"+o.Namespace()+"/"+o.Name())
+			continue
+		}
+		// As an entry names it, with the group: two APIs may share a kind,
+		// and an object with no namespace has no part for one.
+		group, _, versioned := strings.Cut(o.APIVersion(), "/")
+		kind := o.Kind()
+		if versioned {
+			kind += "." + group
+		}
+		if o.Namespace() == "" {
+			heldBack = append(heldBack, kind+"/"+o.Name())
+		} else {
+			heldBack = append(heldBack, kind+"/"+o.Namespace()+"/"+o.Name())
 		}
 	}
 	sort.Strings(heldBack)
@@ -762,20 +793,83 @@ func warnOtherSubscriptions(s snapshot.Snapshot, platform, target string) {
 
 // renamed applies --rename to a snapshot. Only Azure has it; elsewhere it
 // is refused, never ignored.
-func renamed(file, platform string, s snapshot.Snapshot) (map[string]string, snapshot.Snapshot, error) {
+//
+// For Kubernetes, strict refuses a rename that leaves a store reference
+// where the source's is with nobody having said so: one no start fits, or
+// one a rename does not reach. A restore is strict unless told otherwise;
+// a diff writes nothing, and only says.
+func renamed(file, platform string, s snapshot.Snapshot, strict bool) (map[string]string, snapshot.Snapshot, error) {
+	storeRefs = nil
 	if file == "" {
 		return nil, s, nil
 	}
-	if platform != "azure" {
-		return nil, s, fmt.Errorf("--rename is for --platform azure only")
+	if platform != "azure" && platform != "kubernetes" {
+		return nil, s, fmt.Errorf("--rename is for --platform azure and kubernetes only")
 	}
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return nil, s, err
 	}
 	var names map[string]string
-	if err := yaml.Unmarshal(b, &names); err != nil {
+	// Strict: a start given twice is a mistake, and the last would win.
+	if err := yaml.UnmarshalStrict(b, &names); err != nil {
 		return nil, s, fmt.Errorf("%s: %w", file, err)
+	}
+	if platform == "kubernetes" {
+		// Not names of objects, as Azure's are: where Secrets are read from.
+		out, rep, err := kube.RenameStores(s, names)
+		if err != nil {
+			return nil, s, fmt.Errorf("%s: %w", file, err)
+		}
+		// Each one, changed or not: a restore that still read the source's
+		// secrets would otherwise look like one that did not.
+		fmt.Fprintf(os.Stderr, "rename: %d store references point elsewhere, as %s asks:\n", len(rep.Changed), file)
+		for _, r := range rep.Changed {
+			fmt.Fprintf(os.Stderr, "   %s %s: %s -> %s\n", r.Object, r.Field, r.From, r.To)
+		}
+		if len(rep.Kept) > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d store references are as the source's, as %s asks:\n", len(rep.Kept), file)
+			for _, r := range rep.Kept {
+				fmt.Fprintf(os.Stderr, "   %s %s: %s\n", r.Object, r.Field, r.From)
+			}
+		}
+		if len(rep.Within) > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d references name an item in a store and no start fits them: each reads the same name, from the store its store object says:\n", len(rep.Within))
+			for _, r := range rep.Within {
+				fmt.Fprintf(os.Stderr, "   %s %s: %s\n", r.Object, r.Field, r.From)
+			}
+		}
+		if len(rep.Unnamed) > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d references say which store, and no start fits them: they are the source's:\n", len(rep.Unnamed))
+			for _, r := range rep.Unnamed {
+				fmt.Fprintf(os.Stderr, "   %s %s: %s\n", r.Object, r.Field, r.From)
+			}
+		}
+		if len(rep.Unreached) > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d objects use a store in a way --rename does not reach; they are as the source's:\n", len(rep.Unreached))
+			for _, u := range rep.Unreached {
+				fmt.Fprintln(os.Stderr, "  ", u)
+			}
+		}
+		// What a PushSecret pushes it writes, and where it is told to it
+		// deletes: left as the source's, that is the source's store.
+		writes := 0
+		for _, r := range rep.Unnamed {
+			if kube.WritesToStore(r) {
+				writes++
+			}
+		}
+		if writes > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d of those are what a PushSecret WRITES to. Restored as they are, the new cluster writes the source's items, and deletes them where its deletionPolicy says Delete.\n", writes)
+		}
+		storeRefs = &rep
+		// What was not looked at, so that nothing listed does not read as
+		// nothing there.
+		fmt.Fprintf(os.Stderr, "rename: a use of a secret store was looked for in these kinds, and the 1Password operator's annotation on any object: %s. One named anywhere else (a workload's own settings, another operator's objects) is not seen.\n", strings.Join(kube.StoreKinds(), ", "))
+		if n := len(rep.Unnamed) + len(rep.Unreached); strict && n > 0 {
+			return nil, s, fmt.Errorf("%s: %d objects would use the source's secret store (listed above: a store, or what a PushSecret writes, that no start fits, or a use --rename does not reach), and what reads or writes through them would read or write the source's; nothing was restored. Give each a start (replaced by itself, if it is the same in both), leave the object out, or pass --keep-source-stores", file, n)
+		}
+		return nil, out, nil
 	}
 	out, warnings, err := azarm.Rename(s, names)
 	if err != nil {

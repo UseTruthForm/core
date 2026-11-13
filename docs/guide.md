@@ -116,26 +116,15 @@ What a snapshot does not hold, by design:
   `https://org@host`) and is kept. An `Authorization` value (`Bearer …`)
   is withheld too.
 
-  What a GitOps source installs with is read by each value's name
-  (`auth.token`, `adminPassword`, `apiKey`): a Flux HelmRelease's
-  `values` and a Kustomization's `postBuild.substitute`; an Argo CD
-  application's or application set's `valuesObject`, parameters (Helm's,
-  a plugin's, jsonnet's), generator elements and inputs, and its `values`
-  and `templatePatch` text, which is withheld whole when a credential is
-  in it, and is read line by line when it is a template that does not
-  parse. Everything under a name that says a credential is withheld. A
-  value that only names a thing is kept, so that the object can be
-  restored without the cluster it came from: a Secret's name
-  (`existingSecret`, `pullSecret`), a key in one (`passwordKey`,
-  `secretKeyRef`), a toleration's `key`, and a value that only points
-  elsewhere (`${var}`, `{{ … }}`). `secret` alone is read by its value:
-  what reads as an object's name is kept.
+  An Argo CD application's parameters are read as variables are. The
+  rest of what a GitOps source installs with (Helm values) is kept as it
+  is, beyond the variables in it.
   It is named in the snapshot and listed in REPORT.md as a finding: move it
   into a Secret. A restore reads it from the source with
   `--secrets-from-context`. Not caught: a credential passed as a command
-  argument, inside a config file a ConfigMap holds, under a name that
-  does not say it is one, a token short enough to read as an account's
-  name in a URL, or a password under `secret` that reads as a name. Because both sides are withheld, a diff does not
+  argument, inside a config file a ConfigMap holds, in Helm values
+  outside an `env` list, or a token short enough to read as an account's
+  name in a URL. Because both sides are withheld, a diff does not
   show a rotated credential, and a snapshot taken before TruthForm withheld
   these values still holds them in its git history;
 - **what the platform made itself**: default VPCs and their subnets,
@@ -544,8 +533,9 @@ restore takes one Secret's values from one place.
 with no entry, a key with no reference, a key the Secret does not have.
 Run after each capture, it says so the day someone adds a Secret by hand.
 It also exits 2 for a snapshot whose capture did not read Secrets (a
-Secret to supply may be among them; `.gaps` with `--json`), and notes
-any other type it could not read.
+Secret to supply may be among them), and notes any other type it could
+not read; with `--json`, `.gaps` lists what the capture failed to read
+and `.secrets.problems` says which of it bears on Secrets.
 It reads only the snapshot and the file. `--resolve` also reads every
 value from its source and prints none of them: it proves the sign-ins and
 the items are there before the day they are needed.
@@ -649,17 +639,20 @@ The rename lists on stderr, and gives under `store_references` with
 |---|---|
 | changed | a reference that points elsewhere now |
 | kept | one a start names and replaces by itself: said to be the same in both environments |
-| unnamed | one that says **which store** (a vault's address, a 1Password item's path), or what a `PushSecret` writes to, and that no start fits: it is the source's still |
+| unnamed | one that says **which store** (a vault's address, a 1Password item's path), or what a `PushSecret` or `ClusterPushSecret` writes to, and that no start fits: it is the source's still |
 | items unchanged | one that names an item in a store and that no start fits: the same name, read from whichever store its store object says |
-| unreached | an object that uses a store in a way a rename cannot change: a CSI class's `objects` document, a 1Password store's `vaults`, a provider it has no field for, an `ExternalSecret` that finds by a pattern of names or by tags or reads from a generator, a pod that asks the Vault agent by annotation, an HCP Vault Secrets object, Vault Secrets Operator objects with no `VaultConnection` in the snapshot |
+| unreached | an object that uses a store in a way a rename cannot change: a CSI class's `objects` document, a 1Password store's `vaults`, a provider it has no field for, an `ExternalSecret` that finds by a pattern of names or by tags or reads from a generator, a pod that asks the Vault agent by annotation, an HCP Vault Secrets object, Vault Secrets Operator objects that read through no `VaultConnection` of the snapshot, a `PushSecret` that writes by `dataTo` or to a destination with no key |
 
 **A restore is refused, with nothing written, while anything is unnamed
 or unreached**: what reads or writes through it would use the source's
 store. A `PushSecret` writes, so the item it writes to needs a start of
 its own, whatever its store is. Give each a start, replaced by itself if
 it is meant to be the same (a start replaced by itself is a whole
-reference, or ends with a slash); leave the object out; or pass
-`--keep-source-stores` to restore all the same. The refused restore's
+reference, or a path that ends with a slash: not `https://`, which is
+every URL); leave the object out; or pass
+`--keep-source-stores` to restore all the same; it then says how many of
+them a `PushSecret` writes to, which the new cluster would write, and
+delete where it is told to. The refused restore's
 `--json` document carries the same lists. A diff writes nothing, and
 only lists them.
 

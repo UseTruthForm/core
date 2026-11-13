@@ -851,6 +851,17 @@ func renamed(file, platform string, s snapshot.Snapshot, strict bool) (map[strin
 				fmt.Fprintln(os.Stderr, "  ", u)
 			}
 		}
+		// What a PushSecret pushes it writes, and where it is told to it
+		// deletes: left as the source's, that is the source's store.
+		writes := 0
+		for _, r := range rep.Unnamed {
+			if kube.WritesToStore(r) {
+				writes++
+			}
+		}
+		if writes > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d of those are what a PushSecret WRITES to. Restored as they are, the new cluster writes the source's items, and deletes them where its deletionPolicy says Delete.\n", writes)
+		}
 		storeRefs = &rep
 		// What was not looked at, so that nothing listed does not read as
 		// nothing there.

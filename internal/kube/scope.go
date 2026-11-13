@@ -61,14 +61,18 @@ type ScopeReport struct {
 	// Jobs are the Jobs left out because a restored Job runs again, those
 	// of a release that is brought among them.
 	Jobs []string `json:"jobsLeftOut"`
+	// SharedName are objects with no namespace brought because a release
+	// of their name is, though another release of that name is left out:
+	// which of the two made one, the object does not say.
+	SharedName []string `json:"broughtBySharedName"`
 	// ObjectsBrought and ObjectsLeftOut are the objects of those
 	// namespaces that no release made (Kind namespace/name).
 	ObjectsBrought []string `json:"objectsBrought"`
 	ObjectsLeftOut []string `json:"objectsLeftOut"`
 	// StillMade are what a GitOps source that is brought makes in a
-	// namespace the scope leaves out whole: the scope chooses among the
-	// snapshot's objects, and cannot stop a source restored from making
-	// what it makes.
+	// namespace the scope narrows, left out whole or not: the scope
+	// chooses among the snapshot's objects, and cannot stop a source
+	// restored from making what it makes.
 	StillMade []ScopeMade `json:"stillMade"`
 }
 
@@ -183,7 +187,7 @@ func secretMakers(s snapshot.Snapshot) map[secretKey]int {
 // that fits nothing in the namespaces of its entry, is an error: a
 // mistyped one would otherwise leave out what it was written to bring.
 func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, error) {
-	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}}
+	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}}
 	if sc.Narrow == nil && !sc.Jobs {
 		return s, rep, fmt.Errorf("it narrows nothing: give at least one entry under narrow")
 	}
@@ -302,6 +306,8 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 	rel := make([]relKey, len(s.Objects))
 	relObjects := map[relKey]int{}
 	relChosen := map[relKey]bool{}
+	maker := secretMakers(s)
+	made := make([]bool, len(s.Objects))
 	// The namespaces that have a release of each name.
 	relNS := map[string]map[string]bool{}
 	for _, o := range s.Objects {
@@ -343,6 +349,13 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			// Of no release, or of one installed in a namespace the scope
 			// does not narrow: it is here, and goes as here goes.
 			state[i], loose[i] = left, true
+			if _, isMade := maker[secretKey{o.Namespace(), o.Name()}]; isMade && o.Kind() == "Secret" && o.APIVersion() == "v1" {
+				// A Secret an object makes goes with that object, and
+				// is not chosen by itself: a pattern that fits only such
+				// Secrets fits nothing, and is refused as one.
+				made[i] = true
+				break
+			}
 			es := narrowed[o.Namespace()]
 			// Both asked, so that each marks what it fits as used.
 			byName, byLabel := named(o, es), labelled(o, es)
@@ -359,7 +372,7 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		}
 		for _, p := range e.Objects {
 			if !objectUsed[i][p] {
-				return s, rep, fmt.Errorf("entry %d: no object that no release made fits %q in %s", i+1, p, strings.Join(e.Namespaces, ", "))
+				return s, rep, fmt.Errorf("entry %d: no object that no release made fits %q in %s (a Secret that an object of the snapshot makes goes with that object, and is not named by itself)", i+1, p, strings.Join(e.Namespaces, ", "))
 			}
 		}
 		if len(e.Labels) > 0 && !labelsUsed[i] {
@@ -377,24 +390,29 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			// Left only when every release of the name is one the scope
 			// leaves out.
 			state[i] = left
+			var leftIn []string
 			for ns := range relNS[rel[i].name] {
 				if narrowed[ns] == nil || relChosen[relKey{ns, rel[i].name}] {
 					state[i] = brought
+				} else {
+					leftIn = append(leftIn, ns+"/"+rel[i].name)
 				}
+			}
+			if state[i] == brought && len(leftIn) > 0 {
+				sort.Strings(leftIn)
+				o := s.Objects[i]
+				rep.SharedName = append(rep.SharedName, o.Kind()+" "+o.Name()+" (it may be of "+strings.Join(leftIn, ", ")+", left out)")
 			}
 		}
 	}
-	// A Secret goes where its maker goes.
-	maker := secretMakers(s)
-	made := make([]bool, len(s.Objects))
+	// A Secret goes where its maker goes: left out with one left out,
+	// brought with one brought or one the scope does not touch.
 	for i, o := range s.Objects {
-		if !loose[i] || o.Kind() != "Secret" || o.APIVersion() != "v1" {
-			continue
-		}
-		// With its maker, whatever an entry says of the Secret itself: a
-		// pattern that fits it was not written to part the two.
-		if m, ok := maker[secretKey{o.Namespace(), o.Name()}]; ok && (state[m] == brought || state[m] == left) {
-			made[i], state[i] = true, state[m]
+		if made[i] {
+			state[i] = brought
+			if m := maker[secretKey{o.Namespace(), o.Name()}]; state[m] == left {
+				state[i] = left
+			}
 		}
 	}
 	// A Job is left out wherever it is, and whatever chose it.
@@ -467,11 +485,17 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 	applied := stillApplied(s, out)
 	stillMade := map[ScopeMade]int{}
 	for i, sk := range s.Skips {
-		if narrowed[sk.Namespace] != nil && !alive[sk.Namespace] {
-			if applied[i] == "" {
+		if narrowed[sk.Namespace] != nil {
+			// Left out whole, the namespace is not the plan's to ask
+			// for, unless a source that is brought makes this.
+			if applied[i] == "" && !alive[sk.Namespace] {
 				continue
 			}
-			stillMade[ScopeMade{Source: applied[i], Namespace: sk.Namespace}]++
+			// In any namespace the scope narrows, what a source brought
+			// makes is there again whatever the scope chose.
+			if applied[i] != "" {
+				stillMade[ScopeMade{Source: applied[i], Namespace: sk.Namespace}]++
+			}
 		}
 		out.Skips = append(out.Skips, sk)
 	}
@@ -504,35 +528,20 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 // the source object in the snapshot as brought that makes it, directly or
 // through sources it makes ("" where none does).
 func stillApplied(s, out snapshot.Snapshot) []string {
-	type src struct{ kind, name string }
-	held := map[src]bool{}
-	for _, o := range out.Objects {
-		group, _, _ := strings.Cut(o.APIVersion(), "/")
-		for label, so := range sourceObject {
-			if so.group == group && so.kind == o.Kind() {
-				held[src{label, o.Namespace() + "/" + o.Name()}] = true
-				held[src{label, o.Name()}] = true // Argo names an application alone
-			}
-		}
-	}
+	held := heldSources(out)
 	// A source the capture left to another source.
-	parent := map[src]src{}
+	parent := map[source]source{}
 	for _, sk := range s.Skips {
-		pk, pn, ok := SourceOf(sk.Reason)
-		if !ok {
-			continue
-		}
-		for label, so := range sourceObject {
-			if so.resource == sk.Resource {
-				parent[src{label, sk.Namespace + "/" + sk.Name}] = src{pk, pn}
-				parent[src{label, sk.Name}] = src{pk, pn}
+		if pk, pn, ok := SourceOf(sk.Reason); ok {
+			for _, child := range skippedSource(sk) {
+				parent[child] = source{pk, pn}
 			}
 		}
 	}
 	res := make([]string, len(s.Skips))
 	for i, sk := range s.Skips {
 		k, n, ok := SourceOf(sk.Reason)
-		at := src{k, n}
+		at := source{k, n}
 		for hops := 0; ok && hops < 64; hops++ {
 			if held[at] {
 				res[i] = at.kind + " " + at.name

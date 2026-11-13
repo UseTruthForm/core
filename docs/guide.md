@@ -627,7 +627,16 @@ that is depends on the store:
   name, keeps both as one item in another vault, reads them back, and
   prints their references (and, given the Secrets' names, the
   sources-file entries). It prints neither value, and `--dry-run` makes
-  nothing.
+  nothing. It removes only a server 1Password said this run made, and
+  says what it made and left if it is stopped; killed outright
+  (`kill -9`, or the machine losing power) it cannot, and its temporary
+  directory (under `$TMPDIR`, or `/tmp`) then still holds the
+  credentials file and the token. It knows its own server by the id
+  1Password prints when it makes one; the first real run is what shows
+  that it does, and if it does not the script stops with the server made
+  and says so. **It has been run with `--dry-run`
+  against a real account and has not yet made a server on one**: run it
+  with `--dry-run` first, and read what it says it made.
 
 ### A part of the snapshot
 

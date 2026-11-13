@@ -2,7 +2,6 @@ package kube
 
 import (
 	"encoding/json"
-	yaml "go.yaml.in/yaml/v3"
 	"maps"
 	"reflect"
 	"regexp"
@@ -54,43 +53,12 @@ var numberedRE = regexp.MustCompile(`_\d+$`)
 // (GOOGLE_APPLICATION_CREDENTIALS=/var/run/key.json).
 var filePathRE = regexp.MustCompile(`^(/|[A-Za-z]:\\)\S*$`)
 
-// urlUserRE is a URL that signs in: scheme://something@. urlSlashRE is one
-// whose password has a slash in it, which is written though it should not
-// be.
-var (
-	urlUserRE  = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9+.-]*)://([^/@\s]*)@`)
-	urlSlashRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://[^/@:\s]*:([^@\s]+)@`)
-	digitsRE   = regexp.MustCompile(`^[0-9]*$`)
-)
-
-// urlCredential reports a URL with a credential in it: a credential
-// whatever the variable is called, even a *_URL. That is a password
-// (postgres://u:p@host, redis://:p@host), and a name with no password
-// too (https://<token>@host is how a token is given to a Git host),
-// except over SSH, where it is the account (ssh://git@host). A name that
-// is no secret (https://org@host) is withheld with the tokens: nothing
-// tells them apart.
-func urlCredential(value string) bool {
-	if m := urlUserRE.FindStringSubmatch(value); m != nil {
-		return strings.Contains(m[2], ":") || (m[2] != "" && !strings.Contains(strings.ToLower(m[1]), "ssh"))
-	}
-	if m := urlSlashRE.FindStringSubmatch(value); m != nil {
-		// Not a port and a path with an @ in it (https://host:443/@scope/x).
-		head, _, _ := strings.Cut(m[1], "/")
-		return !digitsRE.MatchString(head)
-	}
-	return false
-}
-
-// urlFields are fields that hold a URL someone may have put a password in.
-var urlFields = map[string]bool{"url": true, "repoURL": true}
-
 // credential reports a value to withhold, by its name and its value.
 func credential(name, value string) bool {
 	if value == "" || envRefRE.MatchString(value) {
 		return false
 	}
-	if urlCredential(value) {
+	if urlCredential(value) || bearerRE.MatchString(value) {
 		return true
 	}
 	base := numberedRE.ReplaceAllString(name, "")
@@ -513,7 +481,7 @@ func withhold(obj map[string]any) []string {
 func withholdEnv(obj map[string]any) []string {
 	var paths []string
 	for _, sl := range slots(obj) {
-		if sl.whole || credential(sl.name, sl.value) {
+		if sl.withheld() {
 			sl.set("")
 			paths = append(paths, sl.path)
 		}
@@ -536,175 +504,6 @@ func hasWithheld(obj map[string]any) bool {
 	md, _ := obj["metadata"].(map[string]any)
 	ann, _ := md["annotations"].(map[string]any)
 	return strOf(ann[WithheldEnvAnnotation]) != ""
-}
-
-// slot is one value withholdEnv may withhold: an env entry, or a
-// ConfigMap key.
-type slot struct {
-	path, name, value string
-	set               func(string)
-	// whole: the value is a document with a credential somewhere in it,
-	// and is withheld whole.
-	whole bool
-}
-
-// valuesName is a Helm value's name as a variable's would be written, so
-// that one rule reads both: auth.token and apiKey are auth_token and
-// api_Key.
-var (
-	valuesSeparators = regexp.MustCompile(`[.\-\[\]/]+`)
-	valuesCamel      = regexp.MustCompile(`([a-z0-9])([A-Z])`)
-)
-
-// existingRE is a value that names what is there already; refRE is a key
-// under which a Secret is named and not held (secretKeyRef, valueFrom).
-var (
-	existingRE = regexp.MustCompile(`(?i)(^|[.\-_/])existing[^.]*$`)
-	refRE      = regexp.MustCompile(`(Ref|Refs|From)$`)
-)
-
-func valuesName(n string) string {
-	// existingSecret names a Secret, and holds none.
-	if existingRE.MatchString(n) {
-		return ""
-	}
-	return valuesCamel.ReplaceAllString(valuesSeparators.ReplaceAllString(n, "_"), "${1}_${2}")
-}
-
-// holdsCredential reports a credential anywhere in a values document
-// written as YAML text.
-func holdsCredential(text string) bool {
-	var doc any
-	if err := yaml.Unmarshal([]byte(text), &doc); err != nil {
-		return false
-	}
-	found := false
-	var look func(name string, v any)
-	look = func(name string, v any) {
-		switch x := v.(type) {
-		case map[string]any:
-			for k, c := range x {
-				look(valuesName(k), c)
-			}
-		case []any:
-			for _, c := range x {
-				if m, ok := c.(map[string]any); ok && m["name"] != nil && m["value"] != nil {
-					look(valuesName(strOf(m["name"])), m["value"]) // an env entry
-				}
-				look(name, c)
-			}
-		case string:
-			found = found || credential(name, x)
-		}
-	}
-	look("", doc)
-	return found
-}
-
-// slots finds every env entry with a literal value anywhere in obj (any
-// list under "env" whose items are {name, value}: pod templates, Argo's
-// container and script, Tekton's steps, a HelmRelease's values), every
-// key of a ConfigMap's data, and what a GitOps source is told to install
-// with: every value of a Flux HelmRelease's values and of an Argo CD
-// application's valuesObject, its parameters (Helm's and a plugin's),
-// and its values written as text. Each has a path unique within obj: a
-// list item is named by its "name" where that is unique in its list, and
-// by its index otherwise, so two templates that each have a container
-// "main" setting DB_PASSWORD are two slots (review of #41).
-func slots(obj map[string]any) []slot {
-	var out []slot
-	configMap := strOf(obj["kind"]) == "ConfigMap"
-	if configMap {
-		if d, ok := obj["data"].(map[string]any); ok {
-			for k, v := range d {
-				if s, ok := v.(string); ok {
-					out = append(out, slot{path: "data[" + k + "]", name: k, value: s, set: func(x string) { d[k] = x }})
-				}
-			}
-		}
-	}
-	group, _, _ := strings.Cut(strOf(obj["apiVersion"]), "/")
-	// Only an application's parameters are name and value: a workflow's
-	// are its inputs, and "key" there is no credential.
-	argo := group == "argoproj.io" && (strOf(obj["kind"]) == "Application" || strOf(obj["kind"]) == "ApplicationSet")
-	flux := group == "helm.toolkit.fluxcd.io" && strOf(obj["kind"]) == "HelmRelease"
-	var walk func(v any, path string, values bool)
-	walk = func(v any, path string, values bool) {
-		switch x := v.(type) {
-		case map[string]any:
-			for k, c := range x {
-				p := join(path, k)
-				if configMap && path == "" && k == "data" {
-					continue // its keys are slots already
-				}
-				// Where a repository or a chart is read from: a credential
-				// only when the URL has one in it, which a Flux
-				// GitRepository's url and an Argo CD application's repoURL
-				// can.
-				if s, isStr := c.(string); isStr && urlFields[k] {
-					out = append(out, slot{path: p, name: k, value: s, set: func(v string) { x[k] = v }})
-					continue
-				}
-				// An Argo CD application's parameters are name and value
-				// (a plugin's: name and string, or map), as env is.
-				if k == "env" || (k == "parameters" && argo) {
-					for i, e := range list(c) {
-						m, ok := e.(map[string]any)
-						if !ok {
-							continue
-						}
-						at := p + "[" + item(list(c), i) + "]"
-						name := strOf(m["name"])
-						if k == "parameters" {
-							name = valuesName(name)
-						}
-						for _, field := range []string{"value", "string"} {
-							if s, isStr := m[field].(string); isStr && (field == "value" || k == "parameters") {
-								out = append(out, slot{path: at, name: name, value: s, set: func(v string) { m[field] = v }})
-								break
-							}
-						}
-						if mm, isMap := m["map"].(map[string]any); isMap && k == "parameters" {
-							for mk, mv := range mm {
-								if s, isStr := mv.(string); isStr {
-									out = append(out, slot{path: at + ".map." + mk, name: valuesName(mk), value: s, set: func(v string) { mm[mk] = v }})
-								}
-							}
-						}
-					}
-					continue
-				}
-				// Helm values written as text: read for a credential, and
-				// withheld whole when there is one.
-				if s, isStr := c.(string); isStr && argo && k == "values" && strings.HasSuffix(path, "helm") {
-					out = append(out, slot{path: p, name: k, value: s, set: func(v string) { x[k] = v }, whole: holdsCredential(s)})
-					continue
-				}
-				in := values || (argo && k == "valuesObject") || (flux && path == "spec" && k == "values")
-				if in {
-					if s, isStr := c.(string); isStr {
-						out = append(out, slot{path: p, name: valuesName(k), value: s, set: func(v string) { x[k] = v }})
-						continue
-					}
-					if l, isList := c.([]any); isList {
-						for i, e := range l {
-							if s, isStr := e.(string); isStr {
-								out = append(out, slot{path: p + "[" + strconv.Itoa(i) + "]", name: valuesName(k), value: s, set: func(v string) { l[i] = v }})
-							}
-						}
-					}
-				}
-				walk(c, p, in && !refRE.MatchString(k))
-			}
-		case []any:
-			for i, c := range x {
-				walk(c, path+"["+item(x, i)+"]", values)
-			}
-		}
-	}
-	walk(obj, "", false)
-	sort.Slice(out, func(i, j int) bool { return out[i].path < out[j].path })
-	return out
 }
 
 // item names list element i: by its "name" where no other element shares

@@ -43,6 +43,9 @@ func planCmd(args []string) int {
 	// What the capture could not read, the plan cannot count: a step that
 	// lists nothing is then no proof there is nothing.
 	notRead := gaps(s)
+	if len(notRead) > 0 {
+		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the plan cannot count what is in them; it lists them first\n", len(notRead))
+	}
 	if jsonOut {
 		emit(map[string]any{"schema": jsonSchema, "command": "plan", "plan": p, "gaps": orEmptyList(notRead)})
 		return 0
@@ -55,9 +58,6 @@ func planCmd(args []string) int {
 	}
 	if err != nil {
 		return fail(err)
-	}
-	if len(notRead) > 0 {
-		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the plan cannot count what is in them; it lists them first\n", len(notRead))
 	}
 	return 0
 }
@@ -96,23 +96,28 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 		}
 		w("\n")
 	}
+	// A count is of what was read, and says so where that is not all.
+	seen := ""
+	if len(notRead) > 0 {
+		seen = " seen"
+	}
 	w("| Step | | |\n|---|---|---:|\n")
-	w("| 1 | Install what a GitOps source makes | %d sources by hand, %d follow |\n", len(p.Sources), len(p.Follows))
-	w("| 2 | Have these APIs served before the restore | %d groups |\n", len(p.Operators))
+	w("| 1 | Install what a GitOps source makes | %d sources by hand, %d follow%s |\n", len(p.Sources), len(p.Follows), seen)
+	w("| 2 | Have these APIs served before the restore | %d groups%s |\n", len(p.Operators), seen)
 	keysOut := 0
 	for _, e := range p.Encrypted {
 		keysOut += len(e.KeysNotHeld)
 	}
 	if keysOut > 0 {
-		w("| 3 | Supply by hand the secrets no store holds | %d secrets, and %d keys the snapshot does not hold |\n", len(p.ByHand), keysOut)
+		w("| 3 | Supply by hand the secrets no store holds | %d secrets%s, and %d keys the snapshot does not hold |\n", len(p.ByHand), seen, keysOut)
 	} else {
-		w("| 3 | Supply by hand the secrets no store holds | %d secrets |\n", len(p.ByHand))
+		w("| 3 | Supply by hand the secrets no store holds | %d secrets%s |\n", len(p.ByHand), seen)
 	}
-	w("| 4 | Make the secret store reachable | %d items feed %d secrets |\n", len(p.FromStore), fromStore)
+	w("| 4 | Make the secret store reachable | %d items feed %d secrets%s |\n", len(p.FromStore), fromStore, seen)
 	w("| 5 | Restore the snapshot | |\n")
-	w("| 6 | Point the names at the rebuilt cluster | %d hosts |\n\n", len(p.Hosts))
+	w("| 6 | Point the names at the rebuilt cluster | %d hosts%s |\n\n", len(p.Hosts), seen)
 
-	w("## 1. Install first: %d sources\n\n", len(p.Sources))
+	w("## 1. Install first: %d sources%s\n\n", len(p.Sources), seen)
 	if len(p.Follows) > 0 {
 		made := 0
 		names := make([]string, len(p.Follows))
@@ -144,14 +149,14 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 		if len(p.Origins) > 0 {
 			w("The snapshot holds these repository objects: %s. Check that they are where the sources above are read from. The credential to read each is a Secret of step 3.\n\n", md(strings.Join(p.Origins, ", ")))
 			if len(p.OriginsWithheld) > 0 {
-				w("**Not in the snapshot: the address of %s.** It had a credential in it, so the capture withheld it whole: where it reads from has to come from your own records, and the credential belongs in the Secret it names.\n\n", md(strings.Join(p.OriginsWithheld, ", ")))
+				w("**Not in the snapshot: the address of %s.** The capture withheld it whole, because it read as a URL that signs in: where it reads from has to come from your own records, and a credential belongs in the Secret the object names.\n\n", md(strings.Join(p.OriginsWithheld, ", ")))
 			}
 		} else {
 			w("**Not in the snapshot: where the sources are read from.** The repository, branch and path the cluster was bootstrapped from, and the credential to read them, have to come from your own records.\n\n")
 		}
 	}
 
-	w("## 2. APIs to have served: %d groups\n\n", len(p.Operators))
+	w("## 2. APIs to have served: %d groups%s\n\n", len(p.Operators), seen)
 	if len(p.Operators) == 0 {
 		none("Every type in the snapshot is built in, or its definition is in the snapshot.")
 	} else {
@@ -171,7 +176,7 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 		w("\n")
 	}
 
-	w("## 3. Secrets to supply by hand: %d\n\n", len(p.ByHand))
+	w("## 3. Secrets to supply by hand: %d%s\n\n", len(p.ByHand), seen)
 	if len(p.ByHand) == 0 {
 		none("No Secret in the snapshot is left for a person to supply: each is made from a store, made again by something in the cluster, or opened with a key named below.")
 	} else {
@@ -220,7 +225,7 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 		w("Not for you to supply: %d that something in the cluster makes again once it runs: %s.\n\n", len(p.Reissued), strings.Join(parts, "; "))
 	}
 
-	w("## 4. Secrets a store supplies: %d, from %d items\n\n", fromStore, len(p.FromStore))
+	w("## 4. Secrets a store supplies: %d, from %d items%s\n\n", fromStore, len(p.FromStore), seen)
 	if len(p.FromStore) == 0 {
 		none("The snapshot has no object that reads a secret store.")
 	} else {
@@ -235,7 +240,7 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 	w("## 5. Restore\n\n")
 	w("`truthform restore --context <kube-context> --from <this snapshot>`, once steps 1 to 4 are in place.\n\n")
 
-	w("## 6. Names to point at the rebuilt cluster: %d\n\n", len(p.Hosts))
+	w("## 6. Names to point at the rebuilt cluster: %d%s\n\n", len(p.Hosts), seen)
 	if len(p.Hosts) == 0 {
 		none("No route in the snapshot names a host.")
 	} else {

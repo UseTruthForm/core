@@ -158,8 +158,8 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 	held := map[source]bool{}
 	defined := map[string]bool{}
 	// An Argo CD application is named bare in Argo CD's own namespace, and
-	// which that is the snapshot does not say: a bare name shared by
-	// applications in several namespaces is held only if one is in argocd.
+	// which that is the snapshot does not say: a bare name that
+	// applications in several namespaces share is not taken as held.
 	argoNamed := map[string][]string{}
 	for _, o := range s.Objects {
 		if group, _, _ := strings.Cut(o.APIVersion(), "/"); group == "argoproj.io" && o.Kind() == "Application" {
@@ -175,7 +175,7 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 			if kind == "Argo CD application" {
 				// By name, as a reason names it; namespace_name outside
 				// Argo CD's own namespace.
-				if len(argoNamed[o.Name()]) == 1 || o.Namespace() == "argocd" {
+				if len(argoNamed[o.Name()]) == 1 {
 					held[source{kind, o.Name()}] = true
 				}
 				held[source{kind, o.Namespace() + "_" + o.Name()}] = true

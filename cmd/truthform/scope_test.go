@@ -219,23 +219,47 @@ func TestKubernetesRestoreScope(t *testing.T) {
 // release made and was left, what a source brought still makes, and that
 // nothing checks what the part needs.
 func TestScopeSaid(t *testing.T) {
-	said := scopeSaid(kube.ScopeReport{
+	rep := kube.ScopeReport{
 		Narrowed: []string{"shop"}, Kept: 1, Of: 3,
 		ObjectsLeftOut: []string{"Deployment shop/queue-consumer"},
 		ObjectsBrought: []string{"ConfigMap shop/shared"},
 		SharedName:     []string{"ClusterRole x (it may be of other/x, left out)"},
 		StillMade:      []kube.ScopeMade{{Source: "Flux Kustomization flux-system/root", Namespace: "shop", Objects: 2}},
-	}, "scope.yaml")
+		Webhooks: []kube.ScopeWebhook{
+			{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "check.policy", Service: "shop/policy", Fails: true},
+			{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "soft.policy", Service: "shop/soft"},
+			{Configuration: "CustomResourceDefinition widgets.example.com", Webhook: "conversion", Service: "shop/policy", Fails: true},
+		},
+	}
+	said := scopeSaid(rep, "scope.yaml")
 	for _, want := range []string{
 		"1 objects that no release made are left out (name one under objects, as Kind/name, to bring it): Deployment shop/queue-consumer",
 		"1 objects that no release made are brought, named under objects or by label: ConfigMap shop/shared",
 		"NOTE: Flux Kustomization flux-system/root is brought, and makes 2 objects in shop",
 		"ClusterRole x (it may be of other/x, left out)",
+		"NOTE: ValidatingWebhookConfiguration policy (check.policy) is brought, and calls the Service shop/policy, which the scope leaves out: while nothing answers there, the API server refuses every write",
+		"NOTE: ValidatingWebhookConfiguration policy (soft.policy) is brought, and calls the Service shop/soft, which the scope leaves out: while nothing answers there, the API server goes on without it",
+		"NOTE: CustomResourceDefinition widgets.example.com (conversion) is brought, and calls the Service shop/policy, which the scope leaves out: while nothing answers there, objects of that kind cannot be read",
 		"nothing checks that what is brought does not need something left out",
 	} {
 		if !strings.Contains(said, want) {
 			t.Errorf("does not say %q:\n%s", want, said)
 		}
+	}
+	// The plan is what a person keeps: it says it is of a part, and gives
+	// the same notes.
+	plan := planMarkdown(kube.Plan{}, nil, &rep)
+	for _, want := range []string{
+		"**A part only.** A scope narrowed shop: 1 of their 3 objects are brought",
+		"- **Note.** Flux Kustomization flux-system/root is brought, and makes 2 objects in shop",
+		"- **Note.** ValidatingWebhookConfiguration policy (check.policy) is brought, and calls the Service shop/policy",
+	} {
+		if !strings.Contains(plan, want) {
+			t.Errorf("the plan does not say %q:\n%s", want, plan)
+		}
+	}
+	if whole := planMarkdown(kube.Plan{}, nil, nil); strings.Contains(whole, "A part only") || strings.Contains(whole, "Note.") {
+		t.Errorf("the plan of a whole snapshot speaks of a scope:\n%s", whole)
 	}
 	// With everything brought there is no such warning.
 	if said := scopeSaid(kube.ScopeReport{Narrowed: []string{"shop"}, Kept: 3, Of: 3}, "scope.yaml"); strings.Contains(said, "nothing checks") || strings.Contains(said, "NOTE") {

@@ -66,7 +66,7 @@ func planCmd(args []string) int {
 		emit(doc)
 		return 0
 	}
-	text := planMarkdown(p, notRead)
+	text := planMarkdown(p, notRead, scopeDone)
 	if *out == "" {
 		_, err = os.Stdout.WriteString(text)
 	} else if err = os.WriteFile(*out, []byte(text), 0o644); err == nil {
@@ -84,7 +84,7 @@ const planShown = 3
 // planMarkdown is the plan for a person, in the order to act on it.
 // Nothing time- or machine-dependent goes in, not the directory's name
 // either: an unchanged snapshot gives an unchanged plan, wherever it is.
-func planMarkdown(p kube.Plan, notRead []string) string {
+func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport) string {
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	// none is what a step with nothing to list says: that there is nothing,
@@ -104,6 +104,17 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 			w("- %s\n", md(g))
 		}
 		w("\n")
+	}
+	// A plan of a part says so, and says what the scope cannot stop: a
+	// person reads the plan, not what a command once wrote to a terminal.
+	if scope != nil {
+		w("**A part only.** A scope narrowed %s: %d of their %d objects are brought, and this plan is for those.\n\n", md(strings.Join(scope.Narrowed, ", ")), scope.Kept, scope.Of)
+		for _, n := range scopeNotes(*scope) {
+			w("- **Note.** %s\n", md(n))
+		}
+		if len(scopeNotes(*scope)) > 0 {
+			w("\n")
+		}
 	}
 	// A count is of what was read, and says so where that is not all.
 	seen := ""

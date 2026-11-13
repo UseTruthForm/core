@@ -45,7 +45,7 @@ func scopeSnapshot(t *testing.T) string {
 	return dir
 }
 
-const drillScope = "narrow:\n  - namespaces: [\"team-*\"]\n    releases: [a-search]\n"
+const drillScope = "narrow:\n  - namespaces: [\"team-*\"]\n    releases: [a-search]\n    objects: [ConfigMap/shared]\n"
 
 // plan scope writes a file that brings everything, never over one, and
 // --check says what a file brings and leaves out. The other plans, given
@@ -128,11 +128,16 @@ func TestKubernetesDiffScope(t *testing.T) {
 	ctx := context.Background()
 	base := []string{"--kubeconfig", srv.Kubeconfig, "--context", srv.Context, "--from", dir}
 	code, stdout, stderr := output(t, func() int { return diff(ctx, append(base, "--scope", drill)) })
-	if code != 2 || strings.Contains(stdout, "a-lien") || strings.Contains(stdout, "team-b") || !strings.Contains(stdout, "ConfigMap|team-a|a-search") || !strings.Contains(stdout, "ConfigMap|core|api") {
+	if code != 2 || strings.Contains(stdout, "a-lien") || strings.Contains(stdout, "|team-b|") || !strings.Contains(stdout, "ConfigMap|team-a|a-search") || !strings.Contains(stdout, "ConfigMap|core|api") {
 		t.Errorf("diff: exit %d\n%s", code, stdout)
 	}
-	if !strings.Contains(stderr, "scope: 4 of the 8 objects of 2 narrowed namespaces") || !strings.Contains(stderr, "team-a/a-lien (2 objects)") {
+	if !strings.Contains(stderr, "scope: 4 of the 8 objects of 2 narrowed namespaces") || !strings.Contains(stderr, "team-a/a-lien (2 objects)") ||
+		!strings.Contains(stderr, "1 objects that no release made are brought, named under objects or by label: ConfigMap team-a/shared") {
 		t.Errorf("the diff does not say what the scope left out:\n%s", stderr)
+	}
+	// The total says it is of a part.
+	if !strings.Contains(stdout, "a part only (--scope): 4 of the 8 objects of team-a, team-b were in it") {
+		t.Errorf("the total reads as the whole snapshot's:\n%s", stdout)
 	}
 	d := asJSON(t, func() { diff(ctx, append(base, "--scope", drill)) })
 	if sc, _ := d["scope"].(map[string]any); sc["kept"] != float64(4) {
@@ -147,9 +152,9 @@ func TestKubernetesDiffScope(t *testing.T) {
 	}
 	// --leave-out names objects of the snapshot as it is: one the scope
 	// leaves out too is not a mistake in the file.
-	leave := writeFile(t, t.TempDir(), "leave.yaml", "- ConfigMap/team-a/a-lien\n- ConfigMap/team-a/shared\n")
+	leave := writeFile(t, t.TempDir(), "leave.yaml", "- ConfigMap/team-a/a-lien\n")
 	code, stdout, _ = output(t, func() int { return diff(ctx, append(base, "--scope", drill, "--leave-out", leave)) })
-	if code != 2 || strings.Contains(stdout, "team-a|shared") || !strings.Contains(stdout, "ConfigMap|team-a|a-search") {
+	if code != 2 || strings.Contains(stdout, "team-a|a-lien") || !strings.Contains(stdout, "ConfigMap|team-a|a-search") {
 		t.Errorf("diff with a scope and a leave-out file: exit %d, %v\n%s", code, lastErr, stdout)
 	}
 	for why, args := range map[string][]string{
@@ -185,7 +190,7 @@ func TestKubernetesRestoreScope(t *testing.T) {
 	code, stdout, stderr := output(t, func() int {
 		return restore(ctx, append(base, "--scope", drill, "--leave-out", leave, "--secrets-from", sources))
 	})
-	if code != 0 || !strings.Contains(stdout, "applied 6 of 6 objects") {
+	if code != 0 || !strings.Contains(stdout, "applied 6 of 6 objects") || !strings.Contains(stdout, "a part only (--scope): 4 of the 7 objects") {
 		t.Fatalf("restore: exit %d, %v\n%s\n%s", code, lastErr, stdout, stderr)
 	}
 	c, err := kube.Connect(srv.Kubeconfig, srv.Context, false)

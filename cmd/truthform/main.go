@@ -32,7 +32,8 @@ Kubernetes:
   truthform capture --context <kube-context> --out <dir> [--include-system] [--baseline <dir>]
   truthform restore --context <kube-context> --from <dir> [--secrets-from <file>] [--secrets-from-context <kube-context>]
       [--leave-out <file>] [--rename <file>]   into another environment: objects to hold back, and where its Secrets are read from
-  truthform diff    --context <kube-context> --from <dir> [--baseline <dir>]
+      [--scope <file>]                         a part only (truthform plan scope writes the file)
+  truthform diff    --context <kube-context> --from <dir> [--baseline <dir>] [--scope <file>] [--leave-out <file>] [--rename <file>]
 
 AWS (Cloud Control, every type in the CloudFormation registry):
   truthform capture --platform aws --region <r> [--profile <p>] --out <dir> [--types <patterns>] [--baseline <dir>]
@@ -382,6 +383,9 @@ func restore(ctx context.Context, args []string) int {
 	if len(heldBack) > 0 {
 		fmt.Printf("left out %d (--leave-out): %s\n", len(heldBack), strings.Join(heldBack, ", "))
 	}
+	if l := scopeLine(); l != "" {
+		fmt.Println(l)
+	}
 	fmt.Printf("applied %d of %d objects to %s\n", ok, len(results), *kctx)
 	if ok != len(results) {
 		return 3
@@ -560,6 +564,9 @@ func report(changes []snapshot.Change, want, got string) int {
 	held := ""
 	if len(heldBack) > 0 {
 		held = fmt.Sprintf(", leaving out %d objects (--leave-out): %s", len(heldBack), strings.Join(heldBack, ", "))
+	}
+	if l := scopeLine(); l != "" {
+		held += "; " + l
 	}
 	if len(changes) == 0 {
 		fmt.Printf("no differences: %s matches %s%s\n", got, want, held)

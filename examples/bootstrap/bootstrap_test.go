@@ -54,10 +54,12 @@ case "$1 ${2:-} ${3:-}" in
     for f in "$S"/items/*.json; do if [ -e "$f" ]; then jq '{id: "an-item", title: .title}' "$f"; fi; done | jq -s . ;;
   "item create "*)
     vault_named "$4"
-    case " $* " in *" - "*) ;; *) echo "op: no template on input" >&2; exit 1 ;; esac
-    cat >"$S/item.tmp"
+    # As op does: the template is a file named with --template, and with
+    # --category its fields are dropped.
+    case " $* " in *" --category "*) echo "op: fields dropped" >&2; exit 1 ;; esac
+    [ "$5" = "--template" ] || { echo "op: provide the item category with --category flag" >&2; exit 1; }
+    cp "$6" "$S/item.tmp"
     jq -e '.title and .category == "SECURE_NOTE" and (.fields | length > 0)' "$S/item.tmp" >/dev/null
-    case " $* " in *" --category Secure Note "*) ;; *) echo "op: provide the item category with --category flag" >&2; exit 1 ;; esac
     case " $* " in *" --dry-run "*)
       fail item-dry-run
       if [ "$F" = item-dry-run-shape ]; then echo "{}"; else cat "$S/item.tmp"; fi

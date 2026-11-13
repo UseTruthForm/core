@@ -199,8 +199,10 @@ finish() {
 }
 trap finish EXIT
 
-# The item is given to op on its input, never as arguments: those show in
-# a process list. The credentials are kept twice, as the JSON and as its
+# The item is given to op as a file in the private directory, never as
+# arguments: those show in a process list. (As a file named with
+# --template: op reads a template on its input only from a pipe, and with
+# --category it drops the template's fields.) The credentials are kept twice, as the JSON and as its
 # base64, which is the form the Connect chart's Secret holds.
 item_of() { # <credentials file> <token file>
   jq -n --rawfile creds "$1" --rawfile token "$2" \
@@ -223,7 +225,7 @@ echo '{"made":"up"}' >"$work/try-creds"; echo made-up >"$work/try-token"
 item_of "$work/try-creds" "$work/try-token" >"$work/try.json"
 # What it says it would save is read too: the title and the three fields
 # are how the credentials are found again.
-op item create --vault "$keep_id" --category "Secure Note" --title "$item" --dry-run --format json - <"$work/try.json" >"$work/try-out.json" ||
+op item create --vault "$keep_id" --template "$work/try.json" --dry-run --format json >"$work/try-out.json" ||
   die "op would not save the item this makes in vault \"$keep\". Nothing was made"
 jq -e --arg t "$item" '.title == $t and ([.fields[]?.label] | index("credentials-json") != null and index("credentials-base64") != null and index("token") != null)' \
   "$work/try-out.json" >/dev/null 2>&1 ||
@@ -258,7 +260,7 @@ op connect token create "$server cluster token" --server "${made_id:-$server}" "
 [ -s "$work/token" ] || die "op made no token"
 
 item_of "$work/1password-credentials.json" "$work/token" >"$work/item.json"
-op item create --vault "$keep_id" --category "Secure Note" --title "$item" - <"$work/item.json" >/dev/null
+op item create --vault "$keep_id" --template "$work/item.json" >/dev/null
 kept=1
 
 # Read each back the way a rebuild will, and compare without showing it.

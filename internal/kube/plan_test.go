@@ -329,6 +329,7 @@ func TestSecretOrigins(t *testing.T) {
 
 		// Kept encrypted.
 		planObject("bitnami.com/v1alpha1", "SealedSecret", "pay", "card", nil),
+		planObject("bitnami.com/v1alpha1", "SealedSecret", "pay", "unmade", nil), // its Secret is not in the snapshot
 		planObject("bitnami.com/v1alpha1", "SealedSecret", "pay", "wrapped", map[string]any{"spec": map[string]any{"template": map[string]any{"metadata": map[string]any{"name": "unwrapped"}}}}),
 		secret("pay", "card", []string{"k"}, nil),
 		secret("pay", "wrapped", []string{"k"}, nil),
@@ -398,9 +399,9 @@ func TestSecretOrigins(t *testing.T) {
 		t.Errorf("from store (%d):\n got %+v\nwant %+v", got.StoreSecrets, got.FromStore, wantStore)
 	}
 	wantEncrypted := []PlanEncrypted{
-		{By: "SOPS, read by Flux Kustomization flux-system/apps", Keys: []string{"flux-system/sops-age"}, KeysNotHeld: []string{}},
-		{By: "SOPS, read by Flux Kustomization flux-system/kms", Keys: []string{}, KeysNotHeld: []string{}},
-		{By: "Sealed Secrets", Objects: 3, Keys: []string{"sealed/sealed-secrets-keyxyz"}, KeysNotHeld: []string{"kube-system/sealed-secrets-keyab12c"}},
+		{By: "SOPS, read by Flux Kustomization flux-system/apps", Secrets: []string{}, Keys: []string{"flux-system/sops-age"}, KeysNotHeld: []string{}},
+		{By: "SOPS, read by Flux Kustomization flux-system/kms", Secrets: []string{}, Keys: []string{}, KeysNotHeld: []string{}},
+		{By: "Sealed Secrets", Objects: 4, Secrets: []string{"pay/card", "pay/wrapped"}, Keys: []string{"sealed/sealed-secrets-keyxyz"}, KeysNotHeld: []string{"kube-system/sealed-secrets-keyab12c"}},
 	}
 	if !reflect.DeepEqual(got.Encrypted, wantEncrypted) {
 		t.Errorf("encrypted:\n got %+v\nwant %+v", got.Encrypted, wantEncrypted)

@@ -30,6 +30,10 @@ type RestoreOptions struct {
 	// from at restore time (a migration or a restore drill). Values pass
 	// straight from one API to the other and are never written to disk.
 	SecretSource *Clients
+	// Values, if set, gives the withheld values of the Secrets it knows
+	// (a secret sources file): asked first, and SecretSource for the rest.
+	// known false is a Secret it has nothing for.
+	Values func(ctx context.Context, namespace, name string, keys []string) (values map[string][]byte, known bool, err error)
 }
 
 // Restore applies every object in the snapshot to the target cluster.
@@ -82,13 +86,37 @@ func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapsho
 
 	if o.Kind() == "Secret" && o.APIVersion() == "v1" {
 		if keys := withheldKeys(body); len(keys) > 0 {
-			if opt.SecretSource == nil {
-				res.Detail = "secret values were withheld from the snapshot (keys: " + strings.Join(keys, ", ") + "); supply them with --secrets-from-context, nothing was applied"
-				return res
+			var given map[string][]byte
+			known := false
+			if opt.Values != nil {
+				var err error
+				if given, known, err = opt.Values(ctx, o.Namespace(), o.Name(), keys); err != nil {
+					res.Detail = "could not read withheld values from their sources: " + err.Error() + "; nothing was applied"
+					return res
+				}
 			}
-			if err := fillSecret(ctx, opt.SecretSource, body, keys); err != nil {
-				res.Detail = "could not read withheld values from the source cluster: " + err.Error()
+			switch {
+			case known:
+				// encoding/json writes bytes as base64, which is what a
+				// Secret's data is.
+				data := map[string]any{}
+				for _, k := range keys {
+					v, ok := given[k]
+					if !ok {
+						res.Detail = "the secret sources give no value for key " + k + "; nothing was applied"
+						return res
+					}
+					data[k] = v
+				}
+				body["data"] = data
+			case opt.SecretSource == nil:
+				res.Detail = "secret values were withheld from the snapshot (keys: " + strings.Join(keys, ", ") + "); supply them with --secrets-from or --secrets-from-context, nothing was applied"
 				return res
+			default:
+				if err := fillSecret(ctx, opt.SecretSource, body, keys); err != nil {
+					res.Detail = "could not read withheld values from the source cluster: " + err.Error()
+					return res
+				}
 			}
 		}
 	}

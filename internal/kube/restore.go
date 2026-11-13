@@ -34,6 +34,11 @@ type RestoreOptions struct {
 	// (a secret sources file): asked first, and SecretSource for the rest.
 	// known false is a Secret it has nothing for.
 	Values func(ctx context.Context, namespace, name string, keys []string) (values map[string][]byte, known bool, err error)
+	// Settings, if set, gives the credentials withheld from an object that
+	// is not a Secret (set as plain configuration: a variable, a URL that
+	// signs in), by the object's key and each value's path. Asked first,
+	// and SecretSource for an object it has nothing for (known false).
+	Settings func(ctx context.Context, key string, paths []string) (values map[string]string, known bool, err error)
 }
 
 // Restore applies every object in the snapshot to the target cluster.
@@ -83,6 +88,9 @@ func phase(objs []snapshot.Object) [][]snapshot.Object {
 func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapshot.Object, opt RestoreOptions) snapshot.Result {
 	res := snapshot.Result{Key: o.Key()}
 	body := deepCopy(o.Body)
+	// supplied are the values put into the object here, which no message
+	// about it may repeat.
+	var supplied []string
 
 	if o.Kind() == "Secret" && o.APIVersion() == "v1" {
 		if keys := withheldKeys(body); len(keys) > 0 {
@@ -102,6 +110,7 @@ func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapsho
 				data := map[string]any{}
 				for _, k := range keys {
 					v, ok := given[k]
+					supplied = append(supplied, string(v))
 					if !ok {
 						res.Detail = "the secret sources give no value for key " + k + "; nothing was applied"
 						return res
@@ -125,8 +134,25 @@ func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapsho
 	// workload restored with it empty would look restored and fail at run
 	// time, so it is refused without a source to read the value from.
 	envNames := withheldEnv(body)
+	if len(envNames) > 0 && opt.Settings != nil {
+		given, known, err := opt.Settings(ctx, o.Key(), envNames)
+		if err != nil {
+			res.Detail = "could not read withheld values from their sources: " + err.Error() + "; nothing was applied"
+			return res
+		}
+		if known {
+			for _, v := range given {
+				supplied = append(supplied, v)
+			}
+			if err := setSlots(body, envNames, given); err != nil {
+				res.Detail = "the secret sources do not fill what was withheld: " + err.Error() + "; nothing was applied"
+				return res
+			}
+			envNames = nil
+		}
+	}
 	if len(envNames) > 0 && opt.SecretSource == nil {
-		res.Detail = "credentials set as plain configuration were withheld from the snapshot (" + strings.Join(displays(envNames), ", ") + "); supply them with --secrets-from-context, or move them into a Secret; nothing was applied"
+		res.Detail = "credentials set as plain configuration were withheld from the snapshot (" + strings.Join(displays(envNames), ", ") + "); supply them with --secrets-from or --secrets-from-context, or move them into a Secret; nothing was applied"
 		return res
 	}
 
@@ -163,11 +189,23 @@ func applyOne(ctx context.Context, c *Clients, mapper meta.RESTMapper, o snapsho
 		_, err = ri.Patch(ctx, o.Name(), types.ApplyPatchType, data, po)
 	}
 	if err != nil {
-		res.Detail = err.Error()
+		// The API server may quote a value it refuses: not one that was
+		// withheld and supplied.
+		res.Detail = redacted(err.Error(), supplied)
 		return res
 	}
 	res.OK = true
 	return res
+}
+
+// redacted is text with each of the values taken out of it.
+func redacted(text string, values []string) string {
+	for _, v := range values {
+		if len(v) >= 4 {
+			text = strings.ReplaceAll(text, v, "(a supplied value)")
+		}
+	}
+	return text
 }
 
 func withheldKeys(body map[string]any) []string {
@@ -226,14 +264,35 @@ func fillEnv(ctx context.Context, src *Clients, mapping *meta.RESTMapping, body 
 	for _, sl := range slots(live.Object) {
 		values[sl.path] = sl.value
 	}
+	if err := setSlots(body, paths, values); err != nil {
+		return fmt.Errorf("the source: %w", err)
+	}
+	return nil
+}
+
+// setSlots writes a value into each withheld slot of body. Two slots of
+// one path, or a path asked for twice, is an error: one of them would be
+// left empty, and the object applied as if it were whole.
+func setSlots(body map[string]any, paths []string, values map[string]string) error {
 	targets := map[string]slot{}
+	twice := map[string]bool{}
 	for _, sl := range slots(body) {
+		if _, dup := targets[sl.path]; dup {
+			twice[sl.path] = true
+		}
 		targets[sl.path] = sl
+	}
+	asked := map[string]bool{}
+	for _, p := range paths {
+		if twice[p] || asked[p] {
+			return fmt.Errorf("two values of the object are at %s; which is which cannot be told", p)
+		}
+		asked[p] = true
 	}
 	for _, p := range paths {
 		v, ok := values[p]
 		if !ok {
-			return fmt.Errorf("the source has no value for %s", p)
+			return fmt.Errorf("no value for %s", p)
 		}
 		t, ok := targets[p]
 		if !ok {
@@ -242,6 +301,27 @@ func fillEnv(ctx context.Context, src *Clients, mapping *meta.RESTMapping, body 
 		t.set(v)
 	}
 	return nil
+}
+
+// Withheld is an object that is not a Secret with credentials withheld
+// from it, and where in it each was.
+type Withheld struct {
+	Key   string   `json:"object"`
+	Paths []string `json:"paths"`
+}
+
+// WithheldSettings are the objects of a snapshot that a restore refuses
+// until each value withheld from them is supplied.
+func WithheldSettings(s snapshot.Snapshot) []Withheld {
+	out := []Withheld{}
+	for _, o := range s.Objects {
+		md, _ := o.Body["metadata"].(map[string]any)
+		if v := annotation(md, WithheldEnvAnnotation); v != "" {
+			out = append(out, Withheld{Key: o.Key(), Paths: strings.Split(v, ",")})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out
 }
 
 func fillSecret(ctx context.Context, src *Clients, body map[string]any, keys []string) error {

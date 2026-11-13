@@ -114,7 +114,8 @@ What a snapshot does not hold, by design:
   a ConfigMap key, and any such value that is a URL with a password in it.
   It is named in the snapshot and listed in REPORT.md as a finding: move it
   into a Secret. A restore reads it from the source with
-  `--secrets-from-context`. Not caught: a credential passed as a command
+  `--secrets-from-context`, or from the secret sources file's `settings`
+  with `--secrets-from`. Not caught: a credential passed as a command
   argument, inside a config file a ConfigMap holds, or in Helm values
   outside an `env` list. Because both sides are withheld, a diff does not
   show a rotated credential, and a snapshot taken before TruthForm withheld
@@ -542,10 +543,31 @@ repeats one, nor an `exec:` command, nor text in the file that is not
 what a sources file holds. With `--secrets-from-context` as well, a
 Secret the file does not name is read from that cluster.
 
-Not covered: a credential set as a plain value in a workload's
-environment, which a snapshot withholds like a Secret's. A restore still
-refuses that workload without `--secrets-from-context`; the capture's
-report lists them, and the fix is to move each into a Secret.
+A credential that was set as plain configuration (a variable in a
+workload, a URL that signs in) is withheld from the snapshot like a
+Secret's value, and a restore refuses the object until it is supplied.
+The file supplies those too, under `settings`: the object, and a
+reference for each place a value was withheld at.
+
+```yaml
+settings:
+  - object: "apps/v1|Deployment|shop|api"
+    from:
+      "spec.template.spec.containers[api].env[DB_PASSWORD]": "op://Break Glass/shop db/password"
+```
+
+`plan secrets --out` writes an entry for every such object, and
+`--check` wants a reference for each place, as it does for a Secret's
+keys (`.secrets.settings` counts the objects with `--json`). So what was
+withheld does not need the cluster it came from to be restored. A
+setting is text: a reference that reads something else is refused, and
+so is `empty:`, since nothing empty is ever withheld. With
+`--secrets-from-context` as well, an object the file does not name is
+read from that cluster; one it names is filled from the file alone, and
+has to have a reference for every place.
+The better fix stays the one the capture's report gives: move each into
+a Secret. An object a GitOps source applies is not in the snapshot, and
+needs nothing here: the source holds its values.
 
 The file to fill in is written from what the cluster's objects say, and
 only as comments and names: read it before you fill it in, as you would

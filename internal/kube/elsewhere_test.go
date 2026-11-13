@@ -369,7 +369,7 @@ func TestRenameRefusesAWideStartReplacedByItself(t *testing.T) {
 		planObject("external-secrets.io/v1", "ClusterSecretStore", "", "kv", map[string]any{"spec": map[string]any{"provider": map[string]any{"vault": map[string]any{"server": "https://vault.dev/v1"}}}}),
 		planObject("onepassword.com/v1", "OnePasswordItem", "shop", "db", map[string]any{"spec": map[string]any{"itemPath": "/vaults/apps/items/db"}}),
 	}}
-	for _, start := range []string{"https://", "/"} {
+	for _, start := range []string{"https://", "https:/", "/"} {
 		if _, _, err := RenameStores(urls, map[string]string{start: start}); err == nil || !strings.Contains(err.Error(), "has to be a whole reference or a path") {
 			t.Errorf("%q replaced by itself: %v", start, err)
 		}
@@ -480,10 +480,12 @@ func TestRenameJudgesEveryPushSecret(t *testing.T) {
 		o                  snapshot.Object
 		unnamed, unreached string
 	}{
-		"a ClusterPushSecret":           {planObject("external-secrets.io/v1alpha1", "ClusterPushSecret", "", "push", map[string]any{"spec": map[string]any{"pushSecretSpec": map[string]any{"deletionPolicy": "Delete", "data": data("dev/app/db")}}}), "dev/app/db", ""},
-		"dataTo":                        {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"dataTo": []any{map[string]any{"storeRef": map[string]any{"name": "kv"}}}}}), "", "PushSecret shop/push: it writes by dataTo"},
-		"dataTo beside data":            {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"data": data("dev/a"), "dataTo": []any{map[string]any{}}}}), "dev/a", "PushSecret shop/push: it writes by dataTo"},
-		"a destination with no key":     {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"data": data("dev/a", nil)}}), "dev/a", "names no remoteKey"},
+		"a ClusterPushSecret":       {planObject("external-secrets.io/v1alpha1", "ClusterPushSecret", "", "push", map[string]any{"spec": map[string]any{"pushSecretSpec": map[string]any{"deletionPolicy": "Delete", "data": data("dev/app/db")}}}), "dev/app/db", ""},
+		"dataTo":                    {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"dataTo": []any{map[string]any{"storeRef": map[string]any{"name": "kv"}}}}}), "", "PushSecret shop/push: it writes by dataTo"},
+		"dataTo beside data":        {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"data": data("dev/a"), "dataTo": []any{map[string]any{}}}}), "dev/a", "PushSecret shop/push: it writes by dataTo"},
+		"a destination with no key": {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"data": data("dev/a", nil)}}), "dev/a", "names no remoteKey"},
+		"from a generator": {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{
+			"selector": map[string]any{"generatorRef": map[string]any{"kind": "VaultDynamicSecret", "name": "g"}}, "data": data("dev/a")}}), "dev/a", "it pushes what a generator makes"},
 		"nothing this knows":            {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"selector": map[string]any{}}}), "", "what it writes to is in no field this knows"},
 		"a ClusterPushSecret by dataTo": {planObject("external-secrets.io/v1alpha1", "ClusterPushSecret", "", "push", map[string]any{"spec": map[string]any{"pushSecretSpec": map[string]any{"dataTo": []any{map[string]any{}}}}}), "", "ClusterPushSecret push: it writes by dataTo"},
 	} {
@@ -506,7 +508,7 @@ func TestRenameJudgesEveryPushSecret(t *testing.T) {
 			t.Errorf("%s: nothing would refuse the restore", name)
 		}
 	}
-	if kinds := strings.Join(StoreKinds(), " "); !strings.Contains(kinds, "ClusterPushSecret") {
+	if kinds := strings.Join(StoreKinds(), " "); !strings.Contains(kinds, "external-secrets.io/ClusterPushSecret") || !strings.Contains(kinds, "secrets.hashicorp.com/VaultDynamicSecret") || strings.Contains(kinds, "generators.external-secrets.io") {
 		t.Errorf("kinds read: %s", kinds)
 	}
 }

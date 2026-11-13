@@ -122,6 +122,9 @@ func pushUnread(spec map[string]any) string {
 	if len(list(spec["dataTo"])) > 0 {
 		return "it writes by dataTo, whose destinations this does not read"
 	}
+	if sel, _ := spec["selector"].(map[string]any); sel["generatorRef"] != nil {
+		return "it pushes what a generator makes (selector.generatorRef), whose own settings say where from"
+	}
 	data := list(spec["data"])
 	if len(data) == 0 {
 		return "what it writes to is in no field this knows"
@@ -302,7 +305,8 @@ func fromGenerator(body map[string]any, at string) bool {
 // are every URL, and everything).
 func underAPath(st string) bool {
 	body := strings.TrimSuffix(st, "/")
-	return body != st && body != "" && !strings.HasSuffix(body, "/")
+	// "https:/" has a scheme and no host: every URL of that scheme.
+	return body != st && body != "" && !strings.HasSuffix(body, "/") && !strings.HasSuffix(body, ":")
 }
 
 // vaultByDefault counts the Vault Secrets Operator's secret objects that
@@ -354,15 +358,21 @@ func vaultByDefault(s snapshot.Snapshot) int {
 // and "nothing listed" has to be read with that.
 func StoreKinds() []string {
 	seen := map[string]bool{}
-	out := []string{"ExternalSecret", "ClusterExternalSecret", "PushSecret", "ClusterPushSecret", "SecretStore", "ClusterSecretStore", "VaultConnection", "VaultAuth", "HCPVaultSecretsApp", "HCPAuth"}
-	for _, k := range out {
-		seen[k] = true
-	}
-	for _, r := range storeReaders {
-		if !seen[r.kind] {
-			seen[r.kind] = true
-			out = append(out, r.kind)
+	var out []string
+	add := func(group string, kinds ...string) {
+		for _, k := range kinds {
+			if !seen[group+"/"+k] {
+				seen[group+"/"+k] = true
+				out = append(out, group+"/"+k)
+			}
 		}
+	}
+	// By group and kind: two APIs have a VaultDynamicSecret, and one of
+	// them (External Secrets' generator) is not looked at.
+	add("external-secrets.io", "ExternalSecret", "ClusterExternalSecret", "PushSecret", "ClusterPushSecret", "SecretStore", "ClusterSecretStore")
+	add("secrets.hashicorp.com", "VaultConnection", "VaultAuth", "HCPVaultSecretsApp", "HCPAuth")
+	for _, r := range storeReaders {
+		add(r.group, r.kind)
 	}
 	sort.Strings(out)
 	return out

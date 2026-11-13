@@ -260,6 +260,26 @@ func TestElsewhereFilesAreRefusedBeforeTheCluster(t *testing.T) {
 		t.Errorf("stderr does not say what was looked at:\n%s", refusedErr)
 	}
 
+	// What a PushSecret writes to, left as the source's, is said to be
+	// written; and a diff takes --keep-source-stores, with no cluster to ask.
+	pushing := s
+	pushing.Objects = append(append([]snapshot.Object{}, s.Objects...), elsewhereObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{
+		"deletionPolicy": "Delete", "data": []any{map[string]any{"match": map[string]any{"remoteRef": map[string]any{"remoteKey": "dev/app/db"}}}}}}))
+	pushDir := filepath.Join(files, "pushing")
+	if err := pushing.Write(pushDir); err != nil {
+		t.Fatal(err)
+	}
+	_, _, said := output(t, func() int {
+		return restore(ctx, []string{"--kubeconfig", filepath.Join(files, "no-such-kubeconfig"), "--context", "none", "--from", pushDir, "--rename", only, "--keep-source-stores"})
+	})
+	if !strings.Contains(said, "what a PushSecret WRITES to") || !strings.Contains(said, "deletes them") {
+		t.Errorf("does not say a PushSecret would write to the source's store:\n%s", said)
+	}
+	lastErr = nil
+	if code := diff(ctx, append(base, "--rename", names, "--keep-source-stores")); code != 1 || lastErr == nil || strings.Contains(lastErr.Error(), "not defined") {
+		t.Errorf("diff --keep-source-stores: exit %d, %v; want it to get as far as the cluster", code, lastErr)
+	}
+
 	// As JSON, each of the four is a list.
 	if _, _, err := renamed(writeFile(t, files, "n.yaml", "vaults/apps/: vaults/apps-test/\n"), "kubernetes", s, false); err != nil {
 		t.Fatal(err)

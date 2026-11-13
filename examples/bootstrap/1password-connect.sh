@@ -45,7 +45,8 @@
 #
 # Needs: op (signed in as a person allowed to manage Connect servers), jq
 # (1.6 or later) and cmp. If a step fails after the server is made, the
-# server is removed again, so the same command can be run a second time.
+# server is removed again, so the same command can be run a second time;
+# a signal ends it the same way, and the cleaning up is not interrupted.
 set -euo pipefail
 umask 077
 
@@ -66,7 +67,7 @@ while [ $# -gt 0 ]; do
     --token-secret) need "$@"; toksec=$2; shift 2 ;;
     --create-vaults) create=1; shift ;;
     --dry-run) dry=1; shift ;;
-    -h|--help) sed -n '3,48p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '3,49p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument $1 (see --help)" ;;
   esac
 done
@@ -85,9 +86,11 @@ plain() {
 }
 plain --server "$server"; plain --keep-in "$keep"; plain --item "$item"
 for v in "${reads[@]}"; do plain --reads "$v"; done
-case "$expires" in
-  *[!0-9smhdw]*) die "--expires-in \"$expires\" is not a length of time as op takes it (90d, 12w)" ;;
-esac
+# A length of time is checked here, with everything else: op would refuse
+# a bad one only after the server was made.
+if [ -n "$expires" ] && ! [[ "$expires" =~ ^([0-9]+[smhdw])+$ ]]; then
+  die "--expires-in \"$expires\" is not a length of time as op takes it (90d, 12w, 1d12h)"
+fi
 
 # A Secret is named namespace/name, with the key after a colon.
 secret_of() { printf '%s' "${1%%:*}"; }
@@ -107,6 +110,17 @@ done
 command -v op >/dev/null || die "the 1Password CLI (op) is not installed"
 command -v jq >/dev/null || die "jq is not installed"
 command -v cmp >/dev/null || die "cmp is not installed"
+jq -n --rawfile x /dev/null '$x' >/dev/null 2>&1 || die "jq 1.6 or later is needed (this one has no --rawfile)"
+
+# named: is an entry of a JSON list called this (by the field given, any
+# case)? 0 yes, 1 no. A list jq cannot read that way stops the script:
+# "could not tell" is never taken as "not there".
+named() { # <list> <field> <name> <what>
+  local rc=0
+  jq -e --arg f "$2" --arg n "$3" 'any(.[]; (.[$f] // "" | tostring | ascii_downcase) == ($n | ascii_downcase))' >/dev/null 2>&1 <<<"$1" || rc=$?
+  [ $rc -le 1 ] || die "op's list of $4 could not be read for names: this script does not know this version of op. Nothing was made"
+  return $rc
+}
 
 # Everything below reads 1Password before it makes anything. A list that
 # does not read as one stops it: nothing is taken as absent because a
@@ -123,7 +137,7 @@ listed() { # <what> <op arguments...>: a JSON list, or the end
 hint="Sign in first (op signin, or the 1Password app's CLI integration). One is made by a person who may manage them; a service account or a Connect token cannot"
 servers_before=$(listed "Connect servers" connect server list)
 hint=""
-if jq -e --arg n "$server" 'any(.[]; (.name // "" | ascii_downcase) == ($n | ascii_downcase))' >/dev/null <<<"$servers_before"; then
+if named "$servers_before" name "$server" "Connect servers"; then
   die "a Connect server named \"$server\" is there already. Nothing was made. Its credentials cannot be read again: use another name, or remove it first if nothing uses it"
 fi
 
@@ -131,18 +145,28 @@ fi
 # two spellings of one vault are one vault.
 vaults=$(listed vaults vault list)
 vault_id() {
-  jq -r --arg v "$1" '[.[] | select((.name // "" | ascii_downcase) == ($v | ascii_downcase) or .id == $v) | .id] | if length > 1 then "*" else (.[0] // "") end' <<<"$vaults"
+  jq -r --arg v "$1" '[.[] | select((.name // "" | tostring | ascii_downcase) == ($v | ascii_downcase) or .id == $v) | .id | tostring] | if length > 1 then "*" else (.[0] // "") end' <<<"$vaults" ||
+    die "op's list of vaults could not be read for names: this script does not know this version of op. Nothing was made"
 }
 keep_id=$(vault_id "$keep")
 [ "$keep_id" != "*" ] || die "more than one vault is named \"$keep\": give --keep-in its id"
 [ -n "$keep_id" ] || die "--keep-in vault \"$keep\" is not there, or you cannot see it. It is not made for you: who can open it is yours to decide"
-missing=()
+# One vault given twice (by another spelling, or by its id) is one vault.
+# read_refs is how each is given to op: by its id where it is there, which
+# is exact, and by its name where it is still to be made.
+missing=() read_refs=() read_names=() to_make=()
+seen=","
 for v in "${reads[@]}"; do
   id=$(vault_id "$v")
   [ "$id" != "*" ] || die "more than one vault is named \"$v\": give --reads its id"
   [ "$id" != "$keep_id" ] || die "--keep-in \"$keep\" is a vault the server reads: the cluster would hold the way to its own credentials"
-  [ -n "$id" ] || missing+=("$v")
+  key=${id:-name:$(printf '%s' "$v" | tr '[:upper:]' '[:lower:]')}
+  case "$seen" in *",$key,"*) continue ;; esac
+  seen="$seen$key,"
+  read_names+=("$v")
+  if [ -n "$id" ]; then read_refs+=("$id"); to_make+=(0); else read_refs+=("$v"); to_make+=(1); missing+=("$v"); fi
 done
+reads=("${read_names[@]}")
 if [ ${#missing[@]} -gt 0 ] && [ $create -eq 0 ]; then
   die "no vault named: $(printf '"%s" ' "${missing[@]}"). Nothing was made. --create-vaults makes them"
 fi
@@ -154,14 +178,17 @@ item_there() {
   l=$(op item list --vault "$keep_id" --format json 2>/dev/null) || return 2
   [ -n "$l" ] || l='[]'
   jq -e 'type == "array"' >/dev/null 2>&1 <<<"$l" || return 2
-  jq -e --arg t "$item" 'any(.[]; (.title // "" | ascii_downcase) == ($t | ascii_downcase))' >/dev/null <<<"$l" || return 1
+  local rc=0
+  jq -e --arg t "$item" 'any(.[]; (.title // "" | tostring | ascii_downcase) == ($t | ascii_downcase))' >/dev/null 2>&1 <<<"$l" || rc=$?
+  [ $rc -le 1 ] || return 2
+  return $rc
 }
 there=0; item_there || there=$?
 [ $there -ne 0 ] || die "vault \"$keep\" already has an item \"$item\". Nothing was made, and nothing is written over: give another --item"
 [ $there -eq 1 ] || die "could not list the items of vault \"$keep\". Nothing was made"
 
 work=$(mktemp -d)
-trying=0 kept=0
+trying=0 server_tried=0 kept=0
 made_vaults=()
 
 # new_server is the id of the one server of the name that the list has now
@@ -176,12 +203,18 @@ new_server() {
 
 finish() {
   code=$?
+  # Nothing interrupts the cleaning up: a second signal would leave the
+  # credentials file and the server behind with no word of it.
+  trap '' INT TERM HUP
   trap - EXIT
-  rm -rf "$work"
-  if [ $trying -eq 1 ] && [ $kept -eq 0 ]; then
-    for v in ${made_vaults[@]+"${made_vaults[@]}"}; do
-      echo "1password-connect: vault \"$v\" was made and is left as it is" >&2
-    done
+  set +e
+  rm -rf "$work" || echo "1password-connect: could not remove $work, which may hold the credentials: remove it" >&2
+  for v in ${made_vaults[@]+"${made_vaults[@]}"}; do
+    [ $kept -eq 1 ] || echo "1password-connect: vault \"$v\" was made and is left as it is" >&2
+  done
+  # Only once this run asked for a server: before that, a new server of
+  # the name is someone else's.
+  if [ $server_tried -eq 1 ] && [ $kept -eq 0 ]; then
     there=0; item_there || there=$?
     id=$(new_server) || id=""
     if [ $there -ne 1 ]; then
@@ -198,6 +231,10 @@ finish() {
   exit $code
 }
 trap finish EXIT
+# A signal ends the script by way of finish, with the usual exit code.
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 # The item is given to op as a file in the private directory, never as
 # arguments: those show in a process list. (As a file named with
@@ -241,20 +278,32 @@ if [ $dry -eq 1 ]; then
 fi
 
 trying=1
-for v in ${missing[@]+"${missing[@]}"}; do
-  op vault create "$v" >/dev/null
+for i in "${!read_refs[@]}"; do
+  v=${read_refs[$i]}
+  [ "${to_make[$i]}" -eq 1 ] || continue
+  # Known by its id from here, as the others are.
+  made=$(op vault create "$v" --format json) || die "could not make vault \"$v\""
   made_vaults+=("$v")
+  id=$(jq -r '.id // empty | tostring' 2>/dev/null <<<"$made") || id=""
+  [ -z "$id" ] || read_refs[$i]=$id
   echo "made vault \"$v\""
 done
 
+# The servers as they are now, read again: one that appeared since this
+# started is not this run's. From here a new server of the name is.
+servers_before=$(listed "Connect servers" connect server list)
+if named "$servers_before" name "$server" "Connect servers"; then
+  die "a Connect server named \"$server\" was made by someone else while this ran. No server was made"
+fi
+server_tried=1
 # op writes 1password-credentials.json into the directory it is run in.
-(cd "$work" && op connect server create "$server" --vaults "$(IFS=,; echo "${reads[*]}")" >/dev/null)
+(cd "$work" && op connect server create "$server" --vaults "$(IFS=,; echo "${read_refs[*]}")" >/dev/null)
 jq -e . "$work/1password-credentials.json" >/dev/null 2>&1 || die "op made no credentials file that reads as JSON"
 # The token is asked for by the server's id where that is known.
 made_id=$(new_server) || made_id=""
 
 token_args=()
-for v in "${reads[@]}"; do token_args+=(--vault "$v,r"); done
+for v in "${read_refs[@]}"; do token_args+=(--vault "$v,r"); done
 [ -z "$expires" ] || token_args+=(--expires-in "$expires")
 op connect token create "$server cluster token" --server "${made_id:-$server}" "${token_args[@]}" >"$work/token"
 [ -s "$work/token" ] || die "op made no token"

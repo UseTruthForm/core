@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/usetruthform/core/internal/sources"
 )
@@ -29,27 +31,59 @@ case "$1 ${2:-} ${3:-}" in
     fail list
     case "$F" in
       list-shape) echo '{"servers":[]}' ;;
+      names-odd) echo '[{"name":7},{"id":"x","name":"test-cluster"}]' ;;
+      names-broken) echo '[7]' ;;
       list-empty) if [ -f "$S/made-in" ]; then cat "$S/servers.json"; fi ;;
       *) cat "$S/servers.json" ;;
     esac ;;
   "connect server create")
     fail server-create
     pwd >"$S/made-in"
-    printf '%s' "$CREDS" >1password-credentials.json
+    stat -c %a . >"$S/made-in-mode" 2>/dev/null || stat -f %Lp . >"$S/made-in-mode"
+    echo "FAKE OP OUTPUT $CREDS" # what op prints is not the script's to show
+    if [ "$F" = creds-bad ]; then printf 'not json' >1password-credentials.json; else printf '%s' "$CREDS" >1password-credentials.json; fi
     add='[{id: "new-server-id", name: $n}]'
     [ "$F" != two-new ] || add='[{id: "new-server-id", name: $n}, {id: "another-new-id", name: $n}]'
     jq --arg n "$4" ". + $add" "$S/servers.json" >"$S/servers.tmp"
     mv "$S/servers.tmp" "$S/servers.json" ;;
   "connect server delete")
+    fail delete
+    [ "$F" != slow-token ] || sleep 2 # long enough for a second signal to land
     jq --arg i "$4" 'map(select(.id != $i))' "$S/servers.json" >"$S/servers.tmp"
     mv "$S/servers.tmp" "$S/servers.json" ;;
-  "connect token create") fail token-create; fail two-new; [ "$F" = token-empty ] || echo "$TOKEN" ;;
+  "connect token create")
+    fail token-create; fail two-new
+    [ "$F" != slow-token ] || sleep 5
+    # As op does: the server and each vault have to be there.
+    shift 4
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --server) jq -e --arg v "$2" 'any(.[]; .name == $v or .id == $v)' "$S/servers.json" >/dev/null || { echo "op: no server $2" >&2; exit 1; }; shift 2 ;;
+        --vault) vault_named "${2%,r}"; shift 2 ;;
+        --expires-in) shift 2 ;;
+        *) echo "op: unknown flag $1" >&2; exit 1 ;;
+      esac
+    done
+    # No token comes back, so that what follows a failure can be tried.
+    case "$F" in token-empty|delete|item-list-late) ;; *) echo "$TOKEN" ;; esac ;;
   "vault list "*) fail vault-list; cat "$S/vaults.json" ;;
   "vault create "*)
+    if [ "$F" = vault-create-other-appears ]; then
+      # Someone else makes a server of the name just now, and this fails.
+      jq '. + [{id: "someone-elses-id", name: "test-cluster"}]' "$S/servers.json" >"$S/servers.tmp"
+      mv "$S/servers.tmp" "$S/servers.json"
+      echo "op: vault create failed" >&2; exit 1
+    fi
     jq --arg n "$3" '. + [{id: ("id-of-" + $n), name: $n}]' "$S/vaults.json" >"$S/vaults.tmp"
-    mv "$S/vaults.tmp" "$S/vaults.json" ;;
+    mv "$S/vaults.tmp" "$S/vaults.json"
+    if [ "$F" = other-appears ]; then
+      jq '. + [{id: "someone-elses-id", name: "test-cluster"}]' "$S/servers.json" >"$S/servers.tmp"
+      mv "$S/servers.tmp" "$S/servers.json"
+    fi
+    jq -n --arg n "$3" '{id: ("id-of-" + $n), name: $n}' ;;
   "item list "*)
     fail item-list
+    if [ "$F" = item-list-late ] && [ -f "$S/made-in" ]; then echo "op: item list failed" >&2; exit 1; fi
     vault_named "$4"
     for f in "$S"/items/*.json; do if [ -e "$f" ]; then jq '{id: "an-item", title: .title}' "$f"; fi; done | jq -s . ;;
   "item create "*)
@@ -58,6 +92,7 @@ case "$1 ${2:-} ${3:-}" in
     # --category its fields are dropped.
     case " $* " in *" --category "*) echo "op: fields dropped" >&2; exit 1 ;; esac
     [ "$5" = "--template" ] || { echo "op: provide the item category with --category flag" >&2; exit 1; }
+    stat -c %a "$6" >"$S/template-mode" 2>/dev/null || stat -f %Lp "$6" >"$S/template-mode"
     cp "$6" "$S/item.tmp"
     jq -e '.title and .category == "SECURE_NOTE" and (.fields | length > 0)' "$S/item.tmp" >/dev/null
     case " $* " in *" --dry-run "*)
@@ -66,13 +101,14 @@ case "$1 ${2:-} ${3:-}" in
       rm "$S/item.tmp"; exit 0 ;;
     esac
     fail item-create
+    echo "FAKE OP OUTPUT $TOKEN" # op may print the item it made
     mv "$S/item.tmp" "$S/items/$(jq -r .title "$S/item.tmp").json"
     fail item-create-but-saved ;;
   "read "*)
     fail read-fails
     ref=${3#op://}; vault=${ref%%/*}; rest=${ref#*/}; title=${rest%/*}; field=${rest##*/}
     vault_named "$vault"
-    if [ "$F" = "read-differs" ]; then printf 'something else'; exit 0; fi
+    if [ "$F" = "read-differs" ]; then echo "op: warning about $TOKEN" >&2; printf 'something else'; exit 0; fi
     jq -j --arg f "$field" '.fields[] | select(.label == $f) | .value' "$S/items/$title.json" ;;
   *) echo "fake op: unexpected: $*" >&2; exit 64 ;;
 esac
@@ -86,17 +122,44 @@ const (
 type run struct {
 	t     *testing.T
 	state string
+	dir   string // TMPDIR: where the script makes its private directory
 	env   []string
+}
+
+// left fails if the script's private directory, which held the
+// credentials, is still there after a run, however the run ended.
+func (r *run) left() {
+	r.t.Helper()
+	entries, err := os.ReadDir(r.dir)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "state" && e.Name() != "bin" {
+			r.t.Errorf("the script left %s behind", filepath.Join(r.dir, e.Name()))
+		}
+	}
 }
 
 func setup(t *testing.T) *run {
 	t.Helper()
+	// Where the tools are missing the test cannot run. In CI that is a
+	// failure and not a skip: a run that tested nothing must not read as a
+	// pass (TRUTHFORM_REQUIRE_BOOTSTRAP_TOOLS, as the API-server tests have
+	// TRUTHFORM_REQUIRE_KUBE_ASSETS).
+	cannot := func(why string) {
+		t.Helper()
+		if os.Getenv("TRUTHFORM_REQUIRE_BOOTSTRAP_TOOLS") != "" {
+			t.Fatalf("%s, and TRUTHFORM_REQUIRE_BOOTSTRAP_TOOLS is set", why)
+		}
+		t.Skip(why)
+	}
 	if runtime.GOOS == "windows" {
-		t.Skip("a bash script")
+		cannot("a bash script, not run on Windows")
 	}
 	for _, tool := range []string{"bash", "jq", "cmp"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("%s is not installed", tool)
+			cannot(tool + " is not installed")
 		}
 	}
 	dir := t.TempDir()
@@ -111,7 +174,7 @@ func setup(t *testing.T) *run {
 	write(t, filepath.Join(state, "servers.json"), `[{"id":"old-id","name":"dev-cluster"}]`, 0o644)
 	write(t, filepath.Join(state, "vaults.json"), `[{"id":"keepid","name":"Break Glass"},{"id":"readid","name":"App Config"}]`, 0o644)
 	write(t, filepath.Join(state, "calls"), "", 0o644)
-	return &run{t: t, state: state, env: append(os.Environ(),
+	return &run{t: t, state: state, dir: dir, env: append(os.Environ(),
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"OP_STATE="+state, "CREDS="+creds, "TOKEN="+token, "TMPDIR="+dir)}
 }
@@ -132,6 +195,10 @@ func (r *run) script(fail string, args ...string) (string, bool) {
 	out, err := cmd.CombinedOutput()
 	if _, exited := err.(*exec.ExitError); err != nil && !exited {
 		r.t.Fatal(err)
+	}
+	r.left()
+	if strings.Contains(string(out), "FAKE OP OUTPUT") {
+		r.t.Errorf("the script showed what op printed:\n%s", out)
 	}
 	return string(out), err == nil
 }
@@ -204,7 +271,7 @@ func TestMakesKeepsAndPrintsOnlyReferences(t *testing.T) {
 	}
 
 	// The token reads, and cannot write.
-	if !strings.Contains(r.calls(), "connect token create test-cluster cluster token --server new-server-id --vault App Config,r\n") {
+	if !strings.Contains(r.calls(), "connect token create test-cluster cluster token --server new-server-id --vault readid,r\n") {
 		t.Errorf("token not made read-only on the vault:\n%s", r.calls())
 	}
 	// Nothing is left where op wrote the credentials file.
@@ -252,6 +319,12 @@ func TestRefusesBeforeMakingAnything(t *testing.T) {
 		"the same vault spelt by id":     {[]string{"--server", "x", "--reads", "keepid", "--keep-in", "break glass"}, "", "own credentials"},
 		"a server of the name, cased":    {[]string{"--server", "Dev-Cluster", "--reads", "App Config", "--keep-in", "Break Glass"}, "", "is there already"},
 		"a list that is not a list":      {usual, "list-shape", "does not read as a list"},
+		"names that are not text":        {usual, "names-odd", "is there already"},
+		"a list of what are not entries": {usual, "names-broken", "could not be read for names"},
+		"a time with no number":          {append(usual, "--expires-in", "d"), "", "not a length of time"},
+		"a time of letters":              {append(usual, "--expires-in", "sss"), "", "not a length of time"},
+		"a time with no unit":            {append(usual, "--expires-in", "9"), "", "not a length of time"},
+		"a time that trails off":         {append(usual, "--expires-in", "1d2"), "", "not a length of time"},
 		"vaults cannot be listed":        {usual, "vault-list", "could not list vaults"},
 		"items cannot be listed":         {usual, "item-list", "could not list the items"},
 		"op would not take the item":     {usual, "item-dry-run", "op would not save the item"},
@@ -299,7 +372,7 @@ func TestTakesAnEmptyListAsNoServers(t *testing.T) {
 	if out, ok := r.script("list-empty", append(usual, "--expires-in", "90d")...); !ok {
 		t.Fatalf("failed:\n%s", out)
 	}
-	if !strings.Contains(r.calls(), "--vault App Config,r --expires-in 90d\n") {
+	if !strings.Contains(r.calls(), "--vault readid,r --expires-in 90d\n") {
 		t.Errorf("token not made to expire:\n%s", r.calls())
 	}
 }
@@ -315,10 +388,10 @@ func TestMakesAMissingVaultOnlyWhenAsked(t *testing.T) {
 		t.Fatalf("failed:\n%s", out)
 	}
 	calls := r.calls()
-	if !strings.Contains(calls, "vault create App Config Test\n") || strings.Contains(calls, "vault create App Config\n") {
+	if !strings.Contains(calls, "vault create App Config Test --format json\n") || strings.Contains(calls, "vault create App Config --format json\n") {
 		t.Errorf("vaults made:\n%s", calls)
 	}
-	if !strings.Contains(calls, "--vaults App Config,App Config Test\n") || !strings.Contains(calls, "--vault App Config,r --vault App Config Test,r\n") {
+	if !strings.Contains(calls, "--vaults readid,id-of-App Config Test\n") || !strings.Contains(calls, "--vault readid,r --vault id-of-App Config Test,r\n") {
 		t.Errorf("server or token not on both vaults:\n%s", calls)
 	}
 }
@@ -354,6 +427,7 @@ func TestSaysSoWhenWhatReadsBackDiffers(t *testing.T) {
 	if ok || !strings.Contains(out, "not what was saved") {
 		t.Errorf("ok=%v\n%s", ok, out)
 	}
+	noSecret(t, "the output when what reads back differs", out)
 	// The item holds the credentials: the server is not removed.
 	if strings.Contains(r.calls(), "server delete") || strings.Contains(out, "references for") {
 		t.Errorf("removed the server, or printed references:\n%s\n%s", out, r.calls())
@@ -398,4 +472,128 @@ func TestSaysSoWhenNothingReadsBack(t *testing.T) {
 	if ok || !strings.Contains(out, "not what was saved") || strings.Contains(out, "references for") {
 		t.Errorf("ok=%v\n%s", ok, out)
 	}
+}
+
+// Before this run has asked for a server, a new server of the name is
+// someone else's: a failure then removes none.
+func TestRemovesNoServerBeforeItAskedForOne(t *testing.T) {
+	r := setup(t)
+	args := []string{"--server", "test-cluster", "--reads", "App Config Test", "--keep-in", "Break Glass", "--create-vaults"}
+	out, ok := r.script("vault-create-other-appears", args...)
+	if ok || strings.Contains(r.calls(), "server delete") || strings.Contains(out, "removed again") || !strings.Contains(r.servers(), "someone-elses-id") {
+		t.Errorf("ok=%v\n%s\n%s", ok, out, r.calls())
+	}
+	// And one that appears while the vaults are made stops the run, with no
+	// server made and none removed.
+	r = setup(t)
+	out, ok = r.script("other-appears", args...)
+	if ok || !strings.Contains(out, "was made by someone else while this ran") || strings.Contains(r.calls(), "server create") || strings.Contains(r.calls(), "server delete") {
+		t.Errorf("ok=%v\n%s\n%s", ok, out, r.calls())
+	}
+	if !strings.Contains(out, `vault "App Config Test" was made and is left as it is`) {
+		t.Errorf("does not say a vault was left:\n%s", out)
+	}
+}
+
+// One vault given three ways is one vault; a name two vaults share is
+// refused; a time as op takes it passes the checks.
+func TestVaultsGivenTwiceAndTimes(t *testing.T) {
+	r := setup(t)
+	out, ok := r.script("", "--server", "test-cluster", "--reads", "App Config", "--reads", "app config", "--reads", "readid", "--keep-in", "Break Glass", "--expires-in", "1d12h")
+	if !ok || !strings.Contains(r.calls(), "--vaults readid\n") || !strings.Contains(r.calls(), "--vault readid,r --expires-in 1d12h\n") || !strings.Contains(out, `both read: "App Config" `+"\n") {
+		t.Errorf("ok=%v\n%s\n%s", ok, out, r.calls())
+	}
+	for _, args := range [][]string{
+		{"--server", "x", "--reads", "Twice", "--keep-in", "Break Glass"},
+		{"--server", "x", "--reads", "App Config", "--keep-in", "Twice"},
+	} {
+		r := setup(t)
+		write(t, filepath.Join(r.state, "vaults.json"), `[{"id":"keepid","name":"Break Glass"},{"id":"readid","name":"App Config"},{"id":"t1","name":"Twice"},{"id":"t2","name":"twice"}]`, 0o644)
+		out, ok := r.script("", args...)
+		if ok || !strings.Contains(out, `more than one vault is named "Twice"`) || strings.Contains(r.calls(), "create") {
+			t.Errorf("%v: ok=%v\n%s", args, ok, out)
+		}
+	}
+}
+
+// What the cleaning up does when it cannot be sure, or cannot do it.
+func TestCleanupWhenItCannotBeSure(t *testing.T) {
+	for name, c := range map[string]struct {
+		fail, want string
+		deleted    bool
+	}{
+		"the credentials file is not JSON": {"creds-bad", "was removed again", true},
+		"the items cannot be listed then":  {"item-list-late", "may hold an item", false},
+		"the server cannot be removed":     {"delete", "could not be removed", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := setup(t)
+			out, ok := r.script(c.fail, usual...)
+			if ok || !strings.Contains(out, c.want) {
+				t.Errorf("ok=%v, want %q:\n%s", ok, c.want, out)
+			}
+			noSecret(t, "the output", out)
+			if gone := !strings.Contains(r.servers(), "new-server-id"); gone != c.deleted {
+				t.Errorf("server removed=%v, want %v: %s\n%s", gone, c.deleted, r.servers(), r.calls())
+			}
+		})
+	}
+}
+
+// The directory the credentials are in is the user's alone.
+func TestPrivateDirectory(t *testing.T) {
+	r := setup(t)
+	if out, ok := r.script("", usual...); !ok {
+		t.Fatalf("failed:\n%s", out)
+	}
+	mode, _ := os.ReadFile(filepath.Join(r.state, "made-in-mode"))
+	if strings.TrimSpace(string(mode)) != "700" {
+		t.Errorf("the directory the credentials file was written in has mode %q, want 700", mode)
+	}
+	if mode, _ := os.ReadFile(filepath.Join(r.state, "template-mode")); strings.TrimSpace(string(mode)) != "600" {
+		t.Errorf("the file the item was given to op in has mode %q, want 600", mode)
+	}
+}
+
+// A second signal while it cleans up does not stop the cleaning up: the
+// server is removed, the directory is gone, and it says so.
+func TestTwoSignalsStillCleanUp(t *testing.T) {
+	r := setup(t)
+	cmd := exec.Command("bash", append([]string{"1password-connect.sh"}, usual...)...)
+	cmd.Env = append(r.env, "OP_FAIL=slow-token")
+	var out strings.Builder
+	cmd.Stdout, cmd.Stderr = &out, &out
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	// Wait until the server is made and the script is waiting for the token.
+	deadline := time.Now().Add(20 * time.Second)
+	for !strings.Contains(r.calls(), "connect token create") {
+		if time.Now().After(deadline) {
+			cmd.Process.Kill()
+			t.Fatalf("the script never asked for a token:\n%s", r.calls())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cmd.Process.Signal(syscall.SIGTERM)
+	// The second lands while it is removing the server.
+	for !strings.Contains(r.calls(), "connect server delete") {
+		if time.Now().After(deadline) {
+			cmd.Process.Kill()
+			t.Fatalf("the script never began to clean up:\n%s", r.calls())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cmd.Process.Signal(syscall.SIGTERM)
+	cmd.Process.Signal(syscall.SIGHUP)
+	cmd.Process.Signal(syscall.SIGINT)
+	err := cmd.Wait()
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 143 {
+		t.Errorf("exit: %v, want 143", err)
+	}
+	if !strings.Contains(out.String(), "was removed again") || strings.Contains(r.servers(), "new-server-id") {
+		t.Errorf("the server was not removed after two signals:\n%s\n%s", out.String(), r.servers())
+	}
+	noSecret(t, "the output", out.String())
+	r.left()
 }

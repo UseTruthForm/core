@@ -158,6 +158,9 @@ func planSecrets(ctx context.Context, args []string) int {
 			fmt.Printf("%d problems: a rebuild from %s would lack these (%d Secrets to supply)\n", len(problems), *from, len(needed))
 		case *resolve:
 			fmt.Printf("every one of the %d Secrets to supply has a source, and %d values were read from theirs (none printed)\n", len(needed), read)
+		case len(s.Coverage) == 0:
+			// Not the line of a snapshot known to be whole.
+			fmt.Printf("every one of the %d Secrets to supply that the snapshot holds has a source; the snapshot does not record whether its capture read every Secret\n", len(needed))
 		default:
 			fmt.Printf("every one of the %d Secrets to supply has a source; --resolve reads each to prove it answers\n", len(needed))
 		}

@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The cases four rounds of review ran through this rule and through the
@@ -108,11 +109,13 @@ func TestNamesThatSayACredential(t *testing.T) {
 		"appKey": true, "fernetKey": true, "hmacKey": true, "jwtKey": true, "secretKeyBase": true, "clientSecretValue": true,
 		"tls.key": true, "sshKey": true, "cloudflareAPIToken": true, "openAIAPIKey": true, "SASToken": true, "APITOKEN": true,
 		"DB_PASS": true, "SMTP_PASS": true, "APP_KEY": true, "auth.token": true, "db.password": true, "existingPassword": true,
-		"password.value": true, "credentials.id": true, "sentry.dsn": true, "slack-token": true, "secretKey": true,
+		"sentry.dsn": true, "pwd": true, "connectionString": true, "storageSAS": true, "jwtSigningSalt": true, "license": true,
+		"publicKeyPassword": true, "existingSecretPassword": true, "htpasswd": true, "slack-token": true, "secretKey": true,
 		// What names a thing.
 		"secretName": false, "ingress.tls.secretName": false, "existingSecret": false, "auth.existingSecret": false,
 		"existingSecretKey": false, "aws.credentials.secretName": false, "tokenSecretRef": false, "passwordSecretName": false,
-		"publicKey": false, "public_key": false, "keyName": false,
+		"publicKey": false, "public_key": false, "keyName": false, "pullSecret": false, "imagePullSecrets": false, "tlsSecret": false,
+		"existingPasswordSecret": false, "monkey": false, "author": false, "authority": false, "bypass": false,
 		// What says nothing.
 		"replicas": false, "image.tag": false, "host": false, "auth.host": false, "logLevel": false,
 	} {
@@ -120,12 +123,27 @@ func TestNamesThatSayACredential(t *testing.T) {
 			t.Errorf("saysCredential(%q) = %v, want %v", name, got, want)
 		}
 	}
+	// Under these, everything is one; under those, there are hosts and
+	// names as well.
+	for key, want := range map[string]bool{"password": true, "passwords": true, "tokens": true, "credentials": true, "secret": true, "dsn": true,
+		"auth": false, "key": false, "keys": false, "existingSecret": false, "secretName": false, "replicas": false} {
+		if got := underSays(key); got != want {
+			t.Errorf("underSays(%q) = %v, want %v", key, got, want)
+		}
+	}
+	// A boolean, a value that only points at another, and a small number
+	// where it is a number: text that is digits may be a password.
 	for value, want := range map[string]bool{
-		"": true, "true": true, "False": true, "no": true, "3600": true, "4096": true, "-1": true, "$(OTHER)": true,
-		"1234567": false, "hunter2": false, "0.5.1-rc": false,
+		"": true, "true": true, "False": true, "no": true, "off": true, "$(OTHER)": true, "${cluster_token}": true, "{{ .Values.password }}": true, "{{password}}": true,
+		"none": false, "enabled": false, "null": false, "123456": false, "hunter2": false, "${DB_PASSWORD:=literal}": false, `{{ default "literal" .x }}`: false,
 	} {
-		if got := certainlyNot(value); got != want {
+		if got := certainlyNot(value, false); got != want {
 			t.Errorf("certainlyNot(%q) = %v, want %v", value, got, want)
+		}
+	}
+	for value, want := range map[string]bool{"3600": true, "4096": true, "-1": true, "123456": true, "1234567": false} {
+		if got := certainlyNot(value, true); got != want {
+			t.Errorf("certainlyNot(%q) as a number = %v, want %v", value, got, want)
 		}
 	}
 }
@@ -357,5 +375,349 @@ func TestVariablesKeepTheirRuleAndGainTheShapes(t *testing.T) {
 	paths, out = withheldOf("", "configmaps", cm)
 	if strings.Join(paths, " ") != "data[app.conf] data[id_rsa]" || strings.Contains(out, "s3cr3t") || !strings.Contains(out, "kept-ca") {
 		t.Errorf("a ConfigMap: %v\n%s", paths, out)
+	}
+}
+
+// What a second review's comparison with the rule before found.
+
+// A value however long is read in one pass: a dashboard of some
+// megabytes with an address on every line is a ConfigMap like any other.
+func TestShapesAreReadInOnePass(t *testing.T) {
+	for name, unit := range map[string]string{
+		"an address a line":    "  \"url\": \"http://grafana:3000/d/abc?orgId=1\",\n",
+		"addresses and commas": "http://host:8080,",
+		"a setting a line":     "scrape_interval: 15s\n",
+	} {
+		big := strings.Repeat(unit, 2<<20/len(unit))
+		start := time.Now()
+		if shaped(big) || textHolds(big) && name != "a setting a line" {
+			t.Errorf("%s: read as a credential", name)
+		}
+		if d := time.Since(start); d > 5*time.Second {
+			t.Errorf("%s: 2 MB took %s", name, d)
+		}
+	}
+}
+
+// What the rule before withheld is withheld, at the path it had: a
+// snapshot taken before restores now, and a line written for it holds.
+func TestNothingTheRuleBeforeWithheldIsKept(t *testing.T) {
+	env := []any{}
+	for _, pair := range [][2]string{
+		{"DB_PASSWORD", "s3cr3t-1"}, {"DB_PWD", "s3cr3t-2"}, {"CONNECTION_STRING", "s3cr3t-3"}, {"STORAGE_SAS", "s3cr3t-4"},
+		{"ADMIN_PASSWORD", "123456"}, {"ROOT_PASSWORD", "none"}, {"APP_PASSWORD", "enabled"},
+		{"DATABASE_URL", "postgres://app:12,s3cr3t@db/app"}, {"REDIS_URL", "postgres://app:123?s3cr3t@db/app"},
+		{"LOG_LEVEL", "kept-info"},
+	} {
+		env = append(env, map[string]any{"name": pair[0], "value": pair[1]})
+	}
+	for name, o := range map[string]map[string]any{
+		"a HelmRelease's values": {"apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "metadata": map[string]any{"name": "r", "namespace": "x"},
+			"spec": map[string]any{"values": map[string]any{"env": deepCopy(map[string]any{"l": env})["l"]}}},
+		"an application's valuesObject": {"apiVersion": "argoproj.io/v1alpha1", "kind": "Application", "metadata": map[string]any{"name": "a", "namespace": "argocd"},
+			"spec": map[string]any{"source": map[string]any{"helm": map[string]any{"valuesObject": map[string]any{"env": deepCopy(map[string]any{"l": env})["l"]}}}}},
+	} {
+		paths, out := withheldOf("", "", o)
+		if len(paths) != 9 || strings.Contains(out, "s3cr3t") || strings.Contains(out, `"value":"123456"`) || !strings.Contains(out, "kept-info") {
+			t.Errorf("%s: %d withheld %v\n%s", name, len(paths), paths, out)
+		}
+		for _, p := range paths {
+			if !strings.HasSuffix(p, ".env[DB_PASSWORD]") && !strings.Contains(p, ".env[") {
+				t.Errorf("%s: the path %q is not a variable's, as it was", name, p)
+			}
+		}
+		if !strings.Contains(strings.Join(paths, " "), ".env[DB_PASSWORD]") {
+			t.Errorf("%s: no path by the variable's name: %v", name, paths)
+		}
+	}
+
+	// Where GitOps starts was left out when a credential was written into
+	// it. It is captured now, and none of what kept it out is kept in it.
+	for name, url := range map[string]string{"a short token": "https://shorttoken1@example.com/o/r", "digits and a comma": "https://app:12,ab@example.com/o/r", "digits and a question": "https://app:123?456@example.com/o/r", "a password": "https://u:s3cr3t@example.com/o/r"} {
+		repo := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository", "metadata": map[string]any{"name": "fleet", "namespace": "flux-system"}, "spec": map[string]any{"url": url}}
+		if paths, _ := withheldOf("source.toolkit.fluxcd.io", "gitrepositories", repo); strings.Join(paths, " ") != "spec.url" {
+			t.Errorf("%s in a repository's address: withheld %v", name, paths)
+		}
+	}
+	for _, url := range []string{"ssh://git@example.com/o/r", "https://example.com/o/r", "oci://registry.example.com/charts"} {
+		repo := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository", "metadata": map[string]any{"name": "fleet", "namespace": "flux-system"}, "spec": map[string]any{"url": url}}
+		if paths, _ := withheldOf("source.toolkit.fluxcd.io", "gitrepositories", repo); paths != nil {
+			t.Errorf("%s: withheld %v", url, paths)
+		}
+	}
+	app := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Application", "metadata": map[string]any{"name": "root", "namespace": "argocd"},
+		"spec": map[string]any{"source": map[string]any{"helm": map[string]any{"parameters": []any{
+			map[string]any{"name": "DB_PWD", "value": "s3cr3t-1"}, map[string]any{"name": "db.password", "value": "123456"},
+			map[string]any{"name": "db.password2", "value": "{{password}}"}, map[string]any{"name": "auth.usePasswordFiles", "value": "true"},
+			map[string]any{"name": "replicaCount", "value": "3"},
+		}}}}}
+	paths, out := withheldOf("argoproj.io", "applications", app)
+	if strings.Join(paths, " ") != "spec.source.helm.parameters[DB_PWD] spec.source.helm.parameters[db.password]" || !strings.Contains(out, "{{password}}") {
+		t.Errorf("an application's parameters: %v\n%s", paths, out)
+	}
+}
+
+// All that is under a name that says a credential is one, however deep
+// and however written; what names a thing there is kept.
+func TestEverythingUnderANameThatSaysOne(t *testing.T) {
+	values := map[string]any{
+		"passwords":        map[string]any{"admin": "s3cr3t-1", "deep": map[string]any{"er": "s3cr3t-2"}},
+		"tokens":           []any{map[string]any{"name": "kept-ci", "value": "s3cr3t-3"}, []any{"s3cr3t-4", "s3cr3t-5"}},
+		"extraEnv":         []any{map[string]any{"name": "DB_PASSWORD", "value": 31415926}},
+		"password":         "123456",
+		"htpasswd":         "admin:$2y$05$s3cr3t\nother:$2y$05$s3cr3t\n",
+		"secrets":          []any{map[string]any{"name": "kept-secret-name", "key": "kept-secret-key"}},
+		"imagePullSecrets": []any{map[string]any{"name": "kept-registry"}},
+		"tolerations":      []any{map[string]any{"key": "kept-toleration", "value": "kept-toleration-value"}},
+		"podAnnotations":   map[string]any{"example.com/auth-url": "kept-annotation"},
+		"topologyKey":      "kept-not-under-affinity", // by its name: a line
+		"token#number":     "s3cr3t-6",
+		"a[0]":             map[string]any{"token": "s3cr3t-7"},
+		"a":                []any{map[string]any{"token": "s3cr3t-8"}},
+	}
+	release := map[string]any{"apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "metadata": map[string]any{"name": "r", "namespace": "x"}, "spec": map[string]any{"values": values}}
+	original := deepCopy(release)
+	paths, out := withheldOf("helm.toolkit.fluxcd.io", "helmreleases", release)
+	for _, leak := range []string{"s3cr3t", "31415926", `"password":"123456"`} {
+		if strings.Contains(out, leak) {
+			t.Errorf("%s is in the snapshot: %v\n%s", leak, paths, out)
+		}
+	}
+	for _, kept := range []string{"kept-ci", "kept-secret-name", "kept-secret-key", "kept-registry", "kept-toleration", "kept-toleration-value", "kept-annotation"} {
+		if !strings.Contains(out, kept) {
+			t.Errorf("%s was withheld: %v", kept, paths)
+		}
+	}
+	// Each at a path of its own, found again in the snapshot, and filled
+	// back to the object it was.
+	live := map[string]string{}
+	for _, sl := range slots(original) {
+		live[sl.path] = sl.value
+	}
+	body := deepCopy(release)
+	if err := setSlots(body, withheldEnv(body), live); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(body["spec"], original["spec"]) {
+		t.Errorf("filled back:\n got %v\nwant %v", body["spec"], original["spec"])
+	}
+}
+
+func TestMoreShapesAndWhatIsNoShape(t *testing.T) {
+	for value, want := range map[string]bool{
+		"Server=db;Database=app;User Id=sa;Password=s3cr3t;":             true,
+		"host=db user=app password=s3cr3t dbname=app":                    true,
+		"DefaultEndpointsProtocol=https;AccountName=a;AccountKey=s3cr3t": true,
+		"https://ptb.discord.com/api/webhooks/1/abc":                     true,
+		"https://hooks.slack.com/workflows/T0/A0/1/abc":                  true,
+		"https://api.telegram.org/bot123:abc/sendMessage":                true,
+		"https://bucket.s3.amazonaws.com/k?X-Amz-Signature=abc":          true,
+		"https://example.com/x?refresh_token=abc":                        true,
+		// Long, and read: a path, a class, a bucket, a public certificate.
+		"/opt/app/config/Production/appsettings2.json":                                                             false,
+		"/var/lib/AppData/cache_directory_v2/store":                                                                false,
+		"org/springframework/boot/loader/JarLauncher2":                                                             false,
+		"com.example.handlers.MyHandler2Implementation":                                                            false,
+		"projects/my-proj/secrets/DbPassword/versions/latest1":                                                     false,
+		"MyCompanyProductionArtifactsBucket2024eu":                                                                 false,
+		"my_Service_Account_Name_For_Production_2":                                                                 false,
+		"LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURkekNDQWwrZ0F3SUJBZ0lFQWdBQXVUQU5CZ2txaGtpRzl3MEJBUVVGQURCYQ==": false,
+		"token 2024-production-release-build":                                                                      false,
+		"bearer token-for-service-account-1":                                                                       false,
+		"http://host:port/a@b":                                                                                     false,
+		"http://my-svc:http/a@b":                                                                                   false,
+	} {
+		if got := shaped(value); got != want {
+			t.Errorf("shaped(%q) = %v, want %v", value, got, want)
+		}
+	}
+	for text, want := range map[string]bool{
+		"password: |\n  hunter2\n":                    true,
+		"token: |-\n  line1\n  line2":                 true,
+		"htpasswd: |\n  admin:$2y$05$abc\n":           true,
+		"password: \"hunter2\\n\"":                    true,
+		"password:\n  value: hunter2\n":               true,
+		"passwords:\n  admin: hunter2\n":              true,
+		"password: 2024-05-17\n":                      true,
+		"password: \"123456\"\n":                      true,
+		"{{ broken\nPASSWORD=abc\n":                   true,
+		"{{ broken\npassword = abc\n":                 true,
+		"imagePullSecrets:\n  - name: registry\n":     false,
+		"secrets:\n  - name: db\n    key: password\n": false,
+		"{{ broken\nreplicas = 3\n":                   false,
+	} {
+		if got := textHolds(text); got != want {
+			t.Errorf("textHolds(%q) = %v, want %v", text, got, want)
+		}
+	}
+}
+
+// More places a credential is written in what a GitOps source installs
+// with.
+func TestMorePlacesAreRead(t *testing.T) {
+	set := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "ApplicationSet", "metadata": map[string]any{"name": "s", "namespace": "argocd"},
+		"spec": map[string]any{
+			"generators": []any{map[string]any{"list": map[string]any{"elementsYaml": "- cluster: east\n  token: s3cr3t-1\n"}}},
+			"template": map[string]any{"spec": map[string]any{"source": map[string]any{
+				"helm":      map[string]any{"valueFiles": []any{"https://kept.example.com/values.yaml", "https://u:s3cr3t-2@example.com/values.yaml"}},
+				"kustomize": map[string]any{"patches": []any{map[string]any{"patch": "- op: add\n  path: /data/password\n  value: s3cr3t-3\n"}}},
+			}}},
+		}}
+	paths, out := withheldOf("argoproj.io", "applicationsets", set)
+	if len(paths) != 3 || strings.Contains(out, "s3cr3t") || !strings.Contains(out, "kept.example.com") {
+		t.Errorf("an application set: %v\n%s", paths, out)
+	}
+	wf := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "WorkflowTemplate", "metadata": map[string]any{"name": "w", "namespace": "x"},
+		"spec": map[string]any{"templates": []any{map[string]any{"name": "t", "inputs": map[string]any{"parameters": []any{
+			map[string]any{"name": "db_password", "default": "s3cr3t-1"}, map[string]any{"name": "slack-token", "value": "s3cr3t-2"},
+			map[string]any{"name": "auth.usePasswordFiles", "value": "true"}, map[string]any{"name": "region", "default": "kept-region"},
+		}}}}}}
+	paths, out = withheldOf("argoproj.io", "workflowtemplates", wf)
+	if len(paths) != 2 || strings.Contains(out, "s3cr3t") || !strings.Contains(out, "kept-region") || !strings.Contains(out, `"value":"true"`) {
+		t.Errorf("a workflow's parameters: %v\n%s", paths, out)
+	}
+	ks := map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization", "metadata": map[string]any{"name": "k", "namespace": "flux-system"},
+		"spec": map[string]any{"patches": []any{map[string]any{"patch": "apiVersion: v1\nkind: Secret\nstringData:\n  password: s3cr3t\n"}}}}
+	if paths, out := withheldOf("kustomize.toolkit.fluxcd.io", "kustomizations", ks); len(paths) != 1 || strings.Contains(out, "s3cr3t") {
+		t.Errorf("a Kustomization's patch: %v\n%s", paths, out)
+	}
+}
+
+// The rule before, kept here as it was: every variable with a literal
+// value and every ConfigMap key, judged by credential().
+func slotsBefore(obj map[string]any) map[string]string {
+	out := map[string]string{}
+	if strOf(obj["kind"]) == "ConfigMap" {
+		d, _ := obj["data"].(map[string]any)
+		for k, v := range d {
+			if s, ok := v.(string); ok && credential(k, s) {
+				out["data["+k+"]"] = s
+			}
+		}
+	}
+	var walk func(v any, path string)
+	walk = func(v any, path string) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, c := range x {
+				p := join(path, pathPart(k))
+				if k == "env" {
+					for i, e := range list(c) {
+						m, ok := e.(map[string]any)
+						s, isStr := m["value"].(string)
+						if ok && isStr && credential(strOf(m["name"]), s) {
+							out[p+"["+item(list(c), i)+"]"] = s
+						}
+					}
+					continue
+				}
+				walk(c, p)
+			}
+		case []any:
+			for i, c := range x {
+				walk(c, path+"["+item(x, i)+"]")
+			}
+		}
+	}
+	walk(obj, "")
+	return out
+}
+
+// The comparison that gated the earlier attempts, as a test: the same
+// objects through the rule before and through this one. Whatever the rule
+// before withheld is withheld, at the same path. Every kind that carries
+// variables, every name and every value the reviews used.
+func TestComparedWithTheRuleBefore(t *testing.T) {
+	names := []string{"DB_PASSWORD", "PGPASSWORD", "API_TOKEN", "CLIENT_SECRET", "API_KEY", "SIGNING_KEY", "SENTRY_DSN", "DATABASE_URL", "REDIS_URL", "DB_PWD",
+		"CONNECTION_STRING", "STORAGE_SAS", "LOG_LEVEL", "PASSWORD_MIN_LENGTH", "TOKEN_TTL", "KEY_PREFIX", "SECRET_NAME", "PUBLIC_KEY", "CACHE_KEY", "AWS_REGION", "FEATURE_TOKEN_AUTH", "GOOGLE_APPLICATION_CREDENTIALS"}
+	values := []string{"hunter2", "true", "123456", "none", "enabled", "3600", "/var/run/key.json", "$(OTHER)", "",
+		"postgres://app:pw@db:5432/app", "postgres://app:p<w@db/app", "postgres://app:p>w@db/app", "postgres://app:p'w@db/app", `postgres://app:p"w@db/app`,
+		"postgres://app:p/w@db:5432/app", "postgres://app:p?w@db/app", "postgres://app:p#w@db/app", "postgres://app:p@w@db/app", "postgres://app:p%40w@db/app",
+		"postgres://app:p w@db/app", "postgres://app:12,ab@db/app", "postgres://app:123?456@db/app", "https://user:pw@host/path",
+		"https://ghp_0123456789abcdefghijABCDEFGHIJ0123456789@github.com/org/repo", "https://git@host/org/repo", "https://org@dev.example.com/org/p/_git/r",
+		"ssh://git@host/x", "sftp://deploy@host", "redis://:pw@host", "mongodb+srv://u:p@h/db?retryWrites=true", "amqp://u:p@h",
+		"jdbc:postgresql://h/db?user=u&password=p", "jdbc:sqlserver://h;user=u;password=p", "https://example.com/x?token=abc", "https://example.com/x#access_token=abc",
+		"http://grafana:3000/d/a?mail=ops@example.com", "http://localhost:8080/users/bob@example.com", "http://cdn:8080/img/logo@2x.png", "http://registry:4873/@my.org/pkg",
+		"http://es-0:9200,http://elastic@es-1:9200", "https://example.com/reset?token=<your-token>", "https://vault.example.com/v1/kv?secret=app-config", "http://host:8080?x=a@b",
+		"see https://user:pw@host/path here", "https://a.example.com https://user:pw@host/x", "https://user:pw@[::1]:8443/x", "https://user:pw@host/path\n", "HTTPS://user:pw@host/path",
+		"Bearer abcdefghijklmnop1234", "Basic dXNlcjpwYXNz", "Token 0123456789abcdef0", "Basic production", "basic authentication", "token exchange", "Bearer", "token v1.2.3-production-build"}
+	var env []any
+	n := 0
+	for _, name := range names {
+		for _, v := range values {
+			n++
+			env = append(env, map[string]any{"name": name + "_" + string(rune('A'+n%26)) + strings.Repeat("X", n/26), "value": v}, map[string]any{"name": name, "value": v})
+		}
+	}
+	pod := func(lists ...string) map[string]any {
+		spec := map[string]any{}
+		for _, l := range lists {
+			spec[l] = []any{map[string]any{"name": "c", "env": deepCopy(map[string]any{"e": env})["e"]}}
+		}
+		return spec
+	}
+	data := map[string]any{}
+	for i, name := range names {
+		for j, v := range values {
+			data[name+"."+string(rune('a'+i%26))+string(rune('a'+j%26))+strings.Repeat("x", j/26)] = v
+			data[name] = v
+		}
+	}
+	md := func() map[string]any { return map[string]any{"name": "o", "namespace": "x"} }
+	objects := map[string]map[string]any{
+		"Deployment":  {"apiVersion": "apps/v1", "kind": "Deployment", "metadata": md(), "spec": map[string]any{"template": map[string]any{"spec": pod("containers")}}},
+		"StatefulSet": {"apiVersion": "apps/v1", "kind": "StatefulSet", "metadata": md(), "spec": map[string]any{"template": map[string]any{"spec": pod("containers", "initContainers")}}},
+		"DaemonSet":   {"apiVersion": "apps/v1", "kind": "DaemonSet", "metadata": md(), "spec": map[string]any{"template": map[string]any{"spec": pod("containers")}}},
+		"Job":         {"apiVersion": "batch/v1", "kind": "Job", "metadata": md(), "spec": map[string]any{"template": map[string]any{"spec": pod("containers")}}},
+		"CronJob":     {"apiVersion": "batch/v1", "kind": "CronJob", "metadata": md(), "spec": map[string]any{"jobTemplate": map[string]any{"spec": map[string]any{"template": map[string]any{"spec": pod("containers")}}}}},
+		"Pod":         {"apiVersion": "v1", "kind": "Pod", "metadata": md(), "spec": pod("containers", "initContainers", "ephemeralContainers")},
+		"Workflow":    {"apiVersion": "argoproj.io/v1alpha1", "kind": "Workflow", "metadata": md(), "spec": map[string]any{"templates": []any{map[string]any{"name": "t", "container": map[string]any{"env": deepCopy(map[string]any{"e": env})["e"]}}}}},
+		"Task":        {"apiVersion": "tekton.dev/v1", "kind": "Task", "metadata": md(), "spec": map[string]any{"steps": []any{map[string]any{"name": "s", "env": deepCopy(map[string]any{"e": env})["e"]}}}},
+		"HelmRelease": {"apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "metadata": md(), "spec": map[string]any{"values": map[string]any{"env": deepCopy(map[string]any{"e": env})["e"], "sub": map[string]any{"chart.x": map[string]any{"env": deepCopy(map[string]any{"e": env})["e"]}}}}},
+		"Application": {"apiVersion": "argoproj.io/v1alpha1", "kind": "Application", "metadata": md(), "spec": map[string]any{"source": map[string]any{"helm": map[string]any{"valuesObject": map[string]any{"env": deepCopy(map[string]any{"e": env})["e"]}}}}},
+		"ConfigMap":   {"apiVersion": "v1", "kind": "ConfigMap", "metadata": md(), "data": data},
+	}
+	total := 0
+	for kind, o := range objects {
+		before := slotsBefore(o)
+		total += len(before)
+		original := deepCopy(o)
+		withholdEnv(o)
+		now := map[string]bool{}
+		for _, p := range strings.Split(annotation(o["metadata"].(map[string]any), WithheldEnvAnnotation), ",") {
+			now[p] = true
+		}
+		kept := 0
+		for path, v := range before {
+			if !now[path] && !now[strings.NewReplacer(".x.", "%2Ex.").Replace(path)] {
+				kept++
+				if kept <= 5 {
+					t.Errorf("%s: the rule before withheld %s (%q), and it is kept", kind, path, v)
+				}
+			}
+		}
+		// And what is withheld is found again and filled back.
+		live := map[string]string{}
+		for _, sl := range slots(original) {
+			live[sl.path] = sl.value
+		}
+		body := deepCopy(o)
+		if err := setSlots(body, withheldEnv(body), live); err != nil {
+			t.Errorf("%s: %v", kind, err)
+		} else if !reflect.DeepEqual(body["spec"], original["spec"]) || !reflect.DeepEqual(body["data"], original["data"]) {
+			t.Errorf("%s: filled back, it is not the object it was", kind)
+		}
+		// A snapshot of the rule before, with its paths, is filled as well.
+		old := deepCopy(original)
+		var oldPaths []string
+		for path := range before {
+			oldPaths = append(oldPaths, path)
+		}
+		if err := setSlots(old, oldPaths, before); err != nil {
+			t.Errorf("%s: a snapshot of the rule before is not filled: %v", kind, err)
+		}
+	}
+	if total < 2000 {
+		t.Errorf("the rule before withheld only %d values of the corpus: it is not the corpus it was", total)
 	}
 }

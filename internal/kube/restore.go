@@ -282,6 +282,17 @@ func setSlots(body map[string]any, paths []string, values map[string]string) err
 		}
 		targets[sl.path] = sl
 	}
+	// A snapshot taken before a key's dots and brackets were written
+	// another way names its paths as they were: found again where only one
+	// slot reads so.
+	plain := strings.NewReplacer("%2E", ".", "%23", "#", "%5B", "[", "%5D", "]")
+	for at, sl := range targets {
+		if old := plain.Replace(at); old != at {
+			if _, taken := targets[old]; !taken {
+				targets[old] = sl
+			}
+		}
+	}
 	asked := map[string]bool{}
 	for _, p := range paths {
 		at := strings.TrimSuffix(p, numberMark)

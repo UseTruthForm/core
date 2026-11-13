@@ -113,32 +113,42 @@ What a snapshot does not hold, by design:
   a ConfigMap key. So is a value whose shape says a credential, whatever
   it is called: a private key, a URL that signs in (with a password, with
   a token as its name, or with one asked as `?token=`; a chat webhook's
-  address is one too), an `Authorization` header's value, and a long run
-  of letters and digits with nothing to read in it. A short name with no
-  password in a URL is an account (`ssh://git@host`) and is kept.
+  address is one too), an `Authorization` header's value, a connection
+  string with `Password=` in it, and a long run of letters and digits
+  with nothing to read in it. A short name with no password in a URL is
+  an account (`ssh://git@host`) and is kept; where an address is all a
+  field holds (`url`, `repoURL`, `endpoint`, `repo`), any name in it is
+  withheld unless it is over SSH.
 
   What a GitOps source installs with is withheld generously, each value
   by its name: a Flux HelmRelease's `values` and a Kustomization's
   `postBuild.substitute`; an Argo CD application's or application set's
-  `valuesObject`, parameters, generator elements and inputs, and its
-  `values` and `templatePatch` text, withheld whole when a credential is
-  in it. Any name with `pass`, `token`, `secret`, `key`, `cred`, `auth`
-  or `dsn` in it says a credential, and so does everything under
-  `password:` and its like. Kept: what names a thing (`secretName`,
-  `existingSecret`, the `name` and `key` of a `secretKeyRef`, a
-  toleration's `key`), a boolean, and a number of six digits or fewer.
-  Text that does not read as YAML (a template) is read line by line and
-  never kept for want of a parse. This withholds more than credentials,
-  on purpose: what is withheld costs a line in the secret sources file,
-  and a credential kept is one in a snapshot.
+  `valuesObject`, parameters, generator elements and inputs; an Argo
+  workflow's parameters; and as text, withheld whole when a credential is
+  in it, `values`, `templatePatch`, `elementsYaml` and a `patch`. A name
+  with the word `pass`, `pwd`, `key`, `cred`, `auth`, `dsn`, `sas`, `jwt`,
+  `salt`, `signature` or `license` in it says a credential, as does one
+  with `password`, `token`, `secret` or `credential` anywhere in it, and
+  so does everything under `password:`, `tokens:` and their like, however
+  deep. Kept: what names a thing (`secretName`, `existingSecret`,
+  `pullSecret`, the `name` and `key` of a `secretKeyRef`), what says
+  where a pod runs and how it is labelled (`tolerations`, `affinity`,
+  `nodeSelector`, labels and annotations), a boolean, a number of six
+  digits or fewer where it is written as a number, and a value that only
+  points at another (`${VAR}`, `{{ .Values.x }}`). Text that does not
+  read as YAML (a template) is read line by line. This withholds more
+  than credentials, on purpose: what is withheld costs a line in the
+  secret sources file, and a credential kept is one in a snapshot.
   It is named in the snapshot and listed in REPORT.md as a finding: move it
   into a Secret. A restore reads it from the source with
   `--secrets-from-context`, or from the secret sources file's `settings`
   with `--secrets-from`. Not caught: a credential passed as a command
-  argument, one under a name that does not say it is one and with no
-  shape that does (`foo: hunter2`), a token short enough to read as an
-  account's name in a URL, and in a workload's own objects, Helm values
-  apart, anything that is not a variable or a URL. Because both sides are withheld, a diff does not
+  argument, inside a config file a ConfigMap holds (its value is read
+  for its shape, not as a file), under a name that does not say it is
+  one and with no shape that does (`foo: hunter2`), a token short enough
+  to read as an account's name in a URL, a password with a space in it or
+  one that begins with digits and has a slash after them, and `?key=` or
+  `?code=` in an address. Because both sides are withheld, a diff does not
   show a rotated credential, and a snapshot taken before TruthForm withheld
   these values still holds them in its git history;
 - **what the platform made itself**: default VPCs and their subnets,

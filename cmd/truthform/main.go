@@ -31,7 +31,7 @@ const usage = `truthform: capture what is running so it can be recreated.
 Kubernetes:
   truthform capture --context <kube-context> --out <dir> [--include-system] [--baseline <dir>]
   truthform restore --context <kube-context> --from <dir> [--secrets-from <file>] [--secrets-from-context <kube-context>]
-      [--leave-out <file>] [--rename <file>]   into another environment: objects to hold back, and where its Secrets are read from
+      [--leave-out <file>] [--rename <file>]   into another environment: objects to hold back, and where its secret stores are
   truthform diff    --context <kube-context> --from <dir> [--baseline <dir>]
 
 AWS (Cloud Control, every type in the CloudFormation registry):

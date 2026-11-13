@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/usetruthform/core/internal/kube"
 	"github.com/usetruthform/core/internal/snapshot"
@@ -182,7 +183,7 @@ func planSecrets(ctx context.Context, args []string) int {
 		}
 		switch {
 		case len(problems) > 0:
-			fmt.Printf("%d problems: a rebuild from %s would lack these (%d Secrets to supply)\n", len(problems), *from, len(needed))
+			fmt.Printf("%d problems: a rebuild from %s would lack these (%d Secrets to supply, %d objects with settings withheld)\n", len(problems), *from, len(needed), len(settings))
 		case *resolve:
 			fmt.Printf("every one of the %d Secrets to supply has a source, and %d values were read from theirs (none printed)\n", len(needed), read)
 		case len(s.Coverage) == 0:
@@ -293,7 +294,17 @@ func withSecretSources(ctx context.Context, snap snapshot.Snapshot, path string,
 	}
 	settings := settingsNeeded(snap)
 	if fromContext {
-		settings = nil // what the file does not name is read from the other cluster
+		// An object the file does not name is read from the other cluster.
+		// One it names is still checked: named, it is filled from the file
+		// alone, and a place the file misses would stop the restore at
+		// that object, with others already written.
+		var named []sources.NeededSetting
+		for _, n := range settings {
+			if _, ok := file.Setting(n.Object); ok {
+				named = append(named, n)
+			}
+		}
+		settings = named
 	}
 	problems, _ := sources.Check(file, needed, known)
 	lacking, _ := sources.CheckSettings(file, settings)
@@ -351,6 +362,10 @@ func withSecretSources(ctx context.Context, snap snapshot.Snapshot, path string,
 		given[e.Object] = map[string]string{}
 		for _, at := range sortedKeys(e.From) {
 			v, err := r.Resolve(ctx, e.From[at])
+			if err == nil && !utf8.Valid(v) {
+				// A setting is text in the object; a Secret's value is not.
+				err = fmt.Errorf("%s: what was read is not text, and a setting is", e.From[at])
+			}
 			if err != nil {
 				failed = append(failed, e.Object+": "+at+": "+err.Error())
 				continue

@@ -51,6 +51,11 @@ func (f File) Setting(object string) (Setting, bool) {
 	return Setting{}, false
 }
 
+// objectKey is the shape of an object's key in a snapshot: apiVersion,
+// kind, namespace (none for one with no namespace) and name, with a bar
+// between.
+var objectKey = regexp.MustCompile(`^[A-Za-z0-9./-]+\|[A-Za-z0-9]+\|[a-z0-9.-]*\|[A-Za-z0-9.:_-]+$`)
+
 // NeededSetting is an object with values withheld, and their paths.
 type NeededSetting struct {
 	Object string
@@ -72,11 +77,23 @@ func SettingsSkeleton(needed []NeededSetting) []byte {
 		q, _ := json.Marshal(n.Object)
 		b.WriteString("  - object: " + string(q) + "\n    from:\n")
 		for _, p := range n.Paths {
-			q, _ := json.Marshal(p)
-			b.WriteString("      " + string(q) + ": \"\"\n")
+			q := yamlKey(p)
+			if len(q) > 900 {
+				// YAML reads a key written the short way only so far.
+				b.WriteString("      ? " + q + "\n      : \"\"\n")
+				continue
+			}
+			b.WriteString("      " + q + ": \"\"\n")
 		}
 	}
 	return []byte(b.String())
+}
+
+// yamlKey is text as a YAML string: a JSON string, with the few
+// characters JSON leaves as they are and YAML does not take.
+func yamlKey(s string) string {
+	q, _ := json.Marshal(s)
+	return strings.NewReplacer("\u007f", `\u007f`, "\u0085", `\u0085`, "\ufffe", `\ufffe`, "\uffff", `\uffff`).Replace(string(q))
 }
 
 // CheckSettings says where the file does not cover the values withheld
@@ -197,8 +214,9 @@ func Read(path string) (File, error) {
 	objects := map[string]bool{}
 	for i, e := range f.Settings {
 		switch {
-		case e.Object == "" || strings.ContainsAny(e.Object, "\n\r"):
-			return f, fmt.Errorf("%s: settings entry %d: object is not an object's key", path, i+1)
+		case !objectKey.MatchString(e.Object):
+			// By its place: what is there may not be a key at all.
+			return f, fmt.Errorf("%s: settings entry %d: object is not an object's key (apps/v1|Deployment|shop|api)", path, i+1)
 		case objects[e.Object]:
 			return f, fmt.Errorf("%s: %s is listed twice under settings", path, e.Object)
 		case len(e.From) == 0:
@@ -215,6 +233,11 @@ func Read(path string) (File, error) {
 			kind, rest, err := scheme(ref)
 			if err == nil {
 				err = shape(kind, rest)
+			}
+			if err == nil && kind == "empty" {
+				// Nothing empty is ever withheld: an empty value here would
+				// restore the object without its credential.
+				err = fmt.Errorf("empty: is for a Secret's key that holds nothing; what was withheld from a setting was not empty")
 			}
 			if err != nil {
 				return f, fmt.Errorf("%s: %s, %s: %w", path, e.Object, at, err)
@@ -279,9 +302,9 @@ func unechoed(err error) string {
 	for _, e := range te.Errors {
 		switch {
 		case unknownField.MatchString(e):
-			out = append(out, unknownField.FindString(e)+" in a sources file (secret, from, leave)")
+			out = append(out, unknownField.FindString(e)+" in a sources file (under secrets: secret, from, leave; under settings: object, from)")
 		case lineOf.MatchString(e):
-			out = append(out, lineOf.FindString(e)+": not what a sources file has there (a secrets list; in each, secret, and from as key: reference, or leave)")
+			out = append(out, lineOf.FindString(e)+": not what a sources file has there (a secrets list: in each, secret, and from as key: reference, or leave; a settings list: in each, object, and from as path: reference)")
 		default:
 			out = append(out, "not what a sources file has")
 		}

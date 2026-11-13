@@ -315,9 +315,12 @@ func TestReadRefusesAReferenceOfTheWrongShape(t *testing.T) {
 // and covers nothing until filled; a check says each object with no
 // entry, each path with no reference, each path nothing was withheld at.
 func TestSettings(t *testing.T) {
+	const dep, repo = "apps/v1|Deployment|shop|api", "source.toolkit.fluxcd.io/v1|GitRepository|flux-system|fleet"
 	needed := []NeededSetting{
-		{Object: "apps/v1/Deployment/shop/api", Paths: []string{"spec.template.spec.containers[api].env[DB_PASSWORD]", "spec.template.spec.containers[api].env[API_TOKEN]"}},
-		{Object: "source.toolkit.fluxcd.io/v1/GitRepository/flux-system/fleet\": x", Paths: []string{"spec.url"}},
+		{Object: dep, Paths: []string{"spec.template.spec.containers[api].env[DB_PASSWORD]", "spec.template.spec.containers[api].env[API_TOKEN]"}},
+		// Paths as odd as a list's names can make them: each reads back as itself.
+		{Object: repo, Paths: []string{"spec.url", "spec.x[a\": b # c].env[K]", "spec.y[\x7f\u0085\ufffe]", "spec.z[" + strings.Repeat("n", 1100) + "]"}},
+		{Object: "v1|Namespace||shop", Paths: []string{"metadata.x"}},
 	}
 	text := append(Skeleton(nil), SettingsSkeleton(needed)...)
 	path := filepath.Join(t.TempDir(), "s.yaml")
@@ -325,43 +328,70 @@ func TestSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	f, err := Read(path)
-	if err != nil || len(f.Settings) != 2 || len(f.Secrets) != 0 {
+	if err != nil || len(f.Settings) != 3 || len(f.Secrets) != 0 {
 		t.Fatalf("the part to fill in does not read back: %v\n%s", err, text)
 	}
-	if problems, _ := CheckSettings(f, needed); len(problems) != 3 {
-		t.Errorf("an unfilled file: %q", problems)
+	for _, n := range needed {
+		e, _ := f.Setting(n.Object)
+		for _, p := range n.Paths {
+			if _, ok := e.From[p]; !ok {
+				t.Errorf("%s: the path %q did not read back as itself", n.Object, p)
+			}
+		}
+	}
+	if problems, _ := CheckSettings(f, needed); len(problems) != 7 {
+		t.Errorf("an unfilled file: %d problems, %q", len(problems), problems)
 	}
 	if SettingsSkeleton(nil) != nil {
 		t.Error("something written for no settings")
 	}
 
+	needed = needed[:2]
+	needed[1].Paths = []string{"spec.url"}
 	filled := File{Settings: []Setting{
-		{Object: "apps/v1/Deployment/shop/api", From: map[string]string{"spec.template.spec.containers[api].env[DB_PASSWORD]": "env:X", "spec.template.spec.containers[api].env[OLD]": "env:Y"}},
-		{Object: "apps/v1/Deployment/shop/gone", From: map[string]string{"a": "env:Z"}},
+		{Object: dep, From: map[string]string{"spec.template.spec.containers[api].env[DB_PASSWORD]": "env:X", "spec.template.spec.containers[api].env[OLD]": "env:Y"}},
+		{Object: "apps/v1|Deployment|shop|gone", From: map[string]string{"a": "env:Z"}},
 	}}
 	problems, notes := CheckSettings(filled, needed)
 	want := []string{
-		`source.toolkit.fluxcd.io/v1/GitRepository/flux-system/fleet": x: no entry under settings; the rebuild has no source for what was withheld from it`,
-		"apps/v1/Deployment/shop/api: spec.template.spec.containers[api].env[API_TOKEN] has no reference",
-		"apps/v1/Deployment/shop/api: names spec.template.spec.containers[api].env[OLD], at which nothing was withheld",
+		repo + ": no entry under settings; the rebuild has no source for what was withheld from it",
+		dep + ": spec.template.spec.containers[api].env[API_TOKEN] has no reference",
+		dep + ": names spec.template.spec.containers[api].env[OLD], at which nothing was withheld",
 	}
-	if !reflect.DeepEqual(problems, want) || len(notes) != 1 || !strings.Contains(notes[0], "shop/gone") {
+	if !reflect.DeepEqual(problems, want) || len(notes) != 1 || !strings.Contains(notes[0], "shop|gone") {
 		t.Errorf("problems:\n %q\nwant\n %q\nnotes %q", problems, want, notes)
 	}
 
+	const a = "v1|ConfigMap|shop|a"
 	for body, want := range map[string]string{
-		"settings:\n  - object: a\n    from: {p: \"env:X\"}\n  - object: a\n    from: {p: \"env:X\"}\n": "a is listed twice under settings",
-		"settings:\n  - object: a\n":                                     "a has no from under settings",
-		"settings:\n  - from: {p: \"env:X\"}\n":                          "settings entry 1: object is not an object's key",
-		"settings:\n  - object: a\n    from: {p: \"op://v/%PATH%/f\"}\n": "a, p: op://v/…/f: a 1Password reference is",
-		"settings:\n  - object: a\n    from: {p: \"ftp://x\"}\n":         "a, p:",
-		"settings:\n  - object: a\n    form: {p: \"env:X\"}\n":           "form",
+		"settings:\n  - object: \"" + a + "\"\n    from: {p: \"env:X\"}\n  - object: \"" + a + "\"\n    from: {p: \"env:X\"}\n": a + " is listed twice under settings",
+		"settings:\n  - object: \"" + a + "\"\n":                                         a + " has no from under settings",
+		"settings:\n  - from: {p: \"env:X\"}\n":                                          "settings entry 1: object is not an object's key",
+		"settings:\n  - object: hunter2-not-a-key\n    from: {p: \"env:X\"}\n":           "settings entry 1: object is not an object's key",
+		"settings:\n  - object: \"v1|ConfigMap|shop|a\\nb\"\n    from: {p: \"env:X\"}\n": "settings entry 1: object is not an object's key",
+		"settings:\n  - object: \"" + a + "\"\n    from: {\"\": \"env:X\"}\n":            a + " has a reference for no path",
+		"settings:\n  - object: \"" + a + "\"\n    from: {p: \"op://v/%PATH%/f\"}\n":     a + ", p: op://v/…/f: a 1Password reference is",
+		"settings:\n  - object: \"" + a + "\"\n    from: {p: \"ftp://x\"}\n":             a + ", p:",
+		"settings:\n  - object: \"" + a + "\"\n    from: {p: \"empty:\"}\n":              "what was withheld from a setting was not empty",
+		"settings:\n  - object: \"" + a + "\"\n    form: {p: \"env:X\"}\n":               "under settings: object, from",
+		"settings:\n  - object: \"" + a + "\"\n    leave: an operator\n":                 "under settings: object, from",
 	} {
 		if err := os.WriteFile(path, []byte("secrets: []\n"+body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Read(path); err == nil || !strings.Contains(err.Error(), want) {
+		_, err := Read(path)
+		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%q: %v, want %q", body, err, want)
 		}
+		if err != nil && strings.Contains(err.Error(), "hunter2") {
+			t.Errorf("the error repeats what is not a key: %v", err)
+		}
+	}
+	// A file may have settings and no secrets list.
+	if err := os.WriteFile(path, []byte("settings:\n  - object: \""+a+"\"\n    from: {p: \"env:X\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := Read(path); err != nil || len(f.Settings) != 1 {
+		t.Errorf("settings alone: %v", err)
 	}
 }

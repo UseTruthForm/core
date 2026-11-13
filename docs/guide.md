@@ -558,7 +558,13 @@ settings:
 
 `plan secrets --out` writes an entry for every such object, and
 `--check` wants a reference for each place, as it does for a Secret's
-keys. So nothing withheld needs the cluster it came from to be restored.
+keys (`.secrets.settings` counts the objects with `--json`). So what was
+withheld does not need the cluster it came from to be restored. A
+setting is text: a reference that reads something else is refused, and
+so is `empty:`, since nothing empty is ever withheld. With
+`--secrets-from-context` as well, an object the file does not name is
+read from that cluster; one it names is filled from the file alone, and
+has to have a reference for every place.
 The better fix stays the one the capture's report gives: move each into
 a Secret. An object a GitOps source applies is not in the snapshot, and
 needs nothing here: the source holds its values.

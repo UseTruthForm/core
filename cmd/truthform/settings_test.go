@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -119,6 +120,51 @@ func TestRestoreFillsWithheldSettings(t *testing.T) {
 	if code := restore(ctx, append(nowhere, "--secrets-from", filled)); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), "values could not be read") {
 		t.Errorf("sources that are not set: exit %d, %v", code, lastErr)
 	}
+	// A value that is not text is refused: a setting is text in the object.
+	binary := writeFile(t, t.TempDir(), "bin", "\xff\xfe\x00k")
+	notText := writeFile(t, t.TempDir(), "not-text.yaml", strings.Replace(settingsFile, "env:TF_SETTING_URL", "file:"+binary, 1))
+	t.Setenv("TF_SETTING_PASSWORD", "s3cr3t-setting")
+	lastErr = nil
+	if code := restore(ctx, append(nowhere, "--secrets-from", notText)); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), "what was read is not text") {
+		t.Errorf("a value that is not text: exit %d, %v", code, lastErr)
+	}
+	os.Unsetenv("TF_SETTING_PASSWORD")
+
+	// With another cluster to read from, an object the file does not name
+	// is left to it, and one it names is still checked whole: a file that
+	// misses a place is refused before anything is written, not when the
+	// restore gets to that object.
+	snap, err := snapshot.Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partial := writeFile(t, t.TempDir(), "partial.yaml", "secrets: []\nsettings:\n  - object: \"apps/v1|Deployment|shop|api\"\n    from: {\"spec.stale\": \"env:TF_SETTING_PASSWORD\"}\n")
+	if _, _, _, err := withSecretSources(ctx, snap, partial, false, true); err == nil || !strings.Contains(err.Error(), envPath+" has no reference") {
+		t.Errorf("a named object with a place missing, with another cluster: %v", err)
+	}
+	if _, opt, _, err := withSecretSources(ctx, snap, none, false, true); err != nil {
+		t.Errorf("no settings named, with another cluster: %v", err)
+	} else if _, known, _ := opt.Settings(ctx, "apps/v1|Deployment|shop|api", nil); known {
+		t.Error("an object the file does not name is said to be known")
+	}
+	// An entry for an object nothing was withheld from is not read at all.
+	unused := writeFile(t, t.TempDir(), "unused.yaml", settingsFile+"  - object: \"v1|ConfigMap|shop|other\"\n    from: {\"data[k]\": \"env:TF_NEVER_SET\"}\n")
+	t.Setenv("TF_SETTING_PASSWORD", "s3cr3t-setting")
+	t.Setenv("TF_SETTING_URL", "https://app:s3cr3t-url@db.example.com")
+	if _, _, _, err := withSecretSources(ctx, snap, unused, false, false); err != nil {
+		t.Errorf("an entry that is not used was read: %v", err)
+	}
+	os.Unsetenv("TF_SETTING_PASSWORD")
+	os.Unsetenv("TF_SETTING_URL")
+
+	// Nothing was written by any of the refusals above.
+	c0, err := kube.Connect(srv.Kubeconfig, srv.Context, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kubernetes.NewForConfigOrDie(c0.Config).CoreV1().Namespaces().Get(ctx, "shop", metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Errorf("a refused restore wrote the namespace: %v", err)
+	}
 	if captureOnly {
 		t.Skip("the rest restores, which the capture-only build refuses")
 	}
@@ -126,6 +172,9 @@ func TestRestoreFillsWithheldSettings(t *testing.T) {
 	t.Setenv("TF_SETTING_URL", "https://app:s3cr3t-url@db.example.com")
 	// Without a source the two objects are refused, and said to be.
 	code, stdout, _ := output(t, func() int { return restore(ctx, base) })
+	if strings.Contains(stdout, "s3cr3t") {
+		t.Errorf("a refused object's message holds a value:\n%s", stdout)
+	}
 	if code != 3 || !strings.Contains(stdout, "supply them with --secrets-from or --secrets-from-context") || !strings.Contains(stdout, "applied 1 of 3 objects") {
 		t.Fatalf("with no source: exit %d\n%s", code, stdout)
 	}

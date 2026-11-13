@@ -3,6 +3,8 @@ package kube
 import (
 	"encoding/json"
 	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -328,9 +330,20 @@ func TestTextIsReadThoughItDoesNotParse(t *testing.T) {
 		"extraEnv:\n  - name: DB_PASSWORD\n    value: s3cr3t\n":                   true,
 		"cluster: {{cluster}}\nreplicas: 2\n":                                     false,
 		"tolerations:\n  - key: dedicated\n    operator: Equal\n    value: gpu\n": false,
-		"{{ broken\nauth:\n  existingSecret: db\n  usePasswordFiles: true\n":      false,
-		"{{ broken\nsecretName: registry-login\nmaxTokens: 4096\n":                false,
-		"replicas: 2\nimage:\n  tag: v1\n":                                        false,
+		// What cannot be read is withheld whole, whatever is in it.
+		"{{ broken\nauth:\n  existingSecret: db\n  usePasswordFiles: true\n": true,
+		"{{ broken\nsecretName: registry-login\nmaxTokens: 4096\n":           true,
+		"replicas: {{ .Values.replicas }}-x\n":                               true,
+		"password: real\npassword: true\n":                                   true, // a key set twice
+		// What is no document is read line by line.
+		"DB_PASSWORD=s3cr3t\nPORT=80":               true,
+		"admin_password = s3cr3t\nport = 80":        true,
+		"spring.datasource.password=s3cr3t\na=b":    true,
+		"#!/bin/sh\nexport API_TOKEN=s3cr3t\nrun":   true,
+		"PORT=80\nMODE=fast":                        false,
+		"#!/bin/sh\nexport REGION=east\nrun --fast": false,
+		"a note\nof two lines":                      false,
+		"replicas: 2\nimage:\n  tag: v1\n":          false,
 	} {
 		if got := textHolds(text); got != want {
 			t.Errorf("textHolds(%q) = %v, want %v", text, got, want)
@@ -390,9 +403,12 @@ func TestShapesAreReadInOnePass(t *testing.T) {
 	} {
 		big := strings.Repeat(unit, 2<<20/len(unit))
 		start := time.Now()
-		if shaped(big) || textHolds(big) && name != "a setting a line" {
+		// Its shape says nothing. As a document it is withheld whole where
+		// it cannot be read or sets a key twice: only the time is held to.
+		if shaped(big) {
 			t.Errorf("%s: read as a credential", name)
 		}
+		textHolds(big)
 		if d := time.Since(start); d > 5*time.Second {
 			t.Errorf("%s: 2 MB took %s", name, d)
 		}
@@ -498,8 +514,9 @@ func TestEverythingUnderANameThatSaysOne(t *testing.T) {
 	if err := setSlots(body, withheldEnv(body), live); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(body["spec"], original["spec"]) {
-		t.Errorf("filled back:\n got %v\nwant %v", body["spec"], original["spec"])
+	// As JSON: a whole number is one, however it was read.
+	if got, want := deepCopy(body)["spec"], original["spec"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("filled back:\n got %v\nwant %v", got, want)
 	}
 }
 
@@ -544,7 +561,8 @@ func TestMoreShapesAndWhatIsNoShape(t *testing.T) {
 		"{{ broken\npassword = abc\n":                 true,
 		"imagePullSecrets:\n  - name: registry\n":     false,
 		"secrets:\n  - name: db\n    key: password\n": false,
-		"{{ broken\nreplicas = 3\n":                   false,
+		"{{ broken\nreplicas = 3\n":                   true, // not read: withheld whole
+		"replicas = 3\nmode = fast":                   false,
 	} {
 		if got := textHolds(text); got != want {
 			t.Errorf("textHolds(%q) = %v, want %v", text, got, want)
@@ -585,7 +603,7 @@ func TestMorePlacesAreRead(t *testing.T) {
 
 // The rule before, kept here as it was: every variable with a literal
 // value and every ConfigMap key, judged by credential().
-func slotsBefore(obj map[string]any) map[string]string {
+func ruleBefore(obj map[string]any) map[string]string {
 	out := map[string]string{}
 	if strOf(obj["kind"]) == "ConfigMap" {
 		d, _ := obj["data"].(map[string]any)
@@ -649,6 +667,7 @@ func TestComparedWithTheRuleBefore(t *testing.T) {
 			env = append(env, map[string]any{"name": name + "_" + string(rune('A'+n%26)) + strings.Repeat("X", n/26), "value": v}, map[string]any{"name": name, "value": v})
 		}
 	}
+	e := func() any { return deepCopy(map[string]any{"e": env})["e"] }
 	pod := func(lists ...string) map[string]any {
 		spec := map[string]any{}
 		for _, l := range lists {
@@ -673,51 +692,114 @@ func TestComparedWithTheRuleBefore(t *testing.T) {
 		"Pod":         {"apiVersion": "v1", "kind": "Pod", "metadata": md(), "spec": pod("containers", "initContainers", "ephemeralContainers")},
 		"Workflow":    {"apiVersion": "argoproj.io/v1alpha1", "kind": "Workflow", "metadata": md(), "spec": map[string]any{"templates": []any{map[string]any{"name": "t", "container": map[string]any{"env": deepCopy(map[string]any{"e": env})["e"]}}}}},
 		"Task":        {"apiVersion": "tekton.dev/v1", "kind": "Task", "metadata": md(), "spec": map[string]any{"steps": []any{map[string]any{"name": "s", "env": deepCopy(map[string]any{"e": env})["e"]}}}},
-		"HelmRelease": {"apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "metadata": md(), "spec": map[string]any{"values": map[string]any{"env": deepCopy(map[string]any{"e": env})["e"], "sub": map[string]any{"chart.x": map[string]any{"env": deepCopy(map[string]any{"e": env})["e"]}}}}},
-		"Application": {"apiVersion": "argoproj.io/v1alpha1", "kind": "Application", "metadata": md(), "spec": map[string]any{"source": map[string]any{"helm": map[string]any{"valuesObject": map[string]any{"env": deepCopy(map[string]any{"e": env})["e"]}}}}},
-		"ConfigMap":   {"apiVersion": "v1", "kind": "ConfigMap", "metadata": md(), "data": data},
+		// Variables in values, as charts have them: under a key with a dot in
+		// it, under an item of a list that has a name, under a key that says
+		// where a pod runs, and the same keys nested beside the dotted one.
+		"HelmRelease": {"apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "metadata": md(), "spec": map[string]any{"values": map[string]any{
+			"env":             e(),
+			"sub":             map[string]any{"chart.x": map[string]any{"env": e()}, "chart": map[string]any{"y": map[string]any{"env": e()}}},
+			"extraContainers": []any{map[string]any{"name": "sidecar", "env": e()}, map[string]any{"name": "other", "image": "x"}},
+			"selector":        map[string]any{"env": e()},
+			"password":        map[string]any{"env": e()},
+		}}},
+		"Application": {"apiVersion": "argoproj.io/v1alpha1", "kind": "Application", "metadata": md(), "spec": map[string]any{"source": map[string]any{"helm": map[string]any{"valuesObject": map[string]any{
+			"env": e(), "my.sub": map[string]any{"env": e()}, "sidecars": []any{map[string]any{"name": "proxy", "env": e()}}}}}}},
+		// A key with a dot in it outside values, as a custom resource may have.
+		"Custom":    {"apiVersion": "example.com/v1", "kind": "Thing", "metadata": md(), "spec": map[string]any{"files": map[string]any{"app.yaml": map[string]any{"env": e()}}}},
+		"ConfigMap": {"apiVersion": "v1", "kind": "ConfigMap", "metadata": md(), "data": data},
 	}
 	total := 0
 	for kind, o := range objects {
-		before := slotsBefore(o)
+		before := ruleBefore(o)
 		total += len(before)
 		original := deepCopy(o)
-		withholdEnv(o)
-		now := map[string]bool{}
-		for _, p := range strings.Split(annotation(o["metadata"].(map[string]any), WithheldEnvAnnotation), ",") {
-			now[p] = true
-		}
-		kept := 0
-		for path, v := range before {
-			if !now[path] && !now[strings.NewReplacer(".x.", "%2Ex.").Replace(path)] {
-				kept++
-				if kept <= 5 {
-					t.Errorf("%s: the rule before withheld %s (%q), and it is kept", kind, path, v)
-				}
-			}
-		}
-		// And what is withheld is found again and filled back.
-		live := map[string]string{}
-		for _, sl := range slots(original) {
-			live[sl.path] = sl.value
-		}
-		body := deepCopy(o)
-		if err := setSlots(body, withheldEnv(body), live); err != nil {
-			t.Errorf("%s: %v", kind, err)
-		} else if !reflect.DeepEqual(body["spec"], original["spec"]) || !reflect.DeepEqual(body["data"], original["data"]) {
-			t.Errorf("%s: filled back, it is not the object it was", kind)
-		}
-		// A snapshot of the rule before, with its paths, is filled as well.
-		old := deepCopy(original)
 		var oldPaths []string
 		for path := range before {
 			oldPaths = append(oldPaths, path)
 		}
-		if err := setSlots(old, oldPaths, before); err != nil {
-			t.Errorf("%s: a snapshot of the rule before is not filled: %v", kind, err)
+		sort.Strings(oldPaths)
+		// The rule kept in the product to find those slots is the rule as
+		// it was.
+		var productPaths []string
+		for _, sl := range slotsBefore(deepCopy(original)) {
+			if credential(sl.name, sl.value) {
+				productPaths = append(productPaths, sl.path)
+			}
 		}
+		sort.Strings(productPaths)
+		if !reflect.DeepEqual(productPaths, oldPaths) {
+			t.Errorf("%s: slotsBefore finds %d slots, the rule before %d", kind, len(productPaths), len(oldPaths))
+		}
+
+		// 1. Whatever the rule before withheld is withheld: found by the
+		// path it had, its value gone.
+		withholdEnv(o)
+		found, err := findSlots(o, oldPaths)
+		if err != nil {
+			t.Errorf("%s: what the rule before withheld is not found in this snapshot: %v", kind, err)
+			continue
+		}
+		kept := 0
+		for path, sl := range found {
+			if sl.value != "" {
+				kept++
+				if kept <= 5 {
+					t.Errorf("%s: the rule before withheld %s (%q), and it is kept", kind, path, before[path])
+				}
+			}
+		}
+		same := func(what string, body map[string]any, err error) {
+			t.Helper()
+			if err != nil {
+				t.Errorf("%s: %s: %v", kind, what, err)
+			} else if !reflect.DeepEqual(body["spec"], original["spec"]) || !reflect.DeepEqual(body["data"], original["data"]) {
+				t.Errorf("%s: %s: filled back, it is not the object it was", kind, what)
+			}
+		}
+		// 2. This snapshot is filled back, from a file (a line for each
+		// path it names) and from the cluster it came from.
+		live := map[string]string{}
+		for _, sl := range slots(deepCopy(original)) {
+			live[sl.path] = sl.value
+		}
+		body := deepCopy(o)
+		same("this snapshot, from a file", body, setSlots(body, withheldEnv(body), live))
+		body = deepCopy(o)
+		same("this snapshot, from its cluster", body, fillFrom(deepCopy(original), body, withheldEnv(body)))
+
+		// 3. A snapshot the rule before took, with the paths it wrote, is
+		// filled back the same two ways.
+		old := func() map[string]any {
+			snap := deepCopy(original)
+			for _, sl := range slotsBefore(snap) {
+				if credential(sl.name, sl.value) {
+					sl.set("")
+				}
+			}
+			return snap
+		}
+		body = old()
+		same("a snapshot of the rule before, from a file", body, setSlots(body, oldPaths, before))
+		body = old()
+		same("a snapshot of the rule before, from its cluster", body, fillFrom(deepCopy(original), body, oldPaths))
 	}
-	if total < 2000 {
+	if total < 4000 {
 		t.Errorf("the rule before withheld only %d values of the corpus: it is not the corpus it was", total)
 	}
+}
+
+// item names a list's element as the rule before did, kept here as it
+// was: by its "name" where no other element shares it, else by its index.
+func item(l []any, i int) string {
+	m, _ := l[i].(map[string]any)
+	n := strOf(m["name"])
+	if n == "" || allDigits(n) {
+		return strconv.Itoa(i)
+	}
+	for j, o := range l {
+		if om, _ := o.(map[string]any); j != i && strOf(om["name"]) == n {
+			return strconv.Itoa(i)
+		}
+	}
+	return pathPart(n)
 }

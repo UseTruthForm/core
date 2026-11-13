@@ -107,50 +107,100 @@ What a snapshot does not hold, by design:
   `user:pass@` URL; such a hook is named by its host and a hash). They are
   named in the snapshot and given at restore with `--values`. A
   credential set as plain configuration in Kubernetes is withheld the
-  same way: a value named like one (`*_PASSWORD`, `PGPASSWORD`,
-  `*_TOKEN`, `*_SECRET`, `API_KEY`, `*_KEY`, `*_DSN`) in any `env` list
-  (pod templates, Argo and Tekton steps, a HelmRelease's `values`) or as
-  a ConfigMap key. So is a value whose shape says a credential, whatever
-  it is called: a private key, a URL that signs in (with a password, with
-  a token as its name, or with one asked as `?token=`; a chat webhook's
-  address is one too), an `Authorization` header's value, a connection
-  string with `Password=` in it, and a long run of letters and digits
-  with nothing to read in it. A short name with no password in a URL is
-  an account (`ssh://git@host`) and is kept; where an address is all a
-  field holds (`url`, `repoURL`, `endpoint`, `repo`), any name in it is
-  withheld unless it is over SSH.
+  same way, by its name or by its shape.
 
-  What a GitOps source installs with is withheld generously, each value
-  by its name: a Flux HelmRelease's `values` and a Kustomization's
+  By its name, one rule everywhere: in any `env` list (pod templates,
+  Argo and Tekton steps, a chart's values), as a ConfigMap's key (`data`
+  and `binaryData`), and in what a GitOps source installs with. That is
+  a Flux HelmRelease's `values` and a Kustomization's
   `postBuild.substitute`; an Argo CD application's or application set's
   `valuesObject`, parameters, generator elements and inputs; an Argo
-  workflow's parameters; and as text, withheld whole when a credential is
-  in it, `values`, `templatePatch`, `elementsYaml` and a `patch`. A name
-  with the word `pass`, `pwd`, `key`, `cred`, `auth`, `dsn`, `sas`, `jwt`,
-  `salt`, `signature` or `license` in it says a credential, as does one
-  with `password`, `token`, `secret` or `credential` anywhere in it, and
-  so does everything under `password:`, `tokens:` and their like, however
-  deep. Kept: what names a thing (`secretName`, `existingSecret`,
-  `pullSecret`, the `name` and `key` of a `secretKeyRef`), what says
-  where a pod runs and how it is labelled (`tolerations`, `affinity`,
-  `nodeSelector`, labels and annotations), a boolean, a number of six
-  digits or fewer where it is written as a number, and a value that only
-  points at another (`${VAR}`, `{{ .Values.x }}`). Text that does not
-  read as YAML (a template) is read line by line. This withholds more
-  than credentials, on purpose: what is withheld costs a line in the
-  secret sources file, and a credential kept is one in a snapshot.
-  It is named in the snapshot and listed in REPORT.md as a finding: move it
-  into a Secret. A restore reads it from the source with
-  `--secrets-from-context`, or from the secret sources file's `settings`
-  with `--secrets-from`. Not caught: a credential passed as a command
-  argument, inside a config file a ConfigMap holds (its value is read
-  for its shape, not as a file), under a name that does not say it is
-  one and with no shape that does (`foo: hunter2`), a token short enough
-  to read as an account's name in a URL, a password with a space in it or
-  one that begins with digits and has a slash after them, and `?key=` or
-  `?code=` in an address. Because both sides are withheld, a diff does not
-  show a rotated credential, and a snapshot taken before TruthForm withheld
-  these values still holds them in its git history;
+  workflow's parameters. A name says a credential when one of its words
+  is `pass`, `pwd`, `pw`, `key`, `cred`, `auth`, `dsn`, `sas`, `jwt`,
+  `salt`, `signature` or `license`, or when `password`, `passcode`,
+  `token`, `secret` or `credential` is anywhere in it: `DB_PASSWORD`,
+  `apiToken`, `client-secret`, `jwtKey`. In a chart's values, so does
+  everything under `password:`, `tokens:`, `apiKey:` and their like,
+  however deep.
+
+  Kept, under any such name:
+
+  - what names a thing: `secretName`, `existingSecret` and
+    `apiKeyExistingSecret`, `envFromSecret`, `pullSecret`, the `name` and
+    `key` of a reference, a `key` beside a `name` or a `path`, a list of
+    Secrets' names under `secrets:`, a public key;
+  - a setting about a credential, by how the name ends:
+    `PASSWORD_MIN_LENGTH`, `TOKEN_TTL`, `tokenExpiration`, `tokenUrl`,
+    `KEY_PREFIX`, `passwordPolicy`, and a value that is a file's path
+    (`/var/run/secrets/key.json`);
+  - a chart or a component whose name says a credential
+    (`sealed-secrets`, `external-secrets`): a map with an `image`, a
+    `tag`, a `fullnameOverride`, `replicas`, `resources` or the like in
+    it is settings, and each is read by its own name;
+  - what says where a pod runs and how it is labelled (`tolerations`,
+    `affinity`, `nodeSelector`, labels and annotations);
+  - a boolean, a number of six digits or fewer where it is written as a
+    number, and a value that only points at another (`${VAR}`,
+    `{{ .Values.x }}`).
+
+  By its shape, whatever it is called: a private key, a URL that signs in
+  (with a password, with a token as its name, or with one asked as
+  `?token=`, `?api_key=`, `?sig=` and their like; a chat webhook's
+  address is one too), an `Authorization` header or its value, a
+  connection string with `Password=` or `password=` in it, a token that
+  says what it is (GitHub's, GitLab's, Slack's, an AWS key ID, a JWT),
+  and a long run of mixed letters and digits with nothing to read in it.
+  A short name with no password in a URL is an account (`ssh://git@host`)
+  and is kept; where an address is all a field holds (`url`, `repoURL`,
+  `endpoint`, `repo`, `address`, `uri`, `dsn`), any name in it is
+  withheld unless it is over SSH.
+
+  Text is withheld whole when a credential is in it: an application's
+  `values`, `templatePatch` and `elementsYaml`, a `patch`, and any value
+  of several lines in a chart's values. It is read as the YAML or JSON
+  it is. Text that is no document (a script, a properties or env file)
+  is read line by line, for `NAME=value` and `name: value`. Text that
+  should be a document and cannot be read as one, a template with
+  `{{ if }}` in it most often, or that sets a key twice, is withheld
+  whole whatever is in it: where a value is in it cannot be told.
+
+  This withholds more than credentials, on purpose: what is withheld
+  costs a line in the secret sources file, and a credential kept is one
+  in a snapshot. Each is named in the snapshot and listed in REPORT.md as
+  a finding: move it into a Secret. A restore reads it from the source
+  with `--secrets-from-context`, or from the secret sources file's
+  `settings` with `--secrets-from`.
+
+  **Not caught.** No rule reads every credential under every name. These
+  stay in a snapshot, and a planted set of them is counted by a test so
+  that the list can only get shorter:
+
+  - a name that does not say it is one, with a value of no shape:
+    `foo: hunter2`, and names such as `pin`, `seed`, `cookie`, `session`,
+    `login`, `webhook`;
+  - a key of lower-case letters and digits only (a hex key, a UUID), or
+    shorter than 32 characters, under such a name;
+  - a number of six digits or fewer, and `true` or `false`, under any
+    name;
+  - `credentials: {name: admin, key: ...}`: a `key` beside a `name` is
+    read as the name of a key;
+  - a config file a ConfigMap holds (`application.properties`,
+    `redis.conf`): a ConfigMap's value is read for its shape, not as a
+    file. In a chart's values, a file with no `name=value` or
+    `name: value` in it (`requirepass ...`);
+  - a command's argument (`--password=...`), and an annotation;
+  - a field of a custom resource that is none of the above
+    (`spec.adminPassword` of a database operator's object), unless its
+    shape says so and it is called `url`, `address`, `uri`, `dsn` or the
+    like;
+  - in a URL: a password with a space in it, one with a slash in it
+    before a host with no dot and no port, and `?key=` or `?code=`.
+
+  Because both sides are withheld, a diff does not show a rotated
+  credential, and a snapshot taken before TruthForm withheld these values
+  still holds them in its git history. A snapshot taken by an earlier
+  version restores as it did: the places it names are found by the names
+  it gave them;
 - **what the platform made itself**: default VPCs and their subnets,
   built-in roles, AWS-managed policies. Use `--baseline` with a capture of
   a fresh account to skip anything identical to it;
@@ -586,6 +636,12 @@ settings:
     from:
       "spec.template.spec.containers[api].env[DB_PASSWORD]": "op://Break Glass/shop db/password"
 ```
+
+A place that held a number has `#number` at its end, and what is
+supplied for it has to be one. A ConfigMap's `binaryData` key is
+supplied as it is stored, in base64. A document withheld whole (see what
+is withheld, above) is one place, and the reference gives all of it: a
+`file:` reference suits it.
 
 `plan secrets --out` writes an entry for every such object, and
 `--check` wants a reference for each place, as it does for a Secret's

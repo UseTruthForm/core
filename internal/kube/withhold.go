@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -29,16 +30,20 @@ import (
 //     key, a URL that signs in, an Authorization header's value, a
 //     connection string with a password in it, a long run of letters and
 //     digits with nothing to read in it
-//   - text that holds either, withheld whole; text that cannot be read as
-//     YAML is read line by line, and withheld whole if a line reads so
+//   - text that holds either, withheld whole; text that is no document
+//     (a script, a properties file) is read line by line, and text that
+//     should be a document and cannot be read as one is withheld whole
 //
 // and the exemptions are few and certain: what names a thing (a Secret's
-// name, the name and key of a reference), what describes where a pod runs
-// (labels, selectors, tolerations), a boolean, a small number, a value
-// that only points at another.
+// name, the name and key of a reference, an image), what is a setting
+// about a credential (its length, its lifetime, the file it is in), what
+// describes where a pod runs (labels, selectors, tolerations), a boolean,
+// a small number, a value that only points at another.
 //
-// Nothing here withholds less than the rule for variables did: a slot
-// that rule read is judged by it still, or by a shape.
+// One rule for names, everywhere: a variable, a ConfigMap's key and a
+// value of a chart are read by the same one (saysCredential). Nothing
+// here withholds less than the rule for variables did: a slot that rule
+// read is judged by it as well.
 
 // --- names ---
 
@@ -56,6 +61,10 @@ func nameParts(name string) []string {
 			out = append(out, strings.ToLower(p))
 		}
 	}
+	// A number at the end counts one of several: SECRET_ID_2 is SECRET_ID.
+	for len(out) > 1 && allDigits(out[len(out)-1]) {
+		out = out[:len(out)-1]
+	}
 	return out
 }
 
@@ -64,10 +73,10 @@ func nameParts(name string) []string {
 // ends as endSays do (dbpass, apikey). "key" has to be the word: monkey
 // and turkey are not keys.
 var (
-	wordSays = map[string]bool{"pass": true, "pwd": true, "key": true, "keys": true, "cred": true, "creds": true, "auth": true,
+	wordSays = map[string]bool{"pass": true, "pwd": true, "pw": true, "key": true, "keys": true, "cred": true, "creds": true, "auth": true,
 		"dsn": true, "sas": true, "jwt": true, "salt": true, "signature": true, "license": true, "licence": true, "htpasswd": true}
-	holdSays = []string{"password", "passwd", "passphrase", "token", "secret", "credential"}
-	endSays  = []string{"apikey", "secretkey", "privatekey", "accesskey", "authkey", "sshkey"}
+	holdSays = []string{"password", "passwd", "passphrase", "passcode", "token", "secret", "credential"}
+	endSays  = []string{"apikey", "secretkey", "privatekey", "accesskey", "authkey", "sshkey", "masterkey", "signingkey", "encryptionkey"}
 	notPass  = map[string]bool{"bypass": true, "compass": true, "encompass": true, "trespass": true, "overpass": true, "underpass": true}
 )
 
@@ -88,9 +97,15 @@ func wordSaysCredential(w string) bool {
 	return len(w) > 4 && strings.HasSuffix(w, "pass") && !notPass[w]
 }
 
+// secretNamed are the words that, before "secret" at a name's end, say
+// the Secret is named and not held: existingSecret, apiKeyExistingSecret,
+// envFromSecret, pullSecret, tlsSecret. clientSecret and appSecret hold
+// one.
+var secretNamed = map[string]bool{"existing": true, "from": true, "pull": true, "tls": true}
+
 // namesAThing reports a name that names a thing and holds none: a
 // Secret's name (secretName, existingSecret and what it is followed by,
-// pullSecret), a reference, a public key.
+// pullSecret, envFromSecret), a reference, a public key.
 func namesAThing(name string) bool {
 	parts := nameParts(name)
 	n := len(parts)
@@ -104,14 +119,31 @@ func namesAThing(name string) bool {
 		return true
 	case strings.HasSuffix(joined, "public_key") || strings.HasSuffix(joined, "publickey"):
 		return true
-	case parts[0] == "existing" && (last == "secret" || last == "secrets" || last == "key"):
+	}
+	for _, p := range parts[:n-1] {
 		// existingSecret, existingPasswordSecret, existingSecretKey: not
 		// existingPassword, which holds one.
-		return true
-	case n >= 2 && (last == "secret" || last == "secrets") && (parts[n-2] == "pull" || parts[n-2] == "tls"):
-		return true
+		if (last == "secret" || last == "secrets") && secretNamed[p] || last == "key" && p == "existing" {
+			return true
+		}
 	}
 	return false
+}
+
+// aboutIt are the words that, at a name's end, say a setting about a
+// credential and not the credential: how long it is or lives, where it is
+// (a file, an address: one that signs in is withheld by its shape), what
+// it is made with. The rule for variables has always read names so.
+var aboutIt = map[string]bool{"id": true, "ids": true, "url": true, "uri": true, "endpoint": true, "host": true, "port": true, "path": true,
+	"file": true, "filename": true, "dir": true, "type": true, "enabled": true, "disabled": true, "ttl": true, "expiry": true, "expires": true,
+	"expiration": true, "lifetime": true, "duration": true, "issuer": true, "audience": true, "audiences": true, "scope": true, "scopes": true,
+	"version": true, "length": true, "seconds": true, "minutes": true, "hours": true, "days": true, "size": true, "count": true, "max": true,
+	"min": true, "timeout": true, "interval": true, "format": true, "algorithm": true, "serializer": true, "deserializer": true, "prefix": true,
+	"suffix": true, "mode": true, "policy": true, "level": true, "rotation": true, "encoder": true}
+
+// about reports a name of several words that ends as a setting does.
+func about(parts []string) bool {
+	return len(parts) > 1 && aboutIt[parts[len(parts)-1]]
 }
 
 // saysCredential reports a name that says its value is a credential. A
@@ -121,7 +153,7 @@ func saysCredential(name string) bool {
 	if i := strings.LastIndexAny(name, "./"); i >= 0 && i < len(name)-1 {
 		name = name[i+1:]
 	}
-	if namesAThing(name) {
+	if namesAThing(name) || about(nameParts(name)) {
 		return false
 	}
 	lower := strings.ToLower(partsRE.ReplaceAllString(name, ""))
@@ -140,7 +172,7 @@ func saysCredential(name string) bool {
 // whatever its own name: password: {value: x}, tokens: [a, b]. Narrower
 // than saysCredential: under "auth" and "key" are hosts and names too.
 func underSays(key string) bool {
-	if namesAThing(key) {
+	if namesAThing(key) || about(nameParts(key)) {
 		return false
 	}
 	for _, w := range nameParts(key) {
@@ -149,7 +181,14 @@ func underSays(key string) bool {
 				return true
 			}
 		}
-		if w == "pass" || w == "pwd" || w == "dsn" || w == "htpasswd" {
+		if w == "pass" || w == "pwd" || w == "pw" || w == "dsn" || w == "htpasswd" || w == "license" || w == "licence" {
+			return true
+		}
+	}
+	// apiKey: {value: x}, privateKey: {pem: x}. Not "key" alone.
+	joined := strings.Join(nameParts(key), "")
+	for _, e := range endSays {
+		if strings.HasSuffix(joined, e) {
 			return true
 		}
 	}
@@ -171,6 +210,53 @@ var refRE = regexp.MustCompile(`(Ref|Refs|From)$`)
 // under a name that says a credential (secrets: [{name: x}]).
 var naming = map[string]bool{"name": true, "names": true, "key": true, "keys": true, "kind": true, "namespace": true, "ref": true}
 
+// componentKeys are keys a chart's or a component's settings have, and a
+// credential's parts do not: which image runs and what it is called, how
+// many, where. A map with one of them is settings, though the key it is
+// under says a credential (sealed-secrets, external-secrets, tokenReview):
+// what is in it is read by its own names.
+var componentKeys = map[string]bool{"image": true, "repository": true, "registry": true, "tag": true, "digest": true, "pullPolicy": true,
+	"fullnameOverride": true, "nameOverride": true, "namespaceOverride": true,
+	"replicaCount": true, "replicas": true, "resources": true, "nodeSelector": true, "tolerations": true, "affinity": true, "serviceAccount": true,
+	"rbac": true, "installCRDs": true, "crds": true, "podAnnotations": true, "podLabels": true, "securityContext": true, "podSecurityContext": true,
+	"service": true, "ingress": true, "serviceMonitor": true, "livenessProbe": true, "readinessProbe": true, "command": true, "args": true,
+	"extraArgs": true, "volumes": true, "volumeMounts": true, "priorityClassName": true}
+
+func component(m map[string]any) bool {
+	for k := range m {
+		if componentKeys[k] {
+			return true
+		}
+	}
+	return false
+}
+
+// keyNamed are the keys beside which "key" is the name of a key and not a
+// key: a reference ({name, key}), an item of a volume ({key, path}), a
+// toleration.
+var keyNamed = []string{"name", "secretName", "path", "operator", "effect", "optional"}
+
+func keyNames(m map[string]any) bool {
+	for _, k := range keyNamed {
+		if _, ok := m[k]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// dnsNameRE is what an object may be called. Under "secrets", a list of
+// such is a list of Secrets' names.
+var dnsNameRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$`)
+
+func lastWord(name string) string {
+	parts := nameParts(name)
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
+}
+
 // --- values ---
 
 var (
@@ -179,7 +265,7 @@ var (
 	schemeRE = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://`)
 	// queryRE is a credential asked as a parameter. Not "secret=", "key="
 	// or "code=", which name things as often as they hold one.
-	queryRE = regexp.MustCompile(`(?i)[?&#;](access_token|private_token|client_secret|refresh_token|id_token|secret_key|x-amz-signature|x-api-key|sslpassword|token|api_?key|password|passwd|pwd|sig|signature|jwt|auth)=(\{\{[^{}]*\}\}|[^&;\s"'#]+)`)
+	queryRE = regexp.MustCompile(`(?i)[?&#;](access_token|private_token|client_secret|refresh_token|id_token|auth_token|api_?token|secret_key|access_key|subscription-key|ocp-apim-subscription-key|x-amz-signature|x-api-key|sslpassword|token|api_?key|password|passwd|pwd|sig|signature|jwt|auth)=(\{\{[^{}]*\}\}|[^&;\s"'#]+)`)
 	// placeholderRE is a value that stands for one to be put there.
 	placeholderRE = regexp.MustCompile(`^(<[^<>]*>|\{\{[^{}]*\}\}|\$\{[^{}]*\}|\$\([^()]*\)|%[A-Za-z_]+%|x{3,}|\*{3,})$`)
 	// pointerRE is a value that only points at another: {{ .Values.x }},
@@ -187,13 +273,17 @@ var (
 	pointerRE     = regexp.MustCompile(`^\s*(\{\{-?\s*[A-Za-z0-9_.$]+\s*-?\}\}|\$\{[A-Za-z0-9_.]+\}|\$\([A-Za-z0-9_.]+\))\s*$`)
 	tokenPrefixRE = regexp.MustCompile(`^(gh[pousr]_|github_pat_|glpat-|xox[abps]-|pat-|sk-|AKIA)`)
 	webhookRE     = regexp.MustCompile(`(?i)^https://(hooks\.slack\.com/(services|workflows|triggers)/|((ptb|canary)\.)?discord(app)?\.com/api/webhooks/|[a-z0-9.-]*webhook\.office\.com/|outlook\.office\.com/webhook/|api\.telegram\.org/bot|events\.pagerduty\.com/integration/)\S+`)
-	authRE        = regexp.MustCompile(`(?i)^\s*(bearer|basic|token)\s+(\S+)\s*$`)
-	versionRE     = regexp.MustCompile(`(?i)^v?\d+\.\d+`)
-	opaqueRE      = regexp.MustCompile(`^[A-Za-z0-9+/_=-]{32,}$`)
-	numberRE      = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
+	// knownTokenRE is a token of a kind that says what it is.
+	knownTokenRE = regexp.MustCompile(`^(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{16,}|xox[abps]-[A-Za-z0-9-]{10,}|AKIA[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,})$`)
+	authRE       = regexp.MustCompile(`(?i)^\s*(?:(?:proxy-)?authorization:\s*)?(bearer|basic|token)\s+(\S+)\s*$`)
+	versionRE    = regexp.MustCompile(`(?i)^v?\d+\.\d+`)
+	opaqueRE     = regexp.MustCompile(`^[A-Za-z0-9+/_=-]{32,}$`)
+	numberRE     = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
 	// connRE is a password in a connection string that is no URL:
 	// Server=db;Password=x, host=db password=x, AccountKey=x.
-	connRE = regexp.MustCompile(`(?i)(^|[;\s])(password|pwd|accountkey|sharedaccesskey|sharedaccesssignature)\s*=\s*[^;\s]+`)
+	// host:6380,password=x. A Go DSN (user:pw@tcp(host)/db) and Oracle's
+	// (jdbc:oracle:thin:user/pw@host) have one with no "://" before it.
+	connRE = regexp.MustCompile(`(?i)(^|[;,\s])(password|pwd|accountkey|sharedaccesskey|sharedaccesssignature)\s*=\s*[^;,\s]+|^[^:@/\s]+:[^@\s]+@(tcp|unix)\(|jdbc:oracle:thin:[^/@\s]+/[^@\s]+@`)
 	// publicBase64 are how a certificate and a public key begin when
 	// written as base64 of their PEM text: long and unreadable, and public.
 	publicBase64 = []string{"LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS", "LS0tLS1CRUdJTiBQVUJMSUMgS0VZ"}
@@ -369,7 +459,8 @@ func opaque(value string) bool {
 // shaped reports a value whose shape says a credential, whatever it is
 // called.
 func shaped(value string) bool {
-	return privateKeyRE.MatchString(value) || signs(value) || authorization(value) || connRE.MatchString(value) || opaque(strings.TrimSpace(value))
+	v := strings.TrimSpace(value)
+	return privateKeyRE.MatchString(value) || signs(value) || authorization(value) || connRE.MatchString(value) || knownTokenRE.MatchString(v) || opaque(v)
 }
 
 // certainlyNot reports a value that is no credential whatever its name
@@ -389,20 +480,26 @@ func certainlyNot(value string, number bool) bool {
 
 // --- free-form values ---
 
-// named reports whether a free-form value is withheld, by its name and
-// its value.
+// filesPathRE is a value that names a file by its path, of two parts or
+// more (/var/run/key.json): where a credential is, and not one.
+var filesPathRE = regexp.MustCompile(`^(/[\w.@+-]+(/[\w.@+-]+)+|[A-Za-z]:\\\S*)$`)
+
+// named reports whether a value is withheld, by its name and its value:
+// the one rule for a variable, a ConfigMap's key and a value of a chart.
 func named(name, value string) bool {
 	if certainlyNot(value, false) {
 		return false
 	}
-	return saysCredential(name) || shaped(value)
+	return saysCredential(name) && !filesPathRE.MatchString(value) || shaped(value)
 }
 
 // textHolds reports a credential in a document written as text (Helm
-// values, a patch). Every YAML document of it is read. Text that does
-// not read as YAML, a template most often, is read line by line, and a
-// line that sets a name that says a credential is enough: such text is
-// never kept for want of a parse.
+// values, a patch, a value of several lines). Every YAML document of it
+// is read. Text that reads as no document at all (a script, a properties
+// file: to YAML one long scalar) is read line by line. Text that cannot
+// be read, a template most often, or that sets a key twice, is withheld
+// whole: where a value is in it cannot be told, and it is never kept for
+// want of a parse.
 func textHolds(text string) bool {
 	if shaped(text) {
 		return true
@@ -412,6 +509,7 @@ func textHolds(text string) bool {
 	// document may have thousands.
 	dec := yaml.NewDecoder(strings.NewReader(text))
 	var docs []any
+	lines := false
 	for {
 		var doc yaml.Node
 		err := dec.Decode(&doc)
@@ -419,11 +517,50 @@ func textHolds(text string) bool {
 			break
 		}
 		if err != nil {
-			return linesHold(text)
+			return true
 		}
-		docs = append(docs, nodeValue(&doc, 0))
+		root := &doc
+		if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
+			root = doc.Content[0]
+		}
+		if root.Kind == yaml.ScalarNode {
+			lines = true
+			continue
+		}
+		if repeats(root, 0) {
+			return true
+		}
+		docs = append(docs, nodeValue(root, 0))
 	}
-	return holds(docs, "", false)
+	return lines && linesHold(text) || holds(docs)
+}
+
+// repeats reports a map that sets a key twice: the reader keeps the last,
+// and the first may be the credential.
+func repeats(n *yaml.Node, depth int) bool {
+	if n == nil || depth > 200 {
+		return false
+	}
+	if n.Kind == yaml.MappingNode {
+		seen := make(map[string]bool, len(n.Content)/2)
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			if k := n.Content[i]; k.Kind == yaml.ScalarNode {
+				if seen[k.Value] {
+					return true
+				}
+				seen[k.Value] = true
+			}
+		}
+	}
+	if n.Kind == yaml.AliasNode {
+		return false
+	}
+	for _, c := range n.Content {
+		if repeats(c, depth+1) {
+			return true
+		}
+	}
+	return false
 }
 
 // nodeValue is a YAML node as holds reads values: maps, lists, text,
@@ -474,61 +611,18 @@ func nodeValue(n *yaml.Node, depth int) any {
 // otherScalar is a value YAML reads as neither text nor a number.
 type otherScalar string
 
-// holds reports a credential anywhere in a decoded document, by the rule
-// for free-form values. under: everything here is under a name that says
-// one.
-func holds(v any, name string, under bool) bool {
-	switch x := v.(type) {
-	case map[string]any:
-		if nameValue(x) {
-			if s := scalarText(x["value"]); s != "" && !certainlyNot(s, false) && (under || named(strOf(x["name"]), s)) {
-				return true
-			}
+// holds reports a credential anywhere in a decoded document: it is read
+// as free-form values are, by the same walk, so that text and an object
+// are never read two ways.
+func holds(v any) bool {
+	w := &walker{}
+	if !w.leaf(v, "", "", false, func(any) {}) {
+		w.values(v, "", "", "", false)
+	}
+	for _, sl := range w.out {
+		if sl.withheld() {
+			return true
 		}
-		// A JSON patch's operation: the value goes where its path says.
-		if at, ok := x["path"].(string); ok && x["value"] != nil && saysCredential(at[strings.LastIndex(at, "/")+1:]) {
-			if s := scalarText(x["value"]); s == "" || !certainlyNot(s, false) {
-				return true
-			}
-		}
-		for k, c := range x {
-			if placement[k] || (k == "name" && nameValue(x)) {
-				continue
-			}
-			if naming[k] && (under || refRE.MatchString(name)) {
-				continue
-			}
-			if holds(c, k, (under || underSays(k)) && !refRE.MatchString(k)) {
-				return true
-			}
-		}
-	case map[any]any:
-		m := map[string]any{}
-		for k, c := range x {
-			m[fmt.Sprint(k)] = c
-		}
-		return holds(m, name, under)
-	case []any:
-		for _, c := range x {
-			if holds(c, name, under) {
-				return true
-			}
-		}
-	case string:
-		if under || saysCredential(name) {
-			return !certainlyNot(x, false)
-		}
-		if strings.Contains(x, "\n") {
-			return textHolds(x)
-		}
-		return named(name, x)
-	case int, int64, uint64, float64:
-		return (under || saysCredential(name)) && !certainlyNot(fmt.Sprint(x), true)
-	case bool, nil:
-		return false
-	default:
-		// What YAML reads as something else (a date): by its name.
-		return under || saysCredential(name)
 	}
 	return false
 }
@@ -539,16 +633,6 @@ func nameValue(m map[string]any) bool {
 	_, hasName := m["name"].(string)
 	_, hasValue := m["value"]
 	return hasName && hasValue
-}
-
-func scalarText(v any) string {
-	switch x := v.(type) {
-	case string:
-		return x
-	case int, int64, uint64, float64:
-		return fmt.Sprint(x)
-	}
-	return ""
 }
 
 // lineRE is a line that sets a key with a colon or an equals sign, with
@@ -610,7 +694,7 @@ func holdsInline(v string) bool {
 		}
 		return false
 	}
-	return holds(doc, "", false)
+	return holds(doc)
 }
 
 // --- numbers ---
@@ -618,6 +702,18 @@ func holdsInline(v string) bool {
 // numberMark ends the path of a value that was a number: filled, it is
 // written as one again.
 const numberMark = "#number"
+
+// numberText is a number as text: a whole one as it is written, however
+// it was read (987654321, and not 9.87654321e+08).
+func numberText(v any) string {
+	if f, ok := v.(float64); ok {
+		if f == math.Trunc(f) && math.Abs(f) < 1<<53 {
+			return strconv.FormatInt(int64(f), 10)
+		}
+		return strconv.FormatFloat(f, 'g', -1, 64)
+	}
+	return fmt.Sprint(v)
+}
 
 // asNumber is text as the number it was.
 func asNumber(s string) (any, error) {

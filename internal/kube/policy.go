@@ -1,8 +1,8 @@
 package kube
 
 import (
+	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"maps"
 	"reflect"
 	"regexp"
@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/usetruthform/core/internal/snapshot"
 )
@@ -455,6 +456,14 @@ func normalize(group, resource string, obj map[string]any) []string {
 
 // withhold replaces every secret value with "" and records the key names.
 func withhold(obj map[string]any) []string {
+	if md, _ := obj["metadata"].(map[string]any); md != nil {
+		if ann, ok := md["annotations"].(map[string]any); ok {
+			delete(ann, WithheldAnnotation) // this capture's word, not the live object's
+			if len(ann) == 0 {
+				delete(md, "annotations")
+			}
+		}
+	}
 	keys := map[string]bool{}
 	for _, field := range []string{"data", "stringData"} {
 		if d, ok := obj[field].(map[string]any); ok {
@@ -488,6 +497,16 @@ func withhold(obj map[string]any) []string {
 // withholdEnv replaces every credential set as plain configuration in obj
 // with "" and records each slot's path in WithheldEnvAnnotation.
 func withholdEnv(obj map[string]any) []string {
+	// What the live object says was withheld from it is not this capture's
+	// word: left, it would make a slot of someone's choosing one to fill.
+	if md, _ := obj["metadata"].(map[string]any); md != nil {
+		if ann, ok := md["annotations"].(map[string]any); ok {
+			delete(ann, WithheldEnvAnnotation)
+			if len(ann) == 0 {
+				delete(md, "annotations")
+			}
+		}
+	}
 	var paths []string
 	for _, sl := range slots(obj) {
 		if sl.withheld() {
@@ -521,19 +540,24 @@ func hasWithheld(obj map[string]any) bool {
 
 // How a slot is judged.
 const (
-	ruleVariable = iota // a variable or a ConfigMap key: the rule for variables, and its value's shape
+	ruleVariable = iota // a variable or a ConfigMap key: the rule for names, the rule before, and its value's shape
 	ruleURL             // where something is read from: a URL that signs in
 	ruleNamed           // a free-form value: its name, and its value's shape
 	ruleParam           // a parameter named in full: as a free-form value, and as a variable
 	ruleText            // a document as text: withheld whole if a credential is in it
+	ruleBinary          // a ConfigMap's binary key: its name, and what it is when read as text
 )
 
 // slot is one value withholdEnv may withhold: an env entry, a ConfigMap
 // key, a URL, a value of what a GitOps source installs with.
 type slot struct {
 	path, name, value string
-	set               func(any)
-	rule              int
+	// was is the path the rule before gave a variable or a ConfigMap key
+	// (see slotsBefore). A snapshot taken by it names the slot so, and is
+	// restored still.
+	was  string
+	set  func(any)
+	rule int
 	// number: the value is a number in the object, and is one again when
 	// it is filled.
 	number bool
@@ -559,8 +583,20 @@ func (sl slot) withheld() bool {
 		return sl.under || named(sl.name, v)
 	case ruleParam:
 		return named(sl.name, v) || (credential(sl.name, v) && !certainlyNot(v, false))
+	case ruleBinary:
+		if v == "" {
+			return false
+		}
+		if saysCredential(sl.name) || credential(sl.name, v) {
+			return true
+		}
+		b, err := base64.StdEncoding.DecodeString(v)
+		return err == nil && utf8.Valid(b) && shaped(string(b))
 	}
-	return credential(sl.name, v) || (!certainlyNot(v, false) && shaped(v))
+	if sl.number {
+		return !certainlyNot(v, true) && (saysCredential(sl.name) || credential(sl.name, v))
+	}
+	return credential(sl.name, v) || named(sl.name, v)
 }
 
 // addressRE is an address with a name before its host.
@@ -582,16 +618,211 @@ func addressSignsIn(url string) bool {
 // urlFields are fields that hold an address someone may have put a
 // credential in, and urlLists fields that hold several.
 var (
-	urlFields = map[string]bool{"url": true, "repoURL": true, "endpoint": true, "repo": true}
-	urlLists  = map[string]bool{"urls": true, "sourceRepos": true, "valueFiles": true}
+	urlFields = map[string]bool{"url": true, "repoURL": true, "endpoint": true, "repo": true,
+		"address": true, "uri": true, "dsn": true, "databaseUrl": true, "databaseURL": true, "connectionString": true}
+	urlLists = map[string]bool{"urls": true, "sourceRepos": true, "valueFiles": true}
 )
 
-// valuesPart is a key of free-form values as a part of a path, with what
-// a path is written with written another way: so that {"a.b": x} and
-// {a: {b: y}} are two paths, and a key is not taken for an index or for
-// the mark of a number.
+// valuesPart is a key as a part of a path, with what a path is written
+// with written another way: so that {"a.b": x} and {a: {b: y}} are two
+// paths, and a key is not taken for an index or for the mark of a number.
 func valuesPart(k string) string {
 	return strings.NewReplacer(".", "%2E", "#", "%23", "[", "%5B", "]", "%5D").Replace(pathPart(k))
+}
+
+// walker finds the slots of free-form values. One walk reads an object's
+// values and a document written as text (holds).
+type walker struct{ out []slot }
+
+// leaf adds a scalar of free-form values; false if v is not one. Text of
+// several lines, or a line that is JSON, is a document, unless its name
+// says it is a credential itself (a key in PEM, an htpasswd file).
+func (w *walker) leaf(v any, path, name string, under bool, set func(any)) bool {
+	switch x := v.(type) {
+	case string:
+		rule := ruleNamed
+		if (strings.Contains(x, "\n") || jsonText(x)) && !under && !saysCredential(name) {
+			rule = ruleText
+		}
+		w.out = append(w.out, slot{path: path, name: name, value: x, set: set, rule: rule, under: under})
+	case otherScalar:
+		// What YAML reads as something else (a date): by its name.
+		w.out = append(w.out, slot{path: path, name: name, value: string(x), set: set, rule: ruleNamed, under: under})
+	case int, int64, uint64, float64:
+		w.out = append(w.out, slot{path: path, name: name, value: numberText(x), set: set, rule: ruleNamed, number: true, under: under})
+	default:
+		return false
+	}
+	return true
+}
+
+// jsonText reports a map or a list written as JSON on one line.
+func jsonText(s string) bool {
+	s = strings.TrimSpace(s)
+	return len(s) > 1 && (s[0] == '{' || s[0] == '[') && json.Valid([]byte(s))
+}
+
+// pairs adds the entries of a list of {name, value}: variables, or
+// parameters named in full (auth.token), which may also be a string, a
+// list or a map (a plugin's), or have a default (a workflow's). A
+// variable's value may be a number where values are free-form. was is the
+// list's path by the rule before.
+func (w *walker) pairs(c any, p, was string, rule int) {
+	l := list(c)
+	names := items(l)
+	for i, e := range l {
+		m, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		at := p + "[" + names[i] + "]"
+		name := strOf(m["name"])
+		for _, field := range []string{"value", "string"} {
+			if field != "value" && rule != ruleParam {
+				continue
+			}
+			set := func(v any) { m[field] = v }
+			switch x := m[field].(type) {
+			case string:
+				sl := slot{path: at, name: name, value: x, set: set, rule: rule}
+				if rule == ruleVariable {
+					sl.was = was + "[" + names[i] + "]"
+				}
+				w.out = append(w.out, sl)
+			case int, int64, uint64, float64:
+				if field != "value" {
+					continue
+				}
+				w.out = append(w.out, slot{path: at, name: name, value: numberText(x), set: set, rule: rule, number: true})
+			default:
+				continue
+			}
+			break
+		}
+		if rule != ruleParam {
+			continue
+		}
+		if s, isStr := m["default"].(string); isStr {
+			w.out = append(w.out, slot{path: at + ".default", name: name, value: s, set: func(v any) { m["default"] = v }, rule: rule})
+		}
+		under := underSays(name)
+		if arr, isList := m["array"].([]any); isList {
+			for j, e := range arr {
+				w.leaf(e, at+".array["+strconv.Itoa(j)+"]", name, under, func(v any) { arr[j] = v })
+			}
+		}
+		if mm, isMap := m["map"].(map[string]any); isMap {
+			for mk, mv := range mm {
+				w.leaf(mv, at+".map."+valuesPart(mk), mk, under, func(v any) { mm[mk] = v })
+			}
+		}
+	}
+}
+
+// values walks free-form values: every scalar is a slot, named by its
+// key. above is the key the map is under; under says everything here is
+// under a name that says a credential; was is the path by the rule
+// before, which variables under here are still found by.
+func (w *walker) values(v any, path, was, above string, under bool) {
+	switch x := v.(type) {
+	case map[string]any:
+		if under && component(x) {
+			// A chart or a component whose name says a credential
+			// (sealed-secrets): its settings, each read by its own name.
+			under = false
+		}
+		pair := nameValue(x)
+		if pair {
+			// A name and its value written as a pair, wherever
+			// (extraEnv, extraEnvVars): the value by the name it is given.
+			if !w.leafPair(x, join(path, "value"), under) {
+				pair = false
+			}
+		}
+		// A JSON patch's operation: the value goes where its path says.
+		patched := ""
+		if at, ok := x["path"].(string); ok && !pair && x["op"] != nil {
+			patched = at[strings.LastIndex(at, "/")+1:]
+		}
+		for k, c := range x {
+			p, o := join(path, valuesPart(k)), join(was, pathPart(k))
+			name := k
+			switch {
+			case pair && (k == "value" || k == "name"):
+				continue
+			case placement[k]:
+				continue // where a pod runs and what it is labelled
+			case naming[k] && (under || refRE.MatchString(above)) && (k != "key" || refRE.MatchString(above) || keyNames(x)):
+				// The name and key of a reference. A key with nothing
+				// beside it that it could be a key of is the key itself
+				// (secret: {key: x}).
+				continue
+			case k == "key" && keyNames(x) && !under:
+				// The name of a key, beside what it is a key of: by its
+				// shape only (tls: {secretName, key} may hold the key).
+				if !w.leaf(c, p, "", false, func(v any) { x[k] = v }) {
+					w.values(c, p, o, "", false)
+				}
+				continue
+			case k == "env":
+				// Variables, as anywhere: under the path they had before
+				// values were read.
+				if _, isList := c.([]any); isList {
+					w.pairs(c, p, o, ruleVariable)
+					continue
+				}
+			case k == "value" && patched != "":
+				name = patched
+			}
+			below := (under || underSays(name)) && !refRE.MatchString(name)
+			// What names a thing does so under any name
+			// (credentials: {existingSecret: x}).
+			if w.leaf(c, p, name, under && !namesAThing(name), func(v any) { x[k] = v }) {
+				continue
+			}
+			if l, isList := c.([]any); isList {
+				secrets := lastWord(name) == "secrets"
+				names := items(l)
+				for i, e := range l {
+					at, oat := p+"["+strconv.Itoa(i)+"]", o+"["+names[i]+"]"
+					set := func(v any) { l[i] = v }
+					if s, isStr := e.(string); isStr && secrets && !under && dnsNameRE.MatchString(s) {
+						// Secrets, named: by its shape only.
+						w.leaf(e, at, "", false, set)
+						continue
+					}
+					if !w.leaf(e, at, name, below, set) {
+						w.values(e, at, oat, name, below)
+					}
+				}
+				continue
+			}
+			w.values(c, p, o, name, below)
+		}
+	case []any:
+		names := items(x)
+		for i, c := range x {
+			at, oat := path+"["+strconv.Itoa(i)+"]", was+"["+names[i]+"]"
+			if !w.leaf(c, at, above, under, func(v any) { x[i] = v }) {
+				w.values(c, at, oat, above, under)
+			}
+		}
+	}
+}
+
+// leafPair adds the value of a {name, value} pair in free-form values as
+// a slot named by the pair's name; false if the value is no scalar.
+func (w *walker) leafPair(x map[string]any, path string, under bool) bool {
+	name := strOf(x["name"])
+	switch v := x["value"].(type) {
+	case string:
+		w.out = append(w.out, slot{path: path, name: name, value: v, set: func(n any) { x["value"] = n }, rule: ruleNamed, under: under})
+	case int, int64, uint64, float64:
+		w.out = append(w.out, slot{path: path, name: name, value: numberText(v), set: func(n any) { x["value"] = n }, rule: ruleNamed, number: true, under: under})
+	default:
+		return false
+	}
+	return true
 }
 
 // slots finds every value of obj that may be withheld:
@@ -599,7 +830,7 @@ func valuesPart(k string) string {
 //   - every env entry with a literal value (any list under "env" whose
 //     items are {name, value}: pod templates, Argo's container and script,
 //     Tekton's steps, Helm values)
-//   - every key of a ConfigMap's data
+//   - every key of a ConfigMap's data and binaryData
 //   - where a repository or a chart is read from (url, repoURL, endpoint,
 //     repo, urls, sourceRepos, valueFiles)
 //   - what a GitOps source installs with, each value by its name: a Flux
@@ -615,16 +846,28 @@ func valuesPart(k string) string {
 // has a path unique within obj: a list item is named by its "name" where
 // that is unique in its list, and by its index otherwise, so two templates
 // that each have a container "main" setting DB_PASSWORD are two slots
-// (review of #41).
+// (review of #41); a key's dots are written another way, so a key with a
+// dot in it and two keys nested are two paths.
+//
+// Every slot the rule before found is one still (slotsBefore), and
+// carries the path that rule gave it.
 func slots(obj map[string]any) []slot {
-	var out []slot
+	w := &walker{}
 	kind := strOf(obj["kind"])
 	configMap := kind == "ConfigMap"
 	if configMap {
 		if d, ok := obj["data"].(map[string]any); ok {
 			for k, v := range d {
 				if s, ok := v.(string); ok {
-					out = append(out, slot{path: "data[" + k + "]", name: k, value: s, set: func(x any) { d[k] = x }})
+					at := "data[" + k + "]"
+					w.out = append(w.out, slot{path: at, was: at, name: k, value: s, set: func(x any) { d[k] = x }})
+				}
+			}
+		}
+		if d, ok := obj["binaryData"].(map[string]any); ok {
+			for k, v := range d {
+				if s, ok := v.(string); ok {
+					w.out = append(w.out, slot{path: "binaryData[" + k + "]", name: k, value: s, set: func(x any) { d[k] = x }, rule: ruleBinary})
 				}
 			}
 		}
@@ -636,115 +879,95 @@ func slots(obj map[string]any) []slot {
 	fluxKustomization := group == "kustomize.toolkit.fluxcd.io" && kind == "Kustomization"
 	gitops := argoApp || fluxRelease || fluxKustomization
 
-	// leaf adds a scalar of free-form values; false if v is not one. A
-	// string of several lines is a document, unless its name says it is
-	// a credential itself (a key in PEM, an htpasswd file).
-	leaf := func(v any, path, name string, under bool, set func(any)) bool {
-		switch x := v.(type) {
-		case string:
-			rule := ruleNamed
-			if strings.Contains(x, "\n") && !under && !saysCredential(name) {
-				rule = ruleText
-			}
-			out = append(out, slot{path: path, name: name, value: x, set: set, rule: rule, under: under})
-		case int, int64, uint64, float64:
-			out = append(out, slot{path: path, name: name, value: fmt.Sprint(x), set: set, rule: ruleNamed, number: true, under: under})
-		default:
-			return false
-		}
-		return true
-	}
-	// pairs adds the entries of a list of {name, value}: variables, or
-	// parameters named in full (auth.token), which may also be a string,
-	// a list or a map (a plugin's), or have a default (a workflow's).
-	pairs := func(c any, p string, rule int) {
-		l := list(c)
-		for i, e := range l {
-			m, ok := e.(map[string]any)
-			if !ok {
-				continue
-			}
-			at := p + "[" + item(l, i) + "]"
-			name := strOf(m["name"])
-			for _, field := range []string{"value", "string"} {
-				if s, isStr := m[field].(string); isStr && (field == "value" || rule == ruleParam) {
-					out = append(out, slot{path: at, name: name, value: s, set: func(v any) { m[field] = v }, rule: rule})
-					break
-				}
-			}
-			if rule != ruleParam {
-				continue
-			}
-			if s, isStr := m["default"].(string); isStr {
-				out = append(out, slot{path: at + ".default", name: name, value: s, set: func(v any) { m["default"] = v }, rule: rule})
-			}
-			under := underSays(name)
-			if arr, isList := m["array"].([]any); isList {
-				for j, e := range arr {
-					leaf(e, at+".array["+strconv.Itoa(j)+"]", name, under, func(v any) { arr[j] = v })
-				}
-			}
-			if mm, isMap := m["map"].(map[string]any); isMap {
-				for mk, mv := range mm {
-					leaf(mv, at+".map."+valuesPart(mk), mk, under, func(v any) { mm[mk] = v })
-				}
-			}
-		}
-	}
-	// values walks free-form values: every scalar is a slot, named by its
-	// key. above is the key the map is under; under says everything here
-	// is under a name that says a credential.
-	var values func(v any, path, above string, under bool)
-	values = func(v any, path, above string, under bool) {
+	var walk func(v any, path, was string)
+	walk = func(v any, path, was string) {
 		switch x := v.(type) {
 		case map[string]any:
-			pair := nameValue(x)
-			if pair {
-				// A name and its value written as a pair, wherever
-				// (extraEnv, extraEnvVars): the value by the name it is given.
-				if !leafPair(&out, x, join(path, "value"), under) {
-					pair = false
-				}
-			}
 			for k, c := range x {
-				p := join(path, valuesPart(k))
+				p, o := join(path, valuesPart(k)), join(was, pathPart(k))
+				if configMap && path == "" && (k == "data" || k == "binaryData") {
+					continue // its keys are slots already
+				}
+				s, isStr := c.(string)
+				_, isMap := c.(map[string]any)
+				l, isList := c.([]any)
 				switch {
-				case pair && (k == "value" || k == "name"):
-					continue
-				case placement[k]:
-					continue // where a pod runs and what it is labelled
-				case naming[k] && (under || refRE.MatchString(above)):
-					continue // the name and key of a reference
 				case k == "env":
-					// Variables, as anywhere: by the rule for variables,
-					// and under the path they had before values were read.
-					if _, isList := c.([]any); isList {
-						pairs(c, join(path, pathPart(k)), ruleVariable)
-						continue
-					}
-				}
-				below := (under || underSays(k)) && !refRE.MatchString(k)
-				// What names a thing does so under any name
-				// (credentials: {existingSecret: x}).
-				if leaf(c, p, k, under && !namesAThing(k), func(v any) { x[k] = v }) {
+					w.pairs(c, p, o, ruleVariable)
 					continue
-				}
-				if l, isList := c.([]any); isList {
+				case isStr && urlFields[k]:
+					w.out = append(w.out, slot{path: p, name: k, value: s, set: func(v any) { x[k] = v }, rule: ruleURL})
+					continue
+				case isList && urlLists[k]:
+					strs := false
 					for i, e := range l {
-						at := p + "[" + strconv.Itoa(i) + "]"
-						if !leaf(e, at, k, below, func(v any) { l[i] = v }) {
-							values(e, at, k, below)
+						if es, ok := e.(string); ok {
+							strs = true
+							w.out = append(w.out, slot{path: p + "[" + strconv.Itoa(i) + "]", name: k, value: es, set: func(v any) { l[i] = v }, rule: ruleURL})
 						}
 					}
+					if strs {
+						continue
+					}
+					// A list of maps under such a name is walked as any is.
+				case argoApp && isList && (k == "parameters" || k == "extVars" || k == "tlas"):
+					w.pairs(c, p, o, ruleParam)
+					continue
+				case argoOther && k == "parameters":
+					w.pairs(c, p, o, ruleParam)
+					continue
+				case argoApp && isStr && (k == "values" || k == "templatePatch" || k == "elementsYaml"),
+					gitops && isStr && k == "patch":
+					w.out = append(w.out, slot{path: p, name: k, value: s, set: func(v any) { x[k] = v }, rule: ruleText})
+					continue
+				case argoApp && (k == "valuesObject" || k == "elements" || k == "input") && (isMap || isList),
+					argoApp && k == "values" && isMap,
+					fluxRelease && path == "spec" && k == "values",
+					fluxKustomization && path == "spec.postBuild" && k == "substitute":
+					// The key that opens the values names nothing itself.
+					w.values(c, p, o, "", false)
 					continue
 				}
-				values(c, p, k, below)
+				walk(c, p, o)
 			}
 		case []any:
+			names := items(x)
 			for i, c := range x {
-				at := path + "[" + strconv.Itoa(i) + "]"
-				if !leaf(c, at, above, under, func(v any) { x[i] = v }) {
-					values(c, at, above, under)
+				at := "[" + names[i] + "]"
+				walk(c, path+at, was+at)
+			}
+		}
+	}
+	walk(obj, "", "")
+	// What the rule before found and this walk passed by (variables under
+	// a key this one does not read under) is a slot as it was.
+	found := map[string]bool{}
+	for _, sl := range w.out {
+		if sl.was != "" {
+			found[sl.was] = true
+		}
+	}
+	for _, sl := range slotsBefore(obj) {
+		if !found[sl.path] {
+			sl.was = sl.path
+			w.out = append(w.out, sl)
+		}
+	}
+	sort.Slice(w.out, func(i, j int) bool { return w.out[i].path < w.out[j].path })
+	return w.out
+}
+
+// slotsBefore are the slots as the rule before found them, at the paths
+// it gave: every variable with a literal value, under any list called
+// env, and every key of a ConfigMap's data. Kept as it was, so that what
+// it withheld is withheld, and a snapshot it took is restored.
+func slotsBefore(obj map[string]any) []slot {
+	var out []slot
+	if strOf(obj["kind"]) == "ConfigMap" {
+		if d, ok := obj["data"].(map[string]any); ok {
+			for k, v := range d {
+				if s, ok := v.(string); ok {
+					out = append(out, slot{path: "data[" + k + "]", name: k, value: s, set: func(x any) { d[k] = x }})
 				}
 			}
 		}
@@ -755,97 +978,52 @@ func slots(obj map[string]any) []slot {
 		case map[string]any:
 			for k, c := range x {
 				p := join(path, pathPart(k))
-				if configMap && path == "" && k == "data" {
-					continue // its keys are slots already
-				}
-				s, isStr := c.(string)
-				_, isMap := c.(map[string]any)
-				l, isList := c.([]any)
-				switch {
-				case k == "env":
-					pairs(c, p, ruleVariable)
-					continue
-				case isStr && urlFields[k]:
-					out = append(out, slot{path: p, name: k, value: s, set: func(v any) { x[k] = v }, rule: ruleURL})
-					continue
-				case isList && urlLists[k]:
-					strs := false
-					for i, e := range l {
-						if es, ok := e.(string); ok {
-							strs = true
-							out = append(out, slot{path: p + "[" + strconv.Itoa(i) + "]", name: k, value: es, set: func(v any) { l[i] = v }, rule: ruleURL})
+				if k == "env" {
+					names := items(list(c))
+					for i, e := range list(c) {
+						m, ok := e.(map[string]any)
+						s, isStr := m["value"].(string)
+						if ok && isStr {
+							out = append(out, slot{path: p + "[" + names[i] + "]", name: strOf(m["name"]), value: s, set: func(v any) { m["value"] = v }})
 						}
 					}
-					if strs {
-						continue
-					}
-					// A list of maps under such a name is walked as any is.
-				case argoApp && isList && (k == "parameters" || k == "extVars" || k == "tlas"):
-					pairs(c, p, ruleParam)
-					continue
-				case argoOther && k == "parameters":
-					pairs(c, p, ruleParam)
-					continue
-				case argoApp && isStr && (k == "values" || k == "templatePatch" || k == "elementsYaml"),
-					gitops && isStr && k == "patch":
-					out = append(out, slot{path: p, name: k, value: s, set: func(v any) { x[k] = v }, rule: ruleText})
-					continue
-				case argoApp && (k == "valuesObject" || k == "elements" || k == "input") && (isMap || isList),
-					argoApp && k == "values" && isMap,
-					fluxRelease && path == "spec" && k == "values",
-					fluxKustomization && path == "spec.postBuild" && k == "substitute":
-					// The key that opens the values names nothing itself.
-					values(c, p, "", false)
 					continue
 				}
 				walk(c, p)
 			}
 		case []any:
+			names := items(x)
 			for i, c := range x {
-				walk(c, path+"["+item(x, i)+"]")
+				walk(c, path+"["+names[i]+"]")
 			}
 		}
 	}
 	walk(obj, "")
-	sort.Slice(out, func(i, j int) bool { return out[i].path < out[j].path })
 	return out
 }
 
-// leafPair adds the value of a {name, value} pair in free-form values as
-// a slot named by the pair's name; false if the value is no scalar.
-func leafPair(out *[]slot, x map[string]any, path string, under bool) bool {
-	name := strOf(x["name"])
-	switch v := x["value"].(type) {
-	case string:
-		*out = append(*out, slot{path: path, name: name, value: v, set: func(n any) { x["value"] = n }, rule: ruleNamed, under: under})
-	case int, int64, uint64, float64:
-		*out = append(*out, slot{path: path, name: name, value: fmt.Sprint(v), set: func(n any) { x["value"] = n }, rule: ruleNamed, number: true, under: under})
-	case nil:
-		// Withheld and written back as "": still the slot it was.
-		return false
-	default:
-		return false
+// items names each element of a list: by its "name" where no other
+// element shares it, else by its index. A name that is a number is not
+// used: it could be another element's index, and two values would have
+// one path. A comma in a name is written another way, since paths are kept
+// as a list with commas between them.
+func items(l []any) []string {
+	count := map[string]int{}
+	for _, e := range l {
+		m, _ := e.(map[string]any)
+		count[strOf(m["name"])]++
 	}
-	return true
-}
-
-// item names list element i: by its "name" where no other element shares
-// it, else by its index. A name that is a number is not used: it could be
-// another element's index, and two values would have one path. A comma in
-// a name is written another way, since paths are kept as a list with
-// commas between them.
-func item(l []any, i int) string {
-	m, _ := l[i].(map[string]any)
-	n := strOf(m["name"])
-	if n == "" || allDigits(n) {
-		return strconv.Itoa(i)
-	}
-	for j, o := range l {
-		if om, _ := o.(map[string]any); j != i && strOf(om["name"]) == n {
-			return strconv.Itoa(i)
+	out := make([]string, len(l))
+	for i, e := range l {
+		m, _ := e.(map[string]any)
+		n := strOf(m["name"])
+		if n == "" || allDigits(n) || count[n] > 1 {
+			out[i] = strconv.Itoa(i)
+		} else {
+			out[i] = pathPart(n)
 		}
 	}
-	return pathPart(n)
+	return out
 }
 
 func allDigits(s string) bool {

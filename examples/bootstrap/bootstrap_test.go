@@ -47,8 +47,18 @@ case "$1 ${2:-} ${3:-}" in
       mv "$S/servers.tmp" "$S/servers.json"
       echo "op: a server has that name" >&2; exit 1
     fi
+    if [ "$F" = other-appears-and-is-named ]; then
+      # The same, and op names the other server's id where its output goes.
+      jq --arg n "$4" '. + [{id: "someone-elses-id", name: $n}]' "$S/servers.json" >"$S/servers.tmp"
+      mv "$S/servers.tmp" "$S/servers.json"
+      echo "[ERROR] a server named \"$4\" already exists (id: someone-elses-id)"; exit 1
+    fi
     echo "FAKE OP OUTPUT $CREDS" # what op prints is not the script's to show
-    [ "$F" = create-says-no-id ] || echo "UUID: new-server-id"
+    case "$F" in
+      create-says-no-id) ;;
+      create-in-colour) printf 'UUID: \033[1mnew-server-id\033[0m\n' ;;
+      *) echo "UUID: new-server-id" ;;
+    esac
     if [ "$F" = creds-bad ]; then printf 'not json' >1password-credentials.json; else printf '%s' "$CREDS" >1password-credentials.json; fi
     add='[{id: "new-server-id", name: $n}]'
     [ "$F" != two-new ] || add='[{id: "new-server-id", name: $n}, {id: "another-new-id", name: $n}]'
@@ -630,12 +640,20 @@ func TestRemovesOnlyTheServerOpSaidItMade(t *testing.T) {
 	}
 	// Another's server that took the name as this asked is left, and so
 	// is one op made without saying which: no token is asked for by name.
-	for _, fail := range []string{"other-appears-at-create", "create-says-no-id"} {
+	for _, fail := range []string{"other-appears-at-create", "other-appears-and-is-named", "create-says-no-id"} {
 		r = setup(t)
-		r.script(fail, usual...)
-		if strings.Contains(r.calls(), "server delete") || strings.Contains(r.calls(), "token create") {
-			t.Errorf("%s:\n%s", fail, r.calls())
+		out, _ := r.script(fail, usual...)
+		if strings.Contains(r.calls(), "server delete") || strings.Contains(r.calls(), "token create") || strings.Contains(out, "removed again") {
+			t.Errorf("%s:\n%s\n%s", fail, out, r.calls())
 		}
+		if fail != "create-says-no-id" && !strings.Contains(r.servers(), "someone-elses-id") {
+			t.Errorf("%s: another person's server was removed: %s", fail, r.servers())
+		}
+	}
+	// An id op prints in colour is still read.
+	r = setup(t)
+	if out, ok := r.script("create-in-colour", usual...); !ok || !strings.Contains(r.calls(), "--server new-server-id") {
+		t.Errorf("an id in colour: ok=%v\n%s", ok, out)
 	}
 	if !strings.Contains(r.servers(), "new-server-id") {
 		t.Errorf("a server this could not tell was its own was removed: %s", r.servers())

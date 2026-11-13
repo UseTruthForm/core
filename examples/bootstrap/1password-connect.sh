@@ -56,6 +56,10 @@
 # (1.6 or later) and cmp. If a step fails after the server is made, the
 # server is removed again, so the same command can be run a second time;
 # a signal ends it the same way, and the cleaning up is not interrupted.
+# That holds when op printed the id of the server it made: this removes
+# only a server it knows by that id, and otherwise leaves the server and
+# says so. Whether op prints it is the first thing a real run shows, and
+# --dry-run cannot.
 set -euo pipefail
 umask 077
 
@@ -222,7 +226,7 @@ finish() {
   code=$?
   # Nothing interrupts the cleaning up: a second signal would leave the
   # credentials file and the server behind with no word of it.
-  trap '' INT TERM HUP
+  trap '' INT TERM HUP PIPE ALRM USR1 USR2
   trap - EXIT
   set +e
   rm -rf "$work" || echo "1password-connect: could not remove $work, which may hold the credentials: remove it" >&2
@@ -245,7 +249,7 @@ finish() {
       # op said the item was not saved, and it may have been all the same.
       echo "1password-connect: failed, and vault \"$keep\" may hold an item \"$item\" from this run. Nothing was removed: look at the item, and remove it and Connect server \"$server\" before you run this again" >&2
     elif [ -z "$id" ]; then
-      echo "1password-connect: failed. No Connect server named \"$server\" is listed that op said this run made, so none was removed: if 1Password shows one that is yours, remove it (its credentials are lost)" >&2
+      echo "1password-connect: failed. No Connect server named \"$server\" is listed that op said this run made, so none was removed. This run asked for one, and it may well be there: look in 1Password, and if one of that name is yours, remove it (its credentials are lost)" >&2
     elif op connect server delete "$id" >/dev/null 2>&1; then
       echo "1password-connect: failed before the credentials were kept; Connect server \"$server\" was removed again" >&2
     else
@@ -259,6 +263,10 @@ trap finish EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 trap 'exit 129' HUP
+trap 'exit 141' PIPE
+trap 'exit 142' ALRM
+trap 'exit 138' USR1
+trap 'exit 140' USR2
 
 # The item is given to op as a file in the private directory, never as
 # arguments: those show in a process list. (As a file named with
@@ -325,12 +333,21 @@ server_tried=1
 # What op prints is kept for the id of the server it made, as words (an
 # id is no secret; the rest is not shown): that id is how this run knows
 # its own server, in the cleaning up too.
-create_words=$(cd "$work" && op connect server create "$server" --vaults "$(IFS=,; echo "${read_refs[*]}")" | tr -cs 'A-Za-z0-9_-' '\n')
+# Only of a create that succeeded: one that failed may print, in its
+# error, the id of the server whose name it was refused for. Colour codes
+# are taken out first, so that an id is a word of its own.
+if op_said=$(cd "$work" && op connect server create "$server" --vaults "$(IFS=,; echo "${read_refs[*]}")"); then
+  create_words=$(printf '%s' "$op_said" | sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' | tr -cs 'A-Za-z0-9_-' '\n')
+  op_said=""
+else
+  op_said=""
+  die "op did not make Connect server \"$server\""
+fi
 jq -e . "$work/1password-credentials.json" >/dev/null 2>&1 || die "op made no credentials file that reads as JSON"
 # The token is asked for by that id, never by the name: another server
 # may have the name by now.
 made_id=$(made_server) || made_id=""
-[ -n "$made_id" ] || die "op made a Connect server and did not say which: no id it printed is listed under \"$server\", so no token was asked for"
+[ -n "$made_id" ] || die "op made a Connect server and did not say which: no id it printed is listed under \"$server\", so no token was asked for. A Connect server \"$server\" now exists"
 
 token_args=()
 for v in "${read_refs[@]}"; do token_args+=(--vault "$v,r"); done

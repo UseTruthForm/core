@@ -278,70 +278,34 @@ func TestGitOpsRootsAreCaptured(t *testing.T) {
 	}
 }
 
-// Where GitOps starts is captured, unless a credential is written into
-// it: such an object was never in a snapshot before roots were kept, and
-// must not bring a credential into one. It is left to its source, as it
-// was, and the reason says why.
-func TestRootWithACredentialIsNotCaptured(t *testing.T) {
+// Where GitOps starts is captured though a credential is written into it:
+// the credential is withheld, as any is, and the rest says which
+// repository, branch and path the cluster was built from.
+func TestRootWithACredentialIsCapturedWithoutIt(t *testing.T) {
 	applied := map[string]any{"kustomize.toolkit.fluxcd.io/name": "flux-system", "kustomize.toolkit.fluxcd.io/namespace": "flux-system"}
-	repo := func(url string) map[string]any {
-		return map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
-			"metadata": map[string]any{"name": "fleet", "namespace": "flux-system", "labels": applied},
-			"spec":     map[string]any{"url": url}}
-	}
+	repo := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
+		"metadata": map[string]any{"name": "fleet", "namespace": "flux-system", "labels": applied},
+		"spec":     map[string]any{"url": "https://git:s3cr3t@example.com/o/fleet.git", "ref": map[string]any{"branch": "main"}}}
 	p := Policy{roots: map[string]bool{"GitRepository|flux-system|fleet": true}}
-	for url, captured := range map[string]bool{
-		"https://example.com/o/fleet.git":                 true,
-		"ssh://git@example.com/o/fleet.git":               true,
-		"https://git:s3cr3t@example.com/o/fleet.git":      false,
-		"https://ghp_s3cr3ttoken@example.com/o/fleet.git": false, // a token and no password
-		"https://org@dev.example.com/org/_git/fleet":      false, // nothing tells a name from a token: left out
-		"ssh://git:s3cr3t@example.com/o/fleet.git":        false,
-	} {
-		reason := p.skipReason("source.toolkit.fluxcd.io", "gitrepositories", repo(url))
-		if captured != (reason == "") {
-			t.Errorf("%s: captured=%v, reason %q", url, reason == "", reason)
-		}
-		if !captured && (!strings.Contains(reason, "applied by Flux Kustomization flux-system/flux-system") || !strings.Contains(reason, "not captured: a credential is written into it")) {
-			t.Errorf("%s: the reason does not name its source and why: %q", url, reason)
-		}
+	if reason := p.skipReason("source.toolkit.fluxcd.io", "gitrepositories", repo); reason != "" {
+		t.Fatalf("not captured: %s", reason)
 	}
-	bucket := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "Bucket",
-		"metadata": map[string]any{"name": "fleet", "namespace": "flux-system", "labels": applied}, "spec": map[string]any{"endpoint": "https://k:s3cr3t@minio.example.com"}}
-	if r := (Policy{roots: map[string]bool{"Bucket|flux-system|fleet": true}}).skipReason("source.toolkit.fluxcd.io", "buckets", bucket); r == "" {
-		t.Error("a bucket whose endpoint signs in was captured")
+	paths, out := withheldOf("source.toolkit.fluxcd.io", "gitrepositories", repo)
+	if strings.Join(paths, " ") != "spec.url" || strings.Contains(out, "s3cr3t") || !strings.Contains(out, `"branch":"main"`) {
+		t.Errorf("withheld %v:\n%s", paths, out)
 	}
-
-	app := func(source map[string]any, sources []any) map[string]any {
-		spec := map[string]any{}
-		if source != nil {
-			spec["source"] = source
-		}
-		if sources != nil {
-			spec["sources"] = sources
-		}
-		return map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Application",
-			"metadata": map[string]any{"name": "root", "namespace": "argocd", "labels": map[string]any{"argocd.argoproj.io/instance": "root"}}, "spec": spec}
+	// An application that manages itself, with a credential in its values
+	// as text, which no rule for variables reads.
+	app := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Application",
+		"metadata": map[string]any{"name": "root", "namespace": "argocd", "labels": map[string]any{"argocd.argoproj.io/instance": "root"}},
+		"spec": map[string]any{"source": map[string]any{"repoURL": "https://example.com/o/apps.git", "path": "kept-path",
+			"helm": map[string]any{"values": "notifier:\n  token: s3cr3t\n", "valuesObject": map[string]any{"db": map[string]any{"password": "s3cr3t"}}}}}}
+	if reason := (Policy{}).skipReason("argoproj.io", "applications", app); reason != "" {
+		t.Fatalf("not captured: %s", reason)
 	}
-	for name, c := range map[string]struct {
-		o        map[string]any
-		captured bool
-	}{
-		"a plain root":          {app(map[string]any{"repoURL": "https://example.com/o/apps.git", "helm": map[string]any{"parameters": []any{map[string]any{"name": "replicas", "value": "2"}}}}, nil), true},
-		"a password in its URL": {app(map[string]any{"repoURL": "https://u:s3cr3t@example.com/o/apps.git"}, nil), false},
-		"in one of its sources": {app(nil, []any{map[string]any{"repoURL": "https://example.com/a"}, map[string]any{"repoURL": "https://u:s3cr3t@example.com/b"}}), false},
-		"in a Helm parameter":   {app(map[string]any{"repoURL": "https://example.com/o/apps.git", "helm": map[string]any{"parameters": []any{map[string]any{"name": "ADMIN_PASSWORD", "value": "s3cr3t"}}}}, nil), false},
-	} {
-		if reason := (Policy{}).skipReason("argoproj.io", "applications", c.o); c.captured != (reason == "") {
-			t.Errorf("%s: captured=%v, reason %q", name, reason == "", reason)
-		}
-	}
-	// What is captured has nothing withheld from it that main would not
-	// withhold: the address of one that does not sign in is as it was.
-	kept := repo("https://example.com/o/fleet.git")
-	normalize("source.toolkit.fluxcd.io", "gitrepositories", kept)
-	if annotation(kept["metadata"].(map[string]any), WithheldEnvAnnotation) != "" || kept["spec"].(map[string]any)["url"] != "https://example.com/o/fleet.git" {
-		t.Errorf("after normalize: %v", kept)
+	paths, out = withheldOf("argoproj.io", "applications", app)
+	if strings.Join(paths, " ") != "spec.source.helm.values spec.source.helm.valuesObject.db.password" || strings.Contains(out, "s3cr3t") || !strings.Contains(out, "kept-path") {
+		t.Errorf("withheld %v:\n%s", paths, out)
 	}
 }
 

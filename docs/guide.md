@@ -116,26 +116,15 @@ What a snapshot does not hold, by design:
   `https://org@host`) and is kept. An `Authorization` value (`Bearer …`)
   is withheld too.
 
-  What a GitOps source installs with is read by each value's name
-  (`auth.token`, `adminPassword`, `apiKey`): a Flux HelmRelease's
-  `values` and a Kustomization's `postBuild.substitute`; an Argo CD
-  application's or application set's `valuesObject`, parameters (Helm's,
-  a plugin's, jsonnet's), generator elements and inputs, and its `values`
-  and `templatePatch` text, which is withheld whole when a credential is
-  in it, and is read line by line when it is a template that does not
-  parse. Everything under a name that says a credential is withheld. A
-  value that only names a thing is kept, so that the object can be
-  restored without the cluster it came from: a Secret's name
-  (`existingSecret`, `pullSecret`), a key in one (`passwordKey`,
-  `secretKeyRef`), a toleration's `key`, and a value that only points
-  elsewhere (`${var}`, `{{ … }}`). `secret` alone is read by its value:
-  what reads as an object's name is kept.
+  An Argo CD application's parameters are read as variables are. The
+  rest of what a GitOps source installs with (Helm values) is kept as it
+  is, beyond the variables in it.
   It is named in the snapshot and listed in REPORT.md as a finding: move it
   into a Secret. A restore reads it from the source with
   `--secrets-from-context`. Not caught: a credential passed as a command
-  argument, inside a config file a ConfigMap holds, under a name that
-  does not say it is one, a token short enough to read as an account's
-  name in a URL, or a password under `secret` that reads as a name. Because both sides are withheld, a diff does not
+  argument, inside a config file a ConfigMap holds, in Helm values
+  outside an `env` list, or a token short enough to read as an account's
+  name in a URL. Because both sides are withheld, a diff does not
   show a rotated credential, and a snapshot taken before TruthForm withheld
   these values still holds them in its git history;
 - **what the platform made itself**: default VPCs and their subnets,

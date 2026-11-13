@@ -659,6 +659,16 @@ func TestURLCredential(t *testing.T) {
 		" https://git:s3cr3t@example.com/o":                       true, // a space before it
 		"-c url=https://git:s3cr3t@example.com/o clone":           true, // inside something longer
 		"jdbc:postgresql://app:s3cr3t@db/shop":                    true,
+		"postgres://app:p<ss@db.internal:5432/app":                true, // what a password may hold
+		"postgres://app:pa/ss@db/shop":                            true, // a slash, and a host with no dot
+		"postgres://app:p'ss@db.internal:5432/app":                true,
+		`postgres://app:p"ss@db.internal:5432/app`:                true,
+		"postgres://app:p>ss@db.internal:5432/app":                true,
+		"https://example.com/cb?client_secret=s3cr3t":             true,
+		"https://example.com/x?private_token=s3cr3t":              true,
+		"https://example.com/cb#access_token=s3cr3t":              true,
+		"jdbc:sqlserver://db:1433;user=app;password=s3cr3t":       true,
+		"http://grafana:3000/d/a?mail=ops@example.com":            false, // an @ in what is asked
 		"https://org@dev.example.com/org/_git/fleet":              false, // an account
 		"https://git@example.com/":                                false,
 		"https://user@example.com/":                               false,
@@ -701,10 +711,21 @@ func TestURLCredential(t *testing.T) {
 	if got := withheld(bucket); got != "spec.endpoint" {
 		t.Errorf("endpoint: withheld %q", got)
 	}
+	chart := map[string]any{"apiVersion": "example.com/v1", "kind": "Chart", "metadata": map[string]any{"name": "c", "namespace": "x"},
+		"spec": map[string]any{"repo": "https://k:s3cr3t-4@charts.example.com", "urls": []any{"https://example.com", "https://k:s3cr3t-5@mirror.example.com"}}}
+	normalize("example.com", "charts", chart)
+	if got := withheld(chart); got != "spec.repo,spec.urls[1]" {
+		t.Errorf("repo and urls: withheld %q", got)
+	}
 	pod := map[string]any{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{"name": "p", "namespace": "x"},
 		"spec": map[string]any{"containers": []any{map[string]any{"name": "c", "env": []any{
-			map[string]any{"name": "UPSTREAM_AUTHORIZATION", "value": "Bearer s3cr3t-3-abcdef"},
+			map[string]any{"name": "UPSTREAM_AUTHORIZATION", "value": "Bearer s3cr3t-3-abcdef0123456789"},
 			map[string]any{"name": "GREETING", "value": "token of thanks"},
+			map[string]any{"name": "AUTH_MODE", "value": "Basic authentication"},
+			map[string]any{"name": "TIER", "value": "Basic production"},
+			map[string]any{"name": "GRANT", "value": "token exchange"},
+			map[string]any{"name": "NOTE", "value": "Basic misconfigurations"}, // long, and no digit
+			map[string]any{"name": "STEP", "value": "Token rotation2"},         // a digit, and short
 		}}}}}
 	normalize("", "pods", pod)
 	if got := withheld(pod); got != "spec.containers[c].env[UPSTREAM_AUTHORIZATION]" {
@@ -712,74 +733,51 @@ func TestURLCredential(t *testing.T) {
 	}
 }
 
-// What a GitOps source is told to install with is read for credentials
-// wherever its API lets one be written, and what only names a Secret is
-// kept.
-func TestWithholdsCredentialsInHelmValues(t *testing.T) {
+// Of what a GitOps source installs with, an application's parameters are
+// read, as variables are, and the variables in Helm values. The rest of
+// Helm values is kept as it is, so that the object can be restored with
+// the cluster it came from gone: nothing in it is blanked on a guess.
+func TestHelmValuesAreKeptAndParametersRead(t *testing.T) {
 	withheld := func(o map[string]any) string {
 		return annotation(o["metadata"].(map[string]any), WithheldEnvAnnotation)
 	}
-	app := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Application",
+	app := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "ApplicationSet",
 		"metadata": map[string]any{"name": "shop", "namespace": "argocd"},
-		"spec": map[string]any{"source": map[string]any{
+		"spec": map[string]any{"template": map[string]any{"spec": map[string]any{"source": map[string]any{
 			"repoURL": "https://example.com/o/apps.git",
 			"helm": map[string]any{
 				"parameters": []any{
-					map[string]any{"name": "auth.token", "value": "s3cr3t-1"},
-					map[string]any{"name": "db.password", "value": "s3cr3t-2"},
-					map[string]any{"name": "auth.existingSecret", "value": "kept-name"},
+					map[string]any{"name": "db.password", "value": "s3cr3t-1"},
 					map[string]any{"name": "replicas", "value": "2"},
 				},
-				"values": "db:\n  password: s3cr3t-3\nreplicas: 2\n",
 				"valuesObject": map[string]any{
-					"db":       map[string]any{"password": "s3cr3t-4", "host": "kept-host"},
-					"apiKey":   "s3cr3t-5",
-					"token":    []any{"s3cr3t-6"},
-					"auth":     map[string]any{"existingSecret": "kept-secret-name", "secretKeyRef": map[string]any{"name": "kept-ref", "key": "kept-key"}},
-					"extraEnv": map[string]any{"env": []any{map[string]any{"name": "API_TOKEN", "value": "s3cr3t-7"}}},
+					"tolerations": []any{map[string]any{"key": "dedicated", "value": "gpu"}},
+					"auth":        map[string]any{"existingSecret": "db-auth", "passwordKey": "password"},
+					"extraEnv":    map[string]any{"env": []any{map[string]any{"name": "API_TOKEN", "value": "s3cr3t-2"}}},
 				},
 			},
-			"plugin": map[string]any{"parameters": []any{
-				map[string]any{"name": "db_password", "string": "s3cr3t-8"},
-				map[string]any{"name": "settings", "map": map[string]any{"client-secret": "s3cr3t-9", "region": "kept-region"}},
-			}},
-		}}}
-	normalize("argoproj.io", "applications", app)
-	b, _ := json.Marshal(app)
-	if strings.Contains(string(b), "s3cr3t") {
-		t.Errorf("a credential is in the snapshot: %s", b)
+		}}}}}
+	normalize("argoproj.io", "applicationsets", app)
+	if got := withheld(app); got != "spec.template.spec.source.helm.parameters[db.password],spec.template.spec.source.helm.valuesObject.extraEnv.env[API_TOKEN]" {
+		t.Errorf("withheld %q", got)
 	}
-	for _, kept := range []string{"kept-name", "kept-host", "kept-secret-name", "kept-ref", "kept-key", "kept-region", `"value":"2"`} {
+	b, _ := json.Marshal(app)
+	for _, kept := range []string{"dedicated", "gpu", "db-auth", `"passwordKey":"password"`, `"value":"2"`} {
 		if !strings.Contains(string(b), kept) {
 			t.Errorf("%s was withheld: %s", kept, b)
 		}
 	}
-	want := "spec.source.helm.parameters[auth.token],spec.source.helm.parameters[db.password],spec.source.helm.values," +
-		"spec.source.helm.valuesObject.apiKey,spec.source.helm.valuesObject.db.password,spec.source.helm.valuesObject.extraEnv.env[API_TOKEN],spec.source.helm.valuesObject.token[0]," +
-		"spec.source.plugin.parameters[db_password],spec.source.plugin.parameters[settings].map.client-secret"
-	if got := withheld(app); got != want {
-		t.Errorf("withheld\n %s\nwant\n %s", got, want)
-	}
-
-	// Values as text with no credential in them are kept as they are.
-	plain := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Application", "metadata": map[string]any{"name": "p", "namespace": "argocd"},
-		"spec": map[string]any{"source": map[string]any{"helm": map[string]any{"values": "replicas: 2\nimage:\n  tag: v1\n"}}}}
-	normalize("argoproj.io", "applications", plain)
-	if got := withheld(plain); got != "" {
-		t.Errorf("values with no credential withheld: %q", got)
-	}
 
 	release := map[string]any{"apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "metadata": map[string]any{"name": "shop", "namespace": "shop"},
-		"spec": map[string]any{"interval": "5m", "values": map[string]any{"adminPassword": "s3cr3t-10", "auth": map[string]any{"token": "s3cr3t-11"}, "replicas": "kept-2"}}}
+		"spec": map[string]any{"values": map[string]any{"tolerations": []any{map[string]any{"key": "dedicated"}}, "tokenExpiration": "3600", "pullSecret": "registry-login"}}}
 	normalize("helm.toolkit.fluxcd.io", "helmreleases", release)
-	if got := withheld(release); got != "spec.values.adminPassword,spec.values.auth.token" {
-		t.Errorf("HelmRelease withheld %q", got)
+	if got := withheld(release); got != "" {
+		t.Errorf("a HelmRelease's values withheld on a guess, and the object with them: %q", got)
 	}
 
-	// Only an application's parameters are name and value: a workflow's
-	// are its inputs.
+	// A workflow's parameters are its inputs, and are kept.
 	wf := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "WorkflowTemplate", "metadata": map[string]any{"name": "w", "namespace": "x"},
-		"spec": map[string]any{"arguments": map[string]any{"parameters": []any{map[string]any{"name": "key", "value": "kept-input"}}}}}
+		"spec": map[string]any{"arguments": map[string]any{"parameters": []any{map[string]any{"name": "key", "value": "an-input"}}}}}
 	normalize("argoproj.io", "workflowtemplates", wf)
 	if got := withheld(wf); got != "" {
 		t.Errorf("a workflow's parameter withheld: %q", got)
@@ -791,160 +789,5 @@ func TestWithholdsCredentialsInHelmValues(t *testing.T) {
 	normalize("", "configmaps", cm)
 	if got := withheld(cm); got != "data[url]" {
 		t.Errorf("ConfigMap withheld %q, want data[url]", got)
-	}
-}
-
-// What only names a thing is kept, so that the object can be restored
-// with the cluster it came from gone: a toleration's key, a key in a
-// Secret, a Secret's name. A name that says a credential withholds what
-// is under it, whatever its shape.
-func TestHelmValuesNamesAndCredentials(t *testing.T) {
-	for name, want := range map[string]int{
-		"password": nameStrong, "adminPassword": nameStrong, "auth.token": nameStrong, "apiKey": nameStrong, "api_key": nameStrong,
-		"clientSecret": nameStrong, "existingPassword": nameStrong, "db_password": nameStrong, "connectionString": nameStrong,
-		"PGPASSWORD": nameStrong, "rootpass": nameStrong, "secret_access_key": nameStrong, "tokens": nameStrong,
-		"secret": nameAmbiguous, "pullSecret": nameAmbiguous, "tls.secret": nameAmbiguous, "existingSecret": nameAmbiguous, "secretKey": nameAmbiguous,
-		"key": nameSilent, "tolerations[0].key": nameSilent, "userKey": nameSilent, "passwordKey": nameSilent, "cacheKey": nameSilent,
-		"secretName": nameSilent, "tokenTTL": nameSilent, "passwordLength": nameSilent, "publicKey": nameSilent, "bypass": nameSilent,
-		"replicas": nameSilent, "automountServiceAccountTokenPath": nameSilent,
-	} {
-		if got := valuesKind(name); got != want {
-			t.Errorf("valuesKind(%q) = %d, want %d", name, got, want)
-		}
-	}
-	withheld := func(o map[string]any) string {
-		return annotation(o["metadata"].(map[string]any), WithheldEnvAnnotation)
-	}
-	release := map[string]any{"apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "metadata": map[string]any{"name": "shop", "namespace": "shop"},
-		"spec": map[string]any{"values": map[string]any{
-			"tolerations":  []any{map[string]any{"key": "kept-dedicated", "operator": "Equal", "value": "kept-gpu"}},
-			"nodeSelector": map[string]any{"key": "kept-node"},
-			"affinity":     map[string]any{"matchExpressions": []any{map[string]any{"key": "kept-zone", "operator": "In"}}},
-			"auth": map[string]any{"userKey": "kept-username", "passwordKey": "kept-password-key", "existingSecret": "kept-secret-name",
-				"secretKeyRef": map[string]any{"name": "kept-ref", "key": "kept-ref-key"}},
-			"pullSecret": "kept-registry-login", "tls": map[string]any{"secret": "kept-tls-secret"}, "cacheKey": "kept-cache",
-			"automountServiceAccountToken": true,
-			"templated":                    map[string]any{"password": "${kept_substitution}"}, // points elsewhere
-			// Credentials, in the shapes they are written in.
-			"existingPassword": "s3cr3t-1",
-			"password":         map[string]any{"value": "s3cr3t-2", "secretKeyRef": map[string]any{"name": "kept-inner-ref"}},
-			"pin":              map[string]any{"token": 314159},
-			"credentialsFrom":  map[string]any{"token": "s3cr3t-4"},
-			"webhook":          map[string]any{"secret": "S3cr3t+5/not-a-name"},
-			"signing":          map[string]any{"secret": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"},
-			"with,comma":       map[string]any{"password": "s3cr3t-7"},
-		}}}
-	normalize("helm.toolkit.fluxcd.io", "helmreleases", release)
-	b, _ := json.Marshal(release)
-	for _, leak := range []string{"s3cr3t", "S3cr3t", "314159", "a1b2c3d4"} {
-		if strings.Contains(string(b), leak) {
-			t.Errorf("a credential (%s) is in the snapshot: %s", leak, b)
-		}
-	}
-	for _, kept := range []string{"kept-dedicated", "kept-gpu", "kept-node", "kept-zone", "kept-username", "kept-password-key", "kept-secret-name", "kept-ref", "kept-ref-key", "kept-registry-login", "kept-tls-secret", "kept-cache", "kept-inner-ref", "kept_substitution"} {
-		if !strings.Contains(string(b), kept) {
-			t.Errorf("%s names a thing and was withheld: %s", kept, withheld(release))
-		}
-	}
-	// A comma in a key does not break the list of what was withheld.
-	paths := strings.Split(withheld(release), ",")
-	if len(paths) != 7 || !strings.Contains(withheld(release), "spec.values.with%2Ccomma.password") {
-		t.Errorf("withheld paths: %q", paths)
-	}
-	found := map[string]bool{}
-	for _, sl := range slots(release) {
-		found[sl.path] = true
-	}
-	for _, p := range paths {
-		if !found[p] {
-			t.Errorf("a restore would not find the slot %q again", p)
-		}
-	}
-
-	// A Flux Kustomization's substitutions.
-	ks := map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization", "metadata": map[string]any{"name": "apps", "namespace": "flux-system"},
-		"spec": map[string]any{"postBuild": map[string]any{"substitute": map[string]any{"db_password": "s3cr3t-8", "cluster_name": "kept-cluster"}}}}
-	normalize("kustomize.toolkit.fluxcd.io", "kustomizations", ks)
-	if got := withheld(ks); got != "spec.postBuild.substitute.db_password" {
-		t.Errorf("substitutions: withheld %q", got)
-	}
-}
-
-// An Argo CD application set, and the rest of an application: generator
-// elements and inputs, jsonnet variables, a plugin's list and map, and a
-// workflow's parameters, which are variables.
-func TestArgoCredentialsBeyondHelmParameters(t *testing.T) {
-	withheld := func(o map[string]any) string {
-		return annotation(o["metadata"].(map[string]any), WithheldEnvAnnotation)
-	}
-	set := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "ApplicationSet", "metadata": map[string]any{"name": "fleet", "namespace": "argocd"},
-		"spec": map[string]any{
-			"generators": []any{
-				map[string]any{"list": map[string]any{"elements": []any{map[string]any{"cluster": "kept-east", "token": "s3cr3t-1"}}}},
-				map[string]any{"plugin": map[string]any{"input": map[string]any{"parameters": map[string]any{"apiKey": "s3cr3t-2", "region": "kept-region"}}, "values": map[string]any{"password": "s3cr3t-3"}}},
-			},
-			"templatePatch": "spec:\n  source:\n    helm:\n      values: |\n        {{- if .x }}\n        password: s3cr3t-4\n        {{- end }}\n",
-			"template": map[string]any{"spec": map[string]any{"source": map[string]any{
-				"helm": map[string]any{"parameters": []any{map[string]any{"name": "auth.token", "value": "s3cr3t-5"}}},
-				"directory": map[string]any{"jsonnet": map[string]any{
-					"extVars": []any{map[string]any{"name": "dbPassword", "value": "s3cr3t-6"}, map[string]any{"name": "replicas", "value": "kept-3"}},
-					"tlas":    []any{map[string]any{"name": "apiToken", "value": "s3cr3t-7"}},
-				}},
-				"plugin": map[string]any{"parameters": []any{
-					map[string]any{"name": "tokens", "array": []any{"s3cr3t-8"}},
-					map[string]any{"name": "password", "map": map[string]any{"primary": "s3cr3t-9"}},
-					map[string]any{"name": "hosts", "array": []any{"kept-host"}},
-				}},
-			}}},
-		}}
-	normalize("argoproj.io", "applicationsets", set)
-	b, _ := json.Marshal(set)
-	if strings.Contains(string(b), "s3cr3t") {
-		t.Errorf("a credential is in the snapshot: %s", b)
-	}
-	for _, kept := range []string{"kept-east", "kept-region", "kept-3", "kept-host"} {
-		if !strings.Contains(string(b), kept) {
-			t.Errorf("%s was withheld: %s", kept, withheld(set))
-		}
-	}
-
-	// A workflow's parameters are its inputs: one named for a credential
-	// is withheld, and one called "key" is not.
-	wf := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "WorkflowTemplate", "metadata": map[string]any{"name": "w", "namespace": "x"},
-		"spec": map[string]any{"arguments": map[string]any{"parameters": []any{
-			map[string]any{"name": "key", "value": "kept-input"},
-			map[string]any{"name": "db_password", "value": "s3cr3t-10"},
-		}}}}
-	normalize("argoproj.io", "workflowtemplates", wf)
-	if got := withheld(wf); got != "spec.arguments.parameters[db_password]" {
-		t.Errorf("a workflow's parameters: withheld %q", got)
-	}
-}
-
-// Values written as text are never kept for want of a parse: a template,
-// a second document, a key that is not text. Text with no credential in
-// it is kept, template or not.
-func TestValuesTextIsReadThoughItDoesNotParse(t *testing.T) {
-	for text, want := range map[string]bool{
-		"db:\n  password: s3cr3t\n":                                       true,
-		"replicas: 2\n---\ndb:\n  password: s3cr3t\n":                     true, // a second document
-		"db:\n  password: s3cr3t\n---\nreplicas: 2\n":                     true, // and the first of two
-		"1: x\n2:\n  token: s3cr3t\n":                                     true, // keys that are not text
-		"cluster: {{cluster}}\ndb:\n  password: s3cr3t\n":                 true, // a template: no parse
-		"a: 1\na: 2\ntoken: s3cr3t\n":                                     true, // a key twice: no parse
-		"\tindented: with a tab\napiKey: s3cr3t\n":                        true,
-		"repo: https://git:s3cr3t@example.com/o\n{{ broken":               true,
-		"env:\n  - name: API_TOKEN\n    value: s3cr3t\n":                  true, // a variable in the values
-		"webhook:\n  secret: S3cr3t+not/a-name\n{{ broken":                true,
-		"cluster: {{cluster}}\nreplicas: 2\n":                             false,
-		"tolerations:\n  - key: dedicated\n    value: gpu\n":              false,
-		"cluster: {{cluster}}\ntolerations:\n  - key: dedicated\n":        false,
-		"password: {{ .Values.password }}\nauth:\n  existingSecret: db\n": false, // points elsewhere
-		"{{ broken\npullSecret: registry-login\npasswordKey: password\n":  false,
-		"replicas: 2\nimage:\n  tag: v1\n":                                false,
-	} {
-		if got := textHolds(text); got != want {
-			t.Errorf("textHolds(%q) = %v, want %v", text, got, want)
-		}
 	}
 }

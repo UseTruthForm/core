@@ -214,3 +214,31 @@ func TestKubernetesRestoreScope(t *testing.T) {
 		t.Errorf("the document: %v", d)
 	}
 }
+
+// What the run says of a scope, in the words a person reads: what no
+// release made and was left, what a source brought still makes, and that
+// nothing checks what the part needs.
+func TestScopeSaid(t *testing.T) {
+	said := scopeSaid(kube.ScopeReport{
+		Narrowed: []string{"shop"}, Kept: 1, Of: 3,
+		ObjectsLeftOut: []string{"Deployment shop/queue-consumer"},
+		ObjectsBrought: []string{"ConfigMap shop/shared"},
+		SharedName:     []string{"ClusterRole x (it may be of other/x, left out)"},
+		StillMade:      []kube.ScopeMade{{Source: "Flux Kustomization flux-system/root", Namespace: "shop", Objects: 2}},
+	}, "scope.yaml")
+	for _, want := range []string{
+		"1 objects that no release made are left out (name one under objects, as Kind/name, to bring it): Deployment shop/queue-consumer",
+		"1 objects that no release made are brought, named under objects or by label: ConfigMap shop/shared",
+		"NOTE: Flux Kustomization flux-system/root is brought, and makes 2 objects in shop",
+		"ClusterRole x (it may be of other/x, left out)",
+		"nothing checks that what is brought does not need something left out",
+	} {
+		if !strings.Contains(said, want) {
+			t.Errorf("does not say %q:\n%s", want, said)
+		}
+	}
+	// With everything brought there is no such warning.
+	if said := scopeSaid(kube.ScopeReport{Narrowed: []string{"shop"}, Kept: 3, Of: 3}, "scope.yaml"); strings.Contains(said, "nothing checks") || strings.Contains(said, "NOTE") {
+		t.Errorf("a scope that brings everything:\n%s", said)
+	}
+}

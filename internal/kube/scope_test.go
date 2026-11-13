@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"reflect"
 	"sort"
 	"strings"
@@ -522,22 +523,42 @@ func TestNarrowClusterObjectsOfAReleaseKnownByLabel(t *testing.T) {
 	}
 }
 
+// skipOf is a thing a capture left to a source, with its resource written
+// as a capture writes it.
+func skipOf(group, version, resource, ns, name, reason string) snapshot.Skip {
+	return snapshot.Skip{Resource: resourceID(schema.GroupVersionResource{Group: group, Version: version, Resource: resource}), Namespace: ns, Name: name, Reason: reason}
+}
+
 // A source that is brought goes on making what the capture left to it in
-// a namespace the scope leaves out: the plan of the part still says so,
-// and the report names it. What only a source that is not in the snapshot
-// makes there is dropped from the plan, as before.
+// a namespace the scope narrows: the plan of the part still says so, and
+// the report names the source. What only a source that is not in the
+// snapshot makes in a namespace left out whole is dropped from the plan.
 func TestNarrowSaysWhatASourceBroughtStillMakes(t *testing.T) {
+	const byRoot = "applied by Flux Kustomization flux-system/root; restore that"
 	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
 		planObject("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "root", nil),
+		planObject("argoproj.io/v1alpha1", "Application", "argocd", "root", nil),
 		released("apps/v1", "Deployment", "team-a", "web", "web", nil),
 		released("apps/v1", "Deployment", "team-c", "other", "other", nil),
 	}, Skips: []snapshot.Skip{
-		{Resource: "helmreleases", Namespace: "team-c", Name: "payments", Reason: "applied by Flux Kustomization flux-system/root; restore that"},
-		{Resource: "deployments", Namespace: "team-c", Name: "payments", Reason: "rendered by Flux HelmRelease team-c/payments; restore that"},
-		{Resource: "deployments", Namespace: "team-c", Name: "byhand", Reason: "rendered by Flux HelmRelease team-c/installed-by-hand; restore that"},
-		{Resource: "deployments", Namespace: "team-a", Name: "kept", Reason: "rendered by Flux HelmRelease team-a/installed-by-hand; restore that"},
+		// root applies a HelmRelease, which renders a Deployment.
+		skipOf("helm.toolkit.fluxcd.io", "v2", "helmreleases", "team-c", "payments", byRoot),
+		skipOf("apps", "v1", "deployments", "team-c", "payments", "rendered by Flux HelmRelease team-c/payments; restore that"),
+		// root applies a Kustomization, which applies two things.
+		skipOf("kustomize.toolkit.fluxcd.io", "v1", "kustomizations", "flux-system", "apps", byRoot),
+		skipOf("apps", "v1", "deployments", "team-c", "billing", "applied by Flux Kustomization flux-system/apps; restore that"),
+		skipOf("batch", "v1", "cronjobs", "team-c", "nightly", "applied by Flux Kustomization flux-system/apps; restore that"),
+		// An Argo application applies another, which makes a Deployment.
+		skipOf("argoproj.io", "v1alpha1", "applications", "argocd", "child", "managed by Argo CD application root; restore that"),
+		skipOf("apps", "v1", "deployments", "team-c", "from-argo", "managed by Argo CD application child; restore that"),
+		// Sources nothing in the snapshot applies.
+		skipOf("apps", "v1", "deployments", "team-c", "byhand", "rendered by Flux HelmRelease team-c/installed-by-hand; restore that"),
+		skipOf("apps", "v1", "deployments", "team-a", "kept", "rendered by Flux HelmRelease team-a/installed-by-hand; restore that"),
+		// In a namespace that is narrowed and brought: noted too.
+		skipOf("helm.toolkit.fluxcd.io", "v2", "helmreleases", "team-a", "payments", byRoot),
 	}}
-	out, rep, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-*"}, Releases: []string{"web"}}}})
+	sc := Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-*"}, Releases: []string{"web"}}}}
+	out, rep, err := Narrow(s, sc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -545,20 +566,72 @@ func TestNarrowSaysWhatASourceBroughtStillMakes(t *testing.T) {
 	for _, sk := range out.Skips {
 		names = append(names, sk.Namespace+"/"+sk.Name)
 	}
-	if got := strings.Join(names, ", "); got != "team-c/payments, team-c/payments, team-a/kept" {
+	if got := strings.Join(names, ", "); got != "team-c/payments, team-c/payments, flux-system/apps, team-c/billing, team-c/nightly, argocd/child, team-c/from-argo, team-a/kept, team-a/payments" {
 		t.Errorf("what the plan of the part is told a source makes: %s", got)
 	}
-	if want := []ScopeMade{{Source: "Flux Kustomization flux-system/root", Namespace: "team-c", Objects: 2}}; !reflect.DeepEqual(rep.StillMade, want) {
-		t.Errorf("still made: %+v", rep.StillMade)
+	want := []ScopeMade{
+		{Source: "Argo CD application root", Namespace: "team-c", Objects: 1},
+		{Source: "Flux Kustomization flux-system/root", Namespace: "team-a", Objects: 1},
+		{Source: "Flux Kustomization flux-system/root", Namespace: "team-c", Objects: 4},
 	}
+	if !reflect.DeepEqual(rep.StillMade, want) {
+		t.Errorf("still made:\n got %+v\nwant %+v", rep.StillMade, want)
+	}
+	// The plan of the part differs from the whole's only by the source
+	// nothing applies in the namespace left out.
 	before, after := RebuildPlan(s), RebuildPlan(out)
 	if !reflect.DeepEqual(before.Follows, after.Follows) {
-		t.Errorf("the plan of the part hides what the source brought applies:\n whole %+v\n part  %+v", before.Follows, after.Follows)
+		t.Errorf("the plan of the part hides what a source brought applies:\n whole %+v\n part  %+v", before.Follows, after.Follows)
 	}
-	// With the source left out, nothing makes it.
-	left, _ := LeaveOut(s, []string{"Kustomization/flux-system/root"})
-	if _, rep, _ := Narrow(left, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-*"}, Releases: []string{"web"}}}}); len(rep.StillMade) != 0 {
-		t.Errorf("still made with the source left out: %+v", rep.StillMade)
+	if len(before.Follows) != 5 || len(before.Sources) != 2 || len(after.Sources) != 1 || after.Sources[0].Name != "team-a/installed-by-hand" {
+		t.Errorf("install first: whole %+v, part %+v; follows %+v", before.Sources, after.Sources, before.Follows)
+	}
+	// With the sources left out, nothing makes it.
+	left, err := LeaveOut(s, []string{"Kustomization/flux-system/root", "Application/argocd/root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, rep, _ := Narrow(left, sc); len(rep.StillMade) != 0 {
+		t.Errorf("still made with the sources left out: %+v", rep.StillMade)
+	}
+}
+
+// An object with no namespace kept because a release of its name is
+// brought, while another of that name is left out, is named.
+func TestNarrowNamesWhatASharedNameBrings(t *testing.T) {
+	byLabel := func(apiVersion, kind, ns, name string) snapshot.Object {
+		return planObject(apiVersion, kind, ns, name, map[string]any{"labels": map[string]any{"app.kubernetes.io/managed-by": "Helm", "app.kubernetes.io/instance": "redis"}})
+	}
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		byLabel("apps/v1", "Deployment", "team-a", "redis"),
+		byLabel("apps/v1", "Deployment", "team-b", "redis"),
+		byLabel("rbac.authorization.k8s.io/v1", "ClusterRoleBinding", "", "team-b-redis-admin"),
+	}}
+	_, rep, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"redis"}}, {Namespaces: []string{"team-b"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"ClusterRoleBinding team-b-redis-admin (it may be of team-b/redis, left out)"}; !reflect.DeepEqual(rep.SharedName, want) {
+		t.Errorf("got %q", rep.SharedName)
+	}
+	// With both brought there is nothing to say.
+	if _, rep, _ := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-*"}, Releases: []string{"redis"}}}}); len(rep.SharedName) != 0 {
+		t.Errorf("both brought: %q", rep.SharedName)
+	}
+}
+
+// A Secret an object makes is not named by itself: an entry that fits
+// only such a Secret is refused, and does not pass as if it had brought
+// it.
+func TestNarrowRefusesToNameASecretAnObjectMakes(t *testing.T) {
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		released("apps/v1", "Deployment", "shop", "web", "web", nil),
+		released("external-secrets.io/v1", "ExternalSecret", "shop", "gone-db", "gone", nil),
+		planObject("v1", "Secret", "shop", "gone-db", map[string]any{"data": map[string]any{"k": ""}}),
+	}}
+	_, _, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"web"}, Objects: []string{"Secret/gone-db"}}}})
+	if err == nil || !strings.Contains(err.Error(), "goes with that object") {
+		t.Errorf("got %v", err)
 	}
 }
 

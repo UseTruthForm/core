@@ -58,7 +58,7 @@ func credential(name, value string) bool {
 	if value == "" || envRefRE.MatchString(value) {
 		return false
 	}
-	if urlCredential(value) || bearerRE.MatchString(value) {
+	if urlCredential(value) || bearer(value) {
 		return true
 	}
 	base := numberedRE.ReplaceAllString(name, "")

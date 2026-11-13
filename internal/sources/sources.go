@@ -322,8 +322,9 @@ var azureName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,126}$`)
 // a 1Password reference (anything else is given by its ID, which fits
 // too), and opQuery the question that may follow (?attribute=otp).
 var (
-	opName  = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9 ._-]{0,254}$`)
-	opQuery = regexp.MustCompile(`^[a-z-]{1,32}=[A-Za-z0-9_-]{1,64}$`)
+	opName   = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9 ._-]{0,254}$`)
+	opOption = regexp.MustCompile(` -[^ ]`)
+	opQuery  = regexp.MustCompile(`^[a-z-]{1,32}=[A-Za-z0-9_-]{1,64}$`)
 )
 
 // shape checks a reference that is given to a CLI, before any is run:
@@ -334,7 +335,7 @@ func shape(kind, rest string) error {
 	switch kind {
 	case "op":
 		if shown, ok := opReference(rest); !ok {
-			return fmt.Errorf("%s: a 1Password reference is op://<vault>/<item>/[<section>/]<field>, each named with letters, digits, spaces, dots, dashes and underscores (and no dash after a space); give anything else by its ID", shown)
+			return fmt.Errorf("%s: a 1Password reference is op://<vault>/<item>/[<section>/]<field>, each named with letters, digits, spaces, dots, dashes and underscores (and no word that begins with a dash); give anything else by its ID", shown)
 		}
 	case "azurekv":
 		parts := strings.Split(rest, "/")
@@ -358,9 +359,10 @@ func opReference(rest string) (shown string, ok bool) {
 	parts := strings.Split(path, "/")
 	ok = len(parts) == 3 || len(parts) == 4
 	for i, part := range parts {
-		// A dash after a space would read as an option to a script that
-		// splits what it is given on spaces.
-		if !opName.MatchString(part) || strings.Contains(part, " -") {
+		// A word that begins with a dash would read as an option to a
+		// script that splits what it is given on spaces. A dash that stands
+		// alone ("AWS - prod") is a name's.
+		if !opName.MatchString(part) || opOption.MatchString(part) {
 			parts[i], ok = "…", false
 		}
 	}

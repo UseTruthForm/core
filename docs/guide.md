@@ -585,6 +585,93 @@ that is depends on the store:
   against a real account and has not yet made a server on one**: run it
   with `--dry-run` first, and read what it says it made.
 
+### A part of the snapshot
+
+A restore need not bring everything. A drill wants the platform, the core
+of an application and a few of its many workloads, and a scope file says
+which, in terms the cluster already has:
+
+```sh
+truthform plan scope --from snap/cluster --out scope.yaml     # brings everything; never written over one
+truthform plan scope --from snap/cluster --check scope.yaml   # what it brings, and what it leaves out
+truthform restore --context test --from snap/cluster --scope scope.yaml
+truthform diff    --context test --from snap/cluster --scope scope.yaml
+truthform plan rebuild --from snap/cluster --scope scope.yaml # the plan of the part
+truthform plan secrets --from snap/cluster --scope scope.yaml --out secrets.yaml
+```
+
+```yaml
+narrow:
+  - namespaces: ["team-*"]          # names, or patterns as a shell has them
+    releases: [a-search, b-search]  # Helm releases, in any of those namespaces
+    objects: [ConfigMap/shared]     # what no release made, as Kind/name
+  - namespaces: [batch]
+    labels: {tier: drill}
+```
+
+A scope **narrows the namespaces it names, and leaves the rest of the
+snapshot as it is**. So a file written for a drill does not have to know
+the whole cluster, and a namespace added later that a pattern fits is
+left out until someone chooses from it. A pattern has `*` for any run of
+characters, `?` for one, `[a-c]` for one of a set, and a backslash before
+one of those to mean the character itself.
+
+A release belongs to the namespace Helm installed it in. In a narrowed
+namespace:
+
+- a **release** chosen comes whole, wherever what it made is (a
+  ClusterRole, an object in another namespace): it is known by what Helm
+  writes on what it makes. An object chosen by a **label** brings the
+  rest of its release. Its namespace comes with it. An object with no
+  namespace that names its release by label alone does not say which
+  namespace the release is in: it goes with the releases of that name,
+  and is left out only when all of them are (one brought while another
+  release of the name is left out is named in the run);
+- a **Secret** an object of the snapshot makes (from a store, from an
+  ExternalSecret or a SealedSecret, a certificate's) goes where that
+  object goes;
+- **what no release of a narrowed namespace made** (shared
+  configuration, a Secret made by hand, a workload applied by hand, a
+  GitOps source's own object) is **left out unless an entry names it**
+  under `objects`, as `Kind/name`, or it carries an entry's labels.
+  Either part may be a pattern (`ConfigMap/*`, `"*/*"` for all of them),
+  and `Kind.group` tells two APIs' kinds of one name apart. Restore and
+  diff list those brought and those left out. A Secret an object makes
+  is not named here: it goes with its maker;
+- the Namespace itself comes when anything of it is brought. A namespace
+  from which nothing is chosen is left out whole, with what the capture
+  left there to a GitOps source, which the plan then does not ask for;
+- **a scope cannot stop a GitOps source that is brought** from making
+  what it makes: if the snapshot's root Kustomization applies a
+  HelmRelease in a namespace the scope narrows, left out whole or not,
+  the release is installed once the source runs. The run says so by name
+  (`scope.stillMade` with `--json`), and the plan goes on listing it:
+  leave the source out with `--leave-out`, or have it apply less.
+
+Two entries that fit one namespace choose from it together. A release or
+a label is looked for in the namespaces of its own entry: one that fits
+nothing there is refused, as a pattern that fits no namespace is, and as
+a mistyped `--leave-out` is.
+
+**Jobs are left out** whenever a scope is given, in every namespace and
+whether or not they had finished (a snapshot does not say), those of a
+release that is brought among them: a Job restored runs again. A CronJob
+is not a Job: it comes with its release and keeps its schedule. `jobs: true` in the
+file brings them.
+
+`plan scope --out` writes a file that lists every namespace a release
+was installed in, each release with what it is made of, and each object
+there that no release made: as written it brings everything but Jobs, and you delete what a drill is not to
+bring. Restore and diff say on stderr what the scope left out (`scope`
+with `--json`), and the plans given the file are of the part it brings:
+the secrets to supply and the store items are those of what was chosen.
+
+What a GitOps source renders is not in the snapshot, so a scope does not
+choose from it: in a namespace that is brought, the source decides.
+`--leave-out` is applied first (its entries name objects of the snapshot
+as it is), then the scope, then `--rename`. Nothing checks that what is
+brought does not need something left out.
+
 ### Into another environment
 
 A snapshot restored beside its source (a drill, or one environment rebuilt

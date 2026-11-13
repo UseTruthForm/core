@@ -253,7 +253,7 @@ func TestRestoreReadsSecretSources(t *testing.T) {
 	value := writeFile(t, t.TempDir(), "password.bin", "p\x00ss \n word")
 	file := writeFile(t, t.TempDir(), "secrets.yaml", `secrets:
   - secret: shop/git
-    from: {password: "file:`+value+`", username: "exec:printf 'git-user\n'"}
+    from: {password: "file:`+filepath.ToSlash(value)+`", username: "exec:printf 'git-user\n'"}
   - secret: shop/odd
     leave: an operator
 `)

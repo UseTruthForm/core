@@ -18,12 +18,16 @@ func planCmd(args []string) int {
 	if len(args) > 0 && args[0] == "secrets" {
 		return planSecrets(context.Background(), args[1:])
 	}
+	if len(args) > 0 && args[0] == "scope" {
+		return planScope(args[1:])
+	}
 	if len(args) == 0 || args[0] != "rebuild" {
-		return fail(fmt.Errorf("plan: it gives rebuild and secrets: truthform plan rebuild --from <dir> [--out <file>] [--json], truthform plan secrets --from <dir> [--out <file> | --check <file> [--resolve]]"))
+		return fail(fmt.Errorf("plan: it gives rebuild, secrets and scope: truthform plan rebuild --from <dir> [--scope <file>] [--out <file>] [--json], truthform plan secrets --from <dir> [--scope <file>] [--out <file> | --check <file> [--resolve]], truthform plan scope --from <dir> [--out <file> | --check <file>]"))
 	}
 	fs := flag.NewFlagSet("plan rebuild", flag.ContinueOnError)
 	from := fs.String("from", "", "snapshot directory")
 	out := fs.String("out", "", "file to write (default: stdout)")
+	scope := fs.String("scope", "", scopeHelp)
 	if err := parseFlags(fs, args[1:]); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -43,6 +47,10 @@ func planCmd(args []string) int {
 	if s.Platform != "kubernetes" {
 		return fail(fmt.Errorf("plan rebuild: %s is a %s snapshot; the plan is for kubernetes snapshots", *from, s.Platform))
 	}
+	// The plan of a part: what the chosen part needs, and no more.
+	if s, err = scoped(*scope, s.Platform, s); err != nil {
+		return fail(err)
+	}
 	p := kube.RebuildPlan(s)
 	// What the capture could not read, the plan cannot count: a step that
 	// lists nothing is then no proof there is nothing.
@@ -51,7 +59,11 @@ func planCmd(args []string) int {
 		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the plan cannot count what is in them; it lists them first\n", len(notRead))
 	}
 	if jsonOut {
-		emit(map[string]any{"schema": jsonSchema, "command": "plan", "plan": p, "gaps": orEmpty(notRead)})
+		doc := map[string]any{"schema": jsonSchema, "command": "plan", "plan": p, "gaps": orEmpty(notRead)}
+		if scopeDone != nil {
+			doc["scope"] = scopeDone
+		}
+		emit(doc)
 		return 0
 	}
 	text := planMarkdown(p, notRead)

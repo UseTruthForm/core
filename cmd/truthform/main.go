@@ -32,7 +32,8 @@ Kubernetes:
   truthform capture --context <kube-context> --out <dir> [--include-system] [--baseline <dir>]
   truthform restore --context <kube-context> --from <dir> [--secrets-from <file>] [--secrets-from-context <kube-context>]
       [--leave-out <file>] [--rename <file>]   into another environment: objects to hold back, and where its Secrets are read from
-  truthform diff    --context <kube-context> --from <dir> [--baseline <dir>]
+      [--scope <file>]                         a part only (truthform plan scope writes the file)
+  truthform diff    --context <kube-context> --from <dir> [--baseline <dir>] [--scope <file>] [--leave-out <file>] [--rename <file>]
 
 AWS (Cloud Control, every type in the CloudFormation registry):
   truthform capture --platform aws --region <r> [--profile <p>] --out <dir> [--types <patterns>] [--baseline <dir>]
@@ -76,7 +77,8 @@ As a graph (resources and their relationships, for an asset inventory or a secur
       Azure; JSON nodes and edges from the snapshot alone, no request made
 
 Before a rebuild (what the snapshot does not hold: what to install first, the secrets, the names):
-  truthform plan rebuild --from <dir> [--out <file>] [--json]
+  truthform plan rebuild --from <dir> [--scope <file>] [--out <file>] [--json]
+  truthform plan scope --from <dir> [--out <file> | --check <file> [--json]]
   truthform plan secrets --from <dir> [--out <file> | --check <file> [--resolve] [--allow-exec] [--json]]
       Kubernetes; Markdown, or one JSON document; from the snapshot alone, no request made
 
@@ -266,6 +268,7 @@ func restore(ctx context.Context, args []string) int {
 	rename := fs.String("rename", "", renameHelp)
 	keepStores := fs.Bool("keep-source-stores", false, "kubernetes, with --rename: restore though a use of a secret store that no start fits, or that --rename does not reach, stays as the source's")
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
+	scope := fs.String("scope", "", scopeHelp)
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	dryRun := fs.Bool("dry-run", false, "github, cloudflare: read the target and print every write the restore would make; make none")
 	var aws awsFlags
@@ -300,7 +303,12 @@ func restore(ctx context.Context, args []string) int {
 	if err := samePlatform(snap, *platform); err != nil {
 		return fail(err)
 	}
+	// --leave-out first: its entries name objects of the snapshot as it
+	// is, whether or not the scope would have left them out too.
 	if snap, err = leftOut(*leaveOut, *platform, snap); err != nil {
+		return fail(err)
+	}
+	if snap, err = scoped(*scope, *platform, snap); err != nil {
 		return fail(err)
 	}
 	if *keepStores && (*rename == "" || *platform != "kubernetes") {
@@ -375,6 +383,9 @@ func restore(ctx context.Context, args []string) int {
 	if len(heldBack) > 0 {
 		fmt.Printf("left out %d (--leave-out): %s\n", len(heldBack), strings.Join(heldBack, ", "))
 	}
+	if l := scopeLine(); l != "" {
+		fmt.Println(l)
+	}
 	fmt.Printf("applied %d of %d objects to %s\n", ok, len(results), *kctx)
 	if ok != len(results) {
 		return 3
@@ -393,6 +404,7 @@ func diff(ctx context.Context, args []string) int {
 	config := fs.String("config", "", "environment file; diffs every target against --from/<target>")
 	rename := fs.String("rename", "", renameHelp)
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
+	scope := fs.String("scope", "", scopeHelp)
 	values := fs.String("values", "", "azure: the --values file the restore was given; what it sets is compared as it was sent, secrets aside, and a key that matches nothing is refused")
 	keepStoresDiff := fs.Bool("keep-source-stores", false, "taken as restore takes it, and changes nothing: a diff lists what --rename leaves as the source's, and never refuses")
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
@@ -418,8 +430,8 @@ func diff(ctx context.Context, args []string) int {
 		return fail(fmt.Errorf("diff: --values is for --platform azure"))
 	}
 	if *config != "" && *from != "" {
-		if *rename != "" || *leaveOut != "" || *values != "" {
-			return fail(fmt.Errorf("diff: --rename, --leave-out and --values are for a diff against one target, not --config"))
+		if *rename != "" || *leaveOut != "" || *values != "" || *scope != "" {
+			return fail(fmt.Errorf("diff: --rename, --leave-out, --scope and --values are for a diff against one target, not --config"))
 		}
 		return diffEnvironment(ctx, *config, *from)
 	}
@@ -436,6 +448,9 @@ func diff(ctx context.Context, args []string) int {
 	}
 	warnGaps(want)
 	if want, err = leftOut(*leaveOut, *platform, want); err != nil {
+		return fail(err)
+	}
+	if want, err = scoped(*scope, *platform, want); err != nil {
 		return fail(err)
 	}
 	_ = *keepStoresDiff // a diff lists and never refuses: the flag is taken so that a restore's arguments can be given to it
@@ -549,6 +564,9 @@ func report(changes []snapshot.Change, want, got string) int {
 	held := ""
 	if len(heldBack) > 0 {
 		held = fmt.Sprintf(", leaving out %d objects (--leave-out): %s", len(heldBack), strings.Join(heldBack, ", "))
+	}
+	if l := scopeLine(); l != "" {
+		held += "; " + l
 	}
 	if len(changes) == 0 {
 		fmt.Printf("no differences: %s matches %s%s\n", got, want, held)

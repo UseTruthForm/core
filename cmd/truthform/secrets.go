@@ -53,6 +53,7 @@ func planSecrets(ctx context.Context, args []string) int {
 	from := fs.String("from", "", "snapshot directory")
 	out := fs.String("out", "", "write a sources file to fill in (never over one that is there; default: stdout)")
 	check := fs.String("check", "", "sources file to check against the snapshot")
+	scope := fs.String("scope", "", scopeHelp)
 	resolve := fs.Bool("resolve", false, "with --check: read every value from its source too, and print none")
 	allowExec := fs.Bool("allow-exec", false, allowExecHelp)
 	if err := parseFlags(fs, args); err != nil {
@@ -79,6 +80,9 @@ func planSecrets(ctx context.Context, args []string) int {
 	}
 	if s.Platform != "kubernetes" {
 		return fail(fmt.Errorf("plan secrets: %s is a %s snapshot; secret sources are for kubernetes snapshots", *from, s.Platform))
+	}
+	if s, err = scoped(*scope, s.Platform, s); err != nil {
+		return fail(err)
 	}
 	needed, known := secretsNeeded(s, kube.RebuildPlan(s))
 	// What the capture could not read may hold Secrets to supply: neither
@@ -138,6 +142,9 @@ func planSecrets(ctx context.Context, args []string) int {
 		doc := map[string]any{"schema": jsonSchema, "command": "plan", "secrets": map[string]any{
 			"needed": len(needed), "problems": orEmpty(problems), "notes": orEmpty(notes), "resolved": *resolve, "read": read,
 		}, "gaps": orEmpty(notRead)}
+		if scopeDone != nil {
+			doc["scope"] = scopeDone
+		}
 		emit(doc)
 	} else {
 		for _, p := range problems {

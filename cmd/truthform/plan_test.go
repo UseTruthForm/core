@@ -208,12 +208,18 @@ func TestPlanRebuildSaysWhatWasNotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(t.TempDir(), "plan.md")
-	if code := planCmd([]string{"rebuild", "--from", dir, "--out", out}); code != 0 {
-		t.Fatalf("exit %d", code)
+	code, stdout, stderr := output(t, func() int { return planCmd([]string{"rebuild", "--from", dir, "--out", out}) })
+	if code != 0 || !strings.Contains(stdout, "wrote "+out) || !strings.Contains(stderr, "INCOMPLETE SNAPSHOT: its capture could not read 2 things") {
+		t.Fatalf("exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	// With --json the warning is on stderr too: the document goes to a program.
+	if _, _, stderr := output(t, func() int { return planCmd([]string{"rebuild", "--from", dir}) }); !strings.Contains(stderr, "INCOMPLETE SNAPSHOT") {
+		t.Errorf("no warning on stderr without --out: %q", stderr)
 	}
 	b, _ := os.ReadFile(out)
 	text := string(b)
-	for _, want := range []string{"**INCOMPLETE SNAPSHOT.** Its capture could not read 2 things", "- core/v1/secrets: list failed: secrets is forbidden", "None in what the capture read."} {
+	for _, want := range []string{"| 0 secrets seen |", "| 0 hosts seen |", "## 3. Secrets to supply by hand: 0 seen", "## 6. Names to point at the rebuilt cluster: 0 seen",
+		"**INCOMPLETE SNAPSHOT.** Its capture could not read 2 things", "- core/v1/secrets: list failed: secrets is forbidden", "None in what the capture read."} {
 		if !strings.Contains(text, want) {
 			t.Errorf("plan lacks %q:\n%s", want, text)
 		}
@@ -243,7 +249,7 @@ func TestPlanRebuildSaysWhatWasNotRead(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	b, _ = os.ReadFile(out + "2")
-	if strings.Contains(string(b), "INCOMPLETE") || strings.Contains(string(b), "None in what the capture read") {
+	if strings.Contains(string(b), "INCOMPLETE") || strings.Contains(string(b), "None in what the capture read") || strings.Contains(string(b), " seen") {
 		t.Errorf("a whole snapshot's plan warns:\n%s", b)
 	}
 }
@@ -255,5 +261,17 @@ func TestPlanRebuildSaysAnAddressWasWithheld(t *testing.T) {
 		Origins: []string{"GitRepository flux-system/fleet"}, OriginsWithheld: []string{"GitRepository flux-system/fleet"}}, nil)
 	if !strings.Contains(text, "**Not in the snapshot: the address of GitRepository flux-system/fleet.**") {
 		t.Errorf("the plan does not say the address was withheld:\n%s", text)
+	}
+}
+
+// Every source follows and the capture could not read everything: the
+// step still does not say there is nothing else.
+func TestPlanRebuildNothingElseOfAnIncompleteSnapshot(t *testing.T) {
+	p := kube.Plan{Follows: []kube.PlanSource{{Kind: "Flux Kustomization", Name: "flux-system/root", Objects: 1}}}
+	if text := planMarkdown(p, []string{"core/v1/secrets: list failed"}); strings.Contains(text, "Nothing else:") || !strings.Contains(text, "None in what the capture read.") {
+		t.Errorf("says there is nothing else of a snapshot not all read:\n%s", text)
+	}
+	if text := planMarkdown(p, nil); !strings.Contains(text, "Nothing else:") {
+		t.Errorf("a whole snapshot whose sources all follow:\n%s", text)
 	}
 }

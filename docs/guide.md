@@ -109,19 +109,33 @@ What a snapshot does not hold, by design:
   same way: a value named like one (`*_PASSWORD`, `PGPASSWORD`,
   `*_TOKEN`, `*_SECRET`, `API_KEY`, `*_KEY`, `*_DSN`) in any `env` list
   (pod templates, Argo and Tekton steps, a HelmRelease's `values`) or as
-  a ConfigMap key, and any such value that is a URL that signs in: with a
-  password, or with a name alone (`https://<token>@host`; over SSH a
-  name alone is the account, and is kept). A GitOps source's Helm values
-  are read the same way, by each value's name (`auth.token`,
-  `adminPassword`): a Flux HelmRelease's `values`, and an Argo CD
-  application's `valuesObject`, its Helm and plugin parameters, and its
-  `values` text, which is withheld whole when a credential is in it. A
-  value that names a Secret (`existingSecret`, a `secretKeyRef`) is kept.
+  a ConfigMap key, and any value that is a URL that signs in, wherever
+  in the value it is: with a password, with a token as its name
+  (`https://<token>@host`), or with one as a query parameter (`?token=`).
+  A short name with no password is the account (`ssh://git@host`,
+  `https://org@host`) and is kept. An `Authorization` value (`Bearer …`)
+  is withheld too.
+
+  What a GitOps source installs with is read by each value's name
+  (`auth.token`, `adminPassword`, `apiKey`): a Flux HelmRelease's
+  `values` and a Kustomization's `postBuild.substitute`; an Argo CD
+  application's or application set's `valuesObject`, parameters (Helm's,
+  a plugin's, jsonnet's), generator elements and inputs, and its `values`
+  and `templatePatch` text, which is withheld whole when a credential is
+  in it, and is read line by line when it is a template that does not
+  parse. Everything under a name that says a credential is withheld. A
+  value that only names a thing is kept, so that the object can be
+  restored without the cluster it came from: a Secret's name
+  (`existingSecret`, `pullSecret`), a key in one (`passwordKey`,
+  `secretKeyRef`), a toleration's `key`, and a value that only points
+  elsewhere (`${var}`, `{{ … }}`). `secret` alone is read by its value:
+  what reads as an object's name is kept.
   It is named in the snapshot and listed in REPORT.md as a finding: move it
   into a Secret. A restore reads it from the source with
   `--secrets-from-context`. Not caught: a credential passed as a command
-  argument, inside a config file a ConfigMap holds, or under a name that
-  does not say it is one. Because both sides are withheld, a diff does not
+  argument, inside a config file a ConfigMap holds, under a name that
+  does not say it is one, a token short enough to read as an account's
+  name in a URL, or a password under `secret` that reads as a name. Because both sides are withheld, a diff does not
   show a rotated credential, and a snapshot taken before TruthForm withheld
   these values still holds them in its git history;
 - **what the platform made itself**: default VPCs and their subnets,
@@ -499,7 +513,7 @@ secrets:
 
 | Reference | Read from |
 |---|---|
-| `op://<vault>/<item>/<field>` | 1Password, with the `op` CLI |
+| `op://<vault>/<item>/[<section>/]<field>` | 1Password, with the `op` CLI; each part is letters, digits, spaces, dots, dashes and underscores (give anything else by its ID) |
 | `azurekv://<vault>/<secret>[/<version>]` | Azure Key Vault, with the `az` CLI; each part is letters, digits and dashes |
 | `env:<NAME>` | an environment variable |
 | `file:<path>` | a file's whole content, byte for byte; a relative path is from where the command runs |
@@ -529,8 +543,9 @@ restore takes one Secret's values from one place.
 `--check` exits 2 when a rebuild would lack something: a Secret to supply
 with no entry, a key with no reference, a key the Secret does not have.
 Run after each capture, it says so the day someone adds a Secret by hand.
-It also exits 2 for a snapshot whose capture could not read everything
-(`.gaps` with `--json`): a Secret to supply may be in what was not read.
+It also exits 2 for a snapshot whose capture did not read Secrets (a
+Secret to supply may be among them; `.gaps` with `--json`), and notes
+any other type it could not read.
 It reads only the snapshot and the file. `--resolve` also reads every
 value from its source and prints none of them: it proves the sign-ins and
 the items are there before the day they are needed.

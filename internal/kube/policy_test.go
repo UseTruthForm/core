@@ -644,34 +644,71 @@ func TestAKSLabelIsAFactEvenWhenEnoAppliedIt(t *testing.T) {
 	}
 }
 
-// A URL that signs in is withheld however it does: with a password, with
-// a token and no password, with a password that has a slash in it. One
-// that does not is kept.
+// A URL that signs in is withheld however it does, wherever in the value
+// it is. One that does not is kept: an account's name is not a token.
 func TestURLCredential(t *testing.T) {
 	for url, want := range map[string]bool{
-		"https://git:s3cr3t@example.com/o/fleet.git":   true,
-		"https://ghp_s3cr3ttoken@github.com/org/fleet": true, // a token and no password
-		"postgres://app:pa/ss@db:5432/shop":            true, // a slash in the password
-		"redis://:s3cr3t@cache:6379":                   true,
-		"https://org@dev.example.com/org/_git/fleet":   true, // nothing tells a name from a token
-		"ssh://git@example.com/o/fleet.git":            false,
-		"git+ssh://git@example.com/o/fleet.git":        false,
-		"https://example.com/o/fleet.git":              false,
-		"https://registry.example.com:443/@scope/pkg":  false, // a port, and an @ in the path
-		"https://example.com/a:b@c":                    false,
-		"git@example.com:o/fleet.git":                  false,
-		"oci://registry.example.com/charts":            false,
+		"https://git:s3cr3t@example.com/o/fleet.git":              true,
+		"https://ghp_s3cr3ttoken0123456789ab@github.com/org/f":    true, // a token and no password
+		"https://a1b2c3d4e5f6a7b8c9d0e1f2@dev.example.com/o/_git": true, // long, letters and digits
+		"postgres://app:pa/ss@db:5432/shop":                       true, // a slash in the password
+		"https://u:123/abc@db.example.com":                        true, // digits, a slash, then a host
+		"redis://:s3cr3t@cache:6379":                              true,
+		"https://example.com/hook?token=s3cr3t":                   true,
+		"https://example.com/x?a=1&access_token=s3cr3t":           true,
+		" https://git:s3cr3t@example.com/o":                       true, // a space before it
+		"-c url=https://git:s3cr3t@example.com/o clone":           true, // inside something longer
+		"jdbc:postgresql://app:s3cr3t@db/shop":                    true,
+		"https://org@dev.example.com/org/_git/fleet":              false, // an account
+		"https://git@example.com/":                                false,
+		"https://user@example.com/":                               false,
+		"sftp://deploy@example.com":                               false,
+		"ssh://git@example.com/o/fleet.git":                       false,
+		"git+ssh://git@example.com/o/fleet.git":                   false,
+		"https://example.com/o/fleet.git":                         false,
+		"https://registry.example.com:443/@scope/pkg":             false, // a port, and an @ in the path
+		"https://registry:5000/v2/@sha":                           false,
+		"https://example.com/a:b@c":                               false,
+		"https://[::1]/o/a@b":                                     false,
+		"https://example.com/x?page=2&tokens=many":                false,
+		"git@example.com:o/fleet.git":                             false,
+		"oci://registry.example.com/charts":                       false,
 	} {
 		if got := urlCredential(url); got != want {
 			t.Errorf("urlCredential(%q) = %v, want %v", url, got, want)
 		}
 	}
+	withheld := func(o map[string]any) string {
+		return annotation(o["metadata"].(map[string]any), WithheldEnvAnnotation)
+	}
 	repo := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
 		"metadata": map[string]any{"name": "fleet", "namespace": "flux-system"},
-		"spec":     map[string]any{"url": "https://ghp_s3cr3ttoken@github.com/org/fleet"}}
+		"spec":     map[string]any{"url": "https://ghp_s3cr3ttoken0123456789ab@github.com/org/fleet"}}
 	normalize("source.toolkit.fluxcd.io", "gitrepositories", repo)
 	if b, _ := json.Marshal(repo); strings.Contains(string(b), "s3cr3t") {
 		t.Errorf("the token is in the snapshot: %s", b)
+	}
+	// The other fields a URL is written in, and a header's value.
+	project := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "AppProject", "metadata": map[string]any{"name": "p", "namespace": "argocd"},
+		"spec": map[string]any{"sourceRepos": []any{"https://example.com/open", "https://git:s3cr3t-1@example.com/o"}}}
+	normalize("argoproj.io", "appprojects", project)
+	if got := withheld(project); got != "spec.sourceRepos[1]" {
+		t.Errorf("sourceRepos: withheld %q", got)
+	}
+	bucket := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "Bucket", "metadata": map[string]any{"name": "b", "namespace": "flux-system"},
+		"spec": map[string]any{"endpoint": "https://k:s3cr3t-2@minio.example.com"}}
+	normalize("source.toolkit.fluxcd.io", "buckets", bucket)
+	if got := withheld(bucket); got != "spec.endpoint" {
+		t.Errorf("endpoint: withheld %q", got)
+	}
+	pod := map[string]any{"apiVersion": "v1", "kind": "Pod", "metadata": map[string]any{"name": "p", "namespace": "x"},
+		"spec": map[string]any{"containers": []any{map[string]any{"name": "c", "env": []any{
+			map[string]any{"name": "UPSTREAM_AUTHORIZATION", "value": "Bearer s3cr3t-3-abcdef"},
+			map[string]any{"name": "GREETING", "value": "token of thanks"},
+		}}}}}
+	normalize("", "pods", pod)
+	if got := withheld(pod); got != "spec.containers[c].env[UPSTREAM_AUTHORIZATION]" {
+		t.Errorf("a header's value: withheld %q", got)
 	}
 }
 
@@ -754,5 +791,160 @@ func TestWithholdsCredentialsInHelmValues(t *testing.T) {
 	normalize("", "configmaps", cm)
 	if got := withheld(cm); got != "data[url]" {
 		t.Errorf("ConfigMap withheld %q, want data[url]", got)
+	}
+}
+
+// What only names a thing is kept, so that the object can be restored
+// with the cluster it came from gone: a toleration's key, a key in a
+// Secret, a Secret's name. A name that says a credential withholds what
+// is under it, whatever its shape.
+func TestHelmValuesNamesAndCredentials(t *testing.T) {
+	for name, want := range map[string]int{
+		"password": nameStrong, "adminPassword": nameStrong, "auth.token": nameStrong, "apiKey": nameStrong, "api_key": nameStrong,
+		"clientSecret": nameStrong, "existingPassword": nameStrong, "db_password": nameStrong, "connectionString": nameStrong,
+		"PGPASSWORD": nameStrong, "rootpass": nameStrong, "secret_access_key": nameStrong, "tokens": nameStrong,
+		"secret": nameAmbiguous, "pullSecret": nameAmbiguous, "tls.secret": nameAmbiguous, "existingSecret": nameAmbiguous, "secretKey": nameAmbiguous,
+		"key": nameSilent, "tolerations[0].key": nameSilent, "userKey": nameSilent, "passwordKey": nameSilent, "cacheKey": nameSilent,
+		"secretName": nameSilent, "tokenTTL": nameSilent, "passwordLength": nameSilent, "publicKey": nameSilent, "bypass": nameSilent,
+		"replicas": nameSilent, "automountServiceAccountTokenPath": nameSilent,
+	} {
+		if got := valuesKind(name); got != want {
+			t.Errorf("valuesKind(%q) = %d, want %d", name, got, want)
+		}
+	}
+	withheld := func(o map[string]any) string {
+		return annotation(o["metadata"].(map[string]any), WithheldEnvAnnotation)
+	}
+	release := map[string]any{"apiVersion": "helm.toolkit.fluxcd.io/v2", "kind": "HelmRelease", "metadata": map[string]any{"name": "shop", "namespace": "shop"},
+		"spec": map[string]any{"values": map[string]any{
+			"tolerations":  []any{map[string]any{"key": "kept-dedicated", "operator": "Equal", "value": "kept-gpu"}},
+			"nodeSelector": map[string]any{"key": "kept-node"},
+			"affinity":     map[string]any{"matchExpressions": []any{map[string]any{"key": "kept-zone", "operator": "In"}}},
+			"auth": map[string]any{"userKey": "kept-username", "passwordKey": "kept-password-key", "existingSecret": "kept-secret-name",
+				"secretKeyRef": map[string]any{"name": "kept-ref", "key": "kept-ref-key"}},
+			"pullSecret": "kept-registry-login", "tls": map[string]any{"secret": "kept-tls-secret"}, "cacheKey": "kept-cache",
+			"automountServiceAccountToken": true,
+			"templated":                    map[string]any{"password": "${kept_substitution}"}, // points elsewhere
+			// Credentials, in the shapes they are written in.
+			"existingPassword": "s3cr3t-1",
+			"password":         map[string]any{"value": "s3cr3t-2", "secretKeyRef": map[string]any{"name": "kept-inner-ref"}},
+			"pin":              map[string]any{"token": 314159},
+			"credentialsFrom":  map[string]any{"token": "s3cr3t-4"},
+			"webhook":          map[string]any{"secret": "S3cr3t+5/not-a-name"},
+			"signing":          map[string]any{"secret": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"},
+			"with,comma":       map[string]any{"password": "s3cr3t-7"},
+		}}}
+	normalize("helm.toolkit.fluxcd.io", "helmreleases", release)
+	b, _ := json.Marshal(release)
+	for _, leak := range []string{"s3cr3t", "S3cr3t", "314159", "a1b2c3d4"} {
+		if strings.Contains(string(b), leak) {
+			t.Errorf("a credential (%s) is in the snapshot: %s", leak, b)
+		}
+	}
+	for _, kept := range []string{"kept-dedicated", "kept-gpu", "kept-node", "kept-zone", "kept-username", "kept-password-key", "kept-secret-name", "kept-ref", "kept-ref-key", "kept-registry-login", "kept-tls-secret", "kept-cache", "kept-inner-ref", "kept_substitution"} {
+		if !strings.Contains(string(b), kept) {
+			t.Errorf("%s names a thing and was withheld: %s", kept, withheld(release))
+		}
+	}
+	// A comma in a key does not break the list of what was withheld.
+	paths := strings.Split(withheld(release), ",")
+	if len(paths) != 7 || !strings.Contains(withheld(release), "spec.values.with%2Ccomma.password") {
+		t.Errorf("withheld paths: %q", paths)
+	}
+	found := map[string]bool{}
+	for _, sl := range slots(release) {
+		found[sl.path] = true
+	}
+	for _, p := range paths {
+		if !found[p] {
+			t.Errorf("a restore would not find the slot %q again", p)
+		}
+	}
+
+	// A Flux Kustomization's substitutions.
+	ks := map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization", "metadata": map[string]any{"name": "apps", "namespace": "flux-system"},
+		"spec": map[string]any{"postBuild": map[string]any{"substitute": map[string]any{"db_password": "s3cr3t-8", "cluster_name": "kept-cluster"}}}}
+	normalize("kustomize.toolkit.fluxcd.io", "kustomizations", ks)
+	if got := withheld(ks); got != "spec.postBuild.substitute.db_password" {
+		t.Errorf("substitutions: withheld %q", got)
+	}
+}
+
+// An Argo CD application set, and the rest of an application: generator
+// elements and inputs, jsonnet variables, a plugin's list and map, and a
+// workflow's parameters, which are variables.
+func TestArgoCredentialsBeyondHelmParameters(t *testing.T) {
+	withheld := func(o map[string]any) string {
+		return annotation(o["metadata"].(map[string]any), WithheldEnvAnnotation)
+	}
+	set := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "ApplicationSet", "metadata": map[string]any{"name": "fleet", "namespace": "argocd"},
+		"spec": map[string]any{
+			"generators": []any{
+				map[string]any{"list": map[string]any{"elements": []any{map[string]any{"cluster": "kept-east", "token": "s3cr3t-1"}}}},
+				map[string]any{"plugin": map[string]any{"input": map[string]any{"parameters": map[string]any{"apiKey": "s3cr3t-2", "region": "kept-region"}}, "values": map[string]any{"password": "s3cr3t-3"}}},
+			},
+			"templatePatch": "spec:\n  source:\n    helm:\n      values: |\n        {{- if .x }}\n        password: s3cr3t-4\n        {{- end }}\n",
+			"template": map[string]any{"spec": map[string]any{"source": map[string]any{
+				"helm": map[string]any{"parameters": []any{map[string]any{"name": "auth.token", "value": "s3cr3t-5"}}},
+				"directory": map[string]any{"jsonnet": map[string]any{
+					"extVars": []any{map[string]any{"name": "dbPassword", "value": "s3cr3t-6"}, map[string]any{"name": "replicas", "value": "kept-3"}},
+					"tlas":    []any{map[string]any{"name": "apiToken", "value": "s3cr3t-7"}},
+				}},
+				"plugin": map[string]any{"parameters": []any{
+					map[string]any{"name": "tokens", "array": []any{"s3cr3t-8"}},
+					map[string]any{"name": "password", "map": map[string]any{"primary": "s3cr3t-9"}},
+					map[string]any{"name": "hosts", "array": []any{"kept-host"}},
+				}},
+			}}},
+		}}
+	normalize("argoproj.io", "applicationsets", set)
+	b, _ := json.Marshal(set)
+	if strings.Contains(string(b), "s3cr3t") {
+		t.Errorf("a credential is in the snapshot: %s", b)
+	}
+	for _, kept := range []string{"kept-east", "kept-region", "kept-3", "kept-host"} {
+		if !strings.Contains(string(b), kept) {
+			t.Errorf("%s was withheld: %s", kept, withheld(set))
+		}
+	}
+
+	// A workflow's parameters are its inputs: one named for a credential
+	// is withheld, and one called "key" is not.
+	wf := map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "WorkflowTemplate", "metadata": map[string]any{"name": "w", "namespace": "x"},
+		"spec": map[string]any{"arguments": map[string]any{"parameters": []any{
+			map[string]any{"name": "key", "value": "kept-input"},
+			map[string]any{"name": "db_password", "value": "s3cr3t-10"},
+		}}}}
+	normalize("argoproj.io", "workflowtemplates", wf)
+	if got := withheld(wf); got != "spec.arguments.parameters[db_password]" {
+		t.Errorf("a workflow's parameters: withheld %q", got)
+	}
+}
+
+// Values written as text are never kept for want of a parse: a template,
+// a second document, a key that is not text. Text with no credential in
+// it is kept, template or not.
+func TestValuesTextIsReadThoughItDoesNotParse(t *testing.T) {
+	for text, want := range map[string]bool{
+		"db:\n  password: s3cr3t\n":                                       true,
+		"replicas: 2\n---\ndb:\n  password: s3cr3t\n":                     true, // a second document
+		"db:\n  password: s3cr3t\n---\nreplicas: 2\n":                     true, // and the first of two
+		"1: x\n2:\n  token: s3cr3t\n":                                     true, // keys that are not text
+		"cluster: {{cluster}}\ndb:\n  password: s3cr3t\n":                 true, // a template: no parse
+		"a: 1\na: 2\ntoken: s3cr3t\n":                                     true, // a key twice: no parse
+		"\tindented: with a tab\napiKey: s3cr3t\n":                        true,
+		"repo: https://git:s3cr3t@example.com/o\n{{ broken":               true,
+		"env:\n  - name: API_TOKEN\n    value: s3cr3t\n":                  true, // a variable in the values
+		"webhook:\n  secret: S3cr3t+not/a-name\n{{ broken":                true,
+		"cluster: {{cluster}}\nreplicas: 2\n":                             false,
+		"tolerations:\n  - key: dedicated\n    value: gpu\n":              false,
+		"cluster: {{cluster}}\ntolerations:\n  - key: dedicated\n":        false,
+		"password: {{ .Values.password }}\nauth:\n  existingSecret: db\n": false, // points elsewhere
+		"{{ broken\npullSecret: registry-login\npasswordKey: password\n":  false,
+		"replicas: 2\nimage:\n  tag: v1\n":                                false,
+	} {
+		if got := textHolds(text); got != want {
+			t.Errorf("textHolds(%q) = %v, want %v", text, got, want)
+		}
 	}
 }

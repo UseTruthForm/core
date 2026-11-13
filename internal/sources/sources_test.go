@@ -276,7 +276,9 @@ func TestOpReference(t *testing.T) {
 		"v/it;em/f":                              false,
 		"v/it&em/f":                              false,
 		"v/x --account other/f":                  false,
-		"v/a - b/f":                              false,
+		"v/a - b/f":                              true, // a dash that stands alone is a name's
+		"v/a -b/f":                               false,
+		"v/a --b c/f":                            false,
 		"v/it$(x)/f":                             false,
 		"v/it`x`/f":                              false,
 		"v/it'em/f":                              false,

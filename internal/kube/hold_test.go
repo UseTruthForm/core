@@ -428,23 +428,26 @@ func TestAsTheyAre(t *testing.T) {
 	// And what it made with no namespace.
 	wide := released("example.com/v1", "GadgetClass", "", "wide", "worker", map[string]any{"spec": map[string]any{"size": "big"}})
 	wide.Body["metadata"].(map[string]any)["annotations"].(map[string]any)["meta.helm.sh/release-namespace"] = "shop"
-	s.Objects = append(s.Objects, far, wide)
+	// And what only a label ties to it: held with the release, so named.
+	byLabel := planObject("example.com/v1", "GadgetClass", "", "labelled", map[string]any{"spec": map[string]any{"size": "big"}})
+	byLabel.Body["metadata"].(map[string]any)["labels"] = map[string]any{"app.kubernetes.io/managed-by": "Helm", "app.kubernetes.io/instance": "worker"}
+	s.Objects = append(s.Objects, far, wide, byLabel)
 	both := func(as ...string) Scope {
 		sc := entry(as...)
 		sc.Narrow = append(sc.Narrow, ScopeEntry{Namespaces: []string{"other"}, Releases: []string{"api"}})
 		return sc
 	}
 	_, rep, err := Narrow(s, both("Certificate/*", "Cluster/*"))
-	if want := []string{"Gadget other/far", "GadgetClass /wide"}; err != nil || !reflect.DeepEqual(rep.NotHeld, want) {
+	if want := []string{"Gadget other/far", "GadgetClass /labelled", "GadgetClass /wide"}; err != nil || !reflect.DeepEqual(rep.NotHeld, want) {
 		t.Errorf("made elsewhere, not named: %q, %v; want %q", rep.NotHeld, err, want)
 	}
-	for _, name := range []string{"Gadget/far", "GadgetClass/wide"} {
+	for _, name := range []string{"Gadget/far", "GadgetClass/wide", "GadgetClass/labelled"} {
 		_, rep, err = Narrow(s, both("Certificate/*", "Cluster/*", name))
-		if err != nil || len(rep.NotHeld) != 1 || len(rep.AsTheyAre) != 4 {
+		if err != nil || len(rep.NotHeld) != 2 || len(rep.AsTheyAre) != 4 {
 			t.Errorf("%s made elsewhere, named: not held %q, as they are %q, %v", name, rep.NotHeld, rep.AsTheyAre, err)
 		}
 	}
-	s.Objects = s.Objects[:len(s.Objects)-2]
+	s.Objects = s.Objects[:len(s.Objects)-3]
 	// What a hold refuses stays refused.
 	s.Objects = append(s.Objects, rel("v1", "Pod", "once", map[string]any{"containers": []any{map[string]any{"name": "c", "image": "x"}}}))
 	if _, _, err := Narrow(s, entry("Certificate/*", "Cluster/*", "Pod/once")); err == nil || !strings.Contains(err.Error(), "Pod shop/once") {

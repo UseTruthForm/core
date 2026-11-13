@@ -754,7 +754,9 @@ Each is `Kind/name` as under `objects`. The name may be a pattern, and
 the kind too, but not a bare `*`: `Certificate/*` also takes in any
 `Certificate` a later snapshot has, so name what was looked at as
 narrowly as it was looked at. An entry names objects in its own
-namespaces and what its releases made in another, or with no namespace.
+namespaces and what its releases made in another, or with no namespace
+(one tied to a release by a label alone is held, and named, with any
+release of that name that is held).
 What is named there is still listed (`scope.broughtAsTheyAre`),
 and the run ends 0 when nothing else is left not held. A name that fits
 no object the hold would have named is an error, as is `asTheyAre` on an

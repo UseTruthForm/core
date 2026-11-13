@@ -330,11 +330,22 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		}
 		return yes, hold
 	}
+	// The namespaces that have a release of each name.
+	relNS := map[string]map[string]bool{}
+	for _, o := range s.Objects {
+		if rns, rname, ok := ReleaseOf(o); ok && rns != "" {
+			if relNS[rname] == nil {
+				relNS[rname] = map[string]bool{}
+			}
+			relNS[rname][rns] = true
+		}
+	}
 	// asItIs says whether a holding entry names the object under
 	// asTheyAre: an entry of the object's namespace, or of the namespace
 	// of the release that made it (a release may make an object in a
-	// namespace other than its own, or with none). Nothing is held but by
-	// one of the two.
+	// namespace other than its own, or with none; where only a label says
+	// which release, any namespace that has a release of the name).
+	// Nothing is held but by one of these.
 	asUsed := make([]map[string]bool, len(sc.Narrow))
 	for i := range sc.Narrow {
 		asUsed[i] = map[string]bool{}
@@ -345,8 +356,14 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			group = ""
 		}
 		es := append([]int{}, narrowed[o.Namespace()]...)
-		if rns, _, ok := ReleaseOf(o); ok && rns != o.Namespace() {
+		if rns, rname, ok := ReleaseOf(o); ok && rns != o.Namespace() {
 			es = append(es, narrowed[rns]...)
+		} else if ok && rns == "" {
+			// Of a release by label alone, with no namespace: of any
+			// namespace that has a release of the name.
+			for ns := range relNS[rname] {
+				es = append(es, narrowed[ns]...)
+			}
 		}
 		for _, i := range es {
 			for _, p := range sc.Narrow[i].AsTheyAre {
@@ -385,16 +402,6 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 	holdIt := make([]bool, len(s.Objects))
 	maker := secretMakers(s)
 	made := make([]bool, len(s.Objects))
-	// The namespaces that have a release of each name.
-	relNS := map[string]map[string]bool{}
-	for _, o := range s.Objects {
-		if rns, rname, ok := ReleaseOf(o); ok && rns != "" {
-			if relNS[rname] == nil {
-				relNS[rname] = map[string]bool{}
-			}
-			relNS[rname][rns] = true
-		}
-	}
 	// loose are the objects in a narrowed namespace that no release of a
 	// narrowed namespace made.
 	loose := make([]bool, len(s.Objects))
@@ -476,6 +483,9 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			for ns := range relNS[rel[i].name] {
 				if narrowed[ns] == nil || relChosen[relKey{ns, rel[i].name}] {
 					state[i] = brought
+					// Held with any release of the name that is: which
+					// of them made it, the object does not say.
+					holdIt[i] = holdIt[i] || relHeld[relKey{ns, rel[i].name}]
 				} else {
 					leftIn = append(leftIn, ns+"/"+rel[i].name)
 				}

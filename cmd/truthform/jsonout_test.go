@@ -105,7 +105,7 @@ func TestBadFlagIsAnError(t *testing.T) {
 // Only commands with a document of their own take --json; the others
 // refuse instead of running quietly ("mcp --json" served on stderr).
 func TestJSONCommands(t *testing.T) {
-	for c, want := range map[string]bool{"capture": true, "diff": true, "restore": true, "compare": true, "mcp": false, "version": false, "report": false} {
+	for c, want := range map[string]bool{"capture": true, "diff": true, "restore": true, "compare": true, "plan": true, "mcp": false, "version": false, "report": false} {
 		if jsonCommands[c] != want {
 			t.Errorf("%s: %v", c, jsonCommands[c])
 		}

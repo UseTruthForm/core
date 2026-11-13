@@ -357,8 +357,8 @@ empty or denied: capture again later.
 
 ## Machine-readable output
 
-Add `--json` to `capture`, `diff`, `restore` or `compare` (an environment
-`--config` too). Stdout is then one JSON document, named by its `schema`
+Add `--json` to `capture`, `diff`, `restore`, `compare` or `plan` (an
+environment `--config` too). Stdout is then one JSON document, named by its `schema`
 field (`truthform.org/output/v1`), and everything meant for a person goes
 to stderr. The exit code is the same as without it. A capture's document
 says whether it is `complete` and lists its `gaps`, and under `throttled`
@@ -375,6 +375,69 @@ that sends there), as the report does.
 ```sh
 truthform diff --platform aws --region us-east-2 --from snap/aws --json | jq '.differences'
 ```
+
+## Before a rebuild (Kubernetes)
+
+A snapshot recreates what it holds. A cluster rebuilt from one also needs
+what the snapshot does not hold, and `truthform plan rebuild` lists that,
+in the order to act on it:
+
+```sh
+truthform plan rebuild --from snap/cluster                 # Markdown, to stdout
+truthform plan rebuild --from snap/cluster --out PLAN.md
+truthform plan rebuild --from snap/cluster --json | jq '.plan.secretsByHand[].name'
+```
+
+A snapshot whose capture could not read everything gives a plan that
+says so first and lists what was not read (`.gaps` with `--json`): a step
+that lists nothing is then no proof there is nothing.
+
+It reads the snapshot and nothing else: no login, no request, and it runs
+in the capture-only build. The same snapshot gives the same plan, so it
+can be kept beside the snapshot and compared like one. With `--json` the
+document goes to stdout; `--out` is for the Markdown.
+
+1. **Install first.** What the capture left to a GitOps source (a Flux
+   HelmRelease or Kustomization, an Argo CD application, a Crossplane
+   composite) that is not itself in the snapshot, with how many objects
+   each makes. The plan names the Flux repository objects the snapshot
+   holds, or says that where the sources are read from is not in it: the
+   repository, branch, path and its credential then come from your own
+   records.
+2. **APIs to have served.** Types the snapshot has objects of and no
+   CustomResourceDefinition for, by API group. The restore refuses those
+   objects until something serves the type, usually an operator that
+   step 1 installs.
+3. **Secrets to supply by hand.** A snapshot never holds a secret's value.
+   These are the Secrets no store in the snapshot supplies: each one's
+   keys, and what in the snapshot names it. Secrets cert-manager issues
+   again by itself are named apart, and a service account's token is left
+   out.
+4. **Secrets a store supplies.** The store items that `OnePasswordItem`,
+   `ExternalSecret` and `ClusterExternalSecret` objects read, most-used
+   first. The restore recreates those objects and the operator makes the
+   Secrets, once the store is reachable from the rebuilt cluster. An item
+   holds the settings of the cluster it was written for: one that feeds
+   many Secrets is where to look for the addresses and keys that must
+   differ in a rebuild.
+5. **Restore.**
+6. **Names to point at the rebuilt cluster.** The hosts the snapshot's
+   routes answer to: Ingress rules, Gateway listeners and routes, Traefik
+   `Host()` matches.
+
+What it cannot see:
+
+- **A source that makes objects only in a system namespace.** The capture
+  leaves those namespaces out before it looks at who made what.
+- **Who uses a Secret**, when the user is something step 1 installs (an
+  operator's own credential usually is), or an object with no namespace
+  that names the Secret without one (a `ClusterIssuer`).
+- **Which namespaces a `ClusterExternalSecret` reaches.** Its Secrets are
+  listed as `*/name`, and a Secret of that name in any namespace is taken
+  as supplied.
+- **A secret store of another kind.** Its Secrets are listed under step 3.
+- **Hosts matched by pattern** (`HostRegexp`).
+- **Data**: databases, volumes and queues are outside a snapshot.
 
 ## As a graph (Azure)
 

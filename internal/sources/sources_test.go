@@ -224,6 +224,8 @@ func TestResolve(t *testing.T) {
 		"azurekv://kv/_zz10":                       "azurekv://kv/…: an Azure Key Vault reference names",
 		"azurekv://kv/.zz11":                       "azurekv://kv/…: an Azure Key Vault reference names",
 		"azurekv://kv/%zz12%":                      "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://kv/a%zz20%":                     "azurekv://kv/…: an Azure Key Vault reference names",
+		"op://v/a%zz21%/f":                         "op://v/…/f: a 1Password reference is",
 		"azurekv://kv/" + strings.Repeat("a", 128): "azurekv://kv/…: an Azure Key Vault reference names",
 		"azurekv://kv/a/b/zz13&x":                  "azurekv://kv/a/b/…: an Azure Key Vault reference is azurekv://<vault>",
 		// A 1Password reference likewise: op may be a script too.

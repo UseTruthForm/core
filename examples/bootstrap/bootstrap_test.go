@@ -57,7 +57,12 @@ case "$1 ${2:-} ${3:-}" in
     case " $* " in *" - "*) ;; *) echo "op: no template on input" >&2; exit 1 ;; esac
     cat >"$S/item.tmp"
     jq -e '.title and .category == "SECURE_NOTE" and (.fields | length > 0)' "$S/item.tmp" >/dev/null
-    case " $* " in *" --dry-run "*) fail item-dry-run; rm "$S/item.tmp"; exit 0 ;; esac
+    case " $* " in *" --category Secure Note "*) ;; *) echo "op: provide the item category with --category flag" >&2; exit 1 ;; esac
+    case " $* " in *" --dry-run "*)
+      fail item-dry-run
+      if [ "$F" = item-dry-run-shape ]; then echo "{}"; else cat "$S/item.tmp"; fi
+      rm "$S/item.tmp"; exit 0 ;;
+    esac
     fail item-create
     mv "$S/item.tmp" "$S/items/$(jq -r .title "$S/item.tmp").json"
     fail item-create-but-saved ;;
@@ -248,6 +253,7 @@ func TestRefusesBeforeMakingAnything(t *testing.T) {
 		"vaults cannot be listed":        {usual, "vault-list", "could not list vaults"},
 		"items cannot be listed":         {usual, "item-list", "could not list the items"},
 		"op would not take the item":     {usual, "item-dry-run", "op would not save the item"},
+		"op would save something else":   {usual, "item-dry-run-shape", "not under its title with the fields"},
 		"a name a reference cannot hold": {[]string{"--server", "x", "--reads", "App Config", "--keep-in", "Break Glass (Prod)"}, "", "a name holds letters"},
 		"a quote in a title":             {append(usual, "--item", `a"b`), "", "a name holds letters"},
 		"a name that is a flag":          {[]string{"--server", "x", "--reads", "App Config", "--keep-in", "--help"}, "", "a name holds letters"},

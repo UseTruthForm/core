@@ -221,8 +221,13 @@ item_of() { # <credentials file> <token file>
 # server whose credentials depend on the answer.
 echo '{"made":"up"}' >"$work/try-creds"; echo made-up >"$work/try-token"
 item_of "$work/try-creds" "$work/try-token" >"$work/try.json"
-op item create --vault "$keep_id" --dry-run - <"$work/try.json" >/dev/null ||
+# What it says it would save is read too: the title and the three fields
+# are how the credentials are found again.
+op item create --vault "$keep_id" --category "Secure Note" --title "$item" --dry-run --format json - <"$work/try.json" >"$work/try-out.json" ||
   die "op would not save the item this makes in vault \"$keep\". Nothing was made"
+jq -e --arg t "$item" '.title == $t and ([.fields[]?.label] | index("credentials-json") != null and index("credentials-base64") != null and index("token") != null)' \
+  "$work/try-out.json" >/dev/null 2>&1 ||
+  die "op would save the item, but not under its title with the fields the credentials are read back from: this script does not know this version of op. Nothing was made"
 
 if [ $dry -eq 1 ]; then
   for v in ${missing[@]+"${missing[@]}"}; do echo "would make vault \"$v\""; done
@@ -253,7 +258,7 @@ op connect token create "$server cluster token" --server "${made_id:-$server}" "
 [ -s "$work/token" ] || die "op made no token"
 
 item_of "$work/1password-credentials.json" "$work/token" >"$work/item.json"
-op item create --vault "$keep_id" - <"$work/item.json" >/dev/null
+op item create --vault "$keep_id" --category "Secure Note" --title "$item" - <"$work/item.json" >/dev/null
 kept=1
 
 # Read each back the way a rebuild will, and compare without showing it.

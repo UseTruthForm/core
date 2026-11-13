@@ -702,12 +702,12 @@ narrow:
 | another API's object with `spec.replicas` (an Argo `Rollout`, a Prometheus operator's `Alertmanager`, a `KafkaConnect`) | zero replicas |
 | `DaemonSet` | a node selector no node has (`truthform.org/held`) |
 | `CronJob`, and a `Job` brought with `jobs: true` | suspended |
-| a Flux object (`HelmRelease`, `Kustomization`, a source), and another API's object with `spec.suspend` (an Argo `CronWorkflow`) | `spec.suspend: true` |
+| a Flux object (`HelmRelease`, `Kustomization`, a source), an Argo `CronWorkflow`, and another API's object with `spec.suspend` (a `ScheduledSparkApplication`) | `spec.suspend: true` |
 | Argo CD `Application` | `spec.syncPolicy.automated` taken out |
 | KEDA `ScaledObject` | `autoscaling.keda.sh/paused-replicas: "0"` |
 | KEDA `ScaledJob` | `autoscaling.keda.sh/paused: "true"` |
 | `HorizontalPodAutoscaler` | as it is: it stops while what it scales is at zero |
-| what Kubernetes itself serves and runs nothing (`ConfigMap`, `Service`, `Ingress`, RBAC), and APIs known to run nothing (secret operators' items, cert-manager, Traefik and Istio routes) | as it is |
+| what Kubernetes itself serves and runs nothing (`ConfigMap`, `Service`, `Ingress`, RBAC), and APIs known to run nothing and reach nothing outside (an `ExternalSecret`, a `OnePasswordItem`, Traefik and Istio routes) | as it is |
 
 A hold is of what its entry chooses: the releases it names, the objects
 it names, what carries its labels. Hold wins: what two entries choose is
@@ -722,11 +722,16 @@ template that does not count its pods.
 
 **What a hold does not know is named.** An object of another API with no
 `spec.replicas` and no `spec.suspend` is brought as it is, and the run
-lists it in a NOTE (`scope.broughtNotHeld` with `--json`): most run
-nothing (a certificate, a route), and some have a controller that runs
-something for them (a database operator's cluster, with its count under
-another name). The run then says "stopped", not "nothing running". Look
-at each, and leave out with `--leave-out` what would run.
+lists it in a NOTE (`scope.broughtNotHeld` with `--json`). Some run
+nothing; some have a controller that runs something for them (a database
+operator's cluster, with its count under another name; a
+`SparkApplication`, whose group ends in `k8s.io` and is not Kubernetes'
+own); some act outside the cluster (a cert-manager `Certificate` asks an
+authority for a certificate for the source's host names, a `PushSecret`
+writes to a store, an external-dns `DNSEndpoint` writes DNS). The run
+then says "stopped", not "nothing running", and still exits 0: read the
+NOTE, or `scope.broughtNotHeld`, and leave out with `--leave-out` what
+would run or reach out.
 
 Restore and diff list what is held and how, with the count it had
 (`scope.held` with `--json`: "zero replicas (it had 3)"); a diff given
@@ -852,7 +857,8 @@ https://kv-dev.vault.azure.net: https://kv-test.vault.azure.net
 container, init container and image volume of a pod spec, wherever it is
 (a Deployment, a CronJob, a KEDA `ScaledJob`, another API's workload),
 an Argo workflow template's `container` and `script`, and a Tekton
-task's `steps` and `sidecars`.
+task's `steps`, `sidecars` and `stepTemplate`. Not an Argo template's
+own `initContainers`.
 There are two ways to rebuild, and the rename file is the difference:
 
 - **The registry the source pulls from is still there** (the quick way,

@@ -20,10 +20,10 @@ var containerLists = []string{"containers", "initContainers", "ephemeralContaine
 
 // stepLists are lists of containers under other names (Tekton's steps
 // and sidecars), and containerKeys a single one (an Argo template's
-// container and script).
+// container and script, a Tekton task's stepTemplate).
 var (
 	stepLists     = []string{"steps", "sidecars"}
-	containerKeys = []string{"container", "script"}
+	containerKeys = []string{"container", "script", "stepTemplate"}
 )
 
 // eachImage passes every image reference in the object to f, with the

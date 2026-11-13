@@ -164,7 +164,8 @@ func TestAStartEndsWhereAPartDoes(t *testing.T) {
 			map[string]any{"name": "t", "container": map[string]any{"image": "registry.corp/step:1"}},
 			map[string]any{"name": "u", "script": map[string]any{"image": "registry.corp/script:1", "source": "echo"}}}}}),
 		planObject("tekton.dev/v1", "Task", "shop", "t", map[string]any{"spec": map[string]any{
-			"steps": []any{map[string]any{"name": "build", "image": "registry.corp/build:1"}}, "sidecars": []any{map[string]any{"name": "dind", "image": "registry.corp/dind:1"}}}}),
+			"stepTemplate": map[string]any{"image": "registry.corp/base:1"},
+			"steps":        []any{map[string]any{"name": "build", "image": "registry.corp/build:1"}}, "sidecars": []any{map[string]any{"name": "dind", "image": "registry.corp/dind:1"}}}}),
 	}}
 	out, rep, err := RenameStores(s, map[string]string{"registry.corp": "drill.corp"})
 	if err != nil {
@@ -175,7 +176,7 @@ func TestAStartEndsWhereAPartDoes(t *testing.T) {
 		changed = append(changed, r.From+" -> "+r.To)
 	}
 	sort.Strings(changed)
-	want := []string{"registry.corp/app:1 -> drill.corp/app:1", "registry.corp/build:1 -> drill.corp/build:1", "registry.corp/dind:1 -> drill.corp/dind:1",
+	want := []string{"registry.corp/app:1 -> drill.corp/app:1", "registry.corp/base:1 -> drill.corp/base:1", "registry.corp/build:1 -> drill.corp/build:1", "registry.corp/dind:1 -> drill.corp/dind:1",
 		"registry.corp/script:1 -> drill.corp/script:1", "registry.corp/step:1 -> drill.corp/step:1"}
 	if !reflect.DeepEqual(changed, want) {
 		t.Errorf("changed:\n got %q\nwant %q", changed, want)

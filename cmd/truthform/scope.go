@@ -86,7 +86,7 @@ func scopeSaid(rep kube.ScopeReport, file string) string {
 		}
 	}
 	if len(rep.NotHeld) > 0 {
-		fmt.Fprintf(&b, "\nscope: NOTE: %d objects under hold: true are brought as they are. Nothing in one says it runs anything, but each is of an API this does not know, and its controller may run something for it (an operator's database). Look at each, and leave out (--leave-out) what would run: %s", len(rep.NotHeld), strings.Join(rep.NotHeld, ", "))
+		fmt.Fprintf(&b, "\nscope: NOTE: %d objects under hold: true are brought as they are, and not held. Nothing in one says it runs anything, but each is of an API this does not know to be idle: its controller may run something for it (an operator's database, a Spark application) or act outside the cluster (cert-manager asking for a certificate for the source's host names). Look at each, and leave out (--leave-out) what would: %s", len(rep.NotHeld), strings.Join(rep.NotHeld, ", "))
 	}
 	if len(rep.ObjectsBrought) > 0 {
 		fmt.Fprintf(&b, "\nscope: %d objects that no release made are brought, named under objects or by label: %s", len(rep.ObjectsBrought), strings.Join(rep.ObjectsBrought, ", "))

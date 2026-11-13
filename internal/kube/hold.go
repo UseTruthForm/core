@@ -33,16 +33,30 @@ func hasPods(spec map[string]any) bool {
 	return len(list(pod["containers"])) > 0
 }
 
-// inertGroups are other APIs whose objects are known to run nothing:
-// they describe a secret to fetch, a certificate, a route, what to
-// scrape. An API not here is not known, and is named under a hold.
-var inertGroups = map[string]bool{"onepassword.com": true, "external-secrets.io": true, "secrets-store.csi.x-k8s.io": true, "bitnami.com": true,
-	"cert-manager.io": true, "acme.cert-manager.io": true, "traefik.io": true, "traefik.containo.us": true, "networking.istio.io": true, "security.istio.io": true}
+// ownGroups are Kubernetes' own API groups, whose objects (the workloads
+// apart, which are held by kind) run nothing: configuration, access,
+// networking, storage. By name: many projects serve a group that ends in
+// k8s.io (a Spark operator's, a Flink operator's), and those are theirs.
+var ownGroups = map[string]bool{"": true, "apps": true, "batch": true, "autoscaling": true, "policy": true, "extensions": true,
+	"rbac.authorization.k8s.io": true, "networking.k8s.io": true, "gateway.networking.k8s.io": true, "storage.k8s.io": true,
+	"scheduling.k8s.io": true, "node.k8s.io": true, "discovery.k8s.io": true, "coordination.k8s.io": true,
+	"admissionregistration.k8s.io": true, "apiextensions.k8s.io": true, "apiregistration.k8s.io": true, "certificates.k8s.io": true,
+	"flowcontrol.apiserver.k8s.io": true, "events.k8s.io": true, "resource.k8s.io": true, "authentication.k8s.io": true, "authorization.k8s.io": true}
 
-// inert reports an API whose objects run nothing: Kubernetes' own
-// (configuration, access, networking, storage), and those known.
-func inert(group string) bool {
-	return group == "" || !strings.Contains(group, ".") || strings.HasSuffix(group, ".k8s.io") || inertGroups[group]
+// inertGroups are other APIs whose objects are known to run no pod and
+// to change nothing outside the cluster: they say what secret to read, or
+// how to route. One that acts outside (cert-manager asks an authority
+// for a certificate for the source's host names; a PushSecret writes to
+// a store) is not here, and is named under a hold like any API not known.
+var inertGroups = map[string]bool{"onepassword.com": true, "external-secrets.io": true, "secrets-store.csi.x-k8s.io": true, "bitnami.com": true,
+	"traefik.io": true, "traefik.containo.us": true, "networking.istio.io": true, "security.istio.io": true}
+
+// inert reports an object that runs nothing and reaches nothing outside.
+func inert(group, kind string) bool {
+	if group == "external-secrets.io" && strings.HasSuffix(kind, "PushSecret") {
+		return false
+	}
+	return ownGroups[group] || inertGroups[group]
 }
 
 // held returns an object as it is restored with nothing of it running,
@@ -94,9 +108,11 @@ func held(o snapshot.Object) (out snapshot.Object, said, why string, unknown boo
 		how, said = suspend, "suspended"
 	case group == "argoproj.io" && o.Kind() == "Application":
 		how, said = manual, "automated sync off"
-	case inert(group):
+	case group == "argoproj.io" && o.Kind() == "CronWorkflow":
+		how, said = suspend, "suspended"
+	case inert(group, o.Kind()):
 		how = nothing
-	case counted:
+	case counted && !(group == "kafka.strimzi.io" && o.Kind() == "KafkaTopic"):
 		// Another API's workload, or an operator's object that counts
 		// what it runs as the built-in ones do (an Alertmanager, a
 		// Rollout): held as they are.
@@ -107,8 +123,9 @@ func held(o snapshot.Object) (out snapshot.Object, said, why string, unknown boo
 	case hasPods(spec):
 		return o, "", "it has a pod template and no spec.replicas, and how its kind is stopped is not known", false
 	default:
-		// Another API's object with nothing in it this reads as running:
-		// a certificate, a route, or a database an operator runs.
+		// Another API's object with nothing in it this reads as running.
+		// It may run nothing (a topic), act outside the cluster (a
+		// certificate's request), or be a database an operator runs.
 		return o, "", "", true
 	}
 	if how == nothing {

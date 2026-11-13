@@ -218,16 +218,26 @@ func TestHoldAndOtherAPIs(t *testing.T) {
 		rel("apps/v1", "Deployment", "worker", map[string]any{"replicas": float64(3), "template": map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"name": "c", "image": "x"}}}}}),
 		rel("monitoring.coreos.com/v1", "Alertmanager", "alerts", map[string]any{"replicas": float64(3)}),
 		rel("kafka.strimzi.io/v1beta2", "KafkaConnect", "connect", map[string]any{"replicas": float64(2), "image": "x"}),
-		rel("argoproj.io/v1alpha1", "CronWorkflow", "nightly", map[string]any{"schedule": "0 1 * * *", "suspend": false}),
+		rel("argoproj.io/v1alpha1", "CronWorkflow", "nightly", map[string]any{"schedule": "0 1 * * *"}), // no suspend key, as most are written
+		rel("sparkoperator.k8s.io/v1beta2", "ScheduledSparkApplication", "hourly", map[string]any{"schedule": "@hourly", "suspend": false}),
 		rel("helm.toolkit.fluxcd.io/v2", "HelmRelease", "chart", map[string]any{"interval": "5m"}),
 		rel("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "apps", map[string]any{"path": "./apps"}),
 		rel("argoproj.io/v1alpha1", "Application", "app", map[string]any{"syncPolicy": map[string]any{"automated": map[string]any{"prune": true}, "syncOptions": []any{"CreateNamespace=true"}}}),
 		// Nothing in these says they run anything.
 		rel("postgresql.cnpg.io/v1", "Cluster", "db", map[string]any{"instances": float64(3)}),
 		rel("example.com/v1", "Gadget", "g", map[string]any{"size": "big"}),
-		// Known to run nothing.
+		// A group that ends in k8s.io and is not Kubernetes' own.
+		rel("sparkoperator.k8s.io/v1beta2", "SparkApplication", "etl", map[string]any{"type": "Scala"}),
+		rel("externaldns.k8s.io/v1alpha1", "DNSEndpoint", "dns", map[string]any{"endpoints": []any{}}),
+		// What acts outside the cluster.
 		rel("cert-manager.io/v1", "Certificate", "tls", map[string]any{"secretName": "tls"}),
+		rel("external-secrets.io/v1alpha1", "PushSecret", "push", map[string]any{"selector": map[string]any{}}),
+		// A count that is not of pods.
+		rel("kafka.strimzi.io/v1beta2", "KafkaTopic", "orders", map[string]any{"replicas": float64(3), "partitions": float64(6)}),
+		// Known to run nothing and reach nothing.
+		rel("external-secrets.io/v1", "ExternalSecret", "es", map[string]any{"refreshInterval": "1h"}),
 		rel("onepassword.com/v1", "OnePasswordItem", "db", map[string]any{"itemPath": "vaults/v/items/i"}),
+		rel("gateway.networking.k8s.io/v1", "HTTPRoute", "route", map[string]any{"hostnames": []any{"x"}}),
 		// Kubernetes' own, which run nothing.
 		rel("v1", "ConfigMap", "cfg", nil),
 		rel("networking.k8s.io/v1", "Ingress", "web", map[string]any{}),
@@ -250,25 +260,28 @@ func TestHoldAndOtherAPIs(t *testing.T) {
 		"HelmRelease shop/chart: suspended",
 		"KafkaConnect shop/connect: zero replicas (it had 2)",
 		"Kustomization shop/apps: suspended",
+		"ScheduledSparkApplication shop/hourly: suspended",
 	}
 	if !reflect.DeepEqual(held, want) {
 		t.Errorf("held:\n got %q\nwant %q", held, want)
 	}
-	if want := []string{"Cluster shop/db", "Gadget shop/g"}; !reflect.DeepEqual(rep.NotHeld, want) {
+	if want := []string{"Certificate shop/tls", "Cluster shop/db", "DNSEndpoint shop/dns", "Gadget shop/g", "KafkaTopic shop/orders", "PushSecret shop/push", "SparkApplication shop/etl"}; !reflect.DeepEqual(rep.NotHeld, want) {
 		t.Errorf("named as not held: %q, want %q", rep.NotHeld, want)
 	}
 	for key, c := range map[string]struct {
 		path []string
 		want any
 	}{
-		"Alertmanager shop/alerts":     {[]string{"spec", "replicas"}, int64(0)},
-		"KafkaConnect shop/connect":    {[]string{"spec", "replicas"}, int64(0)},
-		"CronWorkflow shop/nightly":    {[]string{"spec", "suspend"}, true},
-		"HelmRelease shop/chart":       {[]string{"spec", "suspend"}, true},
-		"Kustomization shop/apps":      {[]string{"spec", "suspend"}, true},
-		"Application shop/app":         {[]string{"spec", "syncPolicy"}, map[string]any{"syncOptions": []any{"CreateNamespace=true"}}},
-		"Cluster shop/db":              {[]string{"spec", "instances"}, float64(3)},
-		"PodDisruptionBudget shop/pdb": {[]string{"spec", "minAvailable"}, float64(1)},
+		"Alertmanager shop/alerts":              {[]string{"spec", "replicas"}, int64(0)},
+		"KafkaConnect shop/connect":             {[]string{"spec", "replicas"}, int64(0)},
+		"CronWorkflow shop/nightly":             {[]string{"spec", "suspend"}, true},
+		"HelmRelease shop/chart":                {[]string{"spec", "suspend"}, true},
+		"Kustomization shop/apps":               {[]string{"spec", "suspend"}, true},
+		"Application shop/app":                  {[]string{"spec", "syncPolicy"}, map[string]any{"syncOptions": []any{"CreateNamespace=true"}}},
+		"Cluster shop/db":                       {[]string{"spec", "instances"}, float64(3)},
+		"KafkaTopic shop/orders":                {[]string{"spec", "replicas"}, float64(3)},
+		"ScheduledSparkApplication shop/hourly": {[]string{"spec", "suspend"}, true},
+		"PodDisruptionBudget shop/pdb":          {[]string{"spec", "minAvailable"}, float64(1)},
 	} {
 		if got := at(find(t, out, key), c.path...); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s %s: got %#v, want %#v", key, strings.Join(c.path, "."), got, c.want)
@@ -302,6 +315,9 @@ func TestHoldPausesTheScalerOfWhatIsHeld(t *testing.T) {
 		scaler("for-store", "scaling", map[string]any{"name": "store", "kind": "StatefulSet"}),
 		scaler("for-api", "scaling", map[string]any{"name": "api"}),                              // its target runs
 		scaler("for-other-kind", "scaling", map[string]any{"name": "worker", "kind": "Rollout"}), // not the Deployment
+		// One of the same name in another namespace scales its own.
+		released("apps/v1", "Deployment", "core", "worker", "worker", map[string]any{"spec": map[string]any{"replicas": float64(1), "template": tmpl}}),
+		released("keda.sh/v1alpha1", "ScaledObject", "core", "for-worker", "scaling", map[string]any{"spec": map[string]any{"scaleTargetRef": map[string]any{"name": "worker"}}}),
 	}}
 	out, rep, err := Narrow(s, Scope{Narrow: []ScopeEntry{
 		{Namespaces: []string{"shop"}, Releases: []string{"api", "scaling"}},
@@ -315,6 +331,9 @@ func TestHoldPausesTheScalerOfWhatIsHeld(t *testing.T) {
 		if (got == "0") != paused {
 			t.Errorf("%s: paused-replicas is %v, want paused %v", name, got, paused)
 		}
+	}
+	if got := at(find(t, out, "ScaledObject core/for-worker"), "metadata", "annotations", "autoscaling.keda.sh/paused-replicas"); got != nil {
+		t.Errorf("a scaler in another namespace was paused: %v", got)
 	}
 	said := ""
 	for _, h := range rep.Held {

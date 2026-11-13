@@ -12,7 +12,7 @@ on:
     types: [opened, synchronize, reopened, labeled]
     # templates: the AWS read add-on is generated JSON, and a pull request
     # changing only it must still be tested (review of #24).
-    paths: ["**.go", "go.mod", "go.sum", "testdata/**", "scripts/**", ".github/workflows/**", "internal/onboard/templates/**"]
+    paths: ["**.go", "go.mod", "go.sum", "testdata/**", "scripts/**", "examples/**", ".github/workflows/**", "internal/onboard/templates/**"]
   workflow_dispatch:
     inputs:
       full-drill:
@@ -31,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TRUTHFORM_REQUIRE_KUBE_ASSETS: "1" # a missing API server fails CI instead of skipping
+      TRUTHFORM_REQUIRE_BOOTSTRAP_TOOLS: "1" # and so does a missing bash, jq or cmp for the bootstrap script's test
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7

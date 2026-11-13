@@ -551,6 +551,40 @@ The file to fill in is written from what the cluster's objects say, and
 only as comments and names: read it before you fill it in, as you would
 any file a tool wrote for you to run.
 
+### The secrets a secret store starts from
+
+A cluster that reads its Secrets from a store still starts from a
+credential for that store, and the plan lists it by hand. How much work
+that is depends on the store:
+
+- **A cloud vault read with the cluster's own identity** (workload
+  identity): there is no such Secret. Restoring the cloud snapshot brings
+  the identity and its grants back; what ties the identity to the cluster
+  (a federated credential) names the cluster's issuer, which a new
+  cluster changes, and the Azure restore points it at the new one.
+- **Sealed Secrets, SOPS**: the key is the Secret, and a copy of it is the
+  entry in the sources file. SOPS with a key held by a cloud key service
+  has no such Secret: the cluster's identity needs that key's use.
+- **1Password Connect**: the credentials file and the access token are
+  issued by 1Password and not by the cluster, so the ones an environment
+  was given still work after it is rebuilt, unless the token was made to
+  expire: keep them, and name them in the sources file. A new environment needs its own, made by a person
+  signed in. `examples/bootstrap/1password-connect.sh` does that in one
+  command: it makes the server and a read-only token for the vaults you
+  name, keeps both as one item in another vault, reads them back, and
+  prints their references (and, given the Secrets' names, the
+  sources-file entries). It prints neither value, and `--dry-run` makes
+  nothing. It removes only a server 1Password said this run made, and
+  says what it made and left if it is stopped; killed outright
+  (`kill -9`, or the machine losing power) it cannot, and its temporary
+  directory (under `$TMPDIR`, or `/tmp`) then still holds the
+  credentials file and the token. It knows its own server by the id
+  1Password prints when it makes one; the first real run is what shows
+  that it does, and if it does not the script stops with the server made
+  and says so. **It has been run with `--dry-run`
+  against a real account and has not yet made a server on one**: run it
+  with `--dry-run` first, and read what it says it made.
+
 ### Into another environment
 
 A snapshot restored beside its source (a drill, or one environment rebuilt

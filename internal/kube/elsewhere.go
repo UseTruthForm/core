@@ -100,10 +100,42 @@ var whichStore = map[string]bool{
 	"spec.parameters.keyvaultName": true, "spec.parameters.vaultAddress": true,
 	// What a PushSecret writes to. It is an item's name, and it is judged
 	// as a store is: unchanged, the new cluster writes the source's item.
-	pushSecretKey: true,
+	pushSecretKey: true, clusterPushSecretKey: true,
 }
 
-const pushSecretKey = "spec.data[].match.remoteRef.remoteKey"
+const (
+	pushSecretKey        = "spec.data[].match.remoteRef.remoteKey"
+	clusterPushSecretKey = "spec.pushSecretSpec.data[].match.remoteRef.remoteKey"
+)
+
+// WritesToStore reports a reference that is written to, not read: what a
+// PushSecret pushes.
+func WritesToStore(r StoreRef) bool {
+	return r.Field == pushSecretKey || r.Field == clusterPushSecretKey
+}
+
+// pushUnread says why not every destination a PushSecret's spec writes to
+// is one this reads, or "". A writer that is not understood is refused,
+// never passed: all it would take to write to the source's store is a
+// field this does not know.
+func pushUnread(spec map[string]any) string {
+	if len(list(spec["dataTo"])) > 0 {
+		return "it writes by dataTo, whose destinations this does not read"
+	}
+	data := list(spec["data"])
+	if len(data) == 0 {
+		return "what it writes to is in no field this knows"
+	}
+	for _, e := range data {
+		m, _ := e.(map[string]any)
+		match, _ := m["match"].(map[string]any)
+		ref, _ := match["remoteRef"].(map[string]any)
+		if key, _ := ref["remoteKey"].(string); key == "" {
+			return "one of the destinations it writes to names no remoteKey"
+		}
+	}
+	return ""
+}
 
 // onePasswordPath is the annotation by which the 1Password operator is
 // asked for a Secret from a workload, and marks the Secrets it made.
@@ -140,6 +172,8 @@ func storeRefs(o snapshot.Object) []string {
 	case o.Kind() == "PushSecret":
 		// It writes to the store: unchanged, it writes to the source's.
 		out = []string{pushSecretKey}
+	case o.Kind() == "ClusterPushSecret":
+		out = []string{clusterPushSecretKey}
 	case o.Kind() == "SecretStore" || o.Kind() == "ClusterSecretStore":
 		for provider, fs := range providerRefs {
 			for _, f := range fs {
@@ -190,6 +224,17 @@ func unreached(o snapshot.Object) string {
 			if findsByTags(o.Body, at) {
 				return "it finds what it reads by tags (dataFrom.find.tags)"
 			}
+		}
+	}
+	if group == "external-secrets.io" && o.Kind() == "PushSecret" {
+		if why := pushUnread(spec); why != "" {
+			return why
+		}
+	}
+	if group == "external-secrets.io" && o.Kind() == "ClusterPushSecret" {
+		inner, _ := spec["pushSecretSpec"].(map[string]any)
+		if why := pushUnread(inner); why != "" {
+			return why
 		}
 	}
 	if group == "secrets.hashicorp.com" && strings.HasPrefix(o.Kind(), "HCP") {
@@ -252,12 +297,64 @@ func fromGenerator(body map[string]any, at string) bool {
 	return false
 }
 
+// underAPath reports a start that names everything under a path: it ends
+// with a slash, and has a name before it ("https://" and "/" do not: they
+// are every URL, and everything).
+func underAPath(st string) bool {
+	body := strings.TrimSuffix(st, "/")
+	return body != st && body != "" && !strings.HasSuffix(body, "/")
+}
+
+// vaultByDefault counts the Vault Secrets Operator's secret objects that
+// read through no VaultConnection of the snapshot: by the operator's
+// default auth or connection, or by one that is not here. One connection
+// in the snapshot says nothing of an object that does not use it.
+func vaultByDefault(s snapshot.Snapshot) int {
+	at := func(ref, ns string) string {
+		if strings.Contains(ref, "/") {
+			return ref
+		}
+		return ns + "/" + ref
+	}
+	auths, conns := map[string]string{}, map[string]bool{}
+	for _, o := range s.Objects {
+		if group, _, _ := strings.Cut(o.APIVersion(), "/"); group != "secrets.hashicorp.com" {
+			continue
+		}
+		spec, _ := o.Body["spec"].(map[string]any)
+		switch o.Kind() {
+		case "VaultConnection":
+			conns[o.Namespace()+"/"+o.Name()] = true
+		case "VaultAuth":
+			conn := ""
+			if ref := strOf(spec["vaultConnectionRef"]); ref != "" {
+				conn = at(ref, o.Namespace())
+			}
+			auths[o.Namespace()+"/"+o.Name()] = conn
+		}
+	}
+	n := 0
+	for _, o := range s.Objects {
+		group, _, _ := strings.Cut(o.APIVersion(), "/")
+		if group != "secrets.hashicorp.com" || (o.Kind() != "VaultStaticSecret" && o.Kind() != "VaultDynamicSecret" && o.Kind() != "VaultPKISecret") {
+			continue
+		}
+		spec, _ := o.Body["spec"].(map[string]any)
+		ref := strOf(spec["vaultAuthRef"])
+		conn, known := auths[at(ref, o.Namespace())]
+		if !known || conn == "" || !conns[conn] { // no auth named is no auth known
+			n++
+		}
+	}
+	return n
+}
+
 // StoreKinds are the kinds of object a rename looks at for a use of a
 // secret store, for a person: a store named anywhere else is not seen,
 // and "nothing listed" has to be read with that.
 func StoreKinds() []string {
 	seen := map[string]bool{}
-	out := []string{"ExternalSecret", "ClusterExternalSecret", "PushSecret", "SecretStore", "ClusterSecretStore", "VaultConnection", "VaultAuth", "HCPVaultSecretsApp", "HCPAuth"}
+	out := []string{"ExternalSecret", "ClusterExternalSecret", "PushSecret", "ClusterPushSecret", "SecretStore", "ClusterSecretStore", "VaultConnection", "VaultAuth", "HCPVaultSecretsApp", "HCPAuth"}
 	for _, k := range out {
 		seen[k] = true
 	}
@@ -378,7 +475,7 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 					// Every start that fits names something, though the
 					// longest alone is applied.
 					fits[st] = true
-					if names[st] == st && v != st && !strings.HasSuffix(st, "/") {
+					if names[st] == st && v != st && !underAPath(st) {
 						// "v: v" would say every reference that starts with
 						// a v is the same in both: it says so of a whole
 						// reference, or of everything under a path.
@@ -425,19 +522,8 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 	// The Vault Secrets Operator's objects read through a VaultConnection,
 	// or, with none, through the one its own installation sets: that one
 	// is no object of the snapshot, and no start can name it.
-	vso, connection := 0, false
-	for _, o := range s.Objects {
-		if group, _, _ := strings.Cut(o.APIVersion(), "/"); group == "secrets.hashicorp.com" {
-			switch o.Kind() {
-			case "VaultConnection":
-				connection = true
-			case "VaultStaticSecret", "VaultDynamicSecret", "VaultPKISecret", "VaultAuth":
-				vso++
-			}
-		}
-	}
-	if vso > 0 && !connection {
-		rep.Unreached = append(rep.Unreached, fmt.Sprintf("%d Vault Secrets Operator objects: no VaultConnection is in the snapshot, so they read the Vault the operator's own installation names", vso))
+	if n := vaultByDefault(s); n > 0 {
+		rep.Unreached = append(rep.Unreached, fmt.Sprintf("%d Vault Secrets Operator objects read through no VaultConnection that is in the snapshot: the Vault they read is the one the operator's own installation names, or one something else makes", n))
 	}
 	var none []string
 	for _, st := range starts {
@@ -452,7 +538,7 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 	}
 	sort.Strings(wide)
 	if len(wide) > 0 {
-		return s, RenameReport{}, fmt.Errorf("a start replaced by itself says a reference is the same in both environments, and has to be a whole reference or end with a slash: %s", strings.Join(wide, ", "))
+		return s, RenameReport{}, fmt.Errorf("a start replaced by itself says a reference is the same in both environments, and has to be a whole reference or a path that ends with a slash: %s", strings.Join(wide, ", "))
 	}
 	if len(none) > 0 {
 		return s, RenameReport{}, fmt.Errorf("no store reference in the snapshot starts with: %s", strings.Join(none, ", "))

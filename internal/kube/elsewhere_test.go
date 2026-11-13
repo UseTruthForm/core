@@ -115,10 +115,10 @@ func TestRenameStores(t *testing.T) {
 		planObject("external-secrets.io/v1", "SecretStore", "shop", "gcp", map[string]any{"spec": map[string]any{"provider": map[string]any{"gcpsm": map[string]any{"projectID": "dev-project"}}}}),
 		planObject("external-secrets.io/v1", "SecretStore", "shop", "op", map[string]any{"spec": map[string]any{"provider": map[string]any{"onepassword": map[string]any{"connectHost": "https://connect-dev", "vaults": map[string]any{"apps": 1}}}}}),
 		planObject("external-secrets.io/v1", "SecretStore", "shop", "aws", map[string]any{"spec": map[string]any{"provider": map[string]any{"aws": map[string]any{"region": "eu-west-1"}}}}),
-		planObject("secrets.hashicorp.com/v1beta1", "VaultStaticSecret", "shop", "vss", map[string]any{"spec": map[string]any{"mount": "dev-kv", "path": "shop/db", "namespace": "dev-ns"}}),
-		planObject("secrets.hashicorp.com/v1beta1", "VaultPKISecret", "shop", "pki", map[string]any{"spec": map[string]any{"mount": "dev-pki", "role": "dev-role"}}), // a role is the same in each
+		planObject("secrets.hashicorp.com/v1beta1", "VaultStaticSecret", "shop", "vss", map[string]any{"spec": map[string]any{"mount": "dev-kv", "path": "shop/db", "namespace": "dev-ns", "vaultAuthRef": "auth"}}),
+		planObject("secrets.hashicorp.com/v1beta1", "VaultPKISecret", "shop", "pki", map[string]any{"spec": map[string]any{"mount": "dev-pki", "role": "dev-role", "vaultAuthRef": "shop/auth"}}), // a role is the same in each
 		planObject("secrets.hashicorp.com/v1beta1", "VaultConnection", "shop", "conn", map[string]any{"spec": map[string]any{"address": "https://vault-dev:8200"}}),
-		planObject("secrets.hashicorp.com/v1beta1", "VaultAuth", "shop", "auth", map[string]any{"spec": map[string]any{"mount": "dev-k8s", "namespace": "dev-ns"}}),
+		planObject("secrets.hashicorp.com/v1beta1", "VaultAuth", "shop", "auth", map[string]any{"spec": map[string]any{"mount": "dev-k8s", "namespace": "dev-ns", "vaultConnectionRef": "conn"}}),
 		planObject("spv.no/v2beta1", "AzureKeyVaultSecret", "shop", "akv", map[string]any{"spec": map[string]any{"vault": map[string]any{"name": "kv-dev", "object": map[string]any{"name": "dev-api"}}}}),
 		planObject("secrets-store.csi.x-k8s.io/v1", "SecretProviderClass", "shop", "spc", map[string]any{"spec": map[string]any{"provider": "kv-dev", "parameters": map[string]any{"keyvaultName": "kv-dev", "objects": "array:\n  - objectName: dev-api"}}}),
 		planObject("secrets-store.csi.x-k8s.io/v1", "SecretProviderClass", "shop", "hv", map[string]any{"spec": map[string]any{"provider": "vault", "parameters": map[string]any{"vaultAddress": "https://vault-dev:8200"}}}),
@@ -361,8 +361,21 @@ func TestRenameRefusesAWideStartReplacedByItself(t *testing.T) {
 	s := snapshot.Snapshot{Objects: []snapshot.Object{
 		planObject("onepassword.com/v1", "OnePasswordItem", "shop", "db", map[string]any{"spec": map[string]any{"itemPath": "vaults/apps/items/db"}}),
 	}}
-	if _, _, err := RenameStores(s, map[string]string{"v": "v"}); err == nil || !strings.Contains(err.Error(), "has to be a whole reference or end with a slash: v") {
+	if _, _, err := RenameStores(s, map[string]string{"v": "v"}); err == nil || !strings.Contains(err.Error(), "has to be a whole reference or a path that ends with a slash: v") {
 		t.Errorf("v: v: %v", err)
+	}
+	// A slash alone, or a scheme's, is everything and every URL.
+	urls := snapshot.Snapshot{Objects: []snapshot.Object{
+		planObject("external-secrets.io/v1", "ClusterSecretStore", "", "kv", map[string]any{"spec": map[string]any{"provider": map[string]any{"vault": map[string]any{"server": "https://vault.dev/v1"}}}}),
+		planObject("onepassword.com/v1", "OnePasswordItem", "shop", "db", map[string]any{"spec": map[string]any{"itemPath": "/vaults/apps/items/db"}}),
+	}}
+	for _, start := range []string{"https://", "/"} {
+		if _, _, err := RenameStores(urls, map[string]string{start: start}); err == nil || !strings.Contains(err.Error(), "has to be a whole reference or a path") {
+			t.Errorf("%q replaced by itself: %v", start, err)
+		}
+	}
+	if _, rep, err := RenameStores(urls, map[string]string{"https://vault.dev/": "https://vault.dev/", "/vaults/apps/": "/vaults/apps/"}); err != nil || len(rep.Kept) != 2 {
+		t.Errorf("a host and a path replaced by themselves: %v, %+v", err, rep)
 	}
 	for _, start := range []string{"vaults/apps/", "vaults/apps/items/db"} {
 		if _, rep, err := RenameStores(s, map[string]string{start: start}); err != nil || len(rep.Kept) != 1 {
@@ -433,7 +446,7 @@ func TestRenameSaysMoreItDoesNotReach(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := strings.Join(rep.Unreached, "\n")
-	for _, want := range []string{"Deployment x/templated: it asks the Vault agent", "SecretProviderClass x/gcp: what it reads is listed in spec.parameters.secrets", "HCPVaultSecretsApp x/hcp: which HCP Vault Secrets", "ExternalSecret x/generated: it takes what it reads from a generator", "1 Vault Secrets Operator objects: no VaultConnection is in the snapshot"} {
+	for _, want := range []string{"Deployment x/templated: it asks the Vault agent", "SecretProviderClass x/gcp: what it reads is listed in spec.parameters.secrets", "HCPVaultSecretsApp x/hcp: which HCP Vault Secrets", "ExternalSecret x/generated: it takes what it reads from a generator", "1 Vault Secrets Operator objects read through no VaultConnection that is in the snapshot"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("unreached lacks %q:\n%s", want, all)
 		}
@@ -443,5 +456,89 @@ func TestRenameSaysMoreItDoesNotReach(t *testing.T) {
 		if !strings.Contains(kinds, k) {
 			t.Errorf("the kinds a rename says it looks at lack %s: %s", k, kinds)
 		}
+	}
+}
+
+// A writer that is not understood is refused, never passed: a
+// ClusterPushSecret is judged as a PushSecret is, and one that writes by
+// dataTo, or names no key for a destination, is out of reach.
+func TestRenameJudgesEveryPushSecret(t *testing.T) {
+	data := func(keys ...any) []any {
+		var out []any
+		for _, k := range keys {
+			ref := map[string]any{}
+			if k != nil {
+				ref["remoteKey"] = k
+			}
+			out = append(out, map[string]any{"match": map[string]any{"remoteRef": ref}})
+		}
+		return out
+	}
+	store := planObject("external-secrets.io/v1", "ClusterSecretStore", "", "kv", map[string]any{"spec": map[string]any{"provider": map[string]any{"vault": map[string]any{"server": "https://vault.dev"}}}})
+	names := map[string]string{"https://vault.dev": "https://vault.test"}
+	for name, c := range map[string]struct {
+		o                  snapshot.Object
+		unnamed, unreached string
+	}{
+		"a ClusterPushSecret":           {planObject("external-secrets.io/v1alpha1", "ClusterPushSecret", "", "push", map[string]any{"spec": map[string]any{"pushSecretSpec": map[string]any{"deletionPolicy": "Delete", "data": data("dev/app/db")}}}), "dev/app/db", ""},
+		"dataTo":                        {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"dataTo": []any{map[string]any{"storeRef": map[string]any{"name": "kv"}}}}}), "", "PushSecret shop/push: it writes by dataTo"},
+		"dataTo beside data":            {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"data": data("dev/a"), "dataTo": []any{map[string]any{}}}}), "dev/a", "PushSecret shop/push: it writes by dataTo"},
+		"a destination with no key":     {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"data": data("dev/a", nil)}}), "dev/a", "names no remoteKey"},
+		"nothing this knows":            {planObject("external-secrets.io/v1alpha1", "PushSecret", "shop", "push", map[string]any{"spec": map[string]any{"selector": map[string]any{}}}), "", "what it writes to is in no field this knows"},
+		"a ClusterPushSecret by dataTo": {planObject("external-secrets.io/v1alpha1", "ClusterPushSecret", "", "push", map[string]any{"spec": map[string]any{"pushSecretSpec": map[string]any{"dataTo": []any{map[string]any{}}}}}), "", "ClusterPushSecret push: it writes by dataTo"},
+	} {
+		_, rep, err := RenameStores(snapshot.Snapshot{Objects: []snapshot.Object{store, c.o}}, names)
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		var unnamed []string
+		for _, r := range rep.Unnamed {
+			unnamed = append(unnamed, r.From)
+			if !WritesToStore(r) {
+				t.Errorf("%s: %s is not said to be written to", name, r.From)
+			}
+		}
+		if strings.Join(unnamed, ",") != c.unnamed || !strings.Contains(strings.Join(rep.Unreached, "\n"), c.unreached) || (c.unreached == "" && len(rep.Unreached) != 0) {
+			t.Errorf("%s: unnamed %q, unreached %q", name, unnamed, rep.Unreached)
+		}
+		if len(rep.Unnamed)+len(rep.Unreached) == 0 {
+			t.Errorf("%s: nothing would refuse the restore", name)
+		}
+	}
+	if kinds := strings.Join(StoreKinds(), " "); !strings.Contains(kinds, "ClusterPushSecret") {
+		t.Errorf("kinds read: %s", kinds)
+	}
+}
+
+// One VaultConnection in the snapshot says nothing of an object that does
+// not use it: each is counted by the auth and the connection it names.
+func TestVaultObjectsThatReadByDefault(t *testing.T) {
+	vso := func(kind, name string, spec map[string]any) snapshot.Object {
+		return planObject("secrets.hashicorp.com/v1beta1", kind, "shop", name, map[string]any{"spec": spec})
+	}
+	s := snapshot.Snapshot{Objects: []snapshot.Object{
+		vso("VaultConnection", "conn", map[string]any{"address": "https://vault"}),
+		vso("VaultAuth", "auth", map[string]any{"vaultConnectionRef": "conn"}),
+		vso("VaultAuth", "default-conn", map[string]any{}),
+		vso("VaultAuth", "gone-conn", map[string]any{"vaultConnectionRef": "other/conn"}),
+		vso("VaultStaticSecret", "through", map[string]any{"vaultAuthRef": "auth"}),
+		vso("VaultStaticSecret", "no-auth", map[string]any{}),
+		vso("VaultDynamicSecret", "auth-by-default", map[string]any{"vaultAuthRef": "default-conn"}),
+		vso("VaultPKISecret", "auth-not-here", map[string]any{"vaultAuthRef": "ops/auth"}),
+		vso("VaultPKISecret", "conn-not-here", map[string]any{"vaultAuthRef": "shop/gone-conn"}),
+	}}
+	if n := vaultByDefault(s); n != 4 {
+		t.Errorf("%d read by default, want 4", n)
+	}
+}
+
+// A ClusterExternalSecret that reads from a generator is out of reach as
+// an ExternalSecret is.
+func TestClusterExternalSecretFromAGenerator(t *testing.T) {
+	o := planObject("external-secrets.io/v1", "ClusterExternalSecret", "", "gen", map[string]any{"spec": map[string]any{"externalSecretSpec": map[string]any{
+		"dataFrom": []any{map[string]any{"sourceRef": map[string]any{"generatorRef": map[string]any{"kind": "Password", "name": "g"}}}}}}})
+	if why := unreached(o); !strings.Contains(why, "from a generator") {
+		t.Errorf("unreached: %q", why)
 	}
 }

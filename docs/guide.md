@@ -614,17 +614,20 @@ The rename lists on stderr, and gives under `store_references` with
 |---|---|
 | changed | a reference that points elsewhere now |
 | kept | one a start names and replaces by itself: said to be the same in both environments |
-| unnamed | one that says **which store** (a vault's address, a 1Password item's path), or what a `PushSecret` writes to, and that no start fits: it is the source's still |
+| unnamed | one that says **which store** (a vault's address, a 1Password item's path), or what a `PushSecret` or `ClusterPushSecret` writes to, and that no start fits: it is the source's still |
 | items unchanged | one that names an item in a store and that no start fits: the same name, read from whichever store its store object says |
-| unreached | an object that uses a store in a way a rename cannot change: a CSI class's `objects` document, a 1Password store's `vaults`, a provider it has no field for, an `ExternalSecret` that finds by a pattern of names or by tags or reads from a generator, a pod that asks the Vault agent by annotation, an HCP Vault Secrets object, Vault Secrets Operator objects with no `VaultConnection` in the snapshot |
+| unreached | an object that uses a store in a way a rename cannot change: a CSI class's `objects` document, a 1Password store's `vaults`, a provider it has no field for, an `ExternalSecret` that finds by a pattern of names or by tags or reads from a generator, a pod that asks the Vault agent by annotation, an HCP Vault Secrets object, Vault Secrets Operator objects that read through no `VaultConnection` of the snapshot, a `PushSecret` that writes by `dataTo` or to a destination with no key |
 
 **A restore is refused, with nothing written, while anything is unnamed
 or unreached**: what reads or writes through it would use the source's
 store. A `PushSecret` writes, so the item it writes to needs a start of
 its own, whatever its store is. Give each a start, replaced by itself if
 it is meant to be the same (a start replaced by itself is a whole
-reference, or ends with a slash); leave the object out; or pass
-`--keep-source-stores` to restore all the same. The refused restore's
+reference, or a path that ends with a slash: not `https://`, which is
+every URL); leave the object out; or pass
+`--keep-source-stores` to restore all the same; it then says how many of
+them a `PushSecret` writes to, which the new cluster would write, and
+delete where it is told to. The refused restore's
 `--json` document carries the same lists. A diff writes nothing, and
 only lists them.
 

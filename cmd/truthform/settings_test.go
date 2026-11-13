@@ -122,7 +122,9 @@ func TestRestoreFillsWithheldSettings(t *testing.T) {
 		t.Errorf("sources that are not set: exit %d, %v", code, lastErr)
 	}
 	// A value that is not text is refused: a setting is text in the object.
-	binary := writeFile(t, t.TempDir(), "bin", "\xff\xfe\x00k")
+	// With forward slashes: in a double-quoted YAML string a Windows
+	// path's backslashes are escapes.
+	binary := filepath.ToSlash(writeFile(t, t.TempDir(), "bin", "\xff\xfe\x00k"))
 	notText := writeFile(t, t.TempDir(), "not-text.yaml", strings.Replace(settingsFile, "env:TF_SETTING_URL", "file:"+binary, 1))
 	t.Setenv("TF_SETTING_PASSWORD", "s3cr3t-setting")
 	lastErr = nil

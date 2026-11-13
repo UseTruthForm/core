@@ -277,7 +277,8 @@ func fillFrom(live, body map[string]any, paths []string) error {
 	}
 	values := map[string]string{}
 	for _, p := range paths {
-		if v, ok := own[targets[strings.TrimSuffix(p, numberMark)].path]; ok {
+		at, _ := pathOf(p)
+		if v, ok := own[targets[at].path]; ok {
 			values[p] = v
 		}
 	}
@@ -308,15 +309,22 @@ func findSlots(body map[string]any, paths []string) (map[string]slot, error) {
 		}
 	}
 	asked := map[string]bool{}
+	marked := map[string]bool{}
 	for _, p := range paths {
-		at := strings.TrimSuffix(p, numberMark)
+		at, isOwn := pathOf(p)
 		if twice[at] || asked[at] {
 			return nil, fmt.Errorf("two values of the object are at %s; which is which cannot be told", at)
 		}
 		asked[at] = true
+		marked[at] = isOwn
 	}
 	out := map[string]slot{}
 	for at := range asked {
+		if sl, isOwn := own[at]; marked[at] && isOwn {
+			// The snapshot says it is this slot's own path.
+			out[at] = sl
+			continue
+		}
 		// Not one asked for by its own path as well.
 		var others []slot
 		for _, sl := range was[at] {
@@ -363,16 +371,16 @@ func setSlots(body map[string]any, paths []string, values map[string]string) err
 	// Every value is checked before any is written.
 	fill := map[string]any{}
 	for _, p := range paths {
-		at := strings.TrimSuffix(p, numberMark)
+		at, _ := pathOf(p)
 		v, ok := values[p]
 		if !ok {
-			v, ok = values[at] // a line written without the mark of a number
+			v, ok = values[at] // a line written without its marks
 		}
 		if !ok {
 			return fmt.Errorf("no value for %s", p)
 		}
 		fill[at] = v
-		if at != p {
+		if strings.HasSuffix(p, numberMark) {
 			n, err := asNumber(strings.TrimSpace(v))
 			if err != nil {
 				return fmt.Errorf("%s: %w", at, err)

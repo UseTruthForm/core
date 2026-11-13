@@ -279,7 +279,7 @@ func TestADottedKeyBesideTheSameKeysNested(t *testing.T) {
 		"spec": map[string]any{"values": map[string]any{"a.b": env("DB_PASSWORD", "s3cr3t-dotted"), "a": map[string]any{"b": env("DB_PASSWORD", "s3cr3t-nested")}}}}
 	wasCustom := deepCopy(custom)
 	paths, _ := withheldOf("example.com", "things", custom)
-	if strings.Join(paths, " ") != "spec.values.a%2Eb.env[DB_PASSWORD] spec.values.a.b.env[DB_PASSWORD]" {
+	if strings.Join(paths, " ") != "=spec.values.a.b.env[DB_PASSWORD] spec.values.a%2Eb.env[DB_PASSWORD]" {
 		t.Errorf("a custom resource: withheld %v", paths)
 	} else if err := fillFrom(deepCopy(wasCustom), custom, withheldEnv(custom)); err != nil || !reflect.DeepEqual(custom["spec"], wasCustom["spec"]) {
 		t.Errorf("a custom resource, filled back: %v", err)
@@ -288,12 +288,12 @@ func TestADottedKeyBesideTheSameKeysNested(t *testing.T) {
 	r := make("s3cr3t-dotted", "s3cr3t-nested")
 	original := deepCopy(r)
 	paths, out := withheldOf("helm.toolkit.fluxcd.io", "helmreleases", r)
-	if strings.Join(paths, " ") != "spec.values.a%2Eb.env[DB_PASSWORD] spec.values.a.b.env[DB_PASSWORD]" || strings.Contains(out, "s3cr3t") {
+	if strings.Join(paths, " ") != "=spec.values.a.b.env[DB_PASSWORD] spec.values.a%2Eb.env[DB_PASSWORD]" || strings.Contains(out, "s3cr3t") {
 		t.Fatalf("withheld %v\n%s", paths, out)
 	}
 	for how, fill := range map[string]func(body map[string]any, paths []string) error{
 		"from a file": func(body map[string]any, paths []string) error {
-			return setSlots(body, paths, map[string]string{paths[0]: "s3cr3t-dotted", paths[1]: "s3cr3t-nested"})
+			return setSlots(body, paths, map[string]string{"spec.values.a%2Eb.env[DB_PASSWORD]": "s3cr3t-dotted", "=spec.values.a.b.env[DB_PASSWORD]": "s3cr3t-nested"})
 		},
 		"from its cluster": func(body map[string]any, paths []string) error { return fillFrom(deepCopy(original), body, paths) },
 	} {
@@ -324,6 +324,30 @@ func TestADottedKeyBesideTheSameKeysNested(t *testing.T) {
 				t.Errorf("%s withheld by the rule before, %s: %v\n got %v\nwant %v", which, how, err, body["spec"], live["spec"])
 			}
 		}
+	}
+	// This build's snapshot where one of the two was empty in the cluster
+	// and never withheld: the path is marked as the slot's own, and is
+	// filled though both are empty in the snapshot. Either may be the one.
+	for which, live := range map[string]map[string]any{"the nested one": make("", "s3cr3t"), "the dotted one": make("s3cr3t", "")} {
+		snap := deepCopy(live)
+		paths, _ := withheldOf("helm.toolkit.fluxcd.io", "helmreleases", snap)
+		if len(paths) != 1 || (which == "the nested one") != strings.HasPrefix(paths[0], "=") {
+			t.Errorf("%s withheld beside an empty twin: listed as %v", which, paths)
+		}
+		for how, fill := range map[string]func(body map[string]any, paths []string) error{
+			"from a file": func(body map[string]any, paths []string) error {
+				return setSlots(body, paths, map[string]string{paths[0]: "s3cr3t"})
+			},
+			"from its cluster": func(body map[string]any, paths []string) error { return fillFrom(deepCopy(live), body, paths) },
+		} {
+			body := deepCopy(snap)
+			if err := fill(body, withheldEnv(body)); err != nil || !reflect.DeepEqual(body["spec"], live["spec"]) {
+				t.Errorf("%s withheld beside an empty twin, %s: %v\n got %v\nwant %v", which, how, err, body["spec"], live["spec"])
+			}
+		}
+	}
+	if got := WithheldDisplay("=data[API_KEY]"); got != "data/API_KEY" {
+		t.Errorf("a marked path is shown as %q", got)
 	}
 	// Both withheld by it, under one path written twice; and both empty in
 	// the snapshot with one path asked for.

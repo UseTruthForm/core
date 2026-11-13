@@ -216,15 +216,29 @@ func TestResolve(t *testing.T) {
 		"azurekv://onlyvault": "azurekv://<vault>/<secret>",
 		// Not names: refused before az is run, which on Windows is a
 		// script whose arguments pass through a shell.
-		`azurekv://kv/x"&echo zz5>marker&"`: "azurekv://kv/…: an Azure Key Vault reference names",
-		"azurekv://kv/--file=zz6":           "azurekv://kv/…: an Azure Key Vault reference names",
-		"azurekv://kv zz7/name":             "azurekv://…/name: an Azure Key Vault reference names",
-		"azurekv://kv/name/1|zz8":           "azurekv://kv/name/…: an Azure Key Vault reference names",
-		"exec:printf x --p=zz":              "only with --allow-exec",
-		"exec:TOKEN=zz1 printf x":           "only with --allow-exec",
-		"exec:printf\tx\t--p=zz2":           "only with --allow-exec",
-		"exec:printf x\n--p=zz3":            "only with --allow-exec",
-		"exec:printf;echo${IFS}zz4":         "only with --allow-exec",
+		`azurekv://kv/x"&echo zz5>marker&"`:        "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://kv/--file=zz6":                  "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://kv zz7/name":                    "azurekv://…/name: an Azure Key Vault reference names",
+		"azurekv://kv/name/1|zz8":                  "azurekv://kv/name/…: an Azure Key Vault reference names",
+		"azurekv://kv/-zz9":                        "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://kv/_zz10":                       "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://kv/.zz11":                       "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://kv/%zz12%":                      "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://kv/" + strings.Repeat("a", 128): "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://kv/a/b/zz13&x":                  "azurekv://kv/a/b/…: an Azure Key Vault reference is azurekv://<vault>",
+		// A 1Password reference likewise: op may be a script too.
+		`op://v/x"&echo zz14>marker&"/f`: "op://v/…/f: a 1Password reference is op://<vault>/<item>",
+		"op://v/%zz15%/f":                "op://v/…/f: a 1Password reference is",
+		"op://v/item":                    "op://v/item: a 1Password reference is",
+		"op://v/a/b/c/d":                 "op://v/a/b/c/d: a 1Password reference is",
+		"op://v/item/f?attribute=o&zz17": "op://v/item/f?…: a 1Password reference is",
+		"op://v/-zz18/f":                 "op://v/…/f: a 1Password reference is",
+		"op://v/it\tem zz19/f":           "op://v/…/f: a 1Password reference is",
+		"exec:printf x --p=zz":           "only with --allow-exec",
+		"exec:TOKEN=zz1 printf x":        "only with --allow-exec",
+		"exec:printf\tx\t--p=zz2":        "only with --allow-exec",
+		"exec:printf x\n--p=zz3":         "only with --allow-exec",
+		"exec:printf;echo${IFS}zz4":      "only with --allow-exec",
 	} {
 		_, err := r.Resolve(ctx, ref)
 		if err == nil || !strings.Contains(err.Error(), want) {
@@ -237,6 +251,36 @@ func TestResolve(t *testing.T) {
 	for _, c := range calls {
 		if strings.Contains(strings.Join(c, " "), "zz") {
 			t.Errorf("ran a command with what is not a name: %q", c)
+		}
+	}
+}
+
+// What a 1Password reference may name is what 1Password lets a name be,
+// and its IDs; nothing a shell would read.
+func TestOpReference(t *testing.T) {
+	for rest, want := range map[string]bool{
+		"vault/item/field":                       true,
+		"My Vault/an item/a section/field.name":  true,
+		"hfnjvi6aymbsnfc2xeeoheizda/abc_123/f":   true,
+		"v/item/one-time password?attribute=otp": true,
+		"v/key/private key?ssh-format=openssh":   true,
+		"v/item":                                 false,
+		"v/a/b/c/d":                              false,
+		"v//f":                                   false,
+		"v/item/f?attribute":                     false,
+		"v/item/f?attribute=a b":                 false,
+		"v/ leading/f":                           false,
+		"v/.hidden/f":                            false,
+		"v/it;em/f":                              false,
+		"v/it$(x)/f":                             false,
+		"v/it`x`/f":                              false,
+		"v/it'em/f":                              false,
+		"v/it!em/f":                              false,
+		"v/it^em/f":                              false,
+		"v/" + strings.Repeat("a", 256) + "/f":   false,
+	} {
+		if _, ok := opReference(rest); ok != want {
+			t.Errorf("opReference(%q) = %v, want %v", rest, ok, want)
 		}
 	}
 }

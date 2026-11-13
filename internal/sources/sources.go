@@ -310,7 +310,38 @@ var errNoAnswer = errors.New("gave no answer")
 
 // azureName is what Azure Key Vault lets a vault, a secret or a version
 // be called.
-var azureName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*$`)
+var azureName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,126}$`)
+
+// opName is what a vault, an item, a section or a field can be called in
+// a 1Password reference (anything else is given by its ID, which fits
+// too), and opQuery the question that may follow (?attribute=otp).
+var (
+	opName  = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9 ._-]{0,254}$`)
+	opQuery = regexp.MustCompile(`^[a-z-]{1,32}=[A-Za-z0-9_-]{1,64}$`)
+)
+
+// opReference checks what follows op:// and gives the reference as a
+// message may show it: what in it is a name, and not what is not, which
+// may be a command.
+func opReference(rest string) (shown string, ok bool) {
+	path, query, asked := strings.Cut(rest, "?")
+	parts := strings.Split(path, "/")
+	ok = len(parts) == 3 || len(parts) == 4
+	for i, part := range parts {
+		if !opName.MatchString(part) {
+			parts[i], ok = "…", false
+		}
+	}
+	shown = "op://" + strings.Join(parts, "/")
+	if asked {
+		if opQuery.MatchString(query) {
+			shown += "?" + query
+		} else {
+			shown, ok = shown+"?…", false
+		}
+	}
+	return shown, ok
+}
 
 // azureShown is a refused reference for a message: what in it is a name,
 // and not what is not, which may be a command.
@@ -350,6 +381,12 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 			return nil, fmt.Errorf("%s: %w", ref, err)
 		}
 	case "op":
+		// Checked before op is run, as a Key Vault reference is: where op
+		// is a script (a wrapper, a package manager's shim on Windows),
+		// what it is given passes through a shell.
+		if shown, ok := opReference(rest); !ok {
+			return nil, fmt.Errorf("%s: a 1Password reference is op://<vault>/<item>/[<section>/]<field>, each named with letters, digits, spaces, dots, dashes and underscores; give anything else by its ID", shown)
+		}
 		out, stderr, err := exe(ctx, "op", "read", "--no-newline", ref)
 		if err != nil {
 			return nil, failed(ref, "op", err, stderr)
@@ -358,7 +395,7 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 	case "azurekv":
 		parts := strings.Split(rest, "/")
 		if len(parts) < 2 || len(parts) > 3 || parts[0] == "" || parts[1] == "" {
-			return nil, fmt.Errorf("%s: an Azure Key Vault reference is azurekv://<vault>/<secret>[/<version>]", ref)
+			return nil, fmt.Errorf("%s: an Azure Key Vault reference is azurekv://<vault>/<secret>[/<version>]", azureShown(parts))
 		}
 		// A vault, a secret and a version are named with these and nothing
 		// else. Anything more is refused before az is run: on Windows az

@@ -107,7 +107,7 @@ func TestPlanSecretsCommand(t *testing.T) {
 	})
 	doc, _ := d["secrets"].(map[string]any)
 	problems, _ := doc["problems"].([]any)
-	if len(problems) != 1 || !strings.Contains(problems[0].(string), "shop/git: key username: env:TF_TEST_USER_UNSET") || doc["read"] != float64(1) || len(doc["notes"].([]any)) != 1 {
+	if len(problems) != 1 || !strings.Contains(problems[0].(string), "shop/git: key username: env:TF_TEST_USER_UNSET") || doc["read"] != float64(1) || len(doc["notes"].([]any)) != 2 {
 		t.Errorf("document: %v", d)
 	}
 	t.Setenv("TF_TEST_USER_UNSET", "now-set-user")
@@ -327,6 +327,29 @@ func TestPlanSecretsCheckOfAnIncompleteSnapshot(t *testing.T) {
 	if g, _ := d["gaps"].([]any); len(g) != 1 {
 		t.Errorf("gaps in --json: %v", d)
 	}
+	// Secrets left out for another reason than a failure are not read
+	// either; a type that is not Secrets is a note, and the check passes;
+	// a snapshot with no row for Secrets does not say.
+	for name, c := range map[string]struct {
+		coverage []snapshot.Coverage
+		code     int
+		want     string
+	}{
+		"left out by policy": {[]snapshot.Coverage{{Resource: "core/v1/secrets", Kind: "Secret", NotCaptured: "excluded by policy"}}, 2, "the capture did not read Secrets (excluded by policy)"},
+		"another type":       {[]snapshot.Coverage{{Resource: "core/v1/secrets", Kind: "Secret"}, {Resource: "apps/v1/deployments", Kind: "Deployment", NotCaptured: "list failed: timeout"}}, 0, "note       the capture could not read apps/v1/deployments"},
+		"no row for Secrets": {[]snapshot.Coverage{{Resource: "core/v1/configmaps", Kind: "ConfigMap"}}, 2, "has no row for Secrets"},
+		"no record at all":   {nil, 0, "does not record what its capture read"},
+	} {
+		d := filepath.Join(t.TempDir(), "c")
+		if err := (snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Coverage: c.coverage}).Write(d); err != nil {
+			t.Fatal(err)
+		}
+		code, stdout, _ := output(t, func() int { return planCmd([]string{"secrets", "--from", d, "--check", file}) })
+		if code != c.code || !strings.Contains(stdout, c.want) {
+			t.Errorf("%s: exit %d, want %d and %q:\n%s", name, code, c.code, c.want, stdout)
+		}
+	}
+
 	// The file to fill in is still written, with a warning beside it.
 	code, _, stderr := output(t, func() int { return planCmd([]string{"secrets", "--from", dir}) })
 	if code != 0 || !strings.Contains(stderr, "INCOMPLETE SNAPSHOT") {

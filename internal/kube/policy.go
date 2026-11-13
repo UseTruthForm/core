@@ -638,7 +638,13 @@ var (
 // with written another way: so that {"a.b": x} and {a: {b: y}} are two
 // paths, and a key is not taken for an index or for the mark of a number.
 func valuesPart(k string) string {
-	return strings.NewReplacer(".", "%2E", "#", "%23", "[", "%5B", "]", "%5D").Replace(pathPart(k))
+	k = strings.NewReplacer(".", "%2E", "#", "%23", "[", "%5B", "]", "%5D").Replace(pathPart(k))
+	// A key that begins as the mark of a slot's own path does would be
+	// read as one where it begins a path.
+	if strings.HasPrefix(k, ownMark) {
+		k = "%3D" + k[len(ownMark):]
+	}
+	return k
 }
 
 // walker finds the slots of free-form values. One walk reads an object's

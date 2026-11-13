@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -133,10 +134,14 @@ func TestRestoreFillsWithheldSettings(t *testing.T) {
 	}
 	// Read by a command, the message does not show the command: people
 	// put tokens in those.
-	byCommand := writeFile(t, t.TempDir(), "by-command.yaml", strings.Replace(settingsFile, "env:TF_SETTING_URL", "exec:cat "+binary+" # token=SUPERSECRETCMD", 1))
-	lastErr = nil
-	if code := restore(ctx, append(nowhere, "--secrets-from", byCommand, "--allow-exec")); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), "what was read is not text") || strings.Contains(lastErr.Error(), "SUPERSECRETCMD") || strings.Contains(lastErr.Error(), "cat ") {
-		t.Errorf("a value that is not text, read by a command: exit %d, %v", code, lastErr)
+	// Not on Windows: the command runs under cmd, which has no cat and
+	// reads "#" as an argument, so it fails before anything is read.
+	if runtime.GOOS != "windows" {
+		byCommand := writeFile(t, t.TempDir(), "by-command.yaml", strings.Replace(settingsFile, "env:TF_SETTING_URL", "exec:cat "+binary+" # token=SUPERSECRETCMD", 1))
+		lastErr = nil
+		if code := restore(ctx, append(nowhere, "--secrets-from", byCommand, "--allow-exec")); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), "what was read is not text") || strings.Contains(lastErr.Error(), "SUPERSECRETCMD") || strings.Contains(lastErr.Error(), "cat ") {
+			t.Errorf("a value that is not text, read by a command: exit %d, %v", code, lastErr)
+		}
 	}
 	// A check that reads the values refuses it as the restore does.
 	lastErr = nil

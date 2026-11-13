@@ -369,3 +369,69 @@ func TestADottedKeyBesideTheSameKeysNested(t *testing.T) {
 		t.Errorf("a slot the source does not have: %v", err)
 	}
 }
+
+// The mark of a slot's own path is a capture's word only: a key that
+// begins as the mark does is written another way, so it cannot be read
+// as one, and a mark where a capture writes none is refused. Either
+// would otherwise put a value where another belongs, and say it worked.
+func TestTheMarkOfAnOwnPathIsNotForged(t *testing.T) {
+	env := func(value string) map[string]any {
+		return map[string]any{"env": []any{map[string]any{"name": "DB_PASSWORD", "value": value}}}
+	}
+	thing := func(rest map[string]any) map[string]any {
+		o := map[string]any{"apiVersion": "example.com/v1", "kind": "Thing", "metadata": map[string]any{"name": "t", "namespace": "x"}}
+		for k, v := range rest {
+			o[k] = v
+		}
+		return o
+	}
+	// A root key that begins with the mark, beside the key without it
+	// holding nothing.
+	o := thing(map[string]any{"=foo": env("s3cr3t-EQ"), "foo": env("")})
+	original := deepCopy(o)
+	paths, _ := withheldOf("example.com", "things", o)
+	if strings.Join(paths, " ") != "%3Dfoo.env[DB_PASSWORD]" {
+		t.Fatalf("withheld %v", paths)
+	}
+	if err := setSlots(o, paths, map[string]string{paths[0]: "s3cr3t-EQ"}); err != nil || !reflect.DeepEqual(o["=foo"], original["=foo"]) || !reflect.DeepEqual(o["foo"], original["foo"]) {
+		t.Errorf("filled from a file: %v\n%v", err, o)
+	}
+	o = thing(map[string]any{"=foo": env("s3cr3t-EQ"), "foo": env("")})
+	paths, _ = withheldOf("example.com", "things", o)
+	if err := fillFrom(deepCopy(original), o, paths); err != nil || !reflect.DeepEqual(o["=foo"], original["=foo"]) || !reflect.DeepEqual(o["foo"], original["foo"]) {
+		t.Errorf("filled from its cluster: %v\n%v", err, o)
+	}
+	// The same key deeper is written the same way.
+	deep := thing(map[string]any{"spec": map[string]any{"=foo": env("s3cr3t-EQ")}})
+	if paths, _ := withheldOf("example.com", "things", deep); strings.Join(paths, " ") != "spec.%3Dfoo.env[DB_PASSWORD]" {
+		t.Errorf("deeper: withheld %v", paths)
+	}
+	// A snapshot that lists the path as a version before this wrote it
+	// (the key as it is) is refused, with the twin there or not: never
+	// filled into the twin.
+	for _, rest := range []map[string]any{
+		{"=foo": env(""), "foo": env("")},
+		{"=foo": env("")},
+	} {
+		body := thing(rest)
+		was := deepCopy(body)
+		err := setSlots(body, []string{"=foo.env[DB_PASSWORD]"}, map[string]string{"=foo.env[DB_PASSWORD]": "s3cr3t-EQ"})
+		if err == nil || !reflect.DeepEqual(body, was) {
+			t.Errorf("the path as it was written before: %v\n%v", err, body)
+		}
+	}
+	// A mark added by hand: where no other slot had the path, and where
+	// one did but the marked slot still holds its value.
+	alone := thing(map[string]any{"spec": map[string]any{"values": map[string]any{"a": map[string]any{"b": env("")}}}})
+	if err := setSlots(alone, []string{"=spec.values.a.b.env[DB_PASSWORD]"}, map[string]string{"=spec.values.a.b.env[DB_PASSWORD]": "x"}); err == nil || !strings.Contains(err.Error(), "a capture does not write that") {
+		t.Errorf("a mark with nothing beside it: %v", err)
+	}
+	beside := thing(map[string]any{"spec": map[string]any{"values": map[string]any{"a.b": env(""), "a": map[string]any{"b": env("kept")}}}})
+	was := deepCopy(beside)
+	if err := setSlots(beside, []string{"=spec.values.a.b.env[DB_PASSWORD]"}, map[string]string{"=spec.values.a.b.env[DB_PASSWORD]": "x"}); err == nil || !strings.Contains(err.Error(), "holds a value there") || !reflect.DeepEqual(beside, was) {
+		t.Errorf("a mark on a slot that holds its value: %v", err)
+	}
+	if err := setSlots(thing(nil), []string{"=spec.nothing.env[X]"}, map[string]string{"=spec.nothing.env[X]": "x"}); err == nil || !strings.Contains(err.Error(), "has no slot") {
+		t.Errorf("a mark on no slot: %v", err)
+	}
+}

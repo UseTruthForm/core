@@ -648,7 +648,13 @@ settings:
 A place that held a number has `#number` at its end, and what is
 supplied for it has to be one. A place with `=` before it is written so
 where a key with a dot in it sits beside the same keys nested: copy it
-as `plan secrets --out` wrote it. A ConfigMap's `binaryData` key is
+as `plan secrets --out` wrote it. The mark is followed only where a
+capture writes it; added by hand anywhere else, the restore refuses it.
+For such an object two things change with this version, both refused
+aloud and never filled wrongly: a snapshot of it taken now is not
+restored by an earlier version, and a sources file written against an
+earlier snapshot of it no longer fits one taken now (write its key again
+from `plan secrets --out`). A ConfigMap's `binaryData` key is
 supplied as it is stored, in base64. A document withheld whole (see what
 is withheld, above) is one place, and the reference gives all of it: a
 `file:` reference suits it.

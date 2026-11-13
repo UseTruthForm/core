@@ -338,7 +338,7 @@ func TestPlanSecretsCheckOfAnIncompleteSnapshot(t *testing.T) {
 		"left out by policy": {[]snapshot.Coverage{{Resource: "core/v1/secrets", Kind: "Secret", NotCaptured: "excluded by policy"}}, 2, "the capture did not read Secrets (excluded by policy)"},
 		"another type":       {[]snapshot.Coverage{{Resource: "core/v1/secrets", Kind: "Secret"}, {Resource: "apps/v1/deployments", Kind: "Deployment", NotCaptured: "list failed: timeout"}}, 0, "note       the capture could not read apps/v1/deployments"},
 		"no row for Secrets": {[]snapshot.Coverage{{Resource: "core/v1/configmaps", Kind: "ConfigMap"}}, 2, "has no row for Secrets"},
-		"no record at all":   {nil, 0, "does not record what its capture read"},
+		"no record at all":   {nil, 0, "the snapshot does not record whether its capture read every Secret"},
 	} {
 		d := filepath.Join(t.TempDir(), "c")
 		if err := (snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Coverage: c.coverage}).Write(d); err != nil {
@@ -361,5 +361,21 @@ func TestPlanSecretsCheckOfAnIncompleteSnapshot(t *testing.T) {
 	d = asJSON(t, func() { planCmd([]string{"secrets", "--from", whole, "--check", file}) })
 	if g, ok := d["gaps"].([]any); !ok || len(g) != 0 {
 		t.Errorf("gaps of a whole snapshot: %v", d["gaps"])
+	}
+}
+
+// One Secret listed and not read is a problem as the type would be.
+func TestPlanSecretsCheckOfOneUnreadSecret(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cluster")
+	s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default",
+		Coverage: []snapshot.Coverage{{Resource: "core/v1/secrets", Kind: "Secret", Captured: 1}},
+		Skips:    []snapshot.Skip{{Resource: "core/v1/secrets", Namespace: "shop", Name: "shop/odd", Reason: "listed but could not be read: forbidden"}}}
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	file := writeFile(t, t.TempDir(), "secrets.yaml", "secrets: []\n")
+	code, stdout, _ := output(t, func() int { return planCmd([]string{"secrets", "--from", dir, "--check", file}) })
+	if code != 2 || !strings.Contains(stdout, "NO SOURCE  the capture could not read core/v1/secrets shop/odd") {
+		t.Errorf("exit %d\n%s", code, stdout)
 	}
 }

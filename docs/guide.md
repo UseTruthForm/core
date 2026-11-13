@@ -533,8 +533,9 @@ restore takes one Secret's values from one place.
 with no entry, a key with no reference, a key the Secret does not have.
 Run after each capture, it says so the day someone adds a Secret by hand.
 It also exits 2 for a snapshot whose capture did not read Secrets (a
-Secret to supply may be among them; `.gaps` with `--json`), and notes
-any other type it could not read.
+Secret to supply may be among them), and notes any other type it could
+not read; with `--json`, `.gaps` lists what the capture failed to read
+and `.secrets.problems` says which of it bears on Secrets.
 It reads only the snapshot and the file. `--resolve` also reads every
 value from its source and prints none of them: it proves the sign-ins and
 the items are there before the day they are needed.

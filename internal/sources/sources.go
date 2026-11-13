@@ -125,7 +125,13 @@ func Read(path string) (File, error) {
 			if ref == "" {
 				continue
 			}
-			if _, _, err := scheme(ref); err != nil {
+			kind, rest, err := scheme(ref)
+			if err == nil {
+				// Its shape too, here and not only when it is read: a check
+				// that reads nothing still says a reference is no good.
+				err = shape(kind, rest)
+			}
+			if err != nil {
 				return f, fmt.Errorf("%s: %s, key %s: %w", path, e.Secret, key, err)
 			}
 		}
@@ -320,6 +326,30 @@ var (
 	opQuery = regexp.MustCompile(`^[a-z-]{1,32}=[A-Za-z0-9_-]{1,64}$`)
 )
 
+// shape checks a reference that is given to a CLI, before any is run:
+// where the CLI is a script (az on Windows, op behind a wrapper), what it
+// is given passes through a shell. The error shows the reference with
+// what is not a name left out, which may be a command.
+func shape(kind, rest string) error {
+	switch kind {
+	case "op":
+		if shown, ok := opReference(rest); !ok {
+			return fmt.Errorf("%s: a 1Password reference is op://<vault>/<item>/[<section>/]<field>, each named with letters, digits, spaces, dots, dashes and underscores (and no dash after a space); give anything else by its ID", shown)
+		}
+	case "azurekv":
+		parts := strings.Split(rest, "/")
+		if len(parts) < 2 || len(parts) > 3 || parts[0] == "" || parts[1] == "" {
+			return fmt.Errorf("%s: an Azure Key Vault reference is azurekv://<vault>/<secret>[/<version>]", azureShown(parts))
+		}
+		for _, part := range parts {
+			if part != "" && !azureName.MatchString(part) {
+				return fmt.Errorf("%s: an Azure Key Vault reference names a vault, a secret and a version with letters, digits and dashes", azureShown(parts))
+			}
+		}
+	}
+	return nil
+}
+
 // opReference checks what follows op:// and gives the reference as a
 // message may show it: what in it is a name, and not what is not, which
 // may be a command.
@@ -328,7 +358,9 @@ func opReference(rest string) (shown string, ok bool) {
 	parts := strings.Split(path, "/")
 	ok = len(parts) == 3 || len(parts) == 4
 	for i, part := range parts {
-		if !opName.MatchString(part) {
+		// A dash after a space would read as an option to a script that
+		// splits what it is given on spaces.
+		if !opName.MatchString(part) || strings.Contains(part, " -") {
 			parts[i], ok = "…", false
 		}
 	}
@@ -384,8 +416,8 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 		// Checked before op is run, as a Key Vault reference is: where op
 		// is a script (a wrapper, a package manager's shim on Windows),
 		// what it is given passes through a shell.
-		if shown, ok := opReference(rest); !ok {
-			return nil, fmt.Errorf("%s: a 1Password reference is op://<vault>/<item>/[<section>/]<field>, each named with letters, digits, spaces, dots, dashes and underscores; give anything else by its ID", shown)
+		if err := shape(kind, rest); err != nil {
+			return nil, err
 		}
 		out, stderr, err := exe(ctx, "op", "read", "--no-newline", ref)
 		if err != nil {
@@ -393,18 +425,10 @@ func (r *Resolver) Resolve(ctx context.Context, ref string) ([]byte, error) {
 		}
 		v = out
 	case "azurekv":
+		if err := shape(kind, rest); err != nil {
+			return nil, err
+		}
 		parts := strings.Split(rest, "/")
-		if len(parts) < 2 || len(parts) > 3 || parts[0] == "" || parts[1] == "" {
-			return nil, fmt.Errorf("%s: an Azure Key Vault reference is azurekv://<vault>/<secret>[/<version>]", azureShown(parts))
-		}
-		// A vault, a secret and a version are named with these and nothing
-		// else. Anything more is refused before az is run: on Windows az
-		// is a script, and what it is given passes through a shell.
-		for _, part := range parts {
-			if part != "" && !azureName.MatchString(part) {
-				return nil, fmt.Errorf("%s: an Azure Key Vault reference names a vault, a secret and a version with letters, digits and dashes", azureShown(parts))
-			}
-		}
 		args := []string{"keyvault", "secret", "show", "--vault-name", parts[0], "--name", parts[1], "--query", "value", "--output", "json"}
 		if len(parts) == 3 && parts[2] != "" {
 			args = append(args, "--version", parts[2])

@@ -274,6 +274,9 @@ func TestOpReference(t *testing.T) {
 		"v/ leading/f":                           false,
 		"v/.hidden/f":                            false,
 		"v/it;em/f":                              false,
+		"v/it&em/f":                              false,
+		"v/x --account other/f":                  false,
+		"v/a - b/f":                              false,
 		"v/it$(x)/f":                             false,
 		"v/it`x`/f":                              false,
 		"v/it'em/f":                              false,
@@ -283,6 +286,25 @@ func TestOpReference(t *testing.T) {
 	} {
 		if _, ok := opReference(rest); ok != want {
 			t.Errorf("opReference(%q) = %v, want %v", rest, ok, want)
+		}
+	}
+}
+
+// A reference of the wrong shape is refused when the file is read, by a
+// check that reads no value too.
+func TestReadRefusesAReferenceOfTheWrongShape(t *testing.T) {
+	for ref, want := range map[string]string{
+		"op://vault/%PATH%/f": "op://vault/…/f: a 1Password reference is",
+		"op://vault/item":     "a 1Password reference is",
+		"azurekv://kv/a&b":    "azurekv://kv/…: an Azure Key Vault reference names",
+		"azurekv://onlyvault": "an Azure Key Vault reference is azurekv://<vault>",
+	} {
+		path := filepath.Join(t.TempDir(), "s.yaml")
+		if err := os.WriteFile(path, []byte("secrets:\n  - secret: shop/git\n    from: {password: \""+ref+"\"}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Read(path); err == nil || !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), "PATH") || strings.Contains(err.Error(), "a&b") {
+			t.Errorf("%s: %v, want %q", ref, err, want)
 		}
 	}
 }

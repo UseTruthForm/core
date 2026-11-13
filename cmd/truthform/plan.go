@@ -246,6 +246,15 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 	w("## 5. Restore\n\n")
 	w("`truthform restore --context <kube-context> --from <this snapshot> --secrets-from <sources file>`, once steps 1 to 4 are in place. With the sources file the restore reads step 3's values from where the file says, and leaves to their makers the Secrets a store or a controller makes.\n\n")
 
+	if len(p.Images) > 0 {
+		w("The workloads pull their images from these, and the rebuilt cluster has to be allowed to pull from each. If a registry is gone, or the rebuild is to stand without it, put the images in another (built again, or copied) and name it with a start in the `--rename` file. An image with no digest is whatever was last pushed under its tag: what the rebuild runs is then not known to be what ran.\n\n")
+		w("| Registry | Images | With no digest |\n|---|---:|---:|\n")
+		for _, r := range p.Images {
+			w("| %s | %d | %d |\n", code(r.Registry), r.Images, r.Unpinned)
+		}
+		w("\n")
+	}
+
 	w("## 6. Names to point at the rebuilt cluster: %d%s\n\n", len(p.Hosts), seen)
 	if len(p.Hosts) == 0 {
 		none("No route in the snapshot names a host.")

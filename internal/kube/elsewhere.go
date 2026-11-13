@@ -427,10 +427,27 @@ type RenameReport struct {
 	// Unreached are objects that use a store in a way a rename does not
 	// reach, each with why.
 	Unreached []string
+	// Images are the image references that name another registry now,
+	// and ImagesKept those a start names and leaves as they are. An image
+	// no start fits is pulled from where the source pulls it, which is
+	// right for most (a public image, a registry both use): ImagesLeft
+	// counts those by registry, to be read and not refused.
+	Images, ImagesKept []StoreRef
+	ImagesLeft         []ImagesLeft
+}
+
+// ImagesLeft is a registry whose images no start fits, and how many
+// references name it.
+type ImagesLeft struct {
+	Registry   string `json:"registry"`
+	References int    `json:"references"`
 }
 
 // RenameStores rewrites where the snapshot's objects read their Secrets
-// from. names maps the start of a reference to what replaces it ("vaults/
+// from, and where its workloads pull their images from: a start is tried
+// on both ("registry.example/team/" to "other.example/team/"), as the
+// reference is written (an image with no registry written is not one
+// that starts with "docker.io/"). names maps the start of a reference to what replaces it ("vaults/
 // apps/" to "vaults/apps-test/"; a whole reference is its own start), and
 // the longest start that fits a reference is the one applied; a start replaced by itself
 // says a reference is the same in both environments. Only the
@@ -462,6 +479,7 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 		return starts[i] < starts[j]
 	})
 	fits, loose := map[string]bool{}, map[string]bool{}
+	left := map[string]int{}
 	out := s
 	out.Objects = make([]snapshot.Object, len(s.Objects))
 	for i, o := range s.Objects {
@@ -525,10 +543,41 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 				}
 			}
 		}
+		eachImage(body, "", func(field, v string) string {
+			to, applied := v, false
+			for _, st := range starts {
+				if !strings.HasPrefix(v, st) {
+					continue
+				}
+				fits[st] = true
+				if names[st] == st && v != st && !underAPath(st) {
+					loose[st] = true
+					continue
+				}
+				if !applied {
+					to, applied = names[st]+strings.TrimPrefix(v, st), true
+				}
+			}
+			ref := StoreRef{Object: who, Field: strings.TrimPrefix(field, "."), From: v, To: to}
+			switch {
+			case !applied:
+				left[RegistryOf(v)]++
+			case to == v:
+				rep.ImagesKept = append(rep.ImagesKept, ref)
+			default:
+				rep.Images = append(rep.Images, ref)
+				n++
+			}
+			return to
+		})
 		if n > 0 {
 			out.Objects[i].Body = body
 		}
 	}
+	for r, c := range left {
+		rep.ImagesLeft = append(rep.ImagesLeft, ImagesLeft{Registry: r, References: c})
+	}
+	sort.Slice(rep.ImagesLeft, func(i, j int) bool { return rep.ImagesLeft[i].Registry < rep.ImagesLeft[j].Registry })
 	// The Vault Secrets Operator's objects read through a VaultConnection,
 	// or, with none, through the one its own installation sets: that one
 	// is no object of the snapshot, and no start can name it.
@@ -551,7 +600,7 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 		return s, RenameReport{}, fmt.Errorf("a start replaced by itself says a reference is the same in both environments, and has to be a whole reference or a path that ends with a slash: %s", strings.Join(wide, ", "))
 	}
 	if len(none) > 0 {
-		return s, RenameReport{}, fmt.Errorf("no store reference in the snapshot starts with: %s", strings.Join(none, ", "))
+		return s, RenameReport{}, fmt.Errorf("no store reference and no image in the snapshot starts with: %s", strings.Join(none, ", "))
 	}
 	return out, rep, nil
 }

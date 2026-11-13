@@ -38,6 +38,9 @@ type ScopeEntry struct {
 	Releases []string `json:"releases,omitempty"`
 	// Labels select objects that carry every one of them.
 	Labels map[string]string `json:"labels,omitempty"`
+	// Hold brings what this entry chooses with nothing running: workloads
+	// at zero replicas, autoscalers paused, CronJobs suspended.
+	Hold bool `json:"hold,omitempty"`
 }
 
 // ScopeReport is what a scope did to a snapshot.
@@ -57,6 +60,13 @@ type ScopeReport struct {
 	// Jobs are the Jobs left out because a restored Job runs again, those
 	// of a release that is brought among them.
 	Jobs []string `json:"jobsLeftOut"`
+	// Held are the objects brought with nothing running, each with how.
+	Held []ScopeHeld `json:"held"`
+}
+
+type ScopeHeld struct {
+	Object string `json:"object"` // Kind namespace/name
+	How    string `json:"how"`
 }
 
 type ScopedRelease struct {
@@ -151,11 +161,17 @@ func secretMakers(s snapshot.Snapshot) map[secretKey]int {
 //
 // Two entries that fit one namespace choose from it together.
 //
+// What an entry with "hold: true" chooses is brought with nothing
+// running (see held). Hold wins: a release two entries choose is held if
+// either holds, and what a namespace brings along with no release of its
+// own is held if any entry that fits the namespace holds. An object that
+// runs something a hold cannot stop is an error.
+//
 // A pattern that fits no namespace, and a release or a label that fits
 // nothing in the namespaces of its entry, is an error: a mistyped one
 // would otherwise leave out what it was written to bring.
 func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, error) {
-	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}}
+	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}}
 	if sc.Narrow == nil && !sc.Jobs {
 		return s, rep, fmt.Errorf("it narrows nothing: give at least one entry under narrow")
 	}
@@ -224,14 +240,24 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 	for i := range sc.Narrow {
 		releaseUsed[i] = map[string]bool{}
 	}
-	labelled := func(o snapshot.Object, es []int) bool {
-		yes := false
+	// labelled says whether an entry's labels choose the object, and
+	// whether one that does holds.
+	labelled := func(o snapshot.Object, es []int) (yes, hold bool) {
 		for _, i := range es {
 			if hasLabels(o, sc.Narrow[i].Labels) {
 				labelsUsed[i], yes = true, true
+				hold = hold || sc.Narrow[i].Hold
 			}
 		}
-		return yes
+		return yes, hold
+	}
+	holds := func(es []int) bool {
+		for _, i := range es {
+			if sc.Narrow[i].Hold {
+				return true
+			}
+		}
+		return false
 	}
 
 	const (
@@ -246,6 +272,8 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 	rel := make([]relKey, len(s.Objects))
 	relObjects := map[relKey]int{}
 	relChosen := map[relKey]bool{}
+	relHeld := map[relKey]bool{}
+	holdIt := make([]bool, len(s.Objects))
 	for i, o := range s.Objects {
 		if o.Kind() == "Namespace" && o.APIVersion() == "v1" {
 			continue // goes as its namespace does, below
@@ -259,17 +287,21 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			for _, e := range narrowed[rns] {
 				if fits(sc.Narrow[e].Releases, rname, releaseUsed[e]) {
 					relChosen[k] = true
+					relHeld[k] = relHeld[k] || sc.Narrow[e].Hold
 				}
 			}
-			if labelled(o, narrowed[rns]) {
+			if yes, hold := labelled(o, narrowed[rns]); yes {
 				relChosen[k] = true
+				relHeld[k] = relHeld[k] || hold
 			}
 		case o.Namespace() != "" && narrowed[o.Namespace()] != nil:
 			// Of no release, or of one installed in a namespace the scope
 			// does not narrow: it is here, and goes as here goes.
 			state[i] = follows
-			if labelled(o, narrowed[o.Namespace()]) {
+			holdIt[i] = holds(narrowed[o.Namespace()])
+			if yes, hold := labelled(o, narrowed[o.Namespace()]); yes {
 				state[i] = brought
+				holdIt[i] = hold
 			}
 		}
 	}
@@ -288,6 +320,7 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			state[i] = left
 			if relChosen[rel[i]] {
 				state[i] = brought
+				holdIt[i] = relHeld[rel[i]]
 			}
 		}
 	}
@@ -327,6 +360,7 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 
 	out := s
 	out.Objects = nil
+	var cannot []string
 	for i, o := range s.Objects {
 		keep := true
 		switch {
@@ -350,9 +384,25 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			if o.Kind() != "Namespace" || narrowed[o.Name()] != nil {
 				rep.Kept++
 			}
+			if holdIt[i] {
+				ho, how, why := held(o)
+				who := o.Kind() + " " + o.Namespace() + "/" + o.Name()
+				if why != "" {
+					cannot = append(cannot, who+": "+why)
+				}
+				if how != "" {
+					rep.Held = append(rep.Held, ScopeHeld{Object: who, How: how})
+				}
+				o = ho
+			}
 			out.Objects = append(out.Objects, o)
 		}
 	}
+	if len(cannot) > 0 {
+		sort.Strings(cannot)
+		return s, rep, fmt.Errorf("these are to be held, and would run all the same; leave each out (--leave-out), or bring its release without the hold: %s", strings.Join(cannot, "; "))
+	}
+	sort.Slice(rep.Held, func(i, j int) bool { return rep.Held[i].Object < rep.Held[j].Object })
 	// What the capture left to a GitOps source in a namespace the scope
 	// leaves out whole is not this restore's to plan for.
 	out.Skips = nil
@@ -410,6 +460,8 @@ func ScopeDraft(s snapshot.Snapshot) []byte {
 	b.WriteString("# A namespace not listed here is restored whole. One listed with no releases left\n")
 	b.WriteString("# is left out whole. Names may be patterns (\"team-*\"). Jobs are left out with any\n")
 	b.WriteString("# scope, since a Job restored runs again: add \"jobs: true\" to bring them.\n")
+	b.WriteString("# \"hold: true\" on an entry brings its releases with nothing running (zero\n")
+	b.WriteString("# replicas, autoscalers paused): split an entry in two to hold some and run others.\n")
 	if len(byNS) == 0 {
 		b.WriteString("# The snapshot has nothing a Helm release made, so there is nothing listed to cut\n")
 		b.WriteString("# down: narrow by labels instead, as\n#   - namespaces: [shop]\n#     labels: {app.kubernetes.io/part-of: checkout}\n")

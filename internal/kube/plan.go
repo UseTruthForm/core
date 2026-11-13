@@ -43,6 +43,10 @@ type Plan struct {
 	StoreSecrets int `json:"storeSecrets"`
 	// Hosts are the names routes answer to.
 	Hosts []string `json:"hosts"`
+	// Images are the registries the workloads pull from: the rebuilt
+	// cluster has to be allowed to pull from each, or the images have to
+	// be put somewhere it can (restore --rename names the new place).
+	Images []PlanImages `json:"images"`
 }
 
 type PlanSource struct {
@@ -465,6 +469,7 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 		p.Hosts = append(p.Hosts, h)
 	}
 	sort.Strings(p.Hosts)
+	p.Images = ImagesOf(s)
 	return p
 }
 

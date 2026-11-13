@@ -208,6 +208,7 @@ func TestRebuildPlan(t *testing.T) {
 		StoreSecrets: 8,
 		Origins:      []string{},
 		Hosts:        []string{"gw.example.com", "old.example.com", "quoted.example.com", "shop.example.com", "www.example.com"},
+		Images:       []PlanImages{},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("plan:\n got %+v\nwant %+v", got, want)

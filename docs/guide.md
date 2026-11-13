@@ -633,6 +633,42 @@ a mistyped `--leave-out` is.
 is brought among them: a Job restored runs again. `jobs: true` in the
 file brings them.
 
+**`hold: true` on an entry brings what it chooses with nothing
+running.** A drill beside the source restores workloads that, started
+with the source's settings, would do the source's work a second time:
+take its messages, call what it calls. Held, they are there to be read,
+compared and started one at a time:
+
+```yaml
+narrow:
+  - namespaces: [shop]
+    releases: [api]            # runs
+  - namespaces: [team-*]
+    releases: [search, billing]
+    hold: true                 # restored, not running
+```
+
+| Object | Held as |
+|---|---|
+| `Deployment`, `StatefulSet`, `ReplicaSet`, `ReplicationController`; another API's workload with a pod template and `spec.replicas` (an Argo `Rollout`) | zero replicas |
+| `DaemonSet` | a node selector no node has (`truthform.org/held`) |
+| `CronJob`, and a `Job` brought with `jobs: true` | suspended |
+| KEDA `ScaledObject` | `autoscaling.keda.sh/paused-replicas: "0"` |
+| KEDA `ScaledJob` | `autoscaling.keda.sh/paused: "true"` |
+| `HorizontalPodAutoscaler` | as it is: it stops while what it scales is at zero |
+
+Hold wins: a release two entries choose is held if either holds, and what
+a namespace brings along with no release of its own is held if any entry
+that fits the namespace holds. What a hold cannot stop is refused with
+nothing restored, by name: a `Pod`, and another API's workload that does
+not count its pods. Restore and diff list what is held (`scope.held` with
+`--json`); a diff given the same file expects it held. **Restoring again
+with the hold taken out of the file starts it.** A hold is of the objects
+in the snapshot: what a GitOps source or an operator makes from its own
+object (a chart's Deployment, a database operator's pods) is not held,
+and with no pod made, a held workload does not show that its image can
+be pulled.
+
 `plan scope --out` writes a file that lists every namespace a release
 was installed in and each release, with what it is made of: as written
 it brings everything but Jobs, and you delete what a drill is not to
@@ -730,6 +766,36 @@ thing, and a start given twice is refused.
 vaults/apps/items/: vaults/apps-test/items/
 https://kv-dev.vault.azure.net: https://kv-test.vault.azure.net
 ```
+
+**Images.** The starts are tried on image references too: every
+container, init container and image volume of a pod spec, wherever it is
+(a Deployment, a CronJob, a KEDA `ScaledJob`, another API's workload).
+There are two ways to rebuild, and the rename file is the difference:
+
+- **The registry the source pulls from is still there** (the quick way,
+  and what a disaster usually allows): name no start for it. The rebuilt
+  cluster has to be allowed to pull from it, and nothing else changes.
+- **A registry of its own** (a rebuild that takes nothing of the source
+  for granted): put the images there, built again or copied, and give
+  the old registry a start.
+
+```yaml
+registry.example.io/shop/: drill.example.io/shop/
+```
+
+A start is read against the reference as it is written: `nginx:1.27`
+does not start with `docker.io/`. The rename lists every image it
+changed, and counts by registry those no start fits, which are pulled
+from where the source pulls them (`store_references.images` with
+`--json`: `changed`, `kept`, `left`). An image no start fits is never a
+reason to refuse: most are meant to stay. `plan rebuild` lists the
+registries a snapshot pulls from, and how many images have no digest: a
+tag is whatever was pushed to it last, so a rebuild from tags runs what
+is there now, which may not be what ran. An image named in a chart's
+values or an operator's own object is not seen. Giving `--rename` at all
+still means every secret store needs a start (above), so a file written
+for images names the stores too, each replaced by itself if it is the
+same.
 
 An entry or a start that names nothing in the snapshot is refused, as is
 a rename file with nothing in it, with nothing restored: a mistyped one would otherwise restore what it was

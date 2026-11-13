@@ -91,9 +91,11 @@ GitOps starts is captured, since nothing else recreates it: the Flux
 Kustomization that applies itself (the one `flux bootstrap` makes) with
 the repository object it reads from, and an Argo CD application that
 manages itself. That is the repository, branch and path the cluster was
-built from. The credential to read it is a Secret, named and never held; a
-password written into the repository's URL is withheld like any other
-(and so is one in an Argo CD application's Helm parameters). One of these
+built from. The credential to read it is a Secret, named and never held.
+One with a credential written into it (in the repository's URL, or an
+Argo CD application's Helm parameters) is not captured: it is left to its
+source as it was before, the reason says so, and the plan then says that
+where the sources are read from is not in the snapshot. One of these
 in a system namespace is left out with the namespace, unless
 `--include-system` is given.
 
@@ -109,22 +111,12 @@ What a snapshot does not hold, by design:
   same way: a value named like one (`*_PASSWORD`, `PGPASSWORD`,
   `*_TOKEN`, `*_SECRET`, `API_KEY`, `*_KEY`, `*_DSN`) in any `env` list
   (pod templates, Argo and Tekton steps, a HelmRelease's `values`) or as
-  a ConfigMap key, and any value that is a URL that signs in, wherever
-  in the value it is: with a password, with a token as its name
-  (`https://<token>@host`), or with one as a query parameter (`?token=`).
-  A short name with no password is the account (`ssh://git@host`,
-  `https://org@host`) and is kept. An `Authorization` value (`Bearer …`)
-  is withheld too.
-
-  An Argo CD application's parameters are read as variables are. The
-  rest of what a GitOps source installs with (Helm values) is kept as it
-  is, beyond the variables in it.
+  a ConfigMap key, and any such value that is a URL with a password in it.
   It is named in the snapshot and listed in REPORT.md as a finding: move it
   into a Secret. A restore reads it from the source with
   `--secrets-from-context`. Not caught: a credential passed as a command
-  argument, inside a config file a ConfigMap holds, in Helm values
-  outside an `env` list, or a token short enough to read as an account's
-  name in a URL. Because both sides are withheld, a diff does not
+  argument, inside a config file a ConfigMap holds, or in Helm values
+  outside an `env` list. Because both sides are withheld, a diff does not
   show a rotated credential, and a snapshot taken before TruthForm withheld
   these values still holds them in its git history;
 - **what the platform made itself**: default VPCs and their subnets,

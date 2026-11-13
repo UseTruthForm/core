@@ -118,8 +118,9 @@ listed() { # <what> <op arguments...>: a JSON list, or the end
   jq -e 'type == "array"' >/dev/null 2>&1 <<<"$out" || die "op's list of $what does not read as a list: this script does not know this version of op"
   printf '%s' "$out"
 }
-op whoami >/dev/null || die "not signed in to 1Password: run 'op signin' first"
-hint="One is made by a person signed in (op signin) who may manage them; a service account or a Connect token cannot"
+# Not "op whoami": signed in through the 1Password app, it says "not signed
+# in" where every other command works. The first list is the test.
+hint="Sign in first (op signin, or the 1Password app's CLI integration). One is made by a person who may manage them; a service account or a Connect token cannot"
 servers_before=$(listed "Connect servers" connect server list)
 hint=""
 if jq -e --arg n "$server" 'any(.[]; (.name // "" | ascii_downcase) == ($n | ascii_downcase))' >/dev/null <<<"$servers_before"; then

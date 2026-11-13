@@ -24,7 +24,7 @@ F=${OP_FAIL:-}
 fail() { [ "$F" != "$1" ] || { echo "op: $1 failed" >&2; exit 1; }; }
 vault_named() { jq -e --arg v "$1" 'any(.[]; .name == $v or .id == $v)' "$S/vaults.json" >/dev/null || { echo "op: no vault $1" >&2; exit 1; }; }
 case "$1 ${2:-} ${3:-}" in
-  "whoami  ") fail whoami ;;
+  "whoami  ") echo "op: account is not signed in" >&2; exit 1 ;; # what it says when signed in through the app
   "connect server list")
     fail list
     case "$F" in
@@ -255,8 +255,7 @@ func TestRefusesBeforeMakingAnything(t *testing.T) {
 		"a length of time that is not":   {append(usual, "--expires-in", "soon"), "", "not a length of time"},
 		"no vault to keep in":            {[]string{"--server", "x", "--reads", "App Config", "--keep-in", "Nowhere"}, "", "not made for you"},
 		"no vault to read":               {[]string{"--server", "x", "--reads", "App Config Test", "--keep-in", "Break Glass"}, "", "--create-vaults makes them"},
-		"not signed in":                  {usual, "whoami", "op signin"},
-		"may not list servers":           {usual, "list", "a service account or a Connect token cannot"},
+		"may not list servers":           {usual, "list", "Sign in first (op signin"},
 		"a slash in a name":              {[]string{"--server", "a/b", "--reads", "App Config", "--keep-in", "Break Glass"}, "", "a name holds letters"},
 		"a secret without a namespace":   {append(usual, "--token-secret", "op-token"), "", "<namespace>/<name>"},
 		"a key that would break yaml":    {append(usual, "--token-secret", "ns/name:a: b"), "", "Secret's key"},

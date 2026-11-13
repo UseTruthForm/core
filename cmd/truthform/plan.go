@@ -104,7 +104,15 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 	w("| Step | | |\n|---|---|---:|\n")
 	w("| 1 | Install what a GitOps source makes | %d sources by hand, %d follow%s |\n", len(p.Sources), len(p.Follows), seen)
 	w("| 2 | Have these APIs served before the restore | %d groups%s |\n", len(p.Operators), seen)
-	w("| 3 | Supply by hand the secrets no store holds | %d secrets%s |\n", len(p.ByHand), seen)
+	keysOut := 0
+	for _, e := range p.Encrypted {
+		keysOut += len(e.KeysNotHeld)
+	}
+	if keysOut > 0 {
+		w("| 3 | Supply by hand the secrets no store holds | %d secrets%s, and %d keys the snapshot does not hold |\n", len(p.ByHand), seen, keysOut)
+	} else {
+		w("| 3 | Supply by hand the secrets no store holds | %d secrets%s |\n", len(p.ByHand), seen)
+	}
 	w("| 4 | Make the secret store reachable | %d items feed %d secrets%s |\n", len(p.FromStore), fromStore, seen)
 	w("| 5 | Restore the snapshot | |\n")
 	w("| 6 | Point the names at the rebuilt cluster | %d hosts%s |\n\n", len(p.Hosts), seen)
@@ -167,18 +175,51 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 
 	w("## 3. Secrets to supply by hand: %d%s\n\n", len(p.ByHand), seen)
 	if len(p.ByHand) == 0 {
-		none("Every Secret in the snapshot is made from a store.")
+		none("No Secret in the snapshot is left for a person to supply: each is made from a store, made again by something in the cluster, or opened with a key named below.")
 	} else {
 		w("No store in the snapshot supplies these, and a snapshot never holds a value. Each needs its value from where you keep it. One with no user here may still be read by what step 1 installs, or named from an object with no namespace.\n\n")
-		w("| Secret | Keys | Used by |\n|---|---|---|\n")
+		w("| Secret | Keys | Used by | What it says of itself |\n|---|---|---|---|\n")
 		for _, s := range p.ByHand {
-			w("| %s | %s | %s |\n", code(s.Namespace+"/"+s.Name), codes(s.Keys), md(some(s.UsedBy)))
+			w("| %s | %s | %s | %s |\n", code(s.Namespace+"/"+s.Name), codes(s.Keys), md(some(s.UsedBy)), md(s.Note))
 		}
 		w("\n")
 	}
 
+	for _, e := range p.Encrypted {
+		w("**Kept encrypted: %s", md(e.By))
+		if e.Objects > 0 {
+			w(", %d objects", e.Objects)
+		}
+		w(".** ")
+		switch {
+		case len(e.Keys) > 0:
+			w("The key is in %s, of step 3. ", codes(e.Keys))
+		case len(e.KeysNotHeld) == 0 && e.By == kube.SealedSecrets:
+			w("The capture saw no Secret that holds the controller's key. ")
+		case len(e.KeysNotHeld) == 0:
+			w("No Secret in the snapshot is named as the key: it is outside the cluster (a cloud key service). ")
+		}
+		if len(e.KeysNotHeld) > 0 {
+			w("**The key is in %s, which the capture left out with its namespace: it is not in the snapshot, and no restore brings it back.** ", codes(e.KeysNotHeld))
+		}
+		w("A snapshot never holds a key's value: without a copy of the key kept outside the cluster, what it encrypts cannot be read again.\n\n")
+	}
+
 	if len(p.Reissued) > 0 {
-		w("Not for you to supply: %d that cert-manager issues again once it runs (%s).\n\n", len(p.Reissued), md(strings.Join(p.Reissued, ", ")))
+		// By what makes them, in the order of the first of each.
+		var makers []string
+		by := map[string][]string{}
+		for _, m := range p.Reissued {
+			if by[m.By] == nil {
+				makers = append(makers, m.By)
+			}
+			by[m.By] = append(by[m.By], m.Secret)
+		}
+		parts := make([]string, len(makers))
+		for i, m := range makers {
+			parts[i] = fmt.Sprintf("%s (%s)", codes(by[m]), md(m))
+		}
+		w("Not for you to supply: %d that something in the cluster makes again once it runs: %s.\n\n", len(p.Reissued), strings.Join(parts, "; "))
 	}
 
 	w("## 4. Secrets a store supplies: %d, from %d items%s\n\n", fromStore, len(p.FromStore), seen)

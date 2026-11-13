@@ -30,9 +30,12 @@ type Plan struct {
 	Operators []PlanOperator `json:"operators"`
 	// ByHand are Secrets no store in the snapshot supplies.
 	ByHand []PlanSecret `json:"secretsByHand"`
-	// Reissued are Secrets cert-manager makes again by itself
-	// (namespace/name): a certificate it issued, its own CA.
-	Reissued []string `json:"secretsReissued"`
+	// Reissued are Secrets something in the cluster makes again by itself:
+	// a certificate cert-manager issued, a driver's copy of a storage key.
+	Reissued []PlanMade `json:"secretsReissued"`
+	// Encrypted are the ways the snapshot shows Secrets kept encrypted
+	// (Sealed Secrets, SOPS), with the keys that open them.
+	Encrypted []PlanEncrypted `json:"secretsEncrypted"`
 	// FromStore are the store items other Secrets are made from.
 	FromStore []PlanStoreItem `json:"secretsFromStore"`
 	// StoreSecrets is how many Secrets those items make: one made from
@@ -61,6 +64,27 @@ type PlanSecret struct {
 	Name      string   `json:"name"`
 	Keys      []string `json:"keys"`
 	UsedBy    []string `json:"usedBy"`
+	// Note is what the Secret itself says of where it comes from, short of
+	// proof that something makes it again.
+	Note string `json:"note,omitempty"`
+}
+
+// PlanMade is a Secret (namespace/name) and what makes it again.
+type PlanMade struct {
+	Secret string `json:"secret"`
+	By     string `json:"by"`
+}
+
+// PlanEncrypted is one way Secrets are kept encrypted. Objects counts the
+// encrypted objects where the snapshot shows them. Keys are the Secrets
+// (namespace/name) in the snapshot that hold the key, and KeysNotHeld
+// those the capture saw and left out (in kube-system). Neither: the key
+// is not a Secret the capture saw (for SOPS, a cloud key service).
+type PlanEncrypted struct {
+	By          string   `json:"by"`
+	Objects     int      `json:"objects,omitempty"`
+	Keys        []string `json:"keys"`
+	KeysNotHeld []string `json:"keysNotInSnapshot"`
 }
 
 // PlanStoreItem is one item of a secret store and the Secrets made from
@@ -123,7 +147,7 @@ func (k secretKey) String() string { return k.ns + "/" + k.name }
 
 // RebuildPlan reads the plan out of a Kubernetes snapshot.
 func RebuildPlan(s snapshot.Snapshot) Plan {
-	p := Plan{Sources: []PlanSource{}, Follows: []PlanSource{}, Origins: []string{}, Operators: []PlanOperator{}, ByHand: []PlanSecret{}, Reissued: []string{}, FromStore: []PlanStoreItem{}, Hosts: []string{}}
+	p := Plan{Sources: []PlanSource{}, Follows: []PlanSource{}, Origins: []string{}, Operators: []PlanOperator{}, ByHand: []PlanSecret{}, Reissued: []PlanMade{}, Encrypted: []PlanEncrypted{}, FromStore: []PlanStoreItem{}, Hosts: []string{}}
 
 	// What the snapshot holds: a source that is in it is restored with it,
 	// and a type whose definition is in it is served by the restore.
@@ -230,6 +254,10 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 	usedBy := map[secretKey]map[string]bool{}
 	operators := map[string]map[string]int{}
 	hosts := map[string]bool{}
+	// acme are the account keys ACME issuers in the snapshot name, and
+	// notes what an object in it says a Secret is for.
+	acme := map[secretKey]string{}
+	notes := map[secretKey]string{}
 	reads := func(ns, name string, spec map[string]any) {
 		merge := false
 		if target, _ := spec["target"].(map[string]any); target != nil {
@@ -267,17 +295,48 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 			p.Origins = append(p.Origins, o.Kind()+" "+o.Namespace()+"/"+o.Name())
 		}
 		spec, _ := o.Body["spec"].(map[string]any)
-		switch o.Kind() {
-		case "OnePasswordItem":
-			from := origin{"1Password", strOf(spec["itemPath"])}
+		for _, r := range storeReaders {
+			if r.group != group || r.kind != o.Kind() {
+				continue
+			}
+			store, item, secrets := r.reads(o)
+			from := origin{store, item}
 			if items[from] == nil {
+				// Listed though it makes no Secret: the store has to be
+				// reachable for what mounts it.
 				items[from] = map[string]bool{}
 			}
-			items[from][o.Namespace()+"/"+o.Name()] = true
+			for _, k := range secrets {
+				items[from][k.String()] = true
+				supplied[k] = true
+			}
+		}
+		switch {
+		case group == "bitnami.com" && o.Kind() == "SealedSecret":
+			// The controller makes the Secret, of the object's own name
+			// whatever its template says, from what it holds encrypted.
 			supplied[secretKey{o.Namespace(), o.Name()}] = true
-		case "ExternalSecret":
+		case group == "cert-manager.io" && (o.Kind() == "Issuer" || o.Kind() == "ClusterIssuer"):
+			// The account an ACME issuer registers: its key is made, and
+			// made again, in the issuer's namespace, or for a ClusterIssuer
+			// in the one cert-manager is set to, which the snapshot does
+			// not say.
+			// Not one the issuer is told not to make: that key is brought
+			// to it.
+			acmeSpec, _ := spec["acme"].(map[string]any)
+			if n := first(fields(o.Body, "spec.acme.privateKeySecretRef.name")); n != "" && acmeSpec["disableAccountKeyGeneration"] != true {
+				acme[secretKey{o.Namespace(), n}] = o.Kind() + " " + o.Name()
+			}
+		case group == "kustomize.toolkit.fluxcd.io" && o.Kind() == "Kustomization":
+			if n := first(fields(o.Body, "spec.decryption.secretRef.name")); n != "" {
+				notes[secretKey{o.Namespace(), n}] = "the key Flux Kustomization " + o.Namespace() + "/" + o.Name() + " decrypts with (SOPS)"
+			}
+		}
+		switch {
+		case group != "external-secrets.io":
+		case o.Kind() == "ExternalSecret":
 			reads(o.Namespace(), o.Name(), spec)
-		case "ClusterExternalSecret":
+		case o.Kind() == "ClusterExternalSecret":
 			// It makes an ExternalSecret in each namespace it selects,
 			// which the snapshot does not say.
 			inner, _ := spec["externalSecretSpec"].(map[string]any)
@@ -306,6 +365,23 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 	}
 	sort.Slice(p.Operators, func(i, j int) bool { return p.Operators[i].Group < p.Operators[j].Group })
 
+	// A Secret nothing above supplies may say itself that a store made it:
+	// the object that asked for it is a GitOps source's, and not here.
+	isSecret := func(o snapshot.Object) bool { return o.Kind() == "Secret" && o.APIVersion() == "v1" }
+	for _, o := range s.Objects {
+		key := secretKey{o.Namespace(), o.Name()}
+		if !isSecret(o) || supplied[key] || supplied[secretKey{"*", o.Name()}] {
+			continue
+		}
+		if store, item, ok := storeMade(o); ok {
+			if items[origin{store, item}] == nil {
+				items[origin{store, item}] = map[string]bool{}
+			}
+			items[origin{store, item}][key.String()] = true
+			supplied[key] = true
+		}
+	}
+
 	made := map[string]bool{}
 	for o, secrets := range items {
 		it := PlanStoreItem{Store: o.store, Item: o.item, Secrets: make([]string, 0, len(secrets))}
@@ -325,26 +401,50 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 		return a.Store+" "+a.Item < b.Store+" "+b.Item
 	})
 
+	// lone counts, by name, the Secrets that hold a private key alone.
+	lone := map[secretKey]int{}
+	for _, o := range s.Objects {
+		if k := secretKeys(o); isSecret(o) && len(k) == 1 && k[0] == "tls.key" {
+			lone[secretKey{"", o.Name()}]++
+		}
+	}
 	for _, o := range s.Objects {
 		key := secretKey{o.Namespace(), o.Name()}
 		// A service account's token is the cluster's to make.
-		if o.Kind() != "Secret" || o.APIVersion() != "v1" || supplied[key] || supplied[secretKey{"*", o.Name()}] || strOf(o.Body["type"]) == "kubernetes.io/service-account-token" {
+		if !isSecret(o) || supplied[key] || supplied[secretKey{"*", o.Name()}] || strOf(o.Body["type"]) == "kubernetes.io/service-account-token" {
 			continue
 		}
-		md, _ := o.Body["metadata"].(map[string]any)
-		labels, _ := md["labels"].(map[string]any)
-		if annotation(md, "cert-manager.io/certificate-name") != "" || strOf(labels["app.kubernetes.io/managed-by"]) == "cert-manager" {
-			p.Reissued = append(p.Reissued, key.String())
-			continue
+		keys := secretKeys(o)
+		by := madeAgain(o)
+		if by == azureFiles && len(usedBy[key]) > 0 {
+			// The driver makes one for a share it provisions. One that a
+			// volume in the snapshot names is looked up, not made: where
+			// the cluster cannot list the account's keys, a person put it
+			// there.
+			by = ""
 		}
-		sec := PlanSecret{Namespace: o.Namespace(), Name: o.Name(), Keys: []string{}, UsedBy: []string{}}
-		for _, field := range []string{"data", "stringData"} {
-			m, _ := o.Body[field].(map[string]any)
-			for k := range m {
-				sec.Keys = append(sec.Keys, k)
+		if by == "" && len(keys) == 1 && keys[0] == "tls.key" {
+			// An ACME account key holds that and nothing else.
+			issuer := acme[key]
+			if name := (secretKey{"", o.Name()}); issuer == "" && lone[name] == 1 && len(usedBy[key]) == 0 {
+				// A ClusterIssuer's is in whichever namespace cert-manager
+				// keeps such things in, which the snapshot does not say:
+				// taken by name when one Secret alone has the name and the
+				// shape, and nothing else uses it.
+				issuer = acme[name]
+			}
+			if issuer != "" {
+				by = "cert-manager, as the ACME account of " + issuer
 			}
 		}
-		sort.Strings(sec.Keys)
+		if by != "" {
+			p.Reissued = append(p.Reissued, PlanMade{Secret: key.String(), By: by})
+			continue
+		}
+		sec := PlanSecret{Namespace: o.Namespace(), Name: o.Name(), Keys: keys, UsedBy: []string{}, Note: notes[key]}
+		if sec.Note == "" {
+			sec.Note = noteOf(o)
+		}
 		for who := range usedBy[key] {
 			sec.UsedBy = append(sec.UsedBy, who)
 		}
@@ -355,7 +455,8 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 		a, b := p.ByHand[i], p.ByHand[j]
 		return a.Namespace+"/"+a.Name < b.Namespace+"/"+b.Name
 	})
-	sort.Strings(p.Reissued)
+	sort.Slice(p.Reissued, func(i, j int) bool { return p.Reissued[i].Secret < p.Reissued[j].Secret })
+	p.Encrypted = encrypted(s)
 
 	for h := range hosts {
 		p.Hosts = append(p.Hosts, h)

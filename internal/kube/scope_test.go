@@ -722,6 +722,9 @@ func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
 		released("apps/v1", "Deployment", "team-a", "web", "web", nil),
 		released("v1", "Service", "team-a", "web", "web", nil),
+		planObject("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "apps", map[string]any{"spec": map[string]any{"path": "./apps"}}),
+		planObject("apiregistration.k8s.io/v1", "APIService", "", "v1beta1.metrics.example.com", map[string]any{"spec": map[string]any{"service": map[string]any{"namespace": "team-a", "name": "policy"}}}),
+		planObject("apiregistration.k8s.io/v1", "APIService", "", "v1.apps", map[string]any{"spec": map[string]any{"group": "apps"}}), // served by the API server itself
 		released("v1", "Service", "team-a", "policy", "policy", nil),
 		released("v1", "Service", "team-a", "soft", "soft", nil),
 		planObject("v1", "Service", "other", "x", nil),
@@ -749,6 +752,7 @@ func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []ScopeWebhook{
+		{Configuration: "APIService v1beta1.metrics.example.com", Webhook: "service", Service: "team-a/policy", Fails: true},
 		{Configuration: "CustomResourceDefinition widgets.example.com", Webhook: "conversion", Service: "team-a/policy", Fails: true},
 		{Configuration: "MutatingWebhookConfiguration gitops", Webhook: "gone.gitops", Service: "team-a/gone", Fails: true},
 		{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "check.policy", Service: "team-a/policy", Fails: true},
@@ -761,5 +765,31 @@ func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 	_, rep, err = Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web", "policy", "soft"}}}})
 	if err != nil || len(rep.Webhooks) != 1 || rep.Webhooks[0].Webhook != "gone.gitops" {
 		t.Errorf("with their Services brought: %+v, %v", rep.Webhooks, err)
+	}
+	// A Service left to a source is there only when the source is
+	// brought: with the source left out by the scope, or not in the
+	// snapshot at all, nothing makes it.
+	made := func(rep ScopeReport) bool {
+		for _, w := range rep.Webhooks {
+			if w.Webhook == "made.gitops" {
+				return true
+			}
+		}
+		return false
+	}
+	_, rep, err = Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web"}}, {Namespaces: []string{"flux-system"}}}})
+	if err != nil || !made(rep) {
+		t.Errorf("with the source left out: %+v, %v", rep.Webhooks, err)
+	}
+	without := s
+	without.Objects = nil
+	for _, o := range s.Objects {
+		if o.Kind() != "Kustomization" {
+			without.Objects = append(without.Objects, o)
+		}
+	}
+	_, rep, err = Narrow(without, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web"}}}})
+	if err != nil || !made(rep) {
+		t.Errorf("with no such source in the snapshot: %+v, %v", rep.Webhooks, err)
 	}
 }

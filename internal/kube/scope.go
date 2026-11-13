@@ -523,7 +523,7 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		a, b := rep.StillMade[i], rep.StillMade[j]
 		return a.Source+"\x00"+a.Namespace < b.Source+"\x00"+b.Namespace
 	})
-	rep.Webhooks = webhooksWithoutService(out, narrowed)
+	rep.Webhooks = webhooksWithoutService(s, out, narrowed)
 	sort.Strings(rep.ObjectsBrought)
 	sort.Strings(rep.ObjectsLeftOut)
 	for k, n := range relObjects {
@@ -543,10 +543,11 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 
 // webhooksWithoutService finds the webhooks of a narrowed snapshot that
 // call a Service in a namespace the scope narrows, where that Service is
-// neither brought nor left to a GitOps source that is. Such a webhook is
+// neither brought nor left to a GitOps source that is. An APIService is
+// read the same way. Such a webhook is
 // asked about every write it matches, and the API server refuses those
 // while nothing answers: one left behind can stop a whole restore.
-func webhooksWithoutService[T any](out snapshot.Snapshot, narrowed map[string]T) []ScopeWebhook {
+func webhooksWithoutService[T any](s, out snapshot.Snapshot, narrowed map[string]T) []ScopeWebhook {
 	there := map[string]bool{}
 	for _, o := range out.Objects {
 		if o.Kind() == "Service" && o.APIVersion() == "v1" {
@@ -554,8 +555,11 @@ func webhooksWithoutService[T any](out snapshot.Snapshot, narrowed map[string]T)
 		}
 	}
 	services := resourceID(schema.GroupVersionResource{Version: "v1", Resource: "services"})
-	for _, sk := range out.Skips {
-		if sk.Resource == services {
+	// One the capture left to a source is there when that source is
+	// brought, and not otherwise: nothing else makes it.
+	applied := stillApplied(s, out)
+	for i, sk := range s.Skips {
+		if sk.Resource == services && applied[i] != "" {
 			there[sk.Namespace+"/"+sk.Name] = true
 		}
 	}
@@ -582,6 +586,12 @@ func webhooksWithoutService[T any](out snapshot.Snapshot, narrowed map[string]T)
 			conv, _ := spec["conversion"].(map[string]any)
 			hook, _ := conv["webhook"].(map[string]any)
 			add(o, "conversion", hook["clientConfig"], true)
+		case group == "apiregistration.k8s.io" && o.Kind() == "APIService":
+			// An API served by a Service: with none, the API is not
+			// there, and what lists every API (a namespace's deletion,
+			// a garbage collection) waits on it.
+			spec, _ := o.Body["spec"].(map[string]any)
+			add(o, "service", map[string]any{"service": spec["service"]}, true)
 		}
 	}
 	sort.Slice(found, func(i, j int) bool {

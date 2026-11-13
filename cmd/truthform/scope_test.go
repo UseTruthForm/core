@@ -229,6 +229,7 @@ func TestScopeSaid(t *testing.T) {
 			{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "check.policy", Service: "shop/policy", Fails: true},
 			{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "soft.policy", Service: "shop/soft"},
 			{Configuration: "CustomResourceDefinition widgets.example.com", Webhook: "conversion", Service: "shop/policy", Fails: true},
+			{Configuration: "APIService v1beta1.metrics.example.com", Webhook: "service", Service: "shop/policy", Fails: true},
 		},
 	}
 	said := scopeSaid(rep, "scope.yaml")
@@ -239,6 +240,7 @@ func TestScopeSaid(t *testing.T) {
 		"ClusterRole x (it may be of other/x, left out)",
 		"NOTE: ValidatingWebhookConfiguration policy (check.policy) is brought, and calls the Service shop/policy, which the scope leaves out: while nothing answers there, the API server refuses every write",
 		"NOTE: ValidatingWebhookConfiguration policy (soft.policy) is brought, and calls the Service shop/soft, which the scope leaves out: while nothing answers there, the API server goes on without it",
+		"NOTE: APIService v1beta1.metrics.example.com (service) is brought, and calls the Service shop/policy, which the scope leaves out: while nothing answers there, its API is not there",
 		"NOTE: CustomResourceDefinition widgets.example.com (conversion) is brought, and calls the Service shop/policy, which the scope leaves out: while nothing answers there, objects of that kind cannot be read",
 		"nothing checks that what is brought does not need something left out",
 	} {

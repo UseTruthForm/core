@@ -109,6 +109,9 @@ func scopeNotes(rep kube.ScopeReport) []string {
 		if w.Webhook == "conversion" {
 			what = "while nothing answers there, objects of that kind cannot be read or written in any version but the stored one"
 		}
+		if strings.HasPrefix(w.Configuration, "APIService ") {
+			what = "while nothing answers there, its API is not there, and what lists every API (a namespace's deletion, for one) waits on it"
+		}
 		out = append(out, fmt.Sprintf("%s (%s) is brought, and calls the Service %s, which the scope leaves out: %s. Bring what makes the Service, or leave the webhook out (--leave-out).", w.Configuration, w.Webhook, w.Service, what))
 	}
 	return out

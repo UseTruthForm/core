@@ -130,6 +130,9 @@ type Policy struct {
 	// captured.
 	Baseline       map[string]map[string]any
 	BaselineDigest string
+	// roots are what a source that applies itself reads from (a Flux
+	// GitRepository), as kind|namespace|name: see root. Capture finds them.
+	roots map[string]bool
 }
 
 // WithBaseline loads a baseline snapshot into the policy.
@@ -198,18 +201,31 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		return ownedReason(kind, name)
 	}
 
+	// Before the system namespaces, so what a source makes there is listed
+	// under the source: a HelmRelease that installs into kube-system was
+	// otherwise named nowhere, and a rebuild did not know to install it.
+	// What AKS labels as its own stays the cluster's to provide (below),
+	// though AKS installs some of it as a HelmRelease.
+	if !p.CaptureRendered && (p.IncludeSystem || !aksOwn(md)) {
+		if why := renderedBy(md); why != "" {
+			if !p.root(obj) {
+				return why
+			}
+			// Where GitOps starts is kept, since nothing else recreates it,
+			// unless a credential is written into it: an object main never
+			// captured must not bring one into a snapshot.
+			if rootCredential(obj) {
+				return why + " (where GitOps starts, and not captured: a credential is written into it; move it into the Secret the object names)"
+			}
+		}
+	}
+
 	if !p.IncludeSystem {
 		if systemNamespaces[ns] {
 			return "in system namespace " + ns
 		}
 		if group == "" && resource == "namespaces" && (systemNamespaces[name] || name == "default") {
 			return "namespace created by the cluster itself"
-		}
-	}
-
-	if !p.CaptureRendered {
-		if why := renderedBy(md); why != "" {
-			return why
 		}
 	}
 
@@ -242,7 +258,7 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	}
 	// A fact before a guess: what AKS labels as its own is listed under the guess
 	// otherwise, with a flag offered that does not keep it.
-	if labels, _ := md["labels"].(map[string]any); strOf(labels["kubernetes.azure.com/managedby"]) == "aks" {
+	if aksOwn(md) {
 		// AKS installs these (its add-ons, their namespaces and roles) and
 		// upgrades them on its own schedule: captured, every upgrade showed
 		// up as drift, and a restore would fight AKS for them.
@@ -299,6 +315,93 @@ func ownedReason(kind, name string) string {
 	return "owned by " + kind + "/" + name + ", whose controller recreates it"
 }
 
+// aksOwn reports what AKS labels as its own.
+func aksOwn(md map[string]any) bool {
+	labels, _ := md["labels"].(map[string]any)
+	return strOf(labels["kubernetes.azure.com/managedby"]) == "aks"
+}
+
+// root reports whether a rendered object is where GitOps starts: a source
+// that applies itself (the Kustomization "flux bootstrap" makes, an Argo
+// CD application that manages itself), or what such a Kustomization reads
+// from. Restoring the source recreates what it renders, and nothing
+// recreates these: skipped as rendered, the snapshot did not say which
+// repository, branch and path the cluster was built from.
+func (p Policy) root(obj map[string]any) bool {
+	md, _ := obj["metadata"].(map[string]any)
+	kind, ns, name := strOf(obj["kind"]), strOf(md["namespace"]), strOf(md["name"])
+	return selfApplied(obj) || p.roots[kind+"|"+ns+"|"+name]
+}
+
+// signsInRE is a URL that signs in, with a password or with a name alone
+// (https://<token>@host); over SSH a name alone is the account.
+var signsInRE = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9+.-]*)://([^/\s]*)@`)
+
+func signsIn(url string) bool {
+	m := signsInRE.FindStringSubmatch(url)
+	if m == nil {
+		return false
+	}
+	return strings.Contains(m[2], ":") || !strings.Contains(strings.ToLower(m[1]), "ssh")
+}
+
+// rootCredential reports a credential written into an object that is
+// where GitOps starts: in the address it reads from, or in an Argo CD
+// application's Helm parameters (by the rule for variables). Generous: a
+// root that is not captured costs the plan saying where the sources are
+// read from is not in the snapshot, which is what it said before roots
+// were captured at all.
+func rootCredential(obj map[string]any) bool {
+	spec, _ := obj["spec"].(map[string]any)
+	sources := []any{spec["source"]}
+	sources = append(sources, list(spec["sources"])...)
+	for _, field := range []string{"url", "endpoint"} {
+		if signsIn(strOf(spec[field])) {
+			return true
+		}
+	}
+	for _, src := range sources {
+		m, _ := src.(map[string]any)
+		if signsIn(strOf(m["repoURL"])) {
+			return true
+		}
+		helm, _ := m["helm"].(map[string]any)
+		for _, e := range list(helm["parameters"]) {
+			pm, _ := e.(map[string]any)
+			if credential(strOf(pm["name"]), strOf(pm["value"])) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// selfApplied reports whether an object is the source that applied it.
+func selfApplied(obj map[string]any) bool {
+	md, _ := obj["metadata"].(map[string]any)
+	labels, _ := md["labels"].(map[string]any)
+	l := func(k string) string { return strOf(labels[k]) }
+	group, _, _ := strings.Cut(strOf(obj["apiVersion"]), "/")
+	name := strOf(md["name"])
+	switch {
+	case group == "kustomize.toolkit.fluxcd.io" && strOf(obj["kind"]) == "Kustomization":
+		return l("kustomize.toolkit.fluxcd.io/name") == name && l("kustomize.toolkit.fluxcd.io/namespace") == strOf(md["namespace"])
+	case group == "argoproj.io" && strOf(obj["kind"]) == "Application":
+		// The tracking id names the object tracked as well as the
+		// application (app:group/kind:namespace/name), and the application
+		// as namespace_name when it is outside Argo CD's own namespace. The
+		// label names the application only: one of the same name managed
+		// by another, elsewhere, reads the same.
+		if id := annotation(md, "argocd.argoproj.io/tracking-id"); id != "" {
+			app, tracked, _ := strings.Cut(id, ":")
+			ns := strOf(md["namespace"])
+			return tracked == "argoproj.io/Application:"+ns+"/"+name && (app == name || app == ns+"_"+name)
+		}
+		return l("argocd.argoproj.io/instance") == name
+	}
+	return false
+}
+
 // renderedBy reports which higher-level source applied an object, from the
 // labels those tools stamp on everything they create, or "".
 func renderedBy(md map[string]any) string {
@@ -342,6 +445,9 @@ var serverAnnotations = []string{
 	"volume.beta.kubernetes.io/storage-provisioner",
 	"volume.kubernetes.io/storage-provisioner",
 	"volume.kubernetes.io/selected-node",
+	// "flux reconcile" stamps the time it was asked for: a request, not
+	// configuration, and it differed after every manual sync.
+	"reconcile.fluxcd.io/requestedAt",
 }
 
 // normalize strips what the server generated, so the snapshot holds only

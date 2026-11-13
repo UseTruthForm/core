@@ -117,6 +117,14 @@ func TestNormalize(t *testing.T) {
 			t.Fatal("headless clusterIP None is configuration and must be kept")
 		}
 	})
+	t.Run("a Flux object drops the time a sync was asked for", func(t *testing.T) {
+		ks := k8sObj("Kustomization", "flux-system", "flux-system", map[string]any{"annotations": map[string]any{"reconcile.fluxcd.io/requestedAt": "2026-01-01T00:00:00Z", "team": "platform"}}, nil)
+		normalize("kustomize.toolkit.fluxcd.io", "kustomizations", ks)
+		a := ks["metadata"].(map[string]any)["annotations"].(map[string]any)
+		if _, ok := a["reconcile.fluxcd.io/requestedAt"]; ok || a["team"] != "platform" {
+			t.Fatalf("annotations: %+v", a)
+		}
+	})
 	t.Run("namespace drops server label and finalizer spec", func(t *testing.T) {
 		ns := k8sObj("Namespace", "", "shop", map[string]any{"labels": map[string]any{"kubernetes.io/metadata.name": "shop", "team": "platform"}}, map[string]any{"spec": map[string]any{"finalizers": []any{"kubernetes"}}})
 		normalize("", "namespaces", ns)
@@ -220,6 +228,157 @@ func TestRenderedObjectsAreSkipped(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Where GitOps starts is captured: the Kustomization that applies itself
+// and what it reads from, an Argo CD application that manages itself.
+// Skipped as rendered ("restoring it recreates this", of itself), the
+// snapshot of a bootstrapped cluster did not say which repository, branch
+// and path it was built from.
+func TestGitOpsRootsAreCaptured(t *testing.T) {
+	flux := map[string]any{"labels": map[string]any{"kustomize.toolkit.fluxcd.io/name": "flux-system", "kustomize.toolkit.fluxcd.io/namespace": "flux-system"}}
+	obj := func(apiVersion, kind, ns, name string, md map[string]any) map[string]any {
+		o := k8sObj(kind, ns, name, md, nil)
+		o["apiVersion"] = apiVersion
+		return o
+	}
+	p := Policy{roots: map[string]bool{"GitRepository|flux-system|flux-system": true}}
+	for name, c := range map[string]struct {
+		obj  map[string]any
+		kept bool
+	}{
+		"the Kustomization that applies itself": {obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "flux-system", flux), true},
+		"what it reads from":                    {obj("source.toolkit.fluxcd.io/v1", "GitRepository", "flux-system", "flux-system", flux), true},
+		"another Kustomization it applies":      {obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "apps", flux), false},
+		"one of the same name elsewhere":        {obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "tenant", "flux-system", flux), false},
+		"another repository it applies":         {obj("source.toolkit.fluxcd.io/v1", "GitRepository", "flux-system", "charts", flux), false},
+		"another kind of the same name":         {obj("v1", "ConfigMap", "flux-system", "flux-system", flux), false},
+		"an Argo CD application that manages itself": {obj("argoproj.io/v1alpha1", "Application", "argocd", "root",
+			map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": "root"}}), true},
+		"one tracked by annotation": {obj("argoproj.io/v1alpha1", "Application", "argocd", "root",
+			map[string]any{"annotations": map[string]any{"argocd.argoproj.io/tracking-id": "root:argoproj.io/Application:argocd/root"}}), true},
+		"an application the root manages": {obj("argoproj.io/v1alpha1", "Application", "argocd", "shop",
+			map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": "root"}}), false},
+		"one outside Argo CD's namespace, named namespace_name": {obj("argoproj.io/v1alpha1", "Application", "team-a", "root",
+			map[string]any{"annotations": map[string]any{"argocd.argoproj.io/tracking-id": "team-a_root:argoproj.io/Application:team-a/root"}}), true},
+		"one of the same name that another manages": {obj("argoproj.io/v1alpha1", "Application", "team-a", "web",
+			map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": "web"},
+				"annotations": map[string]any{"argocd.argoproj.io/tracking-id": "web:argoproj.io/Application:argocd/web"}}), false},
+		"another API's Application": {obj("app.k8s.io/v1beta1", "Application", "argocd", "root",
+			map[string]any{"labels": map[string]any{"argocd.argoproj.io/instance": "root"}}), false},
+	} {
+		reason := p.skipReason("", "", c.obj)
+		if c.kept && reason != "" {
+			t.Errorf("%s: skipped (%s)", name, reason)
+		}
+		if !c.kept && !strings.Contains(reason, "restoring") {
+			t.Errorf("%s: reason %q, want it left to its source", name, reason)
+		}
+	}
+}
+
+// Where GitOps starts is captured, unless a credential is written into
+// it: such an object was never in a snapshot before roots were kept, and
+// must not bring a credential into one. It is left to its source, as it
+// was, and the reason says why.
+func TestRootWithACredentialIsNotCaptured(t *testing.T) {
+	applied := map[string]any{"kustomize.toolkit.fluxcd.io/name": "flux-system", "kustomize.toolkit.fluxcd.io/namespace": "flux-system"}
+	repo := func(url string) map[string]any {
+		return map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
+			"metadata": map[string]any{"name": "fleet", "namespace": "flux-system", "labels": applied},
+			"spec":     map[string]any{"url": url}}
+	}
+	p := Policy{roots: map[string]bool{"GitRepository|flux-system|fleet": true}}
+	for url, captured := range map[string]bool{
+		"https://example.com/o/fleet.git":                 true,
+		"ssh://git@example.com/o/fleet.git":               true,
+		"https://git:s3cr3t@example.com/o/fleet.git":      false,
+		"https://ghp_s3cr3ttoken@example.com/o/fleet.git": false, // a token and no password
+		"https://org@dev.example.com/org/_git/fleet":      false, // nothing tells a name from a token: left out
+		"ssh://git:s3cr3t@example.com/o/fleet.git":        false,
+	} {
+		reason := p.skipReason("source.toolkit.fluxcd.io", "gitrepositories", repo(url))
+		if captured != (reason == "") {
+			t.Errorf("%s: captured=%v, reason %q", url, reason == "", reason)
+		}
+		if !captured && (!strings.Contains(reason, "applied by Flux Kustomization flux-system/flux-system") || !strings.Contains(reason, "not captured: a credential is written into it")) {
+			t.Errorf("%s: the reason does not name its source and why: %q", url, reason)
+		}
+	}
+	bucket := map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "Bucket",
+		"metadata": map[string]any{"name": "fleet", "namespace": "flux-system", "labels": applied}, "spec": map[string]any{"endpoint": "https://k:s3cr3t@minio.example.com"}}
+	if r := (Policy{roots: map[string]bool{"Bucket|flux-system|fleet": true}}).skipReason("source.toolkit.fluxcd.io", "buckets", bucket); r == "" {
+		t.Error("a bucket whose endpoint signs in was captured")
+	}
+
+	app := func(source map[string]any, sources []any) map[string]any {
+		spec := map[string]any{}
+		if source != nil {
+			spec["source"] = source
+		}
+		if sources != nil {
+			spec["sources"] = sources
+		}
+		return map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "Application",
+			"metadata": map[string]any{"name": "root", "namespace": "argocd", "labels": map[string]any{"argocd.argoproj.io/instance": "root"}}, "spec": spec}
+	}
+	for name, c := range map[string]struct {
+		o        map[string]any
+		captured bool
+	}{
+		"a plain root":          {app(map[string]any{"repoURL": "https://example.com/o/apps.git", "helm": map[string]any{"parameters": []any{map[string]any{"name": "replicas", "value": "2"}}}}, nil), true},
+		"a password in its URL": {app(map[string]any{"repoURL": "https://u:s3cr3t@example.com/o/apps.git"}, nil), false},
+		"in one of its sources": {app(nil, []any{map[string]any{"repoURL": "https://example.com/a"}, map[string]any{"repoURL": "https://u:s3cr3t@example.com/b"}}), false},
+		"in a Helm parameter":   {app(map[string]any{"repoURL": "https://example.com/o/apps.git", "helm": map[string]any{"parameters": []any{map[string]any{"name": "ADMIN_PASSWORD", "value": "s3cr3t"}}}}, nil), false},
+	} {
+		if reason := (Policy{}).skipReason("argoproj.io", "applications", c.o); c.captured != (reason == "") {
+			t.Errorf("%s: captured=%v, reason %q", name, reason == "", reason)
+		}
+	}
+	// What is captured has nothing withheld from it that main would not
+	// withhold: the address of one that does not sign in is as it was.
+	kept := repo("https://example.com/o/fleet.git")
+	normalize("source.toolkit.fluxcd.io", "gitrepositories", kept)
+	if annotation(kept["metadata"].(map[string]any), WithheldEnvAnnotation) != "" || kept["spec"].(map[string]any)["url"] != "https://example.com/o/fleet.git" {
+		t.Errorf("after normalize: %v", kept)
+	}
+}
+
+// What AKS labels as its own stays the cluster's to provide, though AKS
+// installs some of it as a HelmRelease: named as a source, a rebuild would
+// be told to install what a new cluster brings.
+func TestAKSOwnInASystemNamespaceIsNotASource(t *testing.T) {
+	md := map[string]any{"labels": map[string]any{"helm.toolkit.fluxcd.io/name": "adapter", "helm.toolkit.fluxcd.io/namespace": "abc123", "kubernetes.azure.com/managedby": "aks"}}
+	o := k8sObj("Deployment", "kube-system", "adapter", md, nil)
+	if r := (Policy{}).skipReason("apps", "deployments", o); r != "in system namespace kube-system" {
+		t.Errorf("reason %q", r)
+	}
+	// Asked for the system namespaces too, it is a source like another.
+	if r := (Policy{IncludeSystem: true}).skipReason("apps", "deployments", o); !strings.Contains(r, "Flux HelmRelease abc123/adapter") {
+		t.Errorf("--include-system: reason %q does not name the HelmRelease", r)
+	}
+	elsewhere := k8sObj("Deployment", "addons", "adapter", md, nil)
+	if r := (Policy{}).skipReason("apps", "deployments", elsewhere); !strings.Contains(r, "installed and upgraded by AKS itself") {
+		t.Errorf("outside a system namespace: reason %q", r)
+	}
+}
+
+// What a source makes in a system namespace is listed under the source:
+// "in system namespace kube-system" named no HelmRelease, and a rebuild
+// did not know to install it. With --capture-rendered the namespace still
+// leaves it out.
+func TestRenderedInASystemNamespaceNamesItsSource(t *testing.T) {
+	md := map[string]any{"labels": map[string]any{"helm.toolkit.fluxcd.io/name": "metrics", "helm.toolkit.fluxcd.io/namespace": "kube-system"}}
+	o := k8sObj("Deployment", "kube-system", "metrics-server", md, nil)
+	if r := (Policy{}).skipReason("apps", "deployments", o); !strings.Contains(r, "Flux HelmRelease kube-system/metrics") {
+		t.Errorf("reason %q does not name the HelmRelease", r)
+	}
+	if r := (Policy{CaptureRendered: true}).skipReason("apps", "deployments", o); r != "in system namespace kube-system" {
+		t.Errorf("--capture-rendered: reason %q", r)
+	}
+	if r := (Policy{CaptureRendered: true, IncludeSystem: true}).skipReason("apps", "deployments", o); r != "" {
+		t.Errorf("--capture-rendered --include-system: skipped (%s)", r)
 	}
 }
 

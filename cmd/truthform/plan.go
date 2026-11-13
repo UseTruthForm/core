@@ -43,6 +43,9 @@ func planCmd(args []string) int {
 	// What the capture could not read, the plan cannot count: a step that
 	// lists nothing is then no proof there is nothing.
 	notRead := gaps(s)
+	if len(notRead) > 0 {
+		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the plan cannot count what is in them; it lists them first\n", len(notRead))
+	}
 	if jsonOut {
 		emit(map[string]any{"schema": jsonSchema, "command": "plan", "plan": p, "gaps": orEmptyList(notRead)})
 		return 0
@@ -55,9 +58,6 @@ func planCmd(args []string) int {
 	}
 	if err != nil {
 		return fail(err)
-	}
-	if len(notRead) > 0 {
-		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the plan cannot count what is in them; it lists them first\n", len(notRead))
 	}
 	return 0
 }
@@ -96,32 +96,56 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 		}
 		w("\n")
 	}
+	// A count is of what was read, and says so where that is not all.
+	seen := ""
+	if len(notRead) > 0 {
+		seen = " seen"
+	}
 	w("| Step | | |\n|---|---|---:|\n")
-	w("| 1 | Install what a GitOps source makes | %d sources |\n", len(p.Sources))
-	w("| 2 | Have these APIs served before the restore | %d groups |\n", len(p.Operators))
-	w("| 3 | Supply by hand the secrets no store holds | %d secrets |\n", len(p.ByHand))
-	w("| 4 | Make the secret store reachable | %d items feed %d secrets |\n", len(p.FromStore), fromStore)
+	w("| 1 | Install what a GitOps source makes | %d sources by hand, %d follow%s |\n", len(p.Sources), len(p.Follows), seen)
+	w("| 2 | Have these APIs served before the restore | %d groups%s |\n", len(p.Operators), seen)
+	w("| 3 | Supply by hand the secrets no store holds | %d secrets%s |\n", len(p.ByHand), seen)
+	w("| 4 | Make the secret store reachable | %d items feed %d secrets%s |\n", len(p.FromStore), fromStore, seen)
 	w("| 5 | Restore the snapshot | |\n")
-	w("| 6 | Point the names at the rebuilt cluster | %d hosts |\n\n", len(p.Hosts))
+	w("| 6 | Point the names at the rebuilt cluster | %d hosts%s |\n\n", len(p.Hosts), seen)
 
-	w("## 1. Install first: %d sources\n\n", len(p.Sources))
+	w("## 1. Install first: %d sources%s\n\n", len(p.Sources), seen)
+	if len(p.Follows) > 0 {
+		made := 0
+		names := make([]string, len(p.Follows))
+		for i, s := range p.Follows {
+			made += s.Objects
+			names[i] = s.Kind + " " + code(s.Name)
+		}
+		w("**Applied again by sources the snapshot holds: %d sources, %d objects.** Install the GitOps tool's own controllers and restore: the sources in the snapshot then apply these, from where they read. %s.\n\n", len(p.Follows), made, strings.Join(names, ", "))
+	}
 	if len(p.Sources) == 0 {
-		none("The capture left nothing to a GitOps source that is not itself in the snapshot.")
+		if len(p.Follows) > 0 {
+			none("Nothing else: the capture left nothing to a GitOps source that the snapshot's own sources do not apply.")
+		} else {
+			none("The capture left nothing to a GitOps source.")
+		}
 	} else {
 		w("The capture left these out because their source recreates them. The snapshot holds neither the source nor what it makes.\n\n")
-		w("| Source | Objects it makes |\n|---|---:|\n")
+		w("| Source | Objects it makes | |\n|---|---:|---|\n")
 		for _, s := range p.Sources {
-			w("| %s %s | %d |\n", s.Kind, code(s.Name), s.Objects)
+			note := ""
+			if s.SystemOnly {
+				note = "only in system namespaces: the cluster's platform may install it itself"
+			}
+			w("| %s %s | %d | %s |\n", s.Kind, code(s.Name), s.Objects, note)
 		}
+		w("\n")
+	}
+	if len(p.Sources)+len(p.Follows) > 0 {
 		if len(p.Origins) > 0 {
-			w("\nThe snapshot holds these repository objects: %s. Check that they are where the sources above are read from.\n\n", md(strings.Join(p.Origins, ", ")))
+			w("The snapshot holds these repository objects: %s. Check that they are where the sources above are read from. The credential to read each is a Secret of step 3.\n\n", md(strings.Join(p.Origins, ", ")))
 		} else {
-			w("\n**Not in the snapshot: where they are read from.** The repository, branch and path the cluster was bootstrapped from, and the credential to read them, have to come from your own records.\n\n")
+			w("**Not in the snapshot: where the sources are read from.** The repository, branch and path the cluster was bootstrapped from, and the credential to read them, have to come from your own records.\n\n")
 		}
-		w("A source that makes objects only in a system namespace is not listed: the capture leaves those namespaces out before it looks at who made what.\n\n")
 	}
 
-	w("## 2. APIs to have served: %d groups\n\n", len(p.Operators))
+	w("## 2. APIs to have served: %d groups%s\n\n", len(p.Operators), seen)
 	if len(p.Operators) == 0 {
 		none("Every type in the snapshot is built in, or its definition is in the snapshot.")
 	} else {
@@ -141,7 +165,7 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 		w("\n")
 	}
 
-	w("## 3. Secrets to supply by hand: %d\n\n", len(p.ByHand))
+	w("## 3. Secrets to supply by hand: %d%s\n\n", len(p.ByHand), seen)
 	if len(p.ByHand) == 0 {
 		none("Every Secret in the snapshot is made from a store.")
 	} else {
@@ -157,7 +181,7 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 		w("Not for you to supply: %d that cert-manager issues again once it runs (%s).\n\n", len(p.Reissued), md(strings.Join(p.Reissued, ", ")))
 	}
 
-	w("## 4. Secrets a store supplies: %d, from %d items\n\n", fromStore, len(p.FromStore))
+	w("## 4. Secrets a store supplies: %d, from %d items%s\n\n", fromStore, len(p.FromStore), seen)
 	if len(p.FromStore) == 0 {
 		none("The snapshot has no object that reads a secret store.")
 	} else {
@@ -172,7 +196,7 @@ func planMarkdown(p kube.Plan, notRead []string) string {
 	w("## 5. Restore\n\n")
 	w("`truthform restore --context <kube-context> --from <this snapshot>`, once steps 1 to 4 are in place.\n\n")
 
-	w("## 6. Names to point at the rebuilt cluster: %d\n\n", len(p.Hosts))
+	w("## 6. Names to point at the rebuilt cluster: %d%s\n\n", len(p.Hosts), seen)
 	if len(p.Hosts) == 0 {
 		none("No route in the snapshot names a host.")
 	} else {

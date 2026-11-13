@@ -5,12 +5,18 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	fakediscovery "k8s.io/client-go/discovery/fake"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/openapi"
+	"k8s.io/client-go/openapi/openapitest"
+	clienttesting "k8s.io/client-go/testing"
 
 	"github.com/usetruthform/core/internal/snapshot"
 )
@@ -192,3 +198,69 @@ func TestRootOwnerTellsGroupsApart(t *testing.T) {
 		t.Errorf("the core Service web resolved to %s", k)
 	}
 }
+
+// The capture finds what a Kustomization that applies itself reads from,
+// in its own namespace unless the reference names another, and keeps it.
+func TestFluxRootSourcesAreCaptured(t *testing.T) {
+	ks := schema.GroupVersionResource{Group: "kustomize.toolkit.fluxcd.io", Version: "v1", Resource: "kustomizations"}
+	repos := schema.GroupVersionResource{Group: "source.toolkit.fluxcd.io", Version: "v1", Resource: "gitrepositories"}
+	applied := func(by string) map[string]any {
+		return map[string]any{"kustomize.toolkit.fluxcd.io/name": by, "kustomize.toolkit.fluxcd.io/namespace": "flux-system"}
+	}
+	obj := func(apiVersion, kind, ns, name, by string, spec map[string]any) *unstructured.Unstructured {
+		return &unstructured.Unstructured{Object: map[string]any{"apiVersion": apiVersion, "kind": kind,
+			"metadata": map[string]any{"namespace": ns, "name": name, "labels": applied(by)}, "spec": spec}}
+	}
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
+		map[schema.GroupVersionResource]string{ks: "KustomizationList", repos: "GitRepositoryList"},
+		obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "flux-system", "flux-system",
+			map[string]any{"path": "./clusters/one", "sourceRef": map[string]any{"kind": "GitRepository", "name": "fleet"}}),
+		// Applied by the root, not by itself: what it reads from is the root's to recreate.
+		obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "apps", "flux-system",
+			map[string]any{"sourceRef": map[string]any{"kind": "GitRepository", "name": "apps", "namespace": "flux-system"}}),
+		obj("source.toolkit.fluxcd.io/v1", "GitRepository", "flux-system", "fleet", "flux-system", map[string]any{"url": "https://example.com/fleet.git"}),
+		obj("source.toolkit.fluxcd.io/v1", "GitRepository", "flux-system", "apps", "flux-system", map[string]any{"url": "https://example.com/apps.git"}),
+	)
+	c := &Clients{Dynamic: dyn}
+	verbs := metav1.Verbs{"list", "create"}
+	lists := []*metav1.APIResourceList{
+		{GroupVersion: "kustomize.toolkit.fluxcd.io/v1", APIResources: []metav1.APIResource{{Name: "kustomizations", Kind: "Kustomization", Verbs: verbs}, {Name: "kustomizations/status", Kind: "Kustomization", Verbs: verbs}}},
+	}
+	if roots := fluxRoots(context.Background(), c, lists); len(roots) != 1 || !roots["GitRepository|flux-system|fleet"] {
+		t.Fatalf("roots: %v", roots)
+	}
+	// Through Capture itself, which looks for the roots before it reads any type.
+	lists = append(lists, &metav1.APIResourceList{GroupVersion: "source.toolkit.fluxcd.io/v1", APIResources: []metav1.APIResource{{Name: "gitrepositories", Kind: "GitRepository", Verbs: verbs}}})
+	c.Discovery = preferred{FakeDiscovery: &fakediscovery.FakeDiscovery{Fake: &clienttesting.Fake{}}, lists: lists}
+	snap, err := Capture(context.Background(), c, Policy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept, skipped []string
+	for _, o := range snap.Objects {
+		kept = append(kept, o.Kind()+" "+o.Name())
+	}
+	for _, sk := range snap.Skips {
+		skipped = append(skipped, sk.Name)
+	}
+	sort.Strings(kept)
+	sort.Strings(skipped)
+	if strings.Join(kept, ", ") != "GitRepository fleet, Kustomization flux-system" || strings.Join(skipped, ", ") != "apps, apps" {
+		t.Errorf("kept %v, skipped %v", kept, skipped)
+	}
+	// A cluster without Flux has no roots, and nothing is asked of it.
+	if r := fluxRoots(context.Background(), &Clients{}, []*metav1.APIResourceList{{GroupVersion: "apps/v1", APIResources: []metav1.APIResource{{Name: "deployments", Verbs: verbs}}}}); len(r) != 0 {
+		t.Errorf("no Flux: roots %v", r)
+	}
+}
+
+// preferred is a fake discovery that serves a list of resource types.
+type preferred struct {
+	*fakediscovery.FakeDiscovery
+	lists []*metav1.APIResourceList
+}
+
+func (p preferred) ServerPreferredResources() ([]*metav1.APIResourceList, error) { return p.lists, nil }
+
+// No schemas published: Capture says so for each type, after the objects.
+func (p preferred) OpenAPIV3() openapi.Client { return openapitest.NewFakeClient() }

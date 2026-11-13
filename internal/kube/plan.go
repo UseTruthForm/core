@@ -18,6 +18,10 @@ type Plan struct {
 	// snapshot: restoring the source recreates what it makes, and the
 	// snapshot holds neither.
 	Sources []PlanSource `json:"installFirst"`
+	// Follows are sources that a source in the snapshot applies, directly
+	// or through another: once the snapshot is restored and its GitOps
+	// tool runs, they are applied again without being installed by hand.
+	Follows []PlanSource `json:"follows"`
 	// Origins are the Flux repository objects in the snapshot (kind
 	// namespace/name): where its sources may be read from.
 	Origins []string `json:"origins"`
@@ -42,6 +46,9 @@ type PlanSource struct {
 	Kind    string `json:"kind"`
 	Name    string `json:"name"`
 	Objects int    `json:"objects"`
+	// SystemOnly is a source that makes objects in system namespaces only
+	// (kube-system): often the cluster's platform installs it itself.
+	SystemOnly bool `json:"systemOnly"`
 }
 
 type PlanOperator struct {
@@ -79,9 +86,15 @@ func SourceOf(reason string) (kind, name string, ok bool) {
 	return m[1] + m[2] + m[3] + m[4], m[5], true
 }
 
-// sourceObject is the kind of the object a source is, where the plan can
-// tell whether the snapshot holds it.
-var sourceObject = map[string]string{"Flux HelmRelease": "HelmRelease", "Flux Kustomization": "Kustomization", "Argo CD application": "Application"}
+// sourceObject is the object a source is, where the plan can tell whether
+// the snapshot holds it. By group too: another API has an Application.
+var sourceObject = map[string]struct{ group, kind, resource string }{
+	"Flux HelmRelease":    {"helm.toolkit.fluxcd.io", "HelmRelease", "helmreleases"},
+	"Flux Kustomization":  {"kustomize.toolkit.fluxcd.io", "Kustomization", "kustomizations"},
+	"Argo CD application": {"argoproj.io", "Application", "applications"},
+}
+
+type source struct{ kind, name string }
 
 // originKinds say where a Flux source is read from.
 var originKinds = map[string]bool{"GitRepository": true, "OCIRepository": true, "Bucket": true}
@@ -110,15 +123,38 @@ func (k secretKey) String() string { return k.ns + "/" + k.name }
 
 // RebuildPlan reads the plan out of a Kubernetes snapshot.
 func RebuildPlan(s snapshot.Snapshot) Plan {
-	p := Plan{Sources: []PlanSource{}, Origins: []string{}, Operators: []PlanOperator{}, ByHand: []PlanSecret{}, Reissued: []string{}, FromStore: []PlanStoreItem{}, Hosts: []string{}}
+	p := Plan{Sources: []PlanSource{}, Follows: []PlanSource{}, Origins: []string{}, Operators: []PlanOperator{}, ByHand: []PlanSecret{}, Reissued: []string{}, FromStore: []PlanStoreItem{}, Hosts: []string{}}
 
 	// What the snapshot holds: a source that is in it is restored with it,
 	// and a type whose definition is in it is served by the restore.
-	held := map[string]bool{}
+	held := map[source]bool{}
 	defined := map[string]bool{}
+	// An Argo CD application is named bare in Argo CD's own namespace, and
+	// which that is the snapshot does not say: a bare name that
+	// applications in several namespaces share is not taken as held.
+	argoNamed := map[string][]string{}
 	for _, o := range s.Objects {
-		held[o.Kind()+" "+o.Namespace()+"/"+o.Name()] = true
-		held[o.Kind()+" "+o.Name()] = true
+		if group, _, _ := strings.Cut(o.APIVersion(), "/"); group == "argoproj.io" && o.Kind() == "Application" {
+			argoNamed[o.Name()] = append(argoNamed[o.Name()], o.Namespace())
+		}
+	}
+	for _, o := range s.Objects {
+		group, _, _ := strings.Cut(o.APIVersion(), "/")
+		for kind, obj := range sourceObject {
+			if obj.group != group || obj.kind != o.Kind() {
+				continue
+			}
+			if kind == "Argo CD application" {
+				// By name, as a reason names it; namespace_name outside
+				// Argo CD's own namespace.
+				if len(argoNamed[o.Name()]) == 1 {
+					held[source{kind, o.Name()}] = true
+				}
+				held[source{kind, o.Namespace() + "_" + o.Name()}] = true
+			} else {
+				held[source{kind, o.Namespace() + "/" + o.Name()}] = true
+			}
+		}
 		if o.Kind() == "CustomResourceDefinition" {
 			spec, _ := o.Body["spec"].(map[string]any)
 			names, _ := spec["names"].(map[string]any)
@@ -126,23 +162,67 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 		}
 	}
 
-	sources := map[PlanSource]int{}
+	// A source's own object, when the capture skipped it, names the source
+	// that applies it: a HelmRelease applied by a Kustomization.
+	sources := map[source]int{}
+	// Whether a source makes something in a system namespace, and in another:
+	// what has no namespace says neither.
+	system, elsewhere := map[source]bool{}, map[source]bool{}
+	parent := map[source]source{}
 	for _, sk := range s.Skips {
-		if kind, name, ok := SourceOf(sk.Reason); ok && !held[sourceObject[kind]+" "+name] {
-			sources[PlanSource{Kind: kind, Name: name}]++
+		kind, name, ok := SourceOf(sk.Reason)
+		if !ok {
+			continue
 		}
+		sources[source{kind, name}]++
+		switch {
+		case systemNamespaces[sk.Namespace]:
+			system[source{kind, name}] = true
+		case sk.Namespace != "":
+			elsewhere[source{kind, name}] = true
+		}
+		for k, obj := range sourceObject {
+			if strings.HasPrefix(sk.Resource, obj.group+"/") && strings.HasSuffix(sk.Resource, "/"+obj.resource) {
+				child := source{k, sk.Namespace + "/" + sk.Name}
+				if k == "Argo CD application" {
+					// As a reason names it: bare in Argo CD's own
+					// namespace, namespace_name outside it.
+					child.name = sk.Name
+					parent[source{k, sk.Namespace + "_" + sk.Name}] = source{kind, name}
+				}
+				parent[child] = source{kind, name}
+			}
+		}
+	}
+	// follows: the source is in the snapshot, or one that is applies it.
+	var follows func(src source, seen map[source]bool) bool
+	follows = func(src source, seen map[source]bool) bool {
+		if held[src] {
+			return true
+		}
+		up, ok := parent[src]
+		if !ok || seen[src] {
+			return false
+		}
+		seen[src] = true
+		return follows(up, seen)
 	}
 	for src, n := range sources {
-		src.Objects = n
-		p.Sources = append(p.Sources, src)
-	}
-	sort.Slice(p.Sources, func(i, j int) bool {
-		a, b := p.Sources[i], p.Sources[j]
-		if a.Objects != b.Objects {
-			return a.Objects > b.Objects
+		ps := PlanSource{Kind: src.kind, Name: src.name, Objects: n, SystemOnly: system[src] && !elsewhere[src]}
+		if follows(src, map[source]bool{}) {
+			p.Follows = append(p.Follows, ps)
+		} else {
+			p.Sources = append(p.Sources, ps)
 		}
-		return a.Kind+" "+a.Name < b.Kind+" "+b.Name
-	})
+	}
+	for _, l := range [][]PlanSource{p.Sources, p.Follows} {
+		sort.Slice(l, func(i, j int) bool {
+			if l[i].Objects != l[j].Objects {
+				return l[i].Objects > l[j].Objects
+			}
+			return l[i].Kind+" "+l[i].Name < l[j].Kind+" "+l[j].Name
+		})
+	}
 
 	type origin struct{ store, item string }
 	items := map[origin]map[string]bool{}

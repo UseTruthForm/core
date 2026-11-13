@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/usetruthform/core/internal/kube"
 	"github.com/usetruthform/core/internal/snapshot"
 )
 
@@ -52,8 +53,8 @@ func TestPlanRebuildCommand(t *testing.T) {
 		"# Rebuild plan",
 		"| 4 | Make the secret store reachable | 2 items feed 2 secrets |",
 		"## 1. Install first: 1 sources",
-		"| Flux HelmRelease `ingress/proxy` | 1 |",
-		"**Not in the snapshot: where they are read from.**",
+		"| Flux HelmRelease `ingress/proxy` | 1 |  |",
+		"**Not in the snapshot: where the sources are read from.**",
 		"## 2. APIs to have served: 1 groups",
 		"| `onepassword.com` | 2 OnePasswordItem |",
 		"## 3. Secrets to supply by hand: 1",
@@ -96,6 +97,29 @@ func TestPlanRebuildCommand(t *testing.T) {
 	// Nothing to say is an empty list, not null: "| length" reads either, ".[]" does not.
 	if l, ok := plan["secretsReissued"].([]any); !ok || len(l) != 0 {
 		t.Errorf("secretsReissued: %v", plan["secretsReissued"])
+	}
+}
+
+// When every source follows from one the snapshot holds, the plan still
+// says where they are read from, or that the snapshot does not hold it,
+// and claims no more than that the sources are held.
+func TestPlanRebuildWhenEverySourceFollows(t *testing.T) {
+	root := snapshot.Object{Body: map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization", "metadata": map[string]any{"name": "root", "namespace": "flux-system"}}}
+	repo := snapshot.Object{Body: map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository", "metadata": map[string]any{"name": "fleet", "namespace": "flux-system"}}}
+	skips := []snapshot.Skip{{Resource: "configmaps", Namespace: "shop", Name: "c", Reason: "applied by Flux Kustomization flux-system/root; restoring it recreates this"}}
+	for want, objects := range map[string][]snapshot.Object{
+		"The snapshot holds these repository objects: GitRepository flux-system/fleet.": {root, repo},
+		"**Not in the snapshot: where the sources are read from.**":                     {root},
+	} {
+		text := planMarkdown(kube.RebuildPlan(snapshot.Snapshot{Platform: "kubernetes", Skips: skips, Objects: objects}), nil)
+		for _, line := range []string{"| 1 | Install what a GitOps source makes | 0 sources by hand, 1 follow |", "**Applied again by sources the snapshot holds: 1 sources, 1 objects.**", "Nothing else:", want} {
+			if !strings.Contains(text, line) {
+				t.Errorf("the plan lacks %q:\n%s", line, text)
+			}
+		}
+		if strings.Contains(text, "where GitOps starts") {
+			t.Errorf("claims more than that the sources are held:\n%s", text)
+		}
 	}
 }
 
@@ -148,12 +172,18 @@ func TestPlanRebuildSaysWhatWasNotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(t.TempDir(), "plan.md")
-	if code := planCmd([]string{"rebuild", "--from", dir, "--out", out}); code != 0 {
-		t.Fatalf("exit %d", code)
+	code, stdout, stderr := output(t, func() int { return planCmd([]string{"rebuild", "--from", dir, "--out", out}) })
+	if code != 0 || !strings.Contains(stdout, "wrote "+out) || !strings.Contains(stderr, "INCOMPLETE SNAPSHOT: its capture could not read 2 things") {
+		t.Fatalf("exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	// With --json the warning is on stderr too: the document goes to a program.
+	if _, _, stderr := output(t, func() int { return planCmd([]string{"rebuild", "--from", dir}) }); !strings.Contains(stderr, "INCOMPLETE SNAPSHOT") {
+		t.Errorf("no warning on stderr without --out: %q", stderr)
 	}
 	b, _ := os.ReadFile(out)
 	text := string(b)
-	for _, want := range []string{"**INCOMPLETE SNAPSHOT.** Its capture could not read 2 things", "- core/v1/secrets: list failed: secrets is forbidden", "None in what the capture read."} {
+	for _, want := range []string{"| 0 secrets seen |", "| 0 hosts seen |", "## 3. Secrets to supply by hand: 0 seen", "## 6. Names to point at the rebuilt cluster: 0 seen",
+		"**INCOMPLETE SNAPSHOT.** Its capture could not read 2 things", "- core/v1/secrets: list failed: secrets is forbidden", "None in what the capture read."} {
 		if !strings.Contains(text, want) {
 			t.Errorf("plan lacks %q:\n%s", want, text)
 		}
@@ -183,7 +213,19 @@ func TestPlanRebuildSaysWhatWasNotRead(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	b, _ = os.ReadFile(out + "2")
-	if strings.Contains(string(b), "INCOMPLETE") || strings.Contains(string(b), "None in what the capture read") {
+	if strings.Contains(string(b), "INCOMPLETE") || strings.Contains(string(b), "None in what the capture read") || strings.Contains(string(b), " seen") {
 		t.Errorf("a whole snapshot's plan warns:\n%s", b)
+	}
+}
+
+// Every source follows and the capture could not read everything: the
+// step still does not say there is nothing else.
+func TestPlanRebuildNothingElseOfAnIncompleteSnapshot(t *testing.T) {
+	p := kube.Plan{Follows: []kube.PlanSource{{Kind: "Flux Kustomization", Name: "flux-system/root", Objects: 1}}}
+	if text := planMarkdown(p, []string{"core/v1/secrets: list failed"}); strings.Contains(text, "Nothing else:") || !strings.Contains(text, "None in what the capture read.") {
+		t.Errorf("says there is nothing else of a snapshot not all read:\n%s", text)
+	}
+	if text := planMarkdown(p, nil); !strings.Contains(text, "Nothing else:") {
+		t.Errorf("a whole snapshot whose sources all follow:\n%s", text)
 	}
 }

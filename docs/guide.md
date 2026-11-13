@@ -729,9 +729,33 @@ operator's cluster, with its count under another name; a
 own); some act outside the cluster (a cert-manager `Certificate` asks an
 authority for a certificate for the source's host names, a `PushSecret`
 writes to a store, an external-dns `DNSEndpoint` writes DNS). The run
-then says "stopped", not "nothing running", and still exits 0: read the
-NOTE, or `scope.broughtNotHeld`, and leave out with `--leave-out` what
-would run or reach out.
+then says "stopped", not "nothing running", and does not end 0:
+`plan scope --check` exits 2, and a restore applies what it was given
+and exits 3, so a pipeline can tell a hold that holds from one that let
+something through. Run `plan scope --check` before a restore: it writes
+nothing. A diff's exit code still says only whether there are
+differences.
+
+Read the NOTE, or `scope.broughtNotHeld`, and for each object either
+leave it out with `--leave-out`, or, having looked at it, name it under
+`asTheyAre` on the entry that holds it:
+
+```yaml
+narrow:
+  - namespaces: [shop]
+    releases: [shop]
+    hold: true
+    asTheyAre:                 # looked at: brought as they are, not held
+      - Certificate/shop-tls
+      - KafkaTopic/*
+```
+
+Each is `Kind/name` as under `objects`, and either part may be a
+pattern. What is named there is still listed (`scope.broughtAsTheyAre`),
+and the run ends 0 when nothing else is left not held. A name that fits
+no object the hold would have named is an error, as is `asTheyAre` on an
+entry without `hold: true`: it does not hold anything, and does not
+excuse a `Pod` or anything else a hold refuses.
 
 Restore and diff list what is held and how, with the count it had
 (`scope.held` with `--json`: "zero replicas (it had 3)"); a diff given

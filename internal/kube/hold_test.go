@@ -358,3 +358,68 @@ func TestTheNamesOfWhatHolds(t *testing.T) {
 		}
 	}
 }
+
+// What a hold does not know how to hold, a person may look at and name
+// under asTheyAre: it is then listed apart, and no longer as not held.
+// The key excuses only that: not what a hold refuses, not a name that
+// fits nothing the hold would have named, and not an entry with no hold.
+func TestAsTheyAre(t *testing.T) {
+	rel := func(apiVersion, kind, name string, spec map[string]any) snapshot.Object {
+		return released(apiVersion, kind, "shop", name, "worker", map[string]any{"spec": spec})
+	}
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		rel("apps/v1", "Deployment", "worker", map[string]any{"replicas": float64(3)}),
+		rel("cert-manager.io/v1", "Certificate", "tls", map[string]any{"secretName": "tls"}),
+		rel("postgresql.cnpg.io/v1", "Cluster", "db", map[string]any{"instances": float64(3)}),
+		rel("example.com/v1", "Cluster", "other", map[string]any{"size": "big"}),
+		rel("v1", "ConfigMap", "cfg", nil),
+	}}
+	entry := func(as ...string) Scope {
+		return Scope{Narrow: []ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"worker"}, Hold: true, AsTheyAre: as}}}
+	}
+	for _, c := range []struct {
+		as            []string
+		notHeld, asIs []string
+	}{
+		{nil, []string{"Certificate shop/tls", "Cluster shop/db", "Cluster shop/other"}, []string{}},
+		{[]string{"Certificate/tls"}, []string{"Cluster shop/db", "Cluster shop/other"}, []string{"Certificate shop/tls"}},
+		// By group, where two APIs share a kind.
+		{[]string{"Cluster.postgresql.cnpg.io/*"}, []string{"Certificate shop/tls", "Cluster shop/other"}, []string{"Cluster shop/db"}},
+		{[]string{"Certificate/*", "Cluster/*"}, []string{}, []string{"Certificate shop/tls", "Cluster shop/db", "Cluster shop/other"}},
+	} {
+		out, rep, err := Narrow(s, entry(c.as...))
+		if err != nil {
+			t.Fatalf("%q: %v", c.as, err)
+		}
+		if !reflect.DeepEqual(rep.NotHeld, c.notHeld) || !reflect.DeepEqual(rep.AsTheyAre, c.asIs) {
+			t.Errorf("%q: not held %q, as they are %q; want %q and %q", c.as, rep.NotHeld, rep.AsTheyAre, c.notHeld, c.asIs)
+		}
+		if len(out.Objects) != 5 || len(rep.Held) != 1 {
+			t.Errorf("%q: %d objects brought, %d held", c.as, len(out.Objects), len(rep.Held))
+		}
+	}
+	for want, sc := range map[string]Scope{
+		// Held, a ConfigMap that runs nothing, and a name that is not there.
+		`asTheyAre names "Deployment/worker"`: entry("Deployment/worker"),
+		`asTheyAre names "ConfigMap/cfg"`:     entry("ConfigMap/cfg"),
+		`asTheyAre names "Certificate/tsl"`:   entry("Certificate/tls", "Certificate/tsl"),
+		"is not Kind/name":                    entry("tls"),
+		"asTheyAre is for an entry with hold": {Narrow: []ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"worker"}, AsTheyAre: []string{"Certificate/tls"}}}},
+	} {
+		if _, _, err := Narrow(s, sc); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("want an error with %q, got %v", want, err)
+		}
+	}
+	// An entry names what is in its own namespaces, not another's.
+	s.Objects = append(s.Objects, released("apps/v1", "Deployment", "other", "api", "api", map[string]any{"spec": map[string]any{"replicas": float64(1)}}))
+	two := entry()
+	two.Narrow = append(two.Narrow, ScopeEntry{Namespaces: []string{"other"}, Releases: []string{"api"}, Hold: true, AsTheyAre: []string{"Certificate/tls"}})
+	if _, _, err := Narrow(s, two); err == nil || !strings.Contains(err.Error(), `entry 2: asTheyAre names "Certificate/tls"`) {
+		t.Errorf("an entry of another namespace: %v", err)
+	}
+	// What a hold refuses stays refused.
+	s.Objects = append(s.Objects, rel("v1", "Pod", "once", map[string]any{"containers": []any{map[string]any{"name": "c", "image": "x"}}}))
+	if _, _, err := Narrow(s, entry("Certificate/*", "Cluster/*", "Pod/once")); err == nil || !strings.Contains(err.Error(), "Pod shop/once") {
+		t.Errorf("a Pod named under asTheyAre: %v", err)
+	}
+}

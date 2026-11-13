@@ -160,3 +160,67 @@ func TestPlanRebuildListsRegistries(t *testing.T) {
 		t.Errorf("plan.images: %v (document keys %v)", p["images"], d)
 	}
 }
+
+// A hold that brings what it does not know how to hold does not end 0,
+// checked or restored, until the scope file names each as looked at: a
+// pipeline could not otherwise tell it from a hold that holds.
+func TestAHoldThatIsNotWholeDoesNotEndZero(t *testing.T) {
+	if captureOnly {
+		t.Skip("a restore, which the capture-only build refuses")
+	}
+	obj := elsewhereObject
+	ofRelease := func(o snapshot.Object) snapshot.Object {
+		md := o.Body["metadata"].(map[string]any)
+		md["annotations"] = map[string]any{"meta.helm.sh/release-name": "worker", "meta.helm.sh/release-namespace": "shop"}
+		md["labels"] = map[string]any{"app.kubernetes.io/managed-by": "Helm"}
+		return o
+	}
+	open := map[string]any{"type": "object", "x-kubernetes-preserve-unknown-fields": true}
+	s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Objects: []snapshot.Object{
+		obj("apiextensions.k8s.io/v1", "CustomResourceDefinition", "", "gadgets.example.com", map[string]any{"spec": map[string]any{
+			"group": "example.com", "scope": "Namespaced",
+			"names":      map[string]any{"kind": "Gadget", "plural": "gadgets", "singular": "gadget", "listKind": "GadgetList"},
+			"conversion": map[string]any{"strategy": "None"},
+			"versions":   []any{map[string]any{"name": "v1", "served": true, "storage": true, "schema": map[string]any{"openAPIV3Schema": open}}},
+		}}),
+		obj("v1", "Namespace", "", "shop", nil),
+		ofRelease(obj("example.com/v1", "Gadget", "shop", "g", map[string]any{"spec": map[string]any{"size": "big"}})),
+		ofRelease(obj("v1", "ConfigMap", "shop", "cfg", map[string]any{"data": map[string]any{"a": "b"}})),
+	}}
+	dir := filepath.Join(t.TempDir(), "cluster")
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	const hold = "narrow:\n  - namespaces: [shop]\n    releases: [worker]\n    hold: true\n"
+	notWhole := writeFile(t, t.TempDir(), "hold.yaml", hold)
+	looked := writeFile(t, t.TempDir(), "looked.yaml", hold+"    asTheyAre: [Gadget/g]\n")
+
+	code, stdout, _ := output(t, func() int { return planScope([]string{"--from", dir, "--check", notWhole}) })
+	if code != 2 || !strings.Contains(stdout, "NOTE: 1 objects under hold: true are brought as they are") || !strings.Contains(stdout, "asTheyAre") {
+		t.Errorf("plan scope --check of a hold that is not whole: exit %d\n%s", code, stdout)
+	}
+	code, stdout, _ = output(t, func() int { return planScope([]string{"--from", dir, "--check", looked}) })
+	if code != 0 || strings.Contains(stdout, "NOTE") || !strings.Contains(stdout, "as "+looked+" asks (asTheyAre): Gadget shop/g") {
+		t.Errorf("plan scope --check with the object looked at: exit %d\n%s", code, stdout)
+	}
+	d := asJSON(t, func() {
+		if code := planScope([]string{"--from", dir, "--check", notWhole}); code != 2 {
+			t.Errorf("plan scope --check --json: exit %d", code)
+		}
+	})
+	if sc, _ := d["scope"].(map[string]any); len(sc["broughtNotHeld"].([]any)) != 1 || len(sc["broughtAsTheyAre"].([]any)) != 0 {
+		t.Errorf("the document: %v", d["scope"])
+	}
+
+	srv := kubetest.Start(t, "notheld")
+	ctx := context.Background()
+	base := []string{"--kubeconfig", srv.Kubeconfig, "--context", srv.Context, "--from", dir}
+	code, stdout, stderr := output(t, func() int { return restore(ctx, append(base, "--scope", notWhole)) })
+	if code != 3 || !strings.Contains(stdout, "applied 4 of 4 objects") || !strings.Contains(stdout, "1 objects under hold: true were brought not held (see the NOTE above): Gadget shop/g") {
+		t.Errorf("restore of a hold that is not whole: exit %d, %v\n%s\n%s", code, lastErr, stdout, stderr)
+	}
+	code, stdout, stderr = output(t, func() int { return restore(ctx, append(base, "--scope", looked)) })
+	if code != 0 || strings.Contains(stdout, "brought not held") || strings.Contains(stderr, "NOTE") {
+		t.Errorf("restore with the object looked at: exit %d, %v\n%s\n%s", code, lastErr, stdout, stderr)
+	}
+}

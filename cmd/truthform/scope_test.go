@@ -256,4 +256,9 @@ func TestScopeSaidOfAHold(t *testing.T) {
 		!strings.Contains(said, "NOTE: 1 objects under hold: true are brought as they are") || !strings.Contains(said, "Cluster shop/db") {
 		t.Errorf("a hold that passed what it does not know:\n%s", said)
 	}
+	// Looked at, they are still not held: the hold is not said to be whole.
+	rep.NotHeld, rep.AsTheyAre = nil, []string{"Cluster shop/db"}
+	if said := scopeSaid(rep, "scope.yaml"); strings.Contains(said, "nothing running") || strings.Contains(said, "NOTE") || !strings.Contains(said, "as scope.yaml asks (asTheyAre): Cluster shop/db") {
+		t.Errorf("a hold with what it does not know looked at:\n%s", said)
+	}
 }

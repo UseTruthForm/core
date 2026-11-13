@@ -390,6 +390,12 @@ func restore(ctx context.Context, args []string) int {
 	if ok != len(results) {
 		return 3
 	}
+	// A hold that brought what it does not know how to hold is not the
+	// hold that was asked for, whatever was applied.
+	if scopeDone != nil && len(scopeDone.NotHeld) > 0 {
+		fmt.Printf("%d objects under hold: true were brought not held (see the NOTE above): %s\n", len(scopeDone.NotHeld), strings.Join(scopeDone.NotHeld, ", "))
+		return 3
+	}
 	return 0
 }
 

@@ -40,7 +40,15 @@ case "$1 ${2:-} ${3:-}" in
     fail server-create
     pwd >"$S/made-in"
     stat -c %a . >"$S/made-in-mode" 2>/dev/null || stat -f %Lp . >"$S/made-in-mode"
+    if [ "$F" = other-appears-at-create ]; then
+      # Someone else makes a server of the name in the same moment, and
+      # this run's is refused for it.
+      jq --arg n "$4" '. + [{id: "someone-elses-id", name: $n}]' "$S/servers.json" >"$S/servers.tmp"
+      mv "$S/servers.tmp" "$S/servers.json"
+      echo "op: a server has that name" >&2; exit 1
+    fi
     echo "FAKE OP OUTPUT $CREDS" # what op prints is not the script's to show
+    [ "$F" = create-says-no-id ] || echo "UUID: new-server-id"
     if [ "$F" = creds-bad ]; then printf 'not json' >1password-credentials.json; else printf '%s' "$CREDS" >1password-credentials.json; fi
     add='[{id: "new-server-id", name: $n}]'
     [ "$F" != two-new ] || add='[{id: "new-server-id", name: $n}, {id: "another-new-id", name: $n}]'
@@ -68,6 +76,7 @@ case "$1 ${2:-} ${3:-}" in
     case "$F" in token-empty|delete|item-list-late) ;; *) echo "$TOKEN" ;; esac ;;
   "vault list "*) fail vault-list; cat "$S/vaults.json" ;;
   "vault create "*)
+    [ "$F" != slow-vault ] || sleep 2
     if [ "$F" = vault-create-other-appears ]; then
       # Someone else makes a server of the name just now, and this fails.
       jq '. + [{id: "someone-elses-id", name: "test-cluster"}]' "$S/servers.json" >"$S/servers.tmp"
@@ -106,6 +115,7 @@ case "$1 ${2:-} ${3:-}" in
     fail item-create-but-saved ;;
   "read "*)
     fail read-fails
+    [ "$F" != slow-read ] || sleep 2
     ref=${3#op://}; vault=${ref%%/*}; rest=${ref#*/}; title=${rest%/*}; field=${rest##*/}
     vault_named "$vault"
     if [ "$F" = "read-differs" ]; then echo "op: warning about $TOKEN" >&2; printf 'something else'; exit 0; fi
@@ -441,10 +451,11 @@ func TestRemovesNothingItCannotTellIsItsOwn(t *testing.T) {
 		fail, want string
 		args       []string
 	}{
-		"the server was not made":           {"server-create", "none was removed", usual},
-		"two new servers have the name":     {"two-new", "none was removed", usual},
-		"the item was saved all the same":   {"item-create-but-saved", "may hold an item", usual},
-		"a vault was made before it failed": {"server-create", `vault "App Config Test" was made and is left`, append([]string{"--create-vaults", "--reads", "App Config Test"}, usual...)},
+		"the server was not made":                      {"server-create", "none was removed", usual},
+		"op did not say which server it made":          {"create-says-no-id", "did not say which", usual},
+		"another's server took the name as this asked": {"other-appears-at-create", "none was removed", usual},
+		"the item was saved all the same":              {"item-create-but-saved", "may hold an item", usual},
+		"a vault was made before it failed":            {"server-create", `vault "App Config Test" was made and is left`, append([]string{"--create-vaults", "--reads", "App Config Test"}, usual...)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := setup(t)
@@ -596,4 +607,113 @@ func TestTwoSignalsStillCleanUp(t *testing.T) {
 	}
 	noSecret(t, "the output", out.String())
 	r.left()
+}
+
+// Two new servers have the name, one of them another person's made in the
+// same moment: the one op said this run made is the one removed, and the
+// other is left.
+func TestRemovesOnlyTheServerOpSaidItMade(t *testing.T) {
+	r := setup(t)
+	out, ok := r.script("two-new", usual...)
+	if ok || !strings.Contains(out, "was removed again") {
+		t.Errorf("ok=%v\n%s", ok, out)
+	}
+	if !strings.Contains(r.calls(), "connect server delete new-server-id\n") || strings.Count(r.calls(), "server delete") != 1 {
+		t.Errorf("removed:\n%s", r.calls())
+	}
+	if !strings.Contains(r.servers(), "another-new-id") || strings.Contains(r.servers(), "new-server-id") {
+		t.Errorf("servers left: %s", r.servers())
+	}
+	// The token was asked for by that id, not by the name two have.
+	if !strings.Contains(r.calls(), "--server new-server-id") {
+		t.Errorf("the token was not asked for by id:\n%s", r.calls())
+	}
+	// Another's server that took the name as this asked is left, and so
+	// is one op made without saying which: no token is asked for by name.
+	for _, fail := range []string{"other-appears-at-create", "create-says-no-id"} {
+		r = setup(t)
+		r.script(fail, usual...)
+		if strings.Contains(r.calls(), "server delete") || strings.Contains(r.calls(), "token create") {
+			t.Errorf("%s:\n%s", fail, r.calls())
+		}
+	}
+	if !strings.Contains(r.servers(), "new-server-id") {
+		t.Errorf("a server this could not tell was its own was removed: %s", r.servers())
+	}
+}
+
+// signalled runs the script, sends it a signal once op has been asked
+// for what is named, and gives what it printed and its exit code.
+func signalled(t *testing.T, r *run, fail, when string, sig syscall.Signal, args ...string) (string, int) {
+	t.Helper()
+	cmd := exec.Command("bash", append([]string{"1password-connect.sh"}, args...)...)
+	cmd.Env = append(r.env, "OP_FAIL="+fail)
+	var out strings.Builder
+	cmd.Stdout, cmd.Stderr = &out, &out
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		b, _ := os.ReadFile(filepath.Join(r.state, "calls"))
+		if strings.Contains(string(b), when) {
+			break
+		}
+		if time.Now().After(deadline) {
+			cmd.Process.Kill()
+			t.Fatalf("the script never ran op %s:\n%s", when, b)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cmd.Process.Signal(sig)
+	err := cmd.Wait()
+	ee, _ := err.(*exec.ExitError)
+	if ee == nil {
+		t.Fatalf("it went on after the signal:\n%s", out.String())
+	}
+	noSecret(t, "the output", out.String())
+	r.left()
+	return out.String(), ee.ExitCode()
+}
+
+// Stopped after the item is saved and before it is read back, it says
+// that the server and the item are there, and removes neither.
+func TestASignalWhileReadingBackSaysWhatIsLeft(t *testing.T) {
+	for sig, code := range map[syscall.Signal]int{syscall.SIGTERM: 143, syscall.SIGINT: 130} {
+		r := setup(t)
+		out, got := signalled(t, r, "slow-read", "read --no-newline", sig, usual...)
+		if got != code {
+			t.Errorf("exit %d, want %d", got, code)
+		}
+		for _, want := range []string{`Connect server "test-cluster" was made`, `item "test-cluster Connect credentials" was saved in vault "Break Glass"`, "before the item was read back"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("does not say %q:\n%s", want, out)
+			}
+		}
+		if strings.Contains(r.calls(), "server delete") || !strings.Contains(r.servers(), "new-server-id") || strings.Contains(out, "references for") {
+			t.Errorf("after the signal:\n%s\n%s", out, r.calls())
+		}
+	}
+	// What a finished run says is not that.
+	r := setup(t)
+	if out, ok := r.script("", usual...); !ok || strings.Contains(out, "before the item was read back") {
+		t.Errorf("a finished run:\n%s", out)
+	}
+	// And one whose item reads back wrong says so once.
+	r = setup(t)
+	if out, _ := r.script("read-differs", usual...); strings.Contains(out, "before the item was read back") {
+		t.Errorf("said twice:\n%s", out)
+	}
+}
+
+// Stopped while a vault is being made, it says the vault may be there.
+func TestASignalWhileMakingAVaultSaysSo(t *testing.T) {
+	r := setup(t)
+	out, code := signalled(t, r, "slow-vault", "vault create", syscall.SIGTERM, "--server", "test-cluster", "--reads", "App Config Test", "--keep-in", "Break Glass", "--create-vaults")
+	if code != 143 || (!strings.Contains(out, `vault "App Config Test" was being made`) && !strings.Contains(out, `vault "App Config Test" was made and is left`)) {
+		t.Errorf("exit %d:\n%s", code, out)
+	}
+	if strings.Contains(r.calls(), "server create") {
+		t.Errorf("went on to make a server:\n%s", r.calls())
+	}
 }

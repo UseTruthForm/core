@@ -40,6 +40,8 @@ jobs:
       - run: go vet ./...
       - run: go test -count=1 ./...
         env:
+          TRUTHFORM_REQUIRE_BOOTSTRAP_TOOLS: "1" # a missing bash, jq or cmp fails the bootstrap script's test, as in CI
+        env:
           TRUTHFORM_REQUIRE_KUBE_ASSETS: "1"
       - run: go test -race -count=1 ./internal/awscc/ ./internal/azarm/ ./internal/gcp/ ./internal/saas/ ./internal/schedule/
       # The capture-only edition is what a client is handed.

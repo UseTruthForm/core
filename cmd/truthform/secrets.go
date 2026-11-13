@@ -112,9 +112,9 @@ func planSecrets(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	problems, notes := sources.Check(file, needed, known)
-	for _, g := range notRead {
-		problems = append(problems, "the capture could not read "+g+": a Secret to supply may be in it, and no file can be checked against what was not read")
-	}
+	unread, unsure := secretsUnread(s, notRead)
+	problems = append(problems, unread...)
+	notes = append(notes, unsure...)
 	read := 0
 	if *resolve {
 		r := &sources.Resolver{AllowExec: *allowExec}
@@ -159,6 +159,42 @@ func planSecrets(ctx context.Context, args []string) int {
 		return 2
 	}
 	return 0
+}
+
+// secretsUnread says what of a snapshot's capture bears on a check of its
+// Secrets. Secrets it did not read are a problem: one to supply may be
+// among them, and no file can be checked against what was not read.
+// Another type it could not read is a note: at worst a Secret is listed
+// for a person that something unread makes. A snapshot that does not say
+// what its capture read is a note too.
+func secretsUnread(s snapshot.Snapshot, notRead []string) (problems, notes []string) {
+	const secrets = "core/v1/secrets"
+	said := false
+	for _, g := range notRead {
+		if strings.HasPrefix(g, secrets+":") || strings.HasPrefix(g, secrets+" ") {
+			problems = append(problems, "the capture could not read "+g+": a Secret to supply may be in it, and no file can be checked against what was not read")
+			said = true
+		} else {
+			notes = append(notes, "the capture could not read "+g+": if that makes Secrets, some listed here for you to supply are made for you")
+		}
+	}
+	if len(s.Coverage) == 0 {
+		return problems, append(notes, "the snapshot does not record what its capture read: whether it read every Secret is not known")
+	}
+	row := false
+	for _, c := range s.Coverage {
+		if c.Resource != secrets {
+			continue
+		}
+		row = true
+		if c.NotCaptured != "" && !said {
+			problems = append(problems, "the capture did not read Secrets ("+c.NotCaptured+"): no file can be checked against what was not read")
+		}
+	}
+	if !row {
+		problems = append(problems, "the snapshot's record of what its capture read has no row for Secrets: whether it read them is not known")
+	}
+	return problems, notes
 }
 
 const allowExecHelp = "let exec: references in the sources file run their commands"

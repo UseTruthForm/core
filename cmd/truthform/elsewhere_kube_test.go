@@ -159,7 +159,10 @@ func TestKubernetesDiffElsewhere(t *testing.T) {
 	srv := kubetest.Start(t, "elsewhere-diff")
 	ctx := context.Background()
 	base := []string{"--kubeconfig", srv.Kubeconfig, "--context", srv.Context, "--from", dir}
-	code, stdout, stderr := output(t, func() int { return diff(ctx, append(base, "--leave-out", leave, "--rename", names)) })
+	// --keep-source-stores is taken, as a restore's arguments are, and changes nothing.
+	code, stdout, stderr := output(t, func() int {
+		return diff(ctx, append(base, "--leave-out", leave, "--rename", names, "--keep-source-stores"))
+	})
 	if code != 2 || strings.Contains(stdout, "ConfigMap|shop|root") || !strings.Contains(stdout, "ConfigMap|shop|kept") || !strings.Contains(stdout, "leaving out 1 objects (--leave-out): ConfigMap/shop/root") {
 		t.Errorf("diff: exit %d\n%s", code, stdout)
 	}
@@ -235,6 +238,26 @@ func TestElsewhereFilesAreRefusedBeforeTheCluster(t *testing.T) {
 				}
 			}
 		}
+	}
+
+	// A restore refused says in its document what it refused for, and that
+	// it is not complete; on stderr, which kinds were looked at.
+	lastErr = nil
+	only := writeFile(t, files, "only.yaml", "vaults/apps/: vaults/apps-test/\n")
+	var refusedErr string
+	was := command
+	command = "restore" // as the command line sets it
+	defer func() { command = was }()
+	d := asJSON(t, func() {
+		_, _, refusedErr = output(t, func() int { return restore(ctx, append(wider, "--rename", only)) })
+		emitError(1)
+	})
+	refs, _ := d["store_references"].(map[string]any)
+	if unnamed, _ := refs["unnamed"].([]any); len(unnamed) != 1 || d["complete"] != false || d["error"] == nil || len(refs["kinds_read"].([]any)) < 8 {
+		t.Errorf("the document of a refused restore: %v", d)
+	}
+	if !strings.Contains(refusedErr, "was looked for in these kinds") || !strings.Contains(refusedErr, "is not seen") {
+		t.Errorf("stderr does not say what was looked at:\n%s", refusedErr)
 	}
 
 	// As JSON, each of the four is a list.

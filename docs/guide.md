@@ -109,19 +109,33 @@ What a snapshot does not hold, by design:
   same way: a value named like one (`*_PASSWORD`, `PGPASSWORD`,
   `*_TOKEN`, `*_SECRET`, `API_KEY`, `*_KEY`, `*_DSN`) in any `env` list
   (pod templates, Argo and Tekton steps, a HelmRelease's `values`) or as
-  a ConfigMap key, and any such value that is a URL that signs in: with a
-  password, or with a name alone (`https://<token>@host`; over SSH a
-  name alone is the account, and is kept). A GitOps source's Helm values
-  are read the same way, by each value's name (`auth.token`,
-  `adminPassword`): a Flux HelmRelease's `values`, and an Argo CD
-  application's `valuesObject`, its Helm and plugin parameters, and its
-  `values` text, which is withheld whole when a credential is in it. A
-  value that names a Secret (`existingSecret`, a `secretKeyRef`) is kept.
+  a ConfigMap key, and any value that is a URL that signs in, wherever
+  in the value it is: with a password, with a token as its name
+  (`https://<token>@host`), or with one as a query parameter (`?token=`).
+  A short name with no password is the account (`ssh://git@host`,
+  `https://org@host`) and is kept. An `Authorization` value (`Bearer …`)
+  is withheld too.
+
+  What a GitOps source installs with is read by each value's name
+  (`auth.token`, `adminPassword`, `apiKey`): a Flux HelmRelease's
+  `values` and a Kustomization's `postBuild.substitute`; an Argo CD
+  application's or application set's `valuesObject`, parameters (Helm's,
+  a plugin's, jsonnet's), generator elements and inputs, and its `values`
+  and `templatePatch` text, which is withheld whole when a credential is
+  in it, and is read line by line when it is a template that does not
+  parse. Everything under a name that says a credential is withheld. A
+  value that only names a thing is kept, so that the object can be
+  restored without the cluster it came from: a Secret's name
+  (`existingSecret`, `pullSecret`), a key in one (`passwordKey`,
+  `secretKeyRef`), a toleration's `key`, and a value that only points
+  elsewhere (`${var}`, `{{ … }}`). `secret` alone is read by its value:
+  what reads as an object's name is kept.
   It is named in the snapshot and listed in REPORT.md as a finding: move it
   into a Secret. A restore reads it from the source with
   `--secrets-from-context`. Not caught: a credential passed as a command
-  argument, inside a config file a ConfigMap holds, or under a name that
-  does not say it is one. Because both sides are withheld, a diff does not
+  argument, inside a config file a ConfigMap holds, under a name that
+  does not say it is one, a token short enough to read as an account's
+  name in a URL, or a password under `secret` that reads as a name. Because both sides are withheld, a diff does not
   show a rotated credential, and a snapshot taken before TruthForm withheld
   these values still holds them in its git history;
 - **what the platform made itself**: default VPCs and their subnets,
@@ -499,7 +513,7 @@ secrets:
 
 | Reference | Read from |
 |---|---|
-| `op://<vault>/<item>/<field>` | 1Password, with the `op` CLI |
+| `op://<vault>/<item>/[<section>/]<field>` | 1Password, with the `op` CLI; each part is letters, digits, spaces, dots, dashes and underscores (give anything else by its ID) |
 | `azurekv://<vault>/<secret>[/<version>]` | Azure Key Vault, with the `az` CLI; each part is letters, digits and dashes |
 | `env:<NAME>` | an environment variable |
 | `file:<path>` | a file's whole content, byte for byte; a relative path is from where the command runs |
@@ -529,8 +543,9 @@ restore takes one Secret's values from one place.
 `--check` exits 2 when a rebuild would lack something: a Secret to supply
 with no entry, a key with no reference, a key the Secret does not have.
 Run after each capture, it says so the day someone adds a Secret by hand.
-It also exits 2 for a snapshot whose capture could not read everything
-(`.gaps` with `--json`): a Secret to supply may be in what was not read.
+It also exits 2 for a snapshot whose capture did not read Secrets (a
+Secret to supply may be among them; `.gaps` with `--json`), and notes
+any other type it could not read.
 It reads only the snapshot and the file. `--resolve` also reads every
 value from its source and prints none of them: it proves the sign-ins and
 the items are there before the day they are needed.
@@ -634,19 +649,23 @@ The rename lists on stderr, and gives under `store_references` with
 |---|---|
 | changed | a reference that points elsewhere now |
 | kept | one a start names and replaces by itself: said to be the same in both environments |
-| unnamed | one that says **which store** (a vault's address, a 1Password item's path) and that no start fits: it is the source's still |
+| unnamed | one that says **which store** (a vault's address, a 1Password item's path), or what a `PushSecret` writes to, and that no start fits: it is the source's still |
 | items unchanged | one that names an item in a store and that no start fits: the same name, read from whichever store its store object says |
-| unreached | an object that uses a store in a way a rename cannot change: a CSI class's `objects` document, a 1Password store's `vaults`, a provider it has no field for, an `ExternalSecret` that finds by a pattern of names or by tags, a pod that asks the Vault agent by annotation |
+| unreached | an object that uses a store in a way a rename cannot change: a CSI class's `objects` document, a 1Password store's `vaults`, a provider it has no field for, an `ExternalSecret` that finds by a pattern of names or by tags or reads from a generator, a pod that asks the Vault agent by annotation, an HCP Vault Secrets object, Vault Secrets Operator objects with no `VaultConnection` in the snapshot |
 
 **A restore is refused, with nothing written, while anything is unnamed
-or unreached**: what reads or writes through it (a `PushSecret` writes)
-would use the source's store. Give the store a start, replaced by itself
-if it is meant to be the same; leave the object out; or pass
-`--keep-source-stores` to restore all the same. A diff writes nothing,
-and only lists them.
+or unreached**: what reads or writes through it would use the source's
+store. A `PushSecret` writes, so the item it writes to needs a start of
+its own, whatever its store is. Give each a start, replaced by itself if
+it is meant to be the same (a start replaced by itself is a whole
+reference, or ends with a slash); leave the object out; or pass
+`--keep-source-stores` to restore all the same. The refused restore's
+`--json` document carries the same lists. A diff writes nothing, and
+only lists them.
 
-The list is of what this knows, and is not proof that nothing else
-reads the source: a store's address in a workload's own configuration, a
+The rename says on stderr which kinds of object it looked at
+(`kinds_read` with `--json`). The list is of what it knows, and is not
+proof that nothing else reads the source: a store's address in a workload's own configuration, a
 plugin's environment, or an operator not in the table above is not seen.
 A start is a plain prefix with no sense of where a name ends
 (`kv-dev` also fits `kv-dev-2`), so write starts long enough to mean one

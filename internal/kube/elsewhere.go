@@ -98,7 +98,12 @@ var whichStore = map[string]bool{
 	"spec.provider.onepassword.connectHost": true, "spec.provider.onepasswordSDK.vault": true,
 	"spec.address": true, "spec.vault.name": true,
 	"spec.parameters.keyvaultName": true, "spec.parameters.vaultAddress": true,
+	// What a PushSecret writes to. It is an item's name, and it is judged
+	// as a store is: unchanged, the new cluster writes the source's item.
+	pushSecretKey: true,
 }
+
+const pushSecretKey = "spec.data[].match.remoteRef.remoteKey"
 
 // onePasswordPath is the annotation by which the 1Password operator is
 // asked for a Secret from a workload, and marks the Secrets it made.
@@ -134,7 +139,7 @@ func storeRefs(o snapshot.Object) []string {
 		}
 	case o.Kind() == "PushSecret":
 		// It writes to the store: unchanged, it writes to the source's.
-		out = []string{"spec.data[].match.remoteRef.remoteKey"}
+		out = []string{pushSecretKey}
 	case o.Kind() == "SecretStore" || o.Kind() == "ClusterSecretStore":
 		for provider, fs := range providerRefs {
 			for _, f := range fs {
@@ -154,8 +159,11 @@ func unreached(o snapshot.Object) string {
 	spec, _ := o.Body["spec"].(map[string]any)
 	switch {
 	case group == "secrets-store.csi.x-k8s.io" && o.Kind() == "SecretProviderClass":
-		if params, _ := spec["parameters"].(map[string]any); params["objects"] != nil {
-			return "what it reads is listed in spec.parameters.objects, a document of its provider's"
+		params, _ := spec["parameters"].(map[string]any)
+		for _, doc := range []string{"objects", "secrets"} {
+			if params[doc] != nil {
+				return "what it reads is listed in spec.parameters." + doc + ", a document of its provider's"
+			}
 		}
 	case group == "external-secrets.io" && (o.Kind() == "SecretStore" || o.Kind() == "ClusterSecretStore"):
 		provider, _ := spec["provider"].(map[string]any)
@@ -184,8 +192,18 @@ func unreached(o snapshot.Object) string {
 			}
 		}
 	}
+	if group == "secrets.hashicorp.com" && strings.HasPrefix(o.Kind(), "HCP") {
+		return "which HCP Vault Secrets organisation, project and app it reads is in fields this does not know"
+	}
+	if group == "external-secrets.io" && (o.Kind() == "ExternalSecret" || o.Kind() == "ClusterExternalSecret") {
+		for _, at := range []string{"spec.dataFrom", "spec.externalSecretSpec.dataFrom"} {
+			if fromGenerator(o.Body, at) {
+				return "it takes what it reads from a generator (dataFrom.sourceRef.generatorRef), whose own settings say where from"
+			}
+		}
+	}
 	if asksVaultAgent(o.Body) {
-		return "it asks the Vault agent for secrets by annotation (" + vaultAgentSecret + "*), which names a path in Vault"
+		return "it asks the Vault agent for secrets by annotation (" + vaultAgentSecret + "secret-*, -template-*), which names a path in Vault"
 	}
 	return ""
 }
@@ -210,7 +228,48 @@ func findsByTags(body map[string]any, at string) bool {
 
 // vaultAgentSecret starts the annotations by which a pod asks the Vault
 // agent injector for a secret.
-const vaultAgentSecret = "vault.hashicorp.com/agent-inject-secret-"
+const vaultAgentSecret = "vault.hashicorp.com/agent-inject-"
+
+// vaultAgentAsks are the annotations of those that name what is read: a
+// secret's path, or a template that reads some.
+var vaultAgentAsks = []string{vaultAgentSecret + "secret-", vaultAgentSecret + "template-"}
+
+// fromGenerator reports a dataFrom entry, in the list at the dotted path,
+// that reads from a generator.
+func fromGenerator(body map[string]any, at string) bool {
+	var v any = body
+	for _, name := range strings.Split(at, ".") {
+		m, _ := v.(map[string]any)
+		v = m[name]
+	}
+	for _, e := range list(v) {
+		m, _ := e.(map[string]any)
+		ref, _ := m["sourceRef"].(map[string]any)
+		if ref["generatorRef"] != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// StoreKinds are the kinds of object a rename looks at for a use of a
+// secret store, for a person: a store named anywhere else is not seen,
+// and "nothing listed" has to be read with that.
+func StoreKinds() []string {
+	seen := map[string]bool{}
+	out := []string{"ExternalSecret", "ClusterExternalSecret", "PushSecret", "SecretStore", "ClusterSecretStore", "VaultConnection", "VaultAuth", "HCPVaultSecretsApp", "HCPAuth"}
+	for _, k := range out {
+		seen[k] = true
+	}
+	for _, r := range storeReaders {
+		if !seen[r.kind] {
+			seen[r.kind] = true
+			out = append(out, r.kind)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
 
 // asksVaultAgent reports such an annotation on the object or on a pod
 // template anywhere in it.
@@ -219,8 +278,10 @@ func asksVaultAgent(v any) bool {
 	case map[string]any:
 		if ann, _ := x["annotations"].(map[string]any); ann != nil {
 			for k := range ann {
-				if strings.HasPrefix(k, vaultAgentSecret) {
-					return true
+				for _, asks := range vaultAgentAsks {
+					if strings.HasPrefix(k, asks) {
+						return true
+					}
 				}
 			}
 		}
@@ -293,7 +354,7 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 		}
 		return starts[i] < starts[j]
 	})
-	fits := map[string]bool{}
+	fits, loose := map[string]bool{}, map[string]bool{}
 	out := s
 	out.Objects = make([]snapshot.Object, len(s.Objects))
 	for i, o := range s.Objects {
@@ -317,6 +378,13 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 					// Every start that fits names something, though the
 					// longest alone is applied.
 					fits[st] = true
+					if names[st] == st && v != st && !strings.HasSuffix(st, "/") {
+						// "v: v" would say every reference that starts with
+						// a v is the same in both: it says so of a whole
+						// reference, or of everything under a path.
+						loose[st] = true
+						continue
+					}
 					if !applied {
 						to, applied = names[st]+strings.TrimPrefix(v, st), true
 					}
@@ -354,6 +422,23 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 			out.Objects[i].Body = body
 		}
 	}
+	// The Vault Secrets Operator's objects read through a VaultConnection,
+	// or, with none, through the one its own installation sets: that one
+	// is no object of the snapshot, and no start can name it.
+	vso, connection := 0, false
+	for _, o := range s.Objects {
+		if group, _, _ := strings.Cut(o.APIVersion(), "/"); group == "secrets.hashicorp.com" {
+			switch o.Kind() {
+			case "VaultConnection":
+				connection = true
+			case "VaultStaticSecret", "VaultDynamicSecret", "VaultPKISecret", "VaultAuth":
+				vso++
+			}
+		}
+	}
+	if vso > 0 && !connection {
+		rep.Unreached = append(rep.Unreached, fmt.Sprintf("%d Vault Secrets Operator objects: no VaultConnection is in the snapshot, so they read the Vault the operator's own installation names", vso))
+	}
 	var none []string
 	for _, st := range starts {
 		if !fits[st] {
@@ -361,6 +446,14 @@ func RenameStores(s snapshot.Snapshot, names map[string]string) (snapshot.Snapsh
 		}
 	}
 	sort.Strings(none)
+	var wide []string
+	for st := range loose {
+		wide = append(wide, st)
+	}
+	sort.Strings(wide)
+	if len(wide) > 0 {
+		return s, RenameReport{}, fmt.Errorf("a start replaced by itself says a reference is the same in both environments, and has to be a whole reference or end with a slash: %s", strings.Join(wide, ", "))
+	}
 	if len(none) > 0 {
 		return s, RenameReport{}, fmt.Errorf("no store reference in the snapshot starts with: %s", strings.Join(none, ", "))
 	}

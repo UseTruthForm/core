@@ -394,6 +394,7 @@ func diff(ctx context.Context, args []string) int {
 	rename := fs.String("rename", "", renameHelp)
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
 	values := fs.String("values", "", "azure: the --values file the restore was given; what it sets is compared as it was sent, secrets aside, and a key that matches nothing is refused")
+	keepStoresDiff := fs.Bool("keep-source-stores", false, "taken as restore takes it, and changes nothing: a diff lists what --rename leaves as the source's, and never refuses")
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	var aws awsFlags
 	aws.register(fs)
@@ -437,6 +438,7 @@ func diff(ctx context.Context, args []string) int {
 	if want, err = leftOut(*leaveOut, *platform, want); err != nil {
 		return fail(err)
 	}
+	_ = *keepStoresDiff // a diff lists and never refuses: the flag is taken so that a restore's arguments can be given to it
 	names, want, err := renamed(*rename, *platform, want, false)
 	if err != nil {
 		return fail(err)
@@ -850,8 +852,11 @@ func renamed(file, platform string, s snapshot.Snapshot, strict bool) (map[strin
 			}
 		}
 		storeRefs = &rep
+		// What was not looked at, so that nothing listed does not read as
+		// nothing there.
+		fmt.Fprintf(os.Stderr, "rename: a use of a secret store was looked for in these kinds, and the 1Password operator's annotation on any object: %s. One named anywhere else (a workload's own settings, another operator's objects) is not seen.\n", strings.Join(kube.StoreKinds(), ", "))
 		if n := len(rep.Unnamed) + len(rep.Unreached); strict && n > 0 {
-			return nil, s, fmt.Errorf("%s: %d objects would use the source's secret store (listed above: a store no start fits, or a use --rename does not reach), and what reads or writes through them would read or write the source's; nothing was restored. Give each store a start (replaced by itself, if it is the same in both), leave the object out, or pass --keep-source-stores", file, n)
+			return nil, s, fmt.Errorf("%s: %d objects would use the source's secret store (listed above: a store, or what a PushSecret writes, that no start fits, or a use --rename does not reach), and what reads or writes through them would read or write the source's; nothing was restored. Give each a start (replaced by itself, if it is the same in both), leave the object out, or pass --keep-source-stores", file, n)
 		}
 		return nil, out, nil
 	}

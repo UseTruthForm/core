@@ -446,7 +446,7 @@ func TestRebuildPlanSaysAnOriginsAddressWasWithheld(t *testing.T) {
 		return snapshot.Object{Body: body}
 	}
 	p := RebuildPlan(snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
-		repo("fleet", "https://tok3n@example.com/o/fleet"), repo("open", "https://example.com/o/open"),
+		repo("fleet", "https://ghp_tok3ntok3ntok3ntok3n@example.com/o/fleet"), repo("open", "https://example.com/o/open"),
 	}})
 	if len(p.Origins) != 2 || len(p.OriginsWithheld) != 1 || p.OriginsWithheld[0] != "GitRepository flux-system/fleet" {
 		t.Errorf("origins %v, withheld %v", p.Origins, p.OriginsWithheld)

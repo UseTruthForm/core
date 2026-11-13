@@ -45,7 +45,14 @@ func emitError(code int) {
 	if lastErr != nil {
 		msg = lastErr.Error()
 	}
-	emit(map[string]any{"schema": jsonSchema, "command": command, "error": msg, "exit": code})
+	doc := map[string]any{"schema": jsonSchema, "command": command, "error": msg, "exit": code}
+	// A restore refused for what --rename would leave as the source's
+	// says which, as one that went ahead does.
+	if storeRefs != nil && command == "restore" {
+		doc["complete"] = false
+		doc["store_references"] = storeRefsJSON()
+	}
+	emit(doc)
 }
 
 // jsonSchema names the document's shape; it changes only with a new name.
@@ -170,7 +177,7 @@ func storeRefsJSON() map[string]any {
 		}
 		return out
 	}
-	return map[string]any{"changed": refs(storeRefs.Changed), "kept": refs(storeRefs.Kept), "unnamed": refs(storeRefs.Unnamed), "items_unchanged": refs(storeRefs.Within),
+	return map[string]any{"kinds_read": kube.StoreKinds(), "changed": refs(storeRefs.Changed), "kept": refs(storeRefs.Kept), "unnamed": refs(storeRefs.Unnamed), "items_unchanged": refs(storeRefs.Within),
 		"unreached": append([]string{}, storeRefs.Unreached...)}
 }
 

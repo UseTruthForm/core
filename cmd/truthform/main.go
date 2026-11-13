@@ -76,7 +76,8 @@ As a graph (resources and their relationships, for an asset inventory or a secur
       Azure; JSON nodes and edges from the snapshot alone, no request made
 
 Before a rebuild (what the snapshot does not hold: what to install first, the secrets, the names):
-  truthform plan rebuild --from <dir> [--out <file>] [--json]
+  truthform plan rebuild --from <dir> [--scope <file>] [--out <file>] [--json]
+  truthform plan scope --from <dir> [--out <file> | --check <file> [--json]]
   truthform plan secrets --from <dir> [--out <file> | --check <file> [--resolve] [--allow-exec] [--json]]
       Kubernetes; Markdown, or one JSON document; from the snapshot alone, no request made
 
@@ -266,6 +267,7 @@ func restore(ctx context.Context, args []string) int {
 	rename := fs.String("rename", "", renameHelp)
 	keepStores := fs.Bool("keep-source-stores", false, "kubernetes, with --rename: restore though a use of a secret store that no start fits, or that --rename does not reach, stays as the source's")
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
+	scope := fs.String("scope", "", scopeHelp)
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
 	dryRun := fs.Bool("dry-run", false, "github, cloudflare: read the target and print every write the restore would make; make none")
 	var aws awsFlags
@@ -298,6 +300,9 @@ func restore(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	if err := samePlatform(snap, *platform); err != nil {
+		return fail(err)
+	}
+	if snap, err = scoped(*scope, *platform, snap); err != nil {
 		return fail(err)
 	}
 	if snap, err = leftOut(*leaveOut, *platform, snap); err != nil {
@@ -393,6 +398,7 @@ func diff(ctx context.Context, args []string) int {
 	config := fs.String("config", "", "environment file; diffs every target against --from/<target>")
 	rename := fs.String("rename", "", renameHelp)
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
+	scope := fs.String("scope", "", scopeHelp)
 	values := fs.String("values", "", "azure: the --values file the restore was given; what it sets is compared as it was sent, secrets aside, and a key that matches nothing is refused")
 	keepStoresDiff := fs.Bool("keep-source-stores", false, "taken as restore takes it, and changes nothing: a diff lists what --rename leaves as the source's, and never refuses")
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
@@ -418,7 +424,7 @@ func diff(ctx context.Context, args []string) int {
 		return fail(fmt.Errorf("diff: --values is for --platform azure"))
 	}
 	if *config != "" && *from != "" {
-		if *rename != "" || *leaveOut != "" || *values != "" {
+		if *rename != "" || *leaveOut != "" || *values != "" || *scope != "" {
 			return fail(fmt.Errorf("diff: --rename, --leave-out and --values are for a diff against one target, not --config"))
 		}
 		return diffEnvironment(ctx, *config, *from)
@@ -435,6 +441,9 @@ func diff(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	warnGaps(want)
+	if want, err = scoped(*scope, *platform, want); err != nil {
+		return fail(err)
+	}
 	if want, err = leftOut(*leaveOut, *platform, want); err != nil {
 		return fail(err)
 	}

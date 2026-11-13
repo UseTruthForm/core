@@ -97,6 +97,9 @@ func changesJSON(cs []snapshot.Change) []changeJSON {
 func emitDiff(changes []snapshot.Change, from, target string) {
 	doc := map[string]any{"schema": jsonSchema, "command": command, "from": from, "target": target,
 		"differences": len(changes), "changes": changesJSON(changes), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
+	if scopeDone != nil {
+		doc["scope"] = scopeDone
+	}
 	if storeRefs != nil {
 		doc["store_references"] = storeRefsJSON()
 	}
@@ -160,6 +163,9 @@ func emitRestore(results []snapshot.Result, target string) {
 	}
 	if storeRefs != nil {
 		doc["store_references"] = storeRefsJSON()
+	}
+	if scopeDone != nil {
+		doc["scope"] = scopeDone
 	}
 	emit(doc)
 }

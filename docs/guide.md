@@ -594,6 +594,61 @@ that is depends on the store:
   sources-file entries). It prints neither value, and `--dry-run` makes
   nothing.
 
+### A part of the snapshot
+
+A restore need not bring everything. A drill wants the platform, the core
+of an application and a few of its many workloads, and a scope file says
+which, in terms the cluster already has:
+
+```sh
+truthform plan scope --from snap/cluster --out scope.yaml     # brings everything; never written over one
+truthform plan scope --from snap/cluster --check scope.yaml   # what it brings, and what it leaves out
+truthform restore --context test --from snap/cluster --scope scope.yaml
+truthform diff    --context test --from snap/cluster --scope scope.yaml
+truthform plan rebuild --from snap/cluster --scope scope.yaml # the plan of the part
+truthform plan secrets --from snap/cluster --scope scope.yaml --out secrets.yaml
+```
+
+```yaml
+narrow:
+  - namespaces: ["team-*"]          # names, or patterns as a shell has them
+    releases: [a-search, b-search]  # Helm releases, in any of those namespaces
+  - namespaces: [batch]
+    labels: {tier: drill}
+```
+
+A scope **narrows the namespaces it names, and leaves the rest of the
+snapshot as it is**. So a file written for a drill does not have to know
+the whole cluster, and a namespace added later that a pattern fits is
+left out until someone chooses from it.
+
+In a narrowed namespace:
+
+- a **release** chosen comes whole: what Helm made is known by what Helm
+  writes on it, wherever it is, and the Secrets its objects make from a
+  store come with them. An object chosen by a **label** brings the rest
+  of its release;
+- what belongs to no release (shared configuration, a Secret made by
+  hand) comes with the namespace when anything of it is brought, and so
+  does the Namespace itself;
+- a namespace from which nothing is chosen is left out whole.
+
+**Jobs are left out** whenever a scope is given: a Job restored runs
+again. `jobs: true` in the file brings them.
+
+`plan scope --out` writes a file that lists every namespace with a
+release in it and each release, with what it is made of: as written it
+brings everything, and you delete what a drill is not to bring. A
+pattern that fits no namespace, and a release or a label that fits
+nothing, is refused, as a mistyped `--leave-out` is. Restore and diff
+say on stderr what the scope left out (`scope` with `--json`), and the
+plans given the file are of the part it brings: the secrets to supply
+and the store items are those of what was chosen.
+
+What a GitOps source renders is not in the snapshot, so a scope does not
+choose from it: the source decides. A scope is applied first, then
+`--leave-out`, then `--rename`.
+
 ### Into another environment
 
 A snapshot restored beside its source (a drill, or one environment rebuilt

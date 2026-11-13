@@ -669,7 +669,8 @@ namespace:
   rest of its release. Its namespace comes with it. An object with no
   namespace that names its release by label alone does not say which
   namespace the release is in: it goes with the releases of that name,
-  and is left out only when all of them are;
+  and is left out only when all of them are (one brought while another
+  release of the name is left out is named in the run);
 - a **Secret** an object of the snapshot makes (from a store, from an
   ExternalSecret or a SealedSecret, a certificate's) goes where that
   object goes;
@@ -679,14 +680,15 @@ namespace:
   under `objects`, as `Kind/name`, or it carries an entry's labels.
   Either part may be a pattern (`ConfigMap/*`, `"*/*"` for all of them),
   and `Kind.group` tells two APIs' kinds of one name apart. Restore and
-  diff list those brought and those left out;
+  diff list those brought and those left out. A Secret an object makes
+  is not named here: it goes with its maker;
 - the Namespace itself comes when anything of it is brought. A namespace
   from which nothing is chosen is left out whole, with what the capture
   left there to a GitOps source, which the plan then does not ask for;
 - **a scope cannot stop a GitOps source that is brought** from making
   what it makes: if the snapshot's root Kustomization applies a
-  HelmRelease in a namespace the scope leaves out, the release is
-  installed again once the source runs. The run says so by name
+  HelmRelease in a namespace the scope narrows, left out whole or not,
+  the release is installed once the source runs. The run says so by name
   (`scope.stillMade` with `--json`), and the plan goes on listing it:
   leave the source out with `--leave-out`, or have it apply less.
 

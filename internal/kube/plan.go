@@ -99,6 +99,61 @@ type PlanStoreItem struct {
 	Secrets []string `json:"secrets"`
 }
 
+// heldSources are the sources whose own object is in the snapshot, each
+// under the names a skip reason may give it.
+func heldSources(s snapshot.Snapshot) map[source]bool {
+	held := map[source]bool{}
+	// An Argo CD application is named bare in a reason when it is in
+	// Argo CD's own namespace, which the snapshot does not say: a bare
+	// name that applications in several namespaces share is not taken as
+	// held.
+	argoNamed := map[string][]string{}
+	for _, o := range s.Objects {
+		if group, _, _ := strings.Cut(o.APIVersion(), "/"); group == "argoproj.io" && o.Kind() == "Application" {
+			argoNamed[o.Name()] = append(argoNamed[o.Name()], o.Namespace())
+		}
+	}
+	for _, o := range s.Objects {
+		group, _, _ := strings.Cut(o.APIVersion(), "/")
+		for kind, obj := range sourceObject {
+			if obj.group != group || obj.kind != o.Kind() {
+				continue
+			}
+			if kind == "Argo CD application" {
+				// By name, as a reason names it; namespace_name outside
+				// Argo CD's own namespace.
+				if len(argoNamed[o.Name()]) == 1 {
+					held[source{kind, o.Name()}] = true
+				}
+				held[source{kind, o.Namespace() + "_" + o.Name()}] = true
+			} else {
+				held[source{kind, o.Namespace() + "/" + o.Name()}] = true
+			}
+		}
+	}
+	return held
+}
+
+// skippedSource is a thing the capture left to a source, as the sources
+// it is itself, under the names a reason may give it: none, unless it is
+// a source's own object (a HelmRelease a Kustomization applies). The
+// resource is as a capture writes it, group/version/resource.
+func skippedSource(sk snapshot.Skip) []source {
+	var out []source
+	for k, obj := range sourceObject {
+		if strings.HasPrefix(sk.Resource, obj.group+"/") && strings.HasSuffix(sk.Resource, "/"+obj.resource) {
+			if k == "Argo CD application" {
+				// As a reason names it: bare in Argo CD's own
+				// namespace, namespace_name outside it.
+				out = append(out, source{k, sk.Name}, source{k, sk.Namespace + "_" + sk.Name})
+			} else {
+				out = append(out, source{k, sk.Namespace + "/" + sk.Name})
+			}
+		}
+	}
+	return out
+}
+
 // sourceReason reads a skip reason renderedBy wrote back into the source
 // it names.
 var sourceReason = regexp.MustCompile(`^(?:rendered by (Flux HelmRelease)|applied by (Flux Kustomization)|managed by (Argo CD application)|composed by (Crossplane composite)) ([^;]+);`)
@@ -159,29 +214,10 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 	// An Argo CD application is named bare in Argo CD's own namespace, and
 	// which that is the snapshot does not say: a bare name that
 	// applications in several namespaces share is not taken as held.
-	argoNamed := map[string][]string{}
-	for _, o := range s.Objects {
-		if group, _, _ := strings.Cut(o.APIVersion(), "/"); group == "argoproj.io" && o.Kind() == "Application" {
-			argoNamed[o.Name()] = append(argoNamed[o.Name()], o.Namespace())
-		}
+	for src := range heldSources(s) {
+		held[src] = true
 	}
 	for _, o := range s.Objects {
-		group, _, _ := strings.Cut(o.APIVersion(), "/")
-		for kind, obj := range sourceObject {
-			if obj.group != group || obj.kind != o.Kind() {
-				continue
-			}
-			if kind == "Argo CD application" {
-				// By name, as a reason names it; namespace_name outside
-				// Argo CD's own namespace.
-				if len(argoNamed[o.Name()]) == 1 {
-					held[source{kind, o.Name()}] = true
-				}
-				held[source{kind, o.Namespace() + "_" + o.Name()}] = true
-			} else {
-				held[source{kind, o.Namespace() + "/" + o.Name()}] = true
-			}
-		}
 		if o.Kind() == "CustomResourceDefinition" {
 			spec, _ := o.Body["spec"].(map[string]any)
 			names, _ := spec["names"].(map[string]any)
@@ -208,17 +244,8 @@ func RebuildPlan(s snapshot.Snapshot) Plan {
 		case sk.Namespace != "":
 			elsewhere[source{kind, name}] = true
 		}
-		for k, obj := range sourceObject {
-			if strings.HasPrefix(sk.Resource, obj.group+"/") && strings.HasSuffix(sk.Resource, "/"+obj.resource) {
-				child := source{k, sk.Namespace + "/" + sk.Name}
-				if k == "Argo CD application" {
-					// As a reason names it: bare in Argo CD's own
-					// namespace, namespace_name outside it.
-					child.name = sk.Name
-					parent[source{k, sk.Namespace + "_" + sk.Name}] = source{kind, name}
-				}
-				parent[child] = source{kind, name}
-			}
+		for _, child := range skippedSource(sk) {
+			parent[child] = source{kind, name}
 		}
 	}
 	// follows: the source is in the snapshot, or one that is applies it.

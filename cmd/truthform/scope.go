@@ -82,7 +82,10 @@ func scopeSaid(rep kube.ScopeReport, file string) string {
 		fmt.Fprintf(&b, "\nscope: %d objects that no release made are left out (name one under objects, as Kind/name, to bring it): %s", len(rep.ObjectsLeftOut), strings.Join(rep.ObjectsLeftOut, ", "))
 	}
 	for _, m := range rep.StillMade {
-		fmt.Fprintf(&b, "\nscope: NOTE: %s is brought, and makes %d objects in %s, which the scope leaves out: once it runs they are there again. Leave the source out (--leave-out), or change what it applies.", m.Source, m.Objects, m.Namespace)
+		fmt.Fprintf(&b, "\nscope: NOTE: %s is brought, and makes %d objects in %s, which the scope narrows: once it runs they are there, whatever the scope chose. Leave the source out (--leave-out), or change what it applies.", m.Source, m.Objects, m.Namespace)
+	}
+	if len(rep.SharedName) > 0 {
+		fmt.Fprintf(&b, "\nscope: %d objects with no namespace are brought because a release of their name is, though another of that name is left out, and which made them they do not say (--leave-out holds one back): %s", len(rep.SharedName), strings.Join(rep.SharedName, "; "))
 	}
 	if rep.Kept < rep.Of {
 		b.WriteString("\nscope: nothing checks that what is brought does not need something left out (a ServiceAccount, a ConfigMap, a CustomResourceDefinition)")

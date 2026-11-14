@@ -1203,12 +1203,82 @@ func TestWhetherAServiceIsThereIsAskedAllTheWayUp(t *testing.T) {
 	if got := why(whole, out, nil); got != WhyLeftOut {
 		t.Errorf("behind an owned Service, a workload taken out: %q", got)
 	}
+	// Pods the snapshot cannot show the labels of leave it open, where
+	// what makes them will be there, and not where it will not.
 	whole, out = fronted(skipOf("apps", "v1", "deployments", "app", "*", ownedReason("Operand", "another")))
 	if got := why(whole, out, nil); got != WhyLeftOut {
-		t.Errorf("another owner makes workloads there: %q", got)
+		t.Errorf("an owner that is not there makes workloads there: %q", got)
+	}
+	for name, sk := range map[string]snapshot.Skip{
+		"a Deployment a source that is brought renders": skipOf("apps", "v1", "deployments", "app", "web2", fmt.Sprintf(byKs, "root")),
+		"pods of an owner that is no workload":          skipOf("", "v1", "pods", "app", "*", ownedReason("Operand", "operand")),
+		"pods the platform runs":                        skipOf("", "v1", "pods", "app", "node-agent", "in system namespace app"),
+	} {
+		whole, out = fronted(sk)
+		whole.Objects, out.Objects = append(whole.Objects, ks("root")), append(out.Objects, ks("root"))
+		if got := why(whole, out, nil); got != WhyUnseen {
+			t.Errorf("%s: %q", name, got)
+		}
+		// Unseen, it refuses nothing; and with the workload brought
+		// there is nothing to say.
+		if l := webhooksWithoutService(whole, whole, out, nil); len(l) != 1 || l[0].Blocks {
+			t.Errorf("%s: %+v", name, l)
+		}
+		if got := why(whole, whole, nil); got != "" {
+			t.Errorf("%s, the workload brought: %q", name, got)
+		}
+	}
+	// An ordinary chart is as it was: a Deployment's own ReplicaSets and
+	// pods are that Deployment's, whose labels the snapshot has.
+	whole, out = fronted(skipOf("apps", "v1", "replicasets", "app", "*", ownedReason("Deployment", "web")), skipOf("", "v1", "pods", "app", "*", ownedReason("Deployment", "web")))
+	if got := why(whole, whole, map[string]bool{"Deployment app/web": true}); got != WhyHeld {
+		t.Errorf("a chart's Deployment held, its pods and ReplicaSets beside it: %q", got)
+	}
+	if got := why(whole, out, nil); got != WhyLeftOut {
+		t.Errorf("a chart's Deployment taken out, its pods and ReplicaSets beside it: %q", got)
+	}
+	for name, sk := range map[string]snapshot.Skip{
+		"a Deployment a source that is not brought renders": skipOf("apps", "v1", "deployments", "app", "web2", fmt.Sprintf(byKs, "gone")),
+		"the pods of the workload taken out":                skipOf("", "v1", "pods", "app", "*", ownedReason("Deployment", "web")),
+		"a ConfigMap a source renders":                      skipOf("", "v1", "configmaps", "app", "cfg", fmt.Sprintf(byKs, "root")),
+		"pods in another namespace":                         skipOf("", "v1", "pods", "elsewhere", "*", ownedReason("Operand", "operand")),
+	} {
+		whole, out = fronted(sk)
+		whole.Objects, out.Objects = append(whole.Objects, ks("root")), append(out.Objects, ks("root"))
+		if got := why(whole, out, nil); got != WhyLeftOut {
+			t.Errorf("%s: %q", name, got)
+		}
+	}
+	// The pods of another workload of the snapshot are seen: its labels
+	// are there, and they are not what the selector picks.
+	tmpl := func(app string) map[string]any {
+		return map[string]any{"spec": map[string]any{"template": map[string]any{"metadata": map[string]any{"labels": map[string]any{"app": app}}}}}
+	}
+	whole, out = fronted(skipOf("", "v1", "pods", "app", "*", ownedReason("Deployment", "other")))
+	beside := planObject("apps/v1", "Deployment", "app", "other", tmpl("other"))
+	whole.Objects, out.Objects = append(whole.Objects, beside), append(out.Objects, beside)
+	if got := why(whole, out, nil); got != WhyLeftOut {
+		t.Errorf("the pods of another workload of the snapshot: %q", got)
+	}
+	// By name: one workload of a kind in the snapshot does not make the
+	// pods of another of that kind seen, which a source renders.
+	whole, out = fronted(
+		skipOf("", "v1", "pods", "app", "*", ownedReason("Rollout", "b")),
+		skipOf("argoproj.io", "v1alpha1", "rollouts", "app", "b", fmt.Sprintf(byKs, "root")))
+	seen := planObject("argoproj.io/v1alpha1", "Rollout", "app", "a", tmpl("a"))
+	whole.Objects, out.Objects = append(whole.Objects, seen, ks("root")), append(out.Objects, seen, ks("root"))
+	if got := why(whole, out, nil); got != WhyUnseen {
+		t.Errorf("the pods of a workload a source renders, beside one of its kind in the snapshot: %q", got)
+	}
+	// A pod nothing owns is in the snapshot, and answers by its labels.
+	whole, out = fronted()
+	bare := planObject("v1", "Pod", "app", "bare", map[string]any{"labels": map[string]any{"app": "web"}})
+	whole.Objects, out.Objects = append(whole.Objects, bare), append(out.Objects, bare)
+	if got := why(whole, out, nil); got != "" {
+		t.Errorf("a pod of the snapshot that the selector picks: %q", got)
 	}
 	whole, out = fronted(skipOf("apps", "v1", "deployments", "app", "*", ownedReason("Operand", "operand")))
-	if got := why(whole, out, nil); got != "" {
+	if got := why(whole, out, nil); got != WhyUnseen {
 		t.Errorf("its own owner makes workloads there: %q", got)
 	}
 	whole, out = fronted(skipOf("apps", "v1", "deployments", "elsewhere", "*", ownedReason("Operand", "operand")))

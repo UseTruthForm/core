@@ -21,6 +21,10 @@ const (
 	// WhyLeftOut: it is brought, and every workload behind it was taken
 	// out (the scope, --leave-out).
 	WhyLeftOut = "leftOut"
+	// WhyUnseen: it is brought, and every workload of the snapshot behind
+	// it is held or taken out, but pods will run in its namespace that
+	// the snapshot cannot show the labels of, and may be what answers.
+	WhyUnseen = "unseen"
 	// WhyUnknown: the snapshot does not say whether what is brought
 	// makes it. A snapshot taken before captures listed what an object
 	// owns by name leaves that open; one taken now settles it.
@@ -255,10 +259,7 @@ func (a *after) service(ns, name string) there {
 
 // selectorOf is the selector of a Service that will be there: its own
 // where it is brought, and where its owner makes it, the one the capture
-// wrote down beside its name. It is none where what answers behind it
-// is not this snapshot's to say: the owner makes other things in that
-// namespace too, which the capture lists without their labels, and its
-// pods may be among them.
+// wrote down beside its name.
 func (a *after) selectorOf(ns, name string) map[string]string {
 	for _, o := range a.out.Objects {
 		if isService(o) && o.Namespace() == ns && o.Name() == name {
@@ -268,11 +269,6 @@ func (a *after) selectorOf(ns, name string) map[string]string {
 	for _, sk := range a.s.Skips {
 		if sk.Resource != servicesResource || sk.Namespace != ns || sk.Name != "*" || !slices.Contains(sk.Names, name) {
 			continue
-		}
-		for _, other := range a.s.Skips {
-			if other.Namespace == ns && other.Reason == sk.Reason && other.Resource != servicesResource {
-				return nil
-			}
 		}
 		return sk.Selectors[name]
 	}
@@ -307,8 +303,14 @@ func (a *after) behind(ns, name string) string {
 		spec, _ := o.Body["spec"].(map[string]any)
 		tmpl, _ := spec["template"].(map[string]any)
 		md, _ := tmpl["metadata"].(map[string]any)
-		labels, _ := md["labels"].(map[string]any)
 		picks := tmpl != nil // a workload: it has a pod template
+		if o.Kind() == "Pod" && o.APIVersion() == "v1" {
+			// A pod nothing owns is in the snapshot itself, and
+			// answers by its own labels.
+			md, _ = o.Body["metadata"].(map[string]any)
+			picks = true
+		}
+		labels, _ := md["labels"].(map[string]any)
 		for k, v := range sel {
 			picks = picks && labels[k] == v
 		}
@@ -326,10 +328,46 @@ func (a *after) behind(ns, name string) string {
 	switch {
 	case behind == 0:
 		return ""
+	case a.podsUnseen(ns):
+		// Not known to answer, and not known not to: said, and
+		// refuses nothing.
+		return WhyUnseen
 	case held > 0:
 		return WhyHeld
 	}
 	return WhyLeftOut
+}
+
+// podMakers are the resources whose objects make pods, or are pods.
+var podMakers = map[string]bool{"pods": true, "replicasets": true, "deployments": true, "statefulsets": true, "daemonsets": true, "replicationcontrollers": true}
+
+// podsUnseen reports a namespace where pods will run that the snapshot
+// cannot show the labels of: the capture left them, or what makes them,
+// to something that will be there (an owner that is no workload of the
+// snapshot, a GitOps source, the platform). A selector may pick those,
+// so that every workload of the snapshot it picks is gone does not say
+// that nothing answers.
+func (a *after) podsUnseen(ns string) bool {
+	for _, sk := range a.s.Skips {
+		if sk.Namespace != ns || !podMakers[sk.Resource[strings.LastIndex(sk.Resource, "/")+1:]] {
+			continue
+		}
+		if m := ownedBy.FindStringSubmatch(sk.Reason); m != nil {
+			// The pods of a workload of the snapshot are that
+			// workload's, and its labels are known.
+			known := slices.ContainsFunc(a.whole.Objects, func(o snapshot.Object) bool {
+				spec, _ := o.Body["spec"].(map[string]any)
+				return o.Kind() == m[1] && o.Name() == m[2] && o.Namespace() == ns && spec["template"] != nil
+			})
+			if known {
+				continue
+			}
+		}
+		if a.provider(sk) != thereNo {
+			return true
+		}
+	}
+	return false
 }
 
 // webhooksWithoutService finds the webhooks of out, what a restore
@@ -364,7 +402,7 @@ func webhooksWithoutService(whole, s, out snapshot.Snapshot, held map[string]boo
 		}
 		w := ScopeWebhook{Configuration: o.Kind() + " " + o.Name(), Webhook: name, Service: ns + "/" + n, Why: why, Fails: fails}
 		// What cannot be told is said, and refuses nothing.
-		w.Blocks = fails && why != WhyUnknown && admissionWebhook(w.Configuration)
+		w.Blocks = fails && why != WhyUnknown && why != WhyUnseen && admissionWebhook(w.Configuration)
 		found = append(found, w)
 	}
 	for _, o := range out.Objects {

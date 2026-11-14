@@ -135,8 +135,8 @@ func TestWebhooksOfARealCapture(t *testing.T) {
 			want: with(map[string]string{"owned": kube.WhyHeld}), blocks: []string{"nowhere", "owned", "owned-other"}},
 		{name: "a workload taken out beside one the owner makes", whole: snap, taken: []string{"Deployment/ownsboth/beside"},
 			// The owner makes a workload there too, and its pods may
-			// be what answers: nothing is refused for it.
-			want: never, blocks: []string{"nowhere", "owned-other"}},
+			// be what answers: it is said, and nothing is refused.
+			want: with(map[string]string{"ownsboth": kube.WhyUnseen}), blocks: []string{"nowhere", "owned-other"}},
 		{name: "the owner held", whole: snap, scope: ptr(kube.Scope{Narrow: []kube.ScopeEntry{{Namespaces: []string{"two"}, Objects: []string{"ConfigMap/*"}, Hold: true}}}),
 			// A ConfigMap runs nothing: the hold holds nothing of it, and
 			// what it owns is taken to be there.

@@ -832,10 +832,13 @@ Services by name (`names` on the skip, in `coverage.yaml`) and settles
 it, and beside each name its selector (`selectors`), so that what
 answers behind a Service the snapshot does not hold is looked for as it
 is behind one it does: among the workloads of the snapshot that the
-selector picks. Where the owner makes other things in that namespace as
-well, its pods may be what answers, and the capture does not list those
-by their labels: the Service is then taken to answer while its owner is
-there and not held. Pods and the rest are still listed once per owner:
+selector picks. Where pods will run in that namespace that the
+snapshot cannot show the labels of (the capture left them, or what
+makes them, to an owner, a GitOps source or the platform that will be
+there), they may be what answers: that is said as a NOTE (`why:
+unseen`), and nothing is refused for it. A chart's own Deployment is not
+such a case: its ReplicaSets and pods are its own, and its labels are
+in the snapshot. Pods and the rest are still listed once per owner:
 their names are the cluster's. A selector is labels and their values,
 which pick pods, and holds no credential.
 
@@ -855,8 +858,8 @@ the plan ("Webhooks with nothing to answer them";
 what the restore would. A restore with no scope that ran before this
 version can be refused now. A diff still runs, and says it as a NOTE. With `--json` each webhook listed under
 `scope.webhooksWithoutService` says `why` (`notBrought`, `held`,
-`leftOut`, or `unknown` where the snapshot does not say) and whether it
-`blocks`, and a refused restore's document lists them as
+`leftOut`, or `unknown` and `unseen` where the snapshot does not say)
+and whether it `blocks`, and a refused restore's document lists them as
 `webhooksWithoutService`. Bring what answers at the Service, leave the
 webhook out with `--leave-out`, or, knowing what it will refuse, accept
 it in a scope file, which may hold nothing else (such a file narrows

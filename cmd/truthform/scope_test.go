@@ -233,6 +233,7 @@ func TestScopeSaid(t *testing.T) {
 			{Configuration: "MutatingWebhookConfiguration quiet", Webhook: "held.hook", Service: "shop/quiet", Why: "held", Fails: true, Blocks: true},
 			{Configuration: "MutatingWebhookConfiguration quiet", Webhook: "gone.hook", Service: "shop/gone", Why: "leftOut", Fails: true, Blocks: true},
 			{Configuration: "MutatingWebhookConfiguration open", Webhook: "open.hook", Service: "shop/owned", Why: "unknown", Fails: true},
+			{Configuration: "MutatingWebhookConfiguration open", Webhook: "unseen.hook", Service: "shop/mixed", Why: "unseen", Fails: true},
 		},
 	}
 	said := scopeSaid(rep, "scope.yaml")
@@ -246,6 +247,7 @@ func TestScopeSaid(t *testing.T) {
 		"NOTE: APIService v1beta1.metrics.example.com (service) is brought, and calls the Service shop/policy, which is not brought, and nothing that is brought makes it: while nothing answers there, its API is not there",
 		"NOTE: MutatingWebhookConfiguration quiet (held.hook) is brought, and calls the Service shop/quiet, which is brought with every workload behind it held (hold: true): while nothing answers there, the API server refuses every write the webhook is asked about. A restore is refused while it is so: bring what answers behind the Service without the hold, leave the webhook out",
 		"NOTE: MutatingWebhookConfiguration quiet (gone.hook) is brought, and calls the Service shop/gone, which is brought with every workload behind it taken out (the scope, or --leave-out): while nothing answers",
+		"NOTE: MutatingWebhookConfiguration open (unseen.hook) is brought, and calls the Service shop/mixed, which is brought with every workload of the snapshot behind it held or taken out. Whether anything answers there cannot be told: pods will run in that namespace that the snapshot does not show the labels of",
 		"NOTE: MutatingWebhookConfiguration open (open.hook) is brought, and calls the Service shop/owned, which is not in the snapshot. Whether it will be there cannot be told: the snapshot lists what an object owns in that namespace without the names, as captures did before this version, and this may be one of them. A capture taken now settles it. If nothing answers there: the API server refuses every write the webhook is asked about.",
 		"NOTE: CustomResourceDefinition widgets.example.com (conversion) is brought, and calls the Service shop/policy, which is not brought, and nothing that is brought makes it: while nothing answers there, objects of that kind cannot be read",
 		"nothing checks that what is brought does not need something left out",

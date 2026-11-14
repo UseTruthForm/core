@@ -111,8 +111,9 @@ type ScopeWebhook struct {
 	Configuration string `json:"configuration"` // Kind name
 	Webhook       string `json:"webhook"`
 	Service       string `json:"service"` // namespace/name
-	// Why nothing answers (WhyNotBrought, WhyHeld, WhyLeftOut), or
-	// WhyUnknown where the snapshot does not say whether anything will.
+	// Why nothing answers (WhyNotBrought, WhyHeld, WhyLeftOut), or where
+	// the snapshot does not say whether anything will, why it does not
+	// (WhyUnknown, WhyUnseen).
 	Why string `json:"why"`
 	// Fails: what it is asked about is refused while the Service does
 	// not answer (failurePolicy Fail, the default; a conversion always).

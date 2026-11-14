@@ -39,10 +39,18 @@ type ScopeEntry struct {
 	Releases []string `json:"releases,omitempty"`
 	// Labels select objects that carry every one of them.
 	Labels map[string]string `json:"labels,omitempty"`
+	// Hold brings what this entry chooses with nothing running: workloads
+	// at zero replicas, autoscalers paused, CronJobs suspended.
+	Hold bool `json:"hold,omitempty"`
 	// Objects are objects of the namespaces that no release made, as
 	// Kind/name (Kind.group where two APIs share a kind); either part may
 	// be a pattern. One not named is left out.
 	Objects []string `json:"objects,omitempty"`
+	// AsTheyAre are objects a hold does not know how to hold that a
+	// person has looked at and brings as they are, as Kind/name like
+	// Objects. One a hold names and this does not makes the run end
+	// other than 0.
+	AsTheyAre []string `json:"asTheyAre,omitempty"`
 }
 
 // ScopeReport is what a scope did to a snapshot.
@@ -62,6 +70,16 @@ type ScopeReport struct {
 	// Jobs are the Jobs left out because a restored Job runs again, those
 	// of a release that is brought among them.
 	Jobs []string `json:"jobsLeftOut"`
+	// Held are the objects brought with nothing running, each with how.
+	Held []ScopeHeld `json:"held"`
+	// NotHeld are objects of other APIs under a hold that are brought as
+	// they are: nothing in one says it runs anything, and its controller
+	// may run something for it all the same.
+	NotHeld []string `json:"broughtNotHeld"`
+	// AsTheyAre are those of them the scope file names under asTheyAre:
+	// looked at, and brought as they are by a person's word. They are not
+	// in NotHeld.
+	AsTheyAre []string `json:"broughtAsTheyAre"`
 	// SharedName are objects with no namespace brought because a release
 	// of their name is, though another release of that name is left out:
 	// which of the two made one, the object does not say.
@@ -90,6 +108,11 @@ type ScopeWebhook struct {
 	// Fails: what it is asked about is refused while the Service is not
 	// there (failurePolicy Fail, the default; a conversion always).
 	Fails bool `json:"fails"`
+}
+
+type ScopeHeld struct {
+	Object string `json:"object"` // Kind namespace/name
+	How    string `json:"how"`
 }
 
 // ScopeMade is a source that is brought, and how many objects the capture
@@ -134,6 +157,16 @@ func fits(patterns []string, v string, used map[string]bool) bool {
 		}
 	}
 	return any
+}
+
+// fitsObject says whether a Kind/name pattern (Kind.group where two APIs
+// share a kind) fits an object.
+func fitsObject(p string, o snapshot.Object, group string) bool {
+	kind, name, _ := strings.Cut(p, "/")
+	okK, _ := path.Match(kind, o.Kind())
+	okG, _ := path.Match(kind, o.Kind()+"."+group)
+	okN, _ := path.Match(name, o.Name())
+	return okN && (okK || okG)
 }
 
 func isJob(o snapshot.Object) bool {
@@ -199,11 +232,17 @@ func secretMakers(s snapshot.Snapshot) map[secretKey]int {
 //
 // Two entries that fit one namespace choose from it together.
 //
+// What an entry with "hold: true" chooses is brought with nothing
+// running (see held): the releases it names, the objects it names, what
+// carries its labels. Hold wins: what two entries choose is held if
+// either holds. An object that runs something a hold cannot stop is an
+// error.
+//
 // A pattern that fits no namespace, and a release, a label or an object
 // that fits nothing in the namespaces of its entry, is an error: a
 // mistyped one would otherwise leave out what it was written to bring.
 func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, error) {
-	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}, Webhooks: []ScopeWebhook{}}
+	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}, NotHeld: []string{}, AsTheyAre: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}, Webhooks: []ScopeWebhook{}}
 	if sc.Narrow == nil && !sc.Jobs {
 		return s, rep, fmt.Errorf("it narrows nothing: give at least one entry under narrow")
 	}
@@ -216,7 +255,10 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 				return s, rep, fmt.Errorf("entry %d: %q is not a name or a pattern", i+1, p)
 			}
 		}
-		for _, p := range e.Objects {
+		if len(e.AsTheyAre) > 0 && !e.Hold {
+			return s, rep, fmt.Errorf("entry %d: asTheyAre is for an entry with hold: true", i+1)
+		}
+		for _, p := range append(append([]string{}, e.Objects...), e.AsTheyAre...) {
 			kind, name, ok := strings.Cut(p, "/")
 			_, errK := path.Match(kind, "")
 			_, errN := path.Match(name, "")
@@ -282,32 +324,59 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		releaseUsed[i], objectUsed[i] = map[string]bool{}, map[string]bool{}
 	}
 	// named says whether an entry names the object under objects.
-	named := func(o snapshot.Object, es []int) bool {
+	named := func(o snapshot.Object, es []int) (yes, hold bool) {
 		group, _, versioned := strings.Cut(o.APIVersion(), "/")
 		if !versioned {
 			group = ""
 		}
-		yes := false
 		for _, i := range es {
 			for _, p := range sc.Narrow[i].Objects {
-				kind, name, _ := strings.Cut(p, "/")
-				okK, _ := path.Match(kind, o.Kind())
-				okG, _ := path.Match(kind, o.Kind()+"."+group)
-				if okN, _ := path.Match(name, o.Name()); okN && (okK || okG) {
+				if fitsObject(p, o, group) {
 					objectUsed[i][p], yes = true, true
+					hold = hold || sc.Narrow[i].Hold
+				}
+			}
+		}
+		return yes, hold
+	}
+	// asItIs says whether a holding entry of the object's namespace names
+	// it under asTheyAre. One with no namespace is any holding entry's to
+	// name.
+	asUsed := make([]map[string]bool, len(sc.Narrow))
+	for i := range sc.Narrow {
+		asUsed[i] = map[string]bool{}
+	}
+	asItIs := func(o snapshot.Object) (yes bool) {
+		group, _, versioned := strings.Cut(o.APIVersion(), "/")
+		if !versioned {
+			group = ""
+		}
+		es := narrowed[o.Namespace()]
+		if o.Namespace() == "" {
+			es = nil
+			for i := range sc.Narrow {
+				es = append(es, i)
+			}
+		}
+		for _, i := range es {
+			for _, p := range sc.Narrow[i].AsTheyAre {
+				if fitsObject(p, o, group) {
+					asUsed[i][p], yes = true, true
 				}
 			}
 		}
 		return yes
 	}
-	labelled := func(o snapshot.Object, es []int) bool {
-		yes := false
+	// labelled says whether an entry's labels choose the object, and
+	// whether one that does holds.
+	labelled := func(o snapshot.Object, es []int) (yes, hold bool) {
 		for _, i := range es {
 			if hasLabels(o, sc.Narrow[i].Labels) {
 				labelsUsed[i], yes = true, true
+				hold = hold || sc.Narrow[i].Hold
 			}
 		}
-		return yes
+		return yes, hold
 	}
 
 	const (
@@ -322,6 +391,8 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 	rel := make([]relKey, len(s.Objects))
 	relObjects := map[relKey]int{}
 	relChosen := map[relKey]bool{}
+	relHeld := map[relKey]bool{}
+	holdIt := make([]bool, len(s.Objects))
 	maker := secretMakers(s)
 	made := make([]bool, len(s.Objects))
 	// The namespaces that have a release of each name.
@@ -356,10 +427,12 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			for _, e := range narrowed[rns] {
 				if fits(sc.Narrow[e].Releases, rname, releaseUsed[e]) {
 					relChosen[k] = true
+					relHeld[k] = relHeld[k] || sc.Narrow[e].Hold
 				}
 			}
-			if labelled(o, narrowed[rns]) {
+			if yes, hold := labelled(o, narrowed[rns]); yes {
 				relChosen[k] = true
+				relHeld[k] = relHeld[k] || hold
 			}
 		case o.Namespace() != "" && narrowed[o.Namespace()] != nil:
 			// Of no release, or of one installed in a namespace the scope
@@ -374,9 +447,11 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			}
 			es := narrowed[o.Namespace()]
 			// Both asked, so that each marks what it fits as used.
-			byName, byLabel := named(o, es), labelled(o, es)
+			byName, nameHolds := named(o, es)
+			byLabel, labelHolds := labelled(o, es)
 			if byName || byLabel {
 				state[i] = brought
+				holdIt[i] = nameHolds || labelHolds
 			}
 		}
 	}
@@ -401,6 +476,7 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			state[i] = left
 			if relChosen[rel[i]] {
 				state[i] = brought
+				holdIt[i] = relHeld[rel[i]]
 			}
 		case ofName:
 			// Left only when every release of the name is one the scope
@@ -457,6 +533,7 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 
 	out := s
 	out.Objects = nil
+	var cannot []string
 	for i, o := range s.Objects {
 		keep := true
 		switch {
@@ -490,9 +567,65 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			if o.Kind() != "Namespace" || narrowed[o.Name()] != nil {
 				rep.Kept++
 			}
+			if holdIt[i] {
+				ho, how, why, unknown := held(o)
+				who := o.Kind() + " " + o.Namespace() + "/" + o.Name()
+				if why != "" {
+					cannot = append(cannot, who+": "+why)
+				}
+				switch {
+				case unknown && asItIs(o):
+					rep.AsTheyAre = append(rep.AsTheyAre, who)
+				case unknown:
+					rep.NotHeld = append(rep.NotHeld, who)
+				}
+				if how != "" {
+					rep.Held = append(rep.Held, ScopeHeld{Object: who, How: how})
+				}
+				o = ho
+			}
 			out.Objects = append(out.Objects, o)
 		}
 	}
+	if len(cannot) > 0 {
+		sort.Strings(cannot)
+		return s, rep, fmt.Errorf("these are to be held, and would run all the same; leave each out (--leave-out), or bring its release without the hold: %s", strings.Join(cannot, "; "))
+	}
+	for i, e := range sc.Narrow {
+		for _, p := range e.AsTheyAre {
+			if !asUsed[i][p] {
+				return s, rep, fmt.Errorf("entry %d: asTheyAre names %q, and the hold names no such object as not held in %s: it is for what a hold brings and does not know how to hold", i+1, p, strings.Join(e.Namespaces, ", "))
+			}
+		}
+	}
+	// A KEDA scaler that is brought without a hold, and scales what is
+	// held, would start it again from zero: it is paused with it.
+	isHeld := map[string]bool{}
+	for _, h := range rep.Held {
+		isHeld[h.Object] = true
+	}
+	for i, o := range out.Objects {
+		group, _, _ := strings.Cut(o.APIVersion(), "/")
+		who := o.Kind() + " " + o.Namespace() + "/" + o.Name()
+		if group != "keda.sh" || o.Kind() != "ScaledObject" || isHeld[who] {
+			continue
+		}
+		spec, _ := o.Body["spec"].(map[string]any)
+		ref, _ := spec["scaleTargetRef"].(map[string]any)
+		kind := strOf(ref["kind"])
+		if kind == "" {
+			kind = "Deployment"
+		}
+		if !isHeld[kind+" "+o.Namespace()+"/"+strOf(ref["name"])] {
+			continue
+		}
+		ho, how, _, _ := held(o)
+		out.Objects[i] = ho
+		rep.Held = append(rep.Held, ScopeHeld{Object: who, How: how + ", since what it scales is held"})
+	}
+	sort.Strings(rep.NotHeld)
+	sort.Strings(rep.AsTheyAre)
+	sort.Slice(rep.Held, func(i, j int) bool { return rep.Held[i].Object < rep.Held[j].Object })
 	// What the capture left to a GitOps source in a namespace the scope
 	// leaves out whole is not this restore's to plan for.
 	// But a source that is brought makes it all the same, and the plan
@@ -673,6 +806,8 @@ func ScopeDraft(s snapshot.Snapshot) []byte {
 	b.WriteString("# is left out whole. Names may be patterns (\"team-*\"). Under objects is what no\n")
 	b.WriteString("# release made (Kind/name): one not listed is left out too. Jobs are left out with any\n")
 	b.WriteString("# scope, since a Job restored runs again: add \"jobs: true\" to bring them.\n")
+	b.WriteString("# \"hold: true\" on an entry brings its releases with their workloads stopped (zero\n")
+	b.WriteString("# replicas, autoscalers paused): split an entry in two to hold some and run others.\n")
 	if len(byNS) == 0 {
 		b.WriteString("# The snapshot has nothing a Helm release made, so there is nothing listed to cut\n")
 		b.WriteString("# down: narrow by labels instead, as\n#   - namespaces: [shop]\n#     labels: {app.kubernetes.io/part-of: checkout}\n")

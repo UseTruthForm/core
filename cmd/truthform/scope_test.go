@@ -268,3 +268,23 @@ func TestScopeSaid(t *testing.T) {
 		t.Errorf("a scope that brings everything:\n%s", said)
 	}
 }
+
+// A hold that passed objects it does not know says so, and does not say
+// nothing is running.
+func TestScopeSaidOfAHold(t *testing.T) {
+	rep := kube.ScopeReport{Narrowed: []string{"shop"}, Kept: 2, Of: 2, Held: []kube.ScopeHeld{{Object: "Deployment shop/worker", How: "zero replicas (it had 3)"}}}
+	if said := scopeSaid(rep, "scope.yaml"); !strings.Contains(said, "1 objects are brought with nothing running (hold: true)") || strings.Contains(said, "NOTE") {
+		t.Errorf("a whole hold:\n%s", said)
+	}
+	rep.NotHeld = []string{"Cluster shop/db"}
+	said := scopeSaid(rep, "scope.yaml")
+	if strings.Contains(said, "nothing running") || !strings.Contains(said, "1 objects are brought stopped (hold: true)") ||
+		!strings.Contains(said, "NOTE: 1 objects under hold: true are brought as they are") || !strings.Contains(said, "Cluster shop/db") {
+		t.Errorf("a hold that passed what it does not know:\n%s", said)
+	}
+	// Looked at, they are still not held: the hold is not said to be whole.
+	rep.NotHeld, rep.AsTheyAre = nil, []string{"Cluster shop/db"}
+	if said := scopeSaid(rep, "scope.yaml"); strings.Contains(said, "nothing running") || strings.Contains(said, "NOTE") || !strings.Contains(said, "as scope.yaml asks (asTheyAre): Cluster shop/db") {
+		t.Errorf("a hold with what it does not know looked at:\n%s", said)
+	}
+}

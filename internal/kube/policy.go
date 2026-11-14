@@ -508,14 +508,25 @@ func withholdEnv(obj map[string]any) []string {
 		}
 	}
 	var paths []string
-	for _, sl := range slots(obj) {
+	all := slots(obj)
+	// Paths another slot had by the rule before.
+	wasOf := map[string]bool{}
+	for _, sl := range all {
+		if sl.was != "" && sl.was != sl.path {
+			wasOf[sl.was] = true
+		}
+	}
+	for _, sl := range all {
 		if sl.withheld() {
 			sl.set("")
-			if sl.number {
-				paths = append(paths, sl.path+numberMark)
-			} else {
-				paths = append(paths, sl.path)
+			at := sl.path
+			if wasOf[at] {
+				at = ownMark + at
 			}
+			if sl.number {
+				at += numberMark
+			}
+			paths = append(paths, at)
 		}
 	}
 	if len(paths) == 0 {
@@ -627,7 +638,13 @@ var (
 // with written another way: so that {"a.b": x} and {a: {b: y}} are two
 // paths, and a key is not taken for an index or for the mark of a number.
 func valuesPart(k string) string {
-	return strings.NewReplacer(".", "%2E", "#", "%23", "[", "%5B", "]", "%5D").Replace(pathPart(k))
+	k = strings.NewReplacer(".", "%2E", "#", "%23", "[", "%5B", "]", "%5D").Replace(pathPart(k))
+	// A key that begins as the mark of a slot's own path does would be
+	// read as one where it begins a path.
+	if strings.HasPrefix(k, ownMark) {
+		k = "%3D" + k[len(ownMark):]
+	}
+	return k
 }
 
 // walker finds the slots of free-form values. One walk reads an object's
@@ -1044,6 +1061,7 @@ func pathPart(s string) string {
 // WithheldDisplay shortens a withheld slot path for people: the container
 // and the variable (api/DB_PASSWORD), or the ConfigMap key (data/KEY).
 func WithheldDisplay(path string) string {
+	path, _ = pathOf(path)
 	if strings.HasPrefix(path, "data[") {
 		return "data/" + strings.TrimSuffix(strings.TrimPrefix(path, "data["), "]")
 	}

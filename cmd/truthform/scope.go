@@ -75,6 +75,22 @@ func scopeSaid(rep kube.ScopeReport, file string) string {
 	if len(rep.Jobs) > 0 {
 		fmt.Fprintf(&b, "\nscope: %d Jobs left out, those of a release brought among them: restored, a Job runs again (jobs: true brings them): %s", len(rep.Jobs), strings.Join(rep.Jobs, ", "))
 	}
+	if len(rep.Held) > 0 {
+		what := "with nothing running"
+		if len(rep.NotHeld)+len(rep.AsTheyAre) > 0 {
+			what = "stopped"
+		}
+		fmt.Fprintf(&b, "\nscope: %d objects are brought %s (hold: true); restoring without the hold starts them:", len(rep.Held), what)
+		for _, h := range rep.Held {
+			fmt.Fprintf(&b, "\n   %s: %s", h.Object, h.How)
+		}
+	}
+	if len(rep.NotHeld) > 0 {
+		fmt.Fprintf(&b, "\nscope: NOTE: %d objects under hold: true are brought as they are, and not held. Nothing in one says it runs anything, but each is of an API this does not know to be idle: its controller may run something for it (an operator's database, a Spark application) or act outside the cluster (cert-manager asking for a certificate for the source's host names). Look at each, and leave out (--leave-out) what would, or name under asTheyAre in %s what may be brought as it is; until then the run does not end 0: %s", len(rep.NotHeld), file, strings.Join(rep.NotHeld, ", "))
+	}
+	if len(rep.AsTheyAre) > 0 {
+		fmt.Fprintf(&b, "\nscope: %d objects under hold: true are brought as they are, and not held, as %s asks (asTheyAre): %s", len(rep.AsTheyAre), file, strings.Join(rep.AsTheyAre, ", "))
+	}
 	if len(rep.ObjectsBrought) > 0 {
 		fmt.Fprintf(&b, "\nscope: %d objects that no release made are brought, named under objects or by label: %s", len(rep.ObjectsBrought), strings.Join(rep.ObjectsBrought, ", "))
 	}
@@ -115,6 +131,17 @@ func scopeNotes(rep kube.ScopeReport) []string {
 		out = append(out, fmt.Sprintf("%s (%s) is brought, and calls the Service %s, which the scope leaves out: %s. Bring what makes the Service, or leave the webhook out (--leave-out).", w.Configuration, w.Webhook, w.Service, what))
 	}
 	return out
+}
+
+// notHeldCode is how a run ends when a hold brought what it does not know
+// how to hold, and the scope file does not say a person looked at it: not
+// 0, or a pipeline could not tell a hold that holds from one that passed
+// an operator's database through. With none it is 0.
+func notHeldCode(rep kube.ScopeReport, code int) int {
+	if len(rep.NotHeld) > 0 {
+		return code
+	}
+	return 0
 }
 
 // scopeLine is the scope in one line, for beside a total: "applied 5 of
@@ -186,8 +213,8 @@ func planScope(args []string) int {
 	}
 	if jsonOut {
 		emit(map[string]any{"schema": jsonSchema, "command": "plan", "scope": rep})
-		return 0
+		return notHeldCode(rep, 2)
 	}
 	fmt.Println(scopeSaid(rep, *check))
-	return 0
+	return notHeldCode(rep, 2)
 }

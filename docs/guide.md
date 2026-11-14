@@ -194,7 +194,15 @@ What a snapshot does not hold, by design:
     shape says so and it is called `url`, `address`, `uri`, `dsn` or the
     like;
   - in a URL: a password with a space in it, one with a slash in it
-    before a host with no dot and no port, and `?key=` or `?code=`.
+    before a host with no dot and no port, and `?key=` or `?code=`;
+  - text on one line: a value such as `extra: "DB_PASSWORD=hunter2"` or
+    `javaOpts: "-Ddb.password=hunter2"` under a name that says nothing
+    (only a value of several lines is read line by line);
+  - in a document as text, a credential in a comment
+    (`# password: hunter2`), and a template with a default written into
+    it where the document still reads as YAML
+    (`password: {{ .Values.pw | default "hunter2" }}`, unquoted: YAML
+    reads the braces as a map and sees no value).
 
   Because both sides are withheld, a diff does not show a rotated
   credential, and a snapshot taken before TruthForm withheld these values
@@ -638,7 +646,15 @@ settings:
 ```
 
 A place that held a number has `#number` at its end, and what is
-supplied for it has to be one. A ConfigMap's `binaryData` key is
+supplied for it has to be one. A place with `=` before it is written so
+where a key with a dot in it sits beside the same keys nested: copy it
+as `plan secrets --out` wrote it. The mark is followed only where a
+capture writes it; added by hand anywhere else, the restore refuses it.
+For such an object two things change with this version, both refused
+aloud and never filled wrongly: a snapshot of it taken now is not
+restored by an earlier version, and a sources file written against an
+earlier snapshot of it no longer fits one taken now (write its key again
+from `plan secrets --out`). A ConfigMap's `binaryData` key is
 supplied as it is stored, in base64. A document withheld whole (see what
 is withheld, above) is one place, and the reference gives all of it: a
 `file:` reference suits it.
@@ -785,6 +801,104 @@ release that is brought among them: a Job restored runs again. A CronJob
 is not a Job: it comes with its release and keeps its schedule. `jobs: true` in the
 file brings them.
 
+**`hold: true` on an entry brings what it chooses with nothing
+running.** A drill beside the source restores workloads that, started
+with the source's settings, would do the source's work a second time:
+take its messages, call what it calls. Held, they are there to be read,
+compared and started one at a time:
+
+```yaml
+narrow:
+  - namespaces: [shop]
+    releases: [api]            # runs
+  - namespaces: [team-*]
+    releases: [search, billing]
+    hold: true                 # restored, not running
+```
+
+| Object | Held as |
+|---|---|
+| `Deployment`, `StatefulSet`, `ReplicaSet`, `ReplicationController` | zero replicas |
+| another API's object with `spec.replicas` (an Argo `Rollout`, a Prometheus operator's `Alertmanager`, a `KafkaConnect`) | zero replicas |
+| `DaemonSet` | a node selector no node has (`truthform.org/held`) |
+| `CronJob`, and a `Job` brought with `jobs: true` | suspended |
+| a Flux object (`HelmRelease`, `Kustomization`, a source), an Argo `CronWorkflow`, and another API's object with `spec.suspend` (a `ScheduledSparkApplication`) | `spec.suspend: true` |
+| Argo CD `Application` | `spec.syncPolicy.automated` taken out |
+| KEDA `ScaledObject` | `autoscaling.keda.sh/paused-replicas: "0"` |
+| KEDA `ScaledJob` | `autoscaling.keda.sh/paused: "true"` |
+| `HorizontalPodAutoscaler` | as it is: it stops while what it scales is at zero |
+| what Kubernetes itself serves and runs nothing (`ConfigMap`, `Service`, `Ingress`, RBAC), and APIs known to run nothing and reach nothing outside (an `ExternalSecret`, a `OnePasswordItem`, Traefik and Istio routes) | as it is |
+
+A hold is of what its entry chooses: the releases it names, the objects
+it names, what carries its labels. Hold wins: what two entries choose is
+held if either holds. A KEDA `ScaledObject` brought without a hold is
+paused all the same when what it scales is held: it would start it from
+zero.
+
+**What a hold cannot stop is refused**, with nothing restored, by name:
+a `Pod`, an Argo `Workflow`, a Tekton `PipelineRun` or `TaskRun` (each
+runs as soon as it is there), and another API's workload with a pod
+template that does not count its pods.
+
+**What a hold does not know is named.** An object of another API with no
+`spec.replicas` and no `spec.suspend` is brought as it is, and the run
+lists it in a NOTE (`scope.broughtNotHeld` with `--json`). Some run
+nothing; some have a controller that runs something for them (a database
+operator's cluster, with its count under another name; a
+`SparkApplication`, whose group ends in `k8s.io` and is not Kubernetes'
+own); some act outside the cluster (a cert-manager `Certificate` asks an
+authority for a certificate for the source's host names, a `PushSecret`
+writes to a store, an external-dns `DNSEndpoint` writes DNS). The run
+then says "stopped", not "nothing running", and does not end 0:
+`plan scope --check` exits 2, and a restore applies what it was given
+and exits 3, so a pipeline can tell a hold that holds from one that let
+something through. Run `plan scope --check` before a restore: it writes
+nothing. A diff's exit code still says only whether there are
+differences.
+
+Read the NOTE, or `scope.broughtNotHeld`, and for each object either
+leave it out with `--leave-out`, or, having looked at it, name it under
+`asTheyAre` on the entry that holds it:
+
+```yaml
+narrow:
+  - namespaces: [shop]
+    releases: [shop]
+    hold: true
+    asTheyAre:                 # looked at: brought as they are, not held
+      - Certificate/shop-tls
+      - KafkaTopic/*
+```
+
+Each is `Kind/name` as under `objects`, and either part may be a
+pattern. What is named there is still listed (`scope.broughtAsTheyAre`),
+and the run ends 0 when nothing else is left not held. A name that fits
+no object the hold would have named is an error, as is `asTheyAre` on an
+entry without `hold: true`: it does not hold anything, and does not
+excuse a `Pod` or anything else a hold refuses.
+
+Restore and diff list what is held and how, with the count it had
+(`scope.held` with `--json`: "zero replicas (it had 3)"); a diff given
+the same file expects it held. **Restoring again with the hold taken out
+of the file starts it**, and that is how one is released: there is no
+other command.
+
+What to know before relying on a hold:
+
+- it is of the objects in the snapshot. What a GitOps source or an
+  operator makes from its own object once it runs is not held; a held
+  Flux or Argo CD source makes nothing until it is released, and then
+  makes all of it;
+- a GitOps source that is brought without a hold and applies a held
+  object puts it back as the source has it: hold the source too, or
+  leave it out;
+- a `CronJob` released may run at once what it missed while suspended,
+  unless it sets `startingDeadlineSeconds`;
+- KEDA before 2.13 does not read `autoscaling.keda.sh/paused` on a
+  `ScaledJob`: leave it out there;
+- with no pod made, a held workload does not show that its image can be
+  pulled.
+
 `plan scope --out` writes a file that lists every namespace a release
 was installed in, each release with what it is made of, and each object
 there that no release made: as written it brings everything but Jobs, and you delete what a drill is not to
@@ -882,6 +996,48 @@ thing, and a start given twice is refused.
 vaults/apps/items/: vaults/apps-test/items/
 https://kv-dev.vault.azure.net: https://kv-test.vault.azure.net
 ```
+
+**Images.** The starts are tried on image references too: every
+container, init container and image volume of a pod spec, wherever it is
+(a Deployment, a CronJob, a KEDA `ScaledJob`, another API's workload),
+an Argo workflow template's `container` and `script`, and a Tekton
+task's `steps`, `sidecars` and `stepTemplate`. Not an Argo template's
+own `initContainers`.
+There are two ways to rebuild, and the rename file is the difference:
+
+- **The registry the source pulls from is still there** (the quick way,
+  and what a disaster usually allows): name no start for it. The rebuilt
+  cluster has to be allowed to pull from it, and nothing else changes.
+- **A registry of its own** (a rebuild that takes nothing of the source
+  for granted): put the images there, built again or copied, and give
+  the old registry a start.
+
+```yaml
+registry.example.io/shop/: drill.example.io/shop/
+```
+
+A start is read against the reference as it is written: `nginx:1.27`
+does not start with `docker.io/`. It has to end where a part of the
+reference does: `registry.example.io` starts `registry.example.io/app`
+and not `registry.example.io.other.com/app`, nor
+`registry.example.io:5000/app`, which is another registry;
+`registry.example.io/team` does not start
+`registry.example.io/team-b/app`. An image pinned by digest and built
+again has another digest: copy such an image, or change the reference.
+A start that fits both a store reference and an image changes both, so
+write a registry's start with its host. The rename lists every image it
+changed, and counts by registry those no start fits, which are pulled
+from where the source pulls them (`store_references.images` with
+`--json`: `changed`, `kept`, `left`). An image no start fits is never a
+reason to refuse: most are meant to stay. `plan rebuild` lists the
+registries a snapshot pulls from, and how many images have no digest: a
+tag is whatever was pushed to it last, so a rebuild from tags runs what
+is there now, which may not be what ran. An image named in a chart's
+values or in an operator's own field (`spec.image` of a Prometheus or a
+KafkaConnect) is not seen, by the rename or by the plan. Giving `--rename` at all
+still means every secret store needs a start (above), so a file written
+for images names the stores too, each replaced by itself if it is the
+same.
 
 An entry or a start that names nothing in the snapshot is refused, as is
 a rename file with nothing in it, with nothing restored: a mistyped one would otherwise restore what it was

@@ -587,7 +587,7 @@ secrets:
 | `op://<vault>/<item>/[<section>/]<field>` | 1Password, with the `op` CLI; each part is letters, digits, spaces, dots, dashes and underscores (give anything else by its ID) |
 | `azurekv://<vault>/<secret>[/<version>]` | Azure Key Vault, with the `az` CLI; each part is letters, digits and dashes |
 | `env:<NAME>` | an environment variable |
-| `file:<path>` | a file's whole content, byte for byte; a relative path is from where the command runs |
+| `file:<path>` | a file's whole content, byte for byte; a relative path is from where the command runs. On Windows write the path with forward slashes or in single quotes (`'file:C:\keys\db.txt'`): in double quotes YAML reads a backslash as an escape, so the file is refused as not YAML, or (`"file:C:\tmp\new.txt"`, where `\t` and `\n` are a tab and a newline) is read without complaint as another path, which fails only when the value is read |
 | `exec:<command>` | what a command prints, less its last line end; only with `--allow-exec` |
 | `empty:` | the empty value, for a key that holds nothing |
 
@@ -771,7 +771,24 @@ namespace:
   HelmRelease in a namespace the scope narrows, left out whole or not,
   the release is installed once the source runs. The run says so by name
   (`scope.stillMade` with `--json`), and the plan goes on listing it:
-  leave the source out with `--leave-out`, or have it apply less.
+  leave the source out with `--leave-out`, or have it apply less;
+- **a webhook that is brought and calls a Service the scope leaves out**
+  is named (`scope.webhooksWithoutService` with `--json`): an admission
+  webhook with no namespace of its own is brought with everything else,
+  and while nothing answers at its Service the API server refuses every
+  write it is asked about (unless its `failurePolicy` is `Ignore`),
+  which can stop the restore that left the Service out. The same is
+  said of a CustomResourceDefinition whose conversion webhook calls such
+  a Service (a `v1` definition; the long-removed `v1beta1` form is not
+  read), and of an APIService served by one: its API is then not there,
+  and what lists every API, a namespace's deletion for one, waits on
+  it. A Service the capture left to a GitOps source counts as there
+  only when that source is brought. What a webhook matches is not read,
+  so one that matches nothing is named too. Bring what makes the Service, or leave the webhook out with
+  `--leave-out`.
+
+Both notes are in the rebuild plan as well, under "A part only", so that
+whoever reads the plan sees them without the command's output.
 
 Two entries that fit one namespace choose from it together. A release or
 a label is looked for in the namespaces of its own entry: one that fits

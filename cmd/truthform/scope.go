@@ -97,8 +97,8 @@ func scopeSaid(rep kube.ScopeReport, file string) string {
 	if len(rep.ObjectsLeftOut) > 0 {
 		fmt.Fprintf(&b, "\nscope: %d objects that no release made are left out (name one under objects, as Kind/name, to bring it): %s", len(rep.ObjectsLeftOut), strings.Join(rep.ObjectsLeftOut, ", "))
 	}
-	for _, m := range rep.StillMade {
-		fmt.Fprintf(&b, "\nscope: NOTE: %s is brought, and makes %d objects in %s, which the scope narrows: once it runs they are there, whatever the scope chose. Leave the source out (--leave-out), or change what it applies.", m.Source, m.Objects, m.Namespace)
+	for _, n := range scopeNotes(rep) {
+		b.WriteString("\nscope: NOTE: " + n)
 	}
 	if len(rep.SharedName) > 0 {
 		fmt.Fprintf(&b, "\nscope: %d objects with no namespace are brought because a release of their name is, though another of that name is left out, and which made them they do not say (--leave-out holds one back): %s", len(rep.SharedName), strings.Join(rep.SharedName, "; "))
@@ -107,6 +107,30 @@ func scopeSaid(rep kube.ScopeReport, file string) string {
 		b.WriteString("\nscope: nothing checks that what is brought does not need something left out (a ServiceAccount, a ConfigMap, a CustomResourceDefinition)")
 	}
 	return b.String()
+}
+
+// scopeNotes are what a scope cannot do for the person who wrote it, and
+// they have to know before a restore: each a sentence, said on stderr and
+// in the rebuild plan.
+func scopeNotes(rep kube.ScopeReport) []string {
+	var out []string
+	for _, m := range rep.StillMade {
+		out = append(out, fmt.Sprintf("%s is brought, and makes %d objects in %s, which the scope narrows: once it runs they are there, whatever the scope chose. Leave the source out (--leave-out), or change what it applies.", m.Source, m.Objects, m.Namespace))
+	}
+	for _, w := range rep.Webhooks {
+		what := "while nothing answers there, the API server goes on without it (failurePolicy Ignore), and what it would have checked or changed is not"
+		if w.Fails {
+			what = "while nothing answers there, the API server refuses every write the webhook is asked about, which can stop the restore itself"
+		}
+		if w.Webhook == "conversion" {
+			what = "while nothing answers there, objects of that kind cannot be read or written in any version but the stored one"
+		}
+		if strings.HasPrefix(w.Configuration, "APIService ") {
+			what = "while nothing answers there, its API is not there, and what lists every API (a namespace's deletion, for one) waits on it"
+		}
+		out = append(out, fmt.Sprintf("%s (%s) is brought, and calls the Service %s, which the scope leaves out: %s. Bring what makes the Service, or leave the webhook out (--leave-out).", w.Configuration, w.Webhook, w.Service, what))
+	}
+	return out
 }
 
 // notHeldCode is how a run ends when a hold brought what it does not know

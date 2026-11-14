@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/usetruthform/core/internal/snapshot"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // A restore need not bring everything: a drill wants the platform, the
@@ -92,6 +93,21 @@ type ScopeReport struct {
 	// chooses among the snapshot's objects, and cannot stop a source
 	// restored from making what it makes.
 	StillMade []ScopeMade `json:"stillMade"`
+	// Webhooks are admission and conversion webhooks that are brought and
+	// call a Service the scope leaves out: until that Service answers,
+	// the API server refuses what such a webhook is asked about.
+	Webhooks []ScopeWebhook `json:"webhooksWithoutService"`
+}
+
+// ScopeWebhook is a webhook that is brought, and the Service it calls,
+// which is not.
+type ScopeWebhook struct {
+	Configuration string `json:"configuration"` // Kind name
+	Webhook       string `json:"webhook"`
+	Service       string `json:"service"` // namespace/name
+	// Fails: what it is asked about is refused while the Service is not
+	// there (failurePolicy Fail, the default; a conversion always).
+	Fails bool `json:"fails"`
 }
 
 type ScopeHeld struct {
@@ -226,7 +242,7 @@ func secretMakers(s snapshot.Snapshot) map[secretKey]int {
 // that fits nothing in the namespaces of its entry, is an error: a
 // mistyped one would otherwise leave out what it was written to bring.
 func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, error) {
-	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}, NotHeld: []string{}, AsTheyAre: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}}
+	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}, NotHeld: []string{}, AsTheyAre: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}, Webhooks: []ScopeWebhook{}}
 	if sc.Narrow == nil && !sc.Jobs {
 		return s, rep, fmt.Errorf("it narrows nothing: give at least one entry under narrow")
 	}
@@ -667,6 +683,7 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		a, b := rep.StillMade[i], rep.StillMade[j]
 		return a.Source+"\x00"+a.Namespace < b.Source+"\x00"+b.Namespace
 	})
+	rep.Webhooks = webhooksWithoutService(s, out, narrowed)
 	sort.Strings(rep.ObjectsBrought)
 	sort.Strings(rep.ObjectsLeftOut)
 	for k, n := range relObjects {
@@ -682,6 +699,66 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 	}
 	sort.Strings(rep.Jobs)
 	return out, rep, nil
+}
+
+// webhooksWithoutService finds the webhooks of a narrowed snapshot that
+// call a Service in a namespace the scope narrows, where that Service is
+// neither brought nor left to a GitOps source that is. An APIService is
+// read the same way. Such a webhook is
+// asked about every write it matches, and the API server refuses those
+// while nothing answers: one left behind can stop a whole restore.
+func webhooksWithoutService[T any](s, out snapshot.Snapshot, narrowed map[string]T) []ScopeWebhook {
+	there := map[string]bool{}
+	for _, o := range out.Objects {
+		if o.Kind() == "Service" && o.APIVersion() == "v1" {
+			there[o.Namespace()+"/"+o.Name()] = true
+		}
+	}
+	services := resourceID(schema.GroupVersionResource{Version: "v1", Resource: "services"})
+	// One the capture left to a source is there when that source is
+	// brought, and not otherwise: nothing else makes it.
+	applied := stillApplied(s, out)
+	for i, sk := range s.Skips {
+		if sk.Resource == services && applied[i] != "" {
+			there[sk.Namespace+"/"+sk.Name] = true
+		}
+	}
+	found := []ScopeWebhook{}
+	add := func(o snapshot.Object, name string, config any, fails bool) {
+		c, _ := config.(map[string]any)
+		svc, _ := c["service"].(map[string]any)
+		ns, n := strOf(svc["namespace"]), strOf(svc["name"])
+		if _, isNarrowed := narrowed[ns]; n == "" || !isNarrowed || there[ns+"/"+n] {
+			return
+		}
+		found = append(found, ScopeWebhook{Configuration: o.Kind() + " " + o.Name(), Webhook: name, Service: ns + "/" + n, Fails: fails})
+	}
+	for _, o := range out.Objects {
+		group, _, _ := strings.Cut(o.APIVersion(), "/")
+		switch {
+		case group == "admissionregistration.k8s.io" && (o.Kind() == "ValidatingWebhookConfiguration" || o.Kind() == "MutatingWebhookConfiguration"):
+			for _, w := range list(o.Body["webhooks"]) {
+				m, _ := w.(map[string]any)
+				add(o, strOf(m["name"]), m["clientConfig"], strOf(m["failurePolicy"]) != "Ignore")
+			}
+		case group == "apiextensions.k8s.io" && o.Kind() == "CustomResourceDefinition":
+			spec, _ := o.Body["spec"].(map[string]any)
+			conv, _ := spec["conversion"].(map[string]any)
+			hook, _ := conv["webhook"].(map[string]any)
+			add(o, "conversion", hook["clientConfig"], true)
+		case group == "apiregistration.k8s.io" && o.Kind() == "APIService":
+			// An API served by a Service: with none, the API is not
+			// there, and what lists every API (a namespace's deletion,
+			// a garbage collection) waits on it.
+			spec, _ := o.Body["spec"].(map[string]any)
+			add(o, "service", map[string]any{"service": spec["service"]}, true)
+		}
+	}
+	sort.Slice(found, func(i, j int) bool {
+		a, b := found[i], found[j]
+		return a.Configuration+"\x00"+a.Webhook < b.Configuration+"\x00"+b.Webhook
+	})
+	return found
 }
 
 // stillApplied says, for each thing the capture left to a GitOps source,

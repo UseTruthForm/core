@@ -711,3 +711,89 @@ func TestNarrowSmallRules(t *testing.T) {
 		t.Errorf("the draft lists a Secret an object makes:\n%s", draft)
 	}
 }
+
+// A webhook that is brought and calls a Service the scope leaves out is
+// named: the API server refuses what it is asked about while nothing
+// answers, which can stop the restore that left the Service out.
+func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
+	hook := func(name, policy, ns, svc string) map[string]any {
+		h := map[string]any{"name": name, "clientConfig": map[string]any{"service": map[string]any{"namespace": ns, "name": svc}}}
+		if policy != "" {
+			h["failurePolicy"] = policy
+		}
+		return h
+	}
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		released("apps/v1", "Deployment", "team-a", "web", "web", nil),
+		released("v1", "Service", "team-a", "web", "web", nil),
+		planObject("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux-system", "apps", map[string]any{"spec": map[string]any{"path": "./apps"}}),
+		planObject("apiregistration.k8s.io/v1", "APIService", "", "v1beta1.metrics.example.com", map[string]any{"spec": map[string]any{"service": map[string]any{"namespace": "team-a", "name": "policy"}}}),
+		planObject("apiregistration.k8s.io/v1", "APIService", "", "v1.apps", map[string]any{"spec": map[string]any{"group": "apps"}}), // served by the API server itself
+		released("v1", "Service", "team-a", "policy", "policy", nil),
+		released("v1", "Service", "team-a", "soft", "soft", nil),
+		planObject("v1", "Service", "other", "x", nil),
+		planObject("admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration", "", "policy", map[string]any{"webhooks": []any{
+			hook("check.policy", "", "team-a", "policy"),         // Fail is the default
+			hook("soft.policy", "Ignore", "team-a", "soft"),      // goes on without it
+			hook("ok.web", "Fail", "team-a", "web"),              // its Service is brought
+			hook("elsewhere", "Fail", "other", "x"),              // a namespace the scope does not narrow
+			hook("not.there", "Fail", "other", "never-captured"), // nor is this the scope's doing
+			map[string]any{"name": "by.url", "clientConfig": map[string]any{"url": "https://hooks.example.com/check"}},
+		}}),
+		planObject("admissionregistration.k8s.io/v1", "MutatingWebhookConfiguration", "", "gitops", map[string]any{"webhooks": []any{
+			hook("made.gitops", "Fail", "team-a", "rendered"), // a source that is there makes it
+			hook("gone.gitops", "Fail", "team-a", "gone"),
+		}}),
+		planObject("apiextensions.k8s.io/v1", "CustomResourceDefinition", "", "widgets.example.com", map[string]any{"spec": map[string]any{
+			"conversion": map[string]any{"strategy": "Webhook", "webhook": map[string]any{"clientConfig": map[string]any{"service": map[string]any{"namespace": "team-a", "name": "policy"}}}}}}),
+		planObject("apiextensions.k8s.io/v1", "CustomResourceDefinition", "", "plain.example.com", map[string]any{"spec": map[string]any{"conversion": map[string]any{"strategy": "None"}}}),
+	}, Skips: []snapshot.Skip{
+		skipOf("", "v1", "services", "team-a", "rendered", "applied by Flux Kustomization flux-system/apps; restore that"),
+		skipOf("", "v1", "configmaps", "team-a", "gone", "applied by Flux Kustomization flux-system/apps; restore that"),
+	}}
+	_, rep, err := Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ScopeWebhook{
+		{Configuration: "APIService v1beta1.metrics.example.com", Webhook: "service", Service: "team-a/policy", Fails: true},
+		{Configuration: "CustomResourceDefinition widgets.example.com", Webhook: "conversion", Service: "team-a/policy", Fails: true},
+		{Configuration: "MutatingWebhookConfiguration gitops", Webhook: "gone.gitops", Service: "team-a/gone", Fails: true},
+		{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "check.policy", Service: "team-a/policy", Fails: true},
+		{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "soft.policy", Service: "team-a/soft", Fails: false},
+	}
+	if !reflect.DeepEqual(rep.Webhooks, want) {
+		t.Errorf("webhooks without their Service:\n got %+v\nwant %+v", rep.Webhooks, want)
+	}
+	// With the releases brought, none is named.
+	_, rep, err = Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web", "policy", "soft"}}}})
+	if err != nil || len(rep.Webhooks) != 1 || rep.Webhooks[0].Webhook != "gone.gitops" {
+		t.Errorf("with their Services brought: %+v, %v", rep.Webhooks, err)
+	}
+	// A Service left to a source is there only when the source is
+	// brought: with the source left out by the scope, or not in the
+	// snapshot at all, nothing makes it.
+	made := func(rep ScopeReport) bool {
+		for _, w := range rep.Webhooks {
+			if w.Webhook == "made.gitops" {
+				return true
+			}
+		}
+		return false
+	}
+	_, rep, err = Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web"}}, {Namespaces: []string{"flux-system"}}}})
+	if err != nil || !made(rep) {
+		t.Errorf("with the source left out: %+v, %v", rep.Webhooks, err)
+	}
+	without := s
+	without.Objects = nil
+	for _, o := range s.Objects {
+		if o.Kind() != "Kustomization" {
+			without.Objects = append(without.Objects, o)
+		}
+	}
+	_, rep, err = Narrow(without, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web"}}}})
+	if err != nil || !made(rep) {
+		t.Errorf("with no such source in the snapshot: %+v, %v", rep.Webhooks, err)
+	}
+}

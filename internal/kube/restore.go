@@ -277,7 +277,8 @@ func fillFrom(live, body map[string]any, paths []string) error {
 	}
 	values := map[string]string{}
 	for _, p := range paths {
-		if v, ok := own[targets[strings.TrimSuffix(p, numberMark)].path]; ok {
+		at, _ := pathOf(p)
+		if v, ok := own[targets[at].path]; ok {
 			values[p] = v
 		}
 	}
@@ -308,15 +309,34 @@ func findSlots(body map[string]any, paths []string) (map[string]slot, error) {
 		}
 	}
 	asked := map[string]bool{}
+	marked := map[string]bool{}
 	for _, p := range paths {
-		at := strings.TrimSuffix(p, numberMark)
+		at, isOwn := pathOf(p)
 		if twice[at] || asked[at] {
 			return nil, fmt.Errorf("two values of the object are at %s; which is which cannot be told", at)
 		}
 		asked[at] = true
+		marked[at] = isOwn
 	}
 	out := map[string]slot{}
 	for at := range asked {
+		if marked[at] {
+			// The snapshot says it is this slot's own path. A capture
+			// writes that only where another slot had the path by the
+			// rule before, and of a slot it emptied: anywhere else it is
+			// not a capture's word, and is not followed.
+			sl, isOwn := own[at]
+			switch {
+			case !isOwn:
+				return nil, fmt.Errorf("the snapshot has no slot %s", at)
+			case len(was[at]) == 0:
+				return nil, fmt.Errorf("the snapshot marks %s as one slot's own path, and no other slot of the object had that path: a capture does not write that", at)
+			case sl.value != "":
+				return nil, fmt.Errorf("the snapshot marks %s as withheld, and it holds a value there", at)
+			}
+			out[at] = sl
+			continue
+		}
 		// Not one asked for by its own path as well.
 		var others []slot
 		for _, sl := range was[at] {
@@ -363,16 +383,16 @@ func setSlots(body map[string]any, paths []string, values map[string]string) err
 	// Every value is checked before any is written.
 	fill := map[string]any{}
 	for _, p := range paths {
-		at := strings.TrimSuffix(p, numberMark)
+		at, _ := pathOf(p)
 		v, ok := values[p]
 		if !ok {
-			v, ok = values[at] // a line written without the mark of a number
+			v, ok = values[at] // a line written without its marks
 		}
 		if !ok {
 			return fmt.Errorf("no value for %s", p)
 		}
 		fill[at] = v
-		if at != p {
+		if strings.HasSuffix(p, numberMark) {
 			n, err := asNumber(strings.TrimSpace(v))
 			if err != nil {
 				return fmt.Errorf("%s: %w", at, err)

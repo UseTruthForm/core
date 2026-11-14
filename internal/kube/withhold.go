@@ -703,6 +703,18 @@ func holdsInline(v string) bool {
 // written as one again.
 const numberMark = "#number"
 
+// ownMark begins a path that is the slot's own and no other's: written
+// where another slot of the object had this path by the rule before (a
+// key with a dot in it beside the same keys nested), so that a restore
+// does not have to ask which of the two a snapshot means.
+const ownMark = "="
+
+// pathOf is a path as the snapshot lists it, without its marks.
+func pathOf(listed string) (path string, own bool) {
+	path, own = strings.CutPrefix(strings.TrimSuffix(listed, numberMark), ownMark)
+	return path, own
+}
+
 // numberText is a number as text: a whole one as it is written, however
 // it was read (987654321, and not 9.87654321e+08).
 func numberText(v any) string {

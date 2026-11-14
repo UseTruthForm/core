@@ -194,7 +194,15 @@ What a snapshot does not hold, by design:
     shape says so and it is called `url`, `address`, `uri`, `dsn` or the
     like;
   - in a URL: a password with a space in it, one with a slash in it
-    before a host with no dot and no port, and `?key=` or `?code=`.
+    before a host with no dot and no port, and `?key=` or `?code=`;
+  - text on one line: a value such as `extra: "DB_PASSWORD=hunter2"` or
+    `javaOpts: "-Ddb.password=hunter2"` under a name that says nothing
+    (only a value of several lines is read line by line);
+  - in a document as text, a credential in a comment
+    (`# password: hunter2`), and a template with a default written into
+    it where the document still reads as YAML
+    (`password: {{ .Values.pw | default "hunter2" }}`, unquoted: YAML
+    reads the braces as a map and sees no value).
 
   Because both sides are withheld, a diff does not show a rotated
   credential, and a snapshot taken before TruthForm withheld these values
@@ -638,7 +646,15 @@ settings:
 ```
 
 A place that held a number has `#number` at its end, and what is
-supplied for it has to be one. A ConfigMap's `binaryData` key is
+supplied for it has to be one. A place with `=` before it is written so
+where a key with a dot in it sits beside the same keys nested: copy it
+as `plan secrets --out` wrote it. The mark is followed only where a
+capture writes it; added by hand anywhere else, the restore refuses it.
+For such an object two things change with this version, both refused
+aloud and never filled wrongly: a snapshot of it taken now is not
+restored by an earlier version, and a sources file written against an
+earlier snapshot of it no longer fits one taken now (write its key again
+from `plan secrets --out`). A ConfigMap's `binaryData` key is
 supplied as it is stored, in base64. A document withheld whole (see what
 is withheld, above) is one place, and the reference gives all of it: a
 `file:` reference suits it.

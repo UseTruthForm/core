@@ -829,8 +829,15 @@ refuses nothing: a snapshot taken before this version lists what an
 object owns by namespace and without the names, so whether a webhook's
 Service is one of them is not in it. A capture taken now lists the
 Services by name (`names` on the skip, in `coverage.yaml`) and settles
-it. Pods and the rest are still listed once per owner: their names are
-the cluster's.
+it, and beside each name its selector (`selectors`), so that what
+answers behind a Service the snapshot does not hold is looked for as it
+is behind one it does: among the workloads of the snapshot that the
+selector picks. Where the owner makes other things in that namespace as
+well, its pods may be what answers, and the capture does not list those
+by their labels: the Service is then taken to answer while its owner is
+there and not held. Pods and the rest are still listed once per owner:
+their names are the cluster's. A selector is labels and their values,
+which pick pods, and holds no credential.
 
 Writing the names changes one file of a snapshot, `coverage.yaml`, and
 only for a cluster where an object owns a Service: its digest then

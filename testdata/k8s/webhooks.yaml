@@ -101,6 +101,72 @@ metadata:
     - {apiVersion: v1, kind: ConfigMap, name: operand, uid: 00000000-0000-0000-0000-000000003977, controller: true}
 spec:
   ports: [{port: 443}]
+  # What answers behind it is a Deployment of the snapshot, which nothing owns.
+  selector: {app: fronted}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fronted
+  namespace: owned
+  labels: {part: answers}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: fronted}}
+  template:
+    metadata: {labels: {app: fronted}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: ownsboth}
+---
+# An owner that makes the Service and a workload both: what answers
+# behind the Service may be the owner's, which the capture lists without
+# its labels, so a workload of the snapshot taken out decides nothing.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: operand, namespace: ownsboth}
+data: {a: b}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: ownsboth
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: operand, uid: 00000000-0000-0000-0000-000000004401, controller: true}
+spec:
+  ports: [{port: 443}]
+  selector: {app: both}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: made
+  namespace: ownsboth
+  labels: {part: answers}
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: operand, uid: 00000000-0000-0000-0000-000000004401, controller: true}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: both}}
+  template:
+    metadata: {labels: {app: both}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: beside
+  namespace: ownsboth
+  labels: {part: answers}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: both}}
+  template:
+    metadata: {labels: {app: both}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -225,6 +291,12 @@ webhooks:
     sideEffects: None
     admissionReviewVersions: [v1]
     clientConfig: {service: {namespace: owned, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: ownsboth.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: ownsboth, name: hook}}
   # No rules: it is asked about nothing, and so stops nothing on the test server.
   - name: owned-other.example.truthform.org
     failurePolicy: Fail

@@ -202,7 +202,11 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 					own.owner[ns+"|"+gvr.Group+"|"+kind+"|"+strOf(md["name"])] = [3]string{g, k, n}
 					if reason == ownedReason(k, n) {
 						// Listed and counted once its owner's owner is known.
-						own.skips = append(own.skips, ownedSkip{resource: resourceID(gvr), ns: ns, group: g, kind: k, name: n, self: strOf(md["name"])})
+						sk := ownedSkip{resource: resourceID(gvr), ns: ns, group: g, kind: k, name: n, self: strOf(md["name"])}
+						if sk.resource == servicesResource {
+							sk.selector = serviceSelector(obj)
+						}
+						own.skips = append(own.skips, sk)
 						continue
 					}
 				}
@@ -273,8 +277,30 @@ type ownership struct {
 func newOwnership() *ownership { return &ownership{owner: map[string][3]string{}} }
 
 // ownedSkip is an owned object: its resource and namespace, its
-// controller (group, kind, name), and its own name (self).
-type ownedSkip struct{ resource, ns, group, kind, name, self string }
+// controller (group, kind, name), its own name (self), and for a Service
+// its selector.
+type ownedSkip struct {
+	resource, ns, group, kind, name, self string
+	selector                              map[string]string
+}
+
+// serviceSelector is a Service's selector: labels and their values, as
+// text. They pick pods and are no credential; a value that is not text
+// is no selector the API accepts, and is left.
+func serviceSelector(obj map[string]any) map[string]string {
+	spec, _ := obj["spec"].(map[string]any)
+	sel, _ := spec["selector"].(map[string]any)
+	out := map[string]string{}
+	for k, v := range sel {
+		if s, ok := v.(string); ok {
+			out[k] = s
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
 
 // root follows an owner up to the controller nothing owns.
 func (o *ownership) root(ns, group, kind, name string) (string, string) {
@@ -306,11 +332,18 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 	// the rest are not: their names are the cluster's, new with every
 	// rollout.
 	names := map[string][]string{}
+	selectors := map[string]map[string]map[string]string{}
 	for _, sk := range o.skips {
 		if sk.resource == servicesResource {
 			k, n := o.root(sk.ns, sk.group, sk.kind, sk.name)
 			key := sk.resource + "\x00" + sk.ns + "\x00" + ownedReason(k, n)
 			names[key] = append(names[key], sk.self)
+			if sk.selector != nil {
+				if selectors[key] == nil {
+					selectors[key] = map[string]map[string]string{}
+				}
+				selectors[key][sk.self] = sk.selector
+			}
 		}
 	}
 	for _, sk := range o.skips {
@@ -322,7 +355,7 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 		}
 		seen[key] = true
 		sort.Strings(names[key])
-		snap.Skips = append(snap.Skips, snapshot.Skip{Resource: sk.resource, Namespace: sk.ns, Name: "*", Reason: reason, Names: names[key]})
+		snap.Skips = append(snap.Skips, snapshot.Skip{Resource: sk.resource, Namespace: sk.ns, Name: "*", Reason: reason, Names: names[key], Selectors: selectors[key]})
 		if i, ok := byType[sk.resource]; ok {
 			c := &snap.Coverage[i]
 			if c.Skipped == nil {

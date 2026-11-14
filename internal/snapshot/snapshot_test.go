@@ -256,7 +256,7 @@ func TestSkipNamesRoundTrip(t *testing.T) {
 	plain := Snapshot{Platform: "kubernetes", Skips: []Skip{{Resource: "core/v1/pods", Namespace: "shop", Name: "*", Reason: "owned by Deployment/api, whose controller recreates it"}}}
 	named := plain
 	named.Skips = append([]Skip{}, plain.Skips...)
-	named.Skips = append(named.Skips, Skip{Resource: "core/v1/services", Namespace: "shop", Name: "*", Reason: "owned by Operand/op, whose controller recreates it", Names: []string{"hook", "metrics"}})
+	named.Skips = append(named.Skips, Skip{Resource: "core/v1/services", Namespace: "shop", Name: "*", Reason: "owned by Operand/op, whose controller recreates it", Names: []string{"hook", "metrics"}, Selectors: map[string]map[string]string{"hook": {"app": "hook"}}})
 
 	dir := t.TempDir()
 	for name, s := range map[string]Snapshot{"plain": plain, "named": named} {
@@ -278,5 +278,13 @@ func TestSkipNamesRoundTrip(t *testing.T) {
 	}
 	if strings.Join(names, " ") != "hook metrics" {
 		t.Errorf("names read back: %q", names)
+	}
+	for _, sk := range got.Skips {
+		if len(sk.Names) > 0 && sk.Selectors["hook"]["app"] != "hook" {
+			t.Errorf("selectors read back: %v", sk.Selectors)
+		}
+	}
+	if strings.Contains(string(cov), "selectors:") {
+		t.Errorf("a skip with no selectors is written with the key:\n%s", cov)
 	}
 }

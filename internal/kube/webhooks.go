@@ -241,33 +241,52 @@ var servicesResource = resourceID(schema.GroupVersionResource{Version: "v1", Res
 
 func isService(o snapshot.Object) bool { return o.Kind() == "Service" && o.APIVersion() == "v1" }
 
-// service asks it of a Service, and where the Service is brought, says
-// so: whether anything answers behind it is then a second question.
-func (a *after) service(ns, name string) (ans there, brought bool) {
+// service asks it of a Service.
+func (a *after) service(ns, name string) there {
 	is := func(o snapshot.Object) bool { return isService(o) && o.Namespace() == ns && o.Name() == name }
 	if slices.ContainsFunc(a.out.Objects, is) {
-		return thereYes, true
+		return thereYes
 	}
 	if slices.ContainsFunc(a.whole.Objects, is) {
-		return thereNo, false
+		return thereNo
 	}
-	return a.skipped(name, func(sk snapshot.Skip) bool { return sk.Resource == servicesResource && sk.Namespace == ns }), false
+	return a.skipped(name, func(sk snapshot.Skip) bool { return sk.Resource == servicesResource && sk.Namespace == ns })
 }
 
-// behind says why nothing answers behind a Service that is brought, or
-// "" where something does or it cannot be told. A Service answers through
-// the pods its selector picks. Where the snapshot as read has the
-// workloads that make them and none is brought and running, nothing
+// selectorOf is the selector of a Service that will be there: its own
+// where it is brought, and where its owner makes it, the one the capture
+// wrote down beside its name. It is none where what answers behind it
+// is not this snapshot's to say: the owner makes other things in that
+// namespace too, which the capture lists without their labels, and its
+// pods may be among them.
+func (a *after) selectorOf(ns, name string) map[string]string {
+	for _, o := range a.out.Objects {
+		if isService(o) && o.Namespace() == ns && o.Name() == name {
+			return serviceSelector(o.Body)
+		}
+	}
+	for _, sk := range a.s.Skips {
+		if sk.Resource != servicesResource || sk.Namespace != ns || sk.Name != "*" || !slices.Contains(sk.Names, name) {
+			continue
+		}
+		for _, other := range a.s.Skips {
+			if other.Namespace == ns && other.Reason == sk.Reason && other.Resource != servicesResource {
+				return nil
+			}
+		}
+		return sk.Selectors[name]
+	}
+	return nil
+}
+
+// behind says why nothing answers behind a Service that will be there,
+// or "" where something does or it cannot be told. A Service answers
+// through the pods its selector picks. Where the snapshot as read has
+// the workloads that make them and none is brought and running, nothing
 // answers; where it has none (an operator makes the pods), that cannot be
 // told, and the Service is taken to answer.
 func (a *after) behind(ns, name string) string {
-	var sel map[string]any
-	for _, o := range a.out.Objects {
-		if isService(o) && o.Namespace() == ns && o.Name() == name {
-			spec, _ := o.Body["spec"].(map[string]any)
-			sel, _ = spec["selector"].(map[string]any)
-		}
-	}
+	sel := a.selectorOf(ns, name)
 	if len(sel) == 0 {
 		return ""
 	}
@@ -330,12 +349,14 @@ func webhooksWithoutService(whole, s, out snapshot.Snapshot, held map[string]boo
 			return
 		}
 		why := ""
-		switch ans, brought := a.service(ns, n); {
+		switch ans := a.service(ns, n); {
 		case ans == thereNo:
 			why = WhyNotBrought
 		case ans == thereUnknown:
 			why = WhyUnknown
-		case brought:
+		default:
+			// It will be there, brought or made by what is: whether
+			// anything answers behind it is the second question.
 			why = a.behind(ns, n)
 		}
 		if why == "" {

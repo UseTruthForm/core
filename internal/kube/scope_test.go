@@ -1180,6 +1180,41 @@ func TestWhetherAServiceIsThereIsAskedAllTheWayUp(t *testing.T) {
 	if got := why(ownerTaken, ownerOut, nil); got != WhyNotBrought {
 		t.Errorf("an owner of the snapshot taken out, beside a skip with no names: %q", got)
 	}
+	// Behind a Service its owner makes is what its selector picks, as the
+	// capture wrote it down: a workload of the snapshot, here, which this
+	// restore takes out. That another owner makes workloads in the
+	// namespace says nothing of this one's Service; that its own does,
+	// leaves it open, and nothing is refused.
+	fronted := func(skips ...snapshot.Skip) (whole, out snapshot.Snapshot) {
+		sk := owned("app", ownedReason("Operand", "operand"), "hook")
+		sk.Selectors = map[string]map[string]string{"hook": {"app": "web"}}
+		whole = snapshot.Snapshot{Platform: "kubernetes", Skips: append([]snapshot.Skip{sk}, skips...), Objects: []snapshot.Object{
+			hook("hook"), planObject("example.com/v1", "Operand", "app", "operand", nil),
+			planObject("apps/v1", "Deployment", "app", "web", map[string]any{"spec": map[string]any{"template": map[string]any{"metadata": map[string]any{"labels": map[string]any{"app": "web"}}}}}),
+		}}
+		out = whole
+		out.Objects = whole.Objects[:2]
+		return whole, out
+	}
+	whole, out := fronted()
+	if got := why(whole, whole, nil); got != "" {
+		t.Errorf("behind an owned Service, a workload that is brought: %q", got)
+	}
+	if got := why(whole, out, nil); got != WhyLeftOut {
+		t.Errorf("behind an owned Service, a workload taken out: %q", got)
+	}
+	whole, out = fronted(skipOf("apps", "v1", "deployments", "app", "*", ownedReason("Operand", "another")))
+	if got := why(whole, out, nil); got != WhyLeftOut {
+		t.Errorf("another owner makes workloads there: %q", got)
+	}
+	whole, out = fronted(skipOf("apps", "v1", "deployments", "app", "*", ownedReason("Operand", "operand")))
+	if got := why(whole, out, nil); got != "" {
+		t.Errorf("its own owner makes workloads there: %q", got)
+	}
+	whole, out = fronted(skipOf("apps", "v1", "deployments", "elsewhere", "*", ownedReason("Operand", "operand")))
+	if got := why(whole, out, nil); got != WhyLeftOut {
+		t.Errorf("its owner's namesake makes workloads in another namespace: %q", got)
+	}
 	// An owner with no namespace owns across them; a Crossplane composite
 	// is asked the same question, held and left to something else too.
 	cluster := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook"), planObject("example.com/v1", "Operand", "", "operand", nil)},
@@ -1221,7 +1256,7 @@ func TestOwnedServicesAreListedByName(t *testing.T) {
 	pods := resourceID(schema.GroupVersionResource{Version: "v1", Resource: "pods"})
 	own.skips = []ownedSkip{
 		{resource: servicesResource, ns: "app", kind: "Operand", name: "op", self: "metrics"},
-		{resource: servicesResource, ns: "app", kind: "Operand", name: "op", self: "hook"},
+		{resource: servicesResource, ns: "app", kind: "Operand", name: "op", self: "hook", selector: map[string]string{"app": "hook"}},
 		{resource: servicesResource, ns: "app", kind: "Operand", name: "other", self: "third"},
 		{resource: pods, ns: "app", kind: "Operand", name: "op", self: "op-7d9f-abcde"},
 	}
@@ -1241,5 +1276,32 @@ func TestOwnedServicesAreListedByName(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("the skips of what is owned:\n got %q\nwant %q", got, want)
+	}
+	// And beside each name that has one, its selector: what answers
+	// behind a Service that is not in the snapshot.
+	for _, sk := range snap.Skips {
+		var want map[string]map[string]string
+		if sk.Resource == servicesResource && sk.Reason == ownedReason("Operand", "op") {
+			want = map[string]map[string]string{"hook": {"app": "hook"}}
+		}
+		if !reflect.DeepEqual(sk.Selectors, want) {
+			t.Errorf("%s, %s: selectors %v, want %v", sk.Resource, sk.Reason, sk.Selectors, want)
+		}
+	}
+	// A selector is labels as text; one with none, or with what is not
+	// text, is not written.
+	for _, c := range []struct {
+		spec any
+		want map[string]string
+	}{
+		{map[string]any{"selector": map[string]any{"app": "x", "tier": "web"}}, map[string]string{"app": "x", "tier": "web"}},
+		{map[string]any{"selector": map[string]any{}}, nil},
+		{map[string]any{"ports": []any{}}, nil},
+		{nil, nil},
+		{map[string]any{"selector": map[string]any{"app": float64(1)}}, nil},
+	} {
+		if got := serviceSelector(map[string]any{"spec": c.spec}); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("the selector of %v: %v, want %v", c.spec, got, c.want)
+		}
 	}
 }

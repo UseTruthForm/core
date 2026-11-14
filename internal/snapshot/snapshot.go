@@ -79,6 +79,10 @@ type Skip struct {
 	// lists them: the Services an object owns, whose names do not change
 	// from one day to the next as its pods' do.
 	Names []string `json:"names,omitempty"`
+	// Selectors are, for each of Names that has one, the Service's
+	// selector: what answers behind a Service that is not in the
+	// snapshot can then be looked for among the workloads that are.
+	Selectors map[string]map[string]string `json:"selectors,omitempty"`
 }
 
 // Coverage summarises one resource type: how many objects were captured, how

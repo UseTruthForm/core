@@ -822,14 +822,23 @@ is said to make it, as far up as that goes:
   system namespace, the cloud's objects) is there;
 - what is in no snapshot and left to nothing is not there.
 
+A source is asked like any other object: an Argo CD Application that an
+ApplicationSet generates is there if the ApplicationSet is. **Where the
+source is in another cluster** (a hub that runs Argo CD for its spokes),
+the spoke's snapshot has what the source labelled and not the source:
+nothing in it makes those Services, and a spoke's webhooks that fail
+closed are refused until their configurations are accepted under
+`withoutService`. That is every spoke of such a fleet: accept them
+once, in the scope file the fleet shares.
+
 **There are three answers, and only one refuses.** The Service will
 answer, and nothing is said. It will not, and the restore is refused.
 Or the snapshot does not say, and that is said as a NOTE, apart, and
 refuses nothing: a snapshot taken before this version lists what an
 object owns by namespace and without the names, so whether a webhook's
 Service is one of them is not in it. A capture taken now lists the
-Services by name (`names` on the skip, in `coverage.yaml`) and settles
-it, and beside each name its selector (`selectors`), so that what
+Services by name (`names` on the skip, in `coverage.yaml`), and the
+GitOps sources an object owns likewise, and settles it, and beside each name its selector (`selectors`), so that what
 answers behind a Service the snapshot does not hold is looked for as it
 is behind one it does: among the workloads of the snapshot that the
 selector picks. Where pods will run in that namespace that the
@@ -854,8 +863,8 @@ it reads any other, and a snapshot taken before is read by this one.
 the restore; with no scope, `plan rebuild` lists it, on stderr and in
 the plan ("Webhooks with nothing to answer them";
 `webhooksWithoutService` with `--json`), and exits as it always does.
-`plan rebuild` and `diff` take `--leave-out` as a restore does, and say
-what the restore would. A restore with no scope that ran before this
+`plan rebuild`, `plan scope --check` and `diff` take `--leave-out` as a
+restore does, and say what the restore would. A restore with no scope that ran before this
 version can be refused now. A diff still runs, and says it as a NOTE. With `--json` each webhook listed under
 `scope.webhooksWithoutService` says `why` (`notBrought`, `held`,
 `leftOut`, or `unknown` and `unseen` where the snapshot does not say)

@@ -56,23 +56,13 @@ type after struct {
 	whole, s, out snapshot.Snapshot
 	held          map[string]bool // Kind namespace/name, held by the scope
 	kind          map[string]string
-	sources       map[source]bool // the sources whose object is brought
-	parent        map[source]source
 	asked         map[string]bool
 }
 
 func newAfter(whole, s, out snapshot.Snapshot, held map[string]bool) *after {
-	a := &after{whole: whole, s: s, out: out, held: held, kind: map[string]string{}, sources: heldSources(out), parent: map[source]source{}, asked: map[string]bool{}}
+	a := &after{whole: whole, s: s, out: out, held: held, kind: map[string]string{}, asked: map[string]bool{}}
 	for _, c := range s.Coverage {
 		a.kind[c.Resource] = c.Kind
-	}
-	// A source the capture left to another source.
-	for _, sk := range s.Skips {
-		if pk, pn, ok := SourceOf(sk.Reason); ok {
-			for _, child := range skippedSource(sk) {
-				a.parent[child] = source{pk, pn}
-			}
-		}
 	}
 	return a
 }
@@ -148,9 +138,12 @@ func (a *after) skipped(name string, of func(snapshot.Skip) bool) there {
 			if !slices.Contains(sk.Names, name) {
 				continue
 			}
-		case sk.Name == "*" && systemNamespaces[sk.Namespace]:
-			// In a system namespace it is the platform's whichever
-			// it is, and a cluster has it.
+		case sk.Name == "*" && systemNamespaces[sk.Namespace] && !a.ownerInSnapshot(sk):
+			// In a system namespace, with an owner the capture left
+			// to the platform too, it is the platform's whichever it
+			// is, and a cluster has it. Where the snapshot holds the
+			// owner (a capture that took system namespaces), it is
+			// asked like any other.
 			best = thereYes
 			continue
 		case sk.Name == "*":
@@ -187,58 +180,86 @@ func (a *after) provider(sk snapshot.Skip) there {
 	return a.source(source{kind, name})
 }
 
-// source asks it of a GitOps source: brought and running, or itself left
-// to a source that is.
-func (a *after) source(src source) there {
-	return a.once("source\x00"+src.kind+"\x00"+src.name, func() there {
-		if a.sources[src] {
-			if a.sourceHeld(src) {
-				return thereNo
-			}
-			return thereYes
-		}
-		// One the snapshot has as an object, and this restore takes
-		// out, is left to nothing: no skip names it, and it ends here.
-		if p, ok := a.parent[src]; ok {
-			return a.source(p)
-		}
-		return thereNo
+// ownerInSnapshot reports an owned skip whose owner is an object of the
+// snapshot as it was read.
+func (a *after) ownerInSnapshot(sk snapshot.Skip) bool {
+	m := ownedBy.FindStringSubmatch(sk.Reason)
+	return m != nil && slices.ContainsFunc(a.whole.Objects, func(o snapshot.Object) bool {
+		return o.Kind() == m[1] && o.Name() == m[2] && (o.Namespace() == sk.Namespace || o.Namespace() == "")
 	})
 }
 
-// sourceHeld reports a source the scope holds: suspended, or with its
-// automated sync off, it applies nothing.
-func (a *after) sourceHeld(src source) bool {
-	obj := sourceObject[src.kind]
-	if src.kind != "Argo CD application" {
-		return a.held[obj.kind+" "+src.name]
-	}
-	for key := range a.held {
-		k, at, _ := strings.Cut(key, " ")
-		ns, name, _ := strings.Cut(at, "/")
-		if k == obj.kind && (name == src.name || ns+"_"+name == src.name) {
-			return true
+// source asks it of a GitOps source, which is an object like any other:
+// brought and not held, or left by the capture to something that is
+// asked in turn (the source that applies it, the ApplicationSet that
+// generates it).
+func (a *after) source(src source) there {
+	return a.once("source\x00"+src.kind+"\x00"+src.name, func() there {
+		obj := sourceObject[src.kind]
+		// As a reason names it: namespace/name for Flux; for Argo CD
+		// the name alone in Argo CD's own namespace, which the
+		// snapshot does not say, and namespace_name outside it.
+		ns, name, anyNS := "", src.name, false
+		switch {
+		case src.kind != "Argo CD application":
+			ns, name, _ = strings.Cut(src.name, "/")
+		case strings.Contains(src.name, "_"):
+			ns, name, _ = strings.Cut(src.name, "_")
+		default:
+			anyNS = true
 		}
-	}
-	return false
+		is := func(o snapshot.Object) bool {
+			group, _, _ := strings.Cut(o.APIVersion(), "/")
+			return group == obj.group && o.Kind() == obj.kind && o.Name() == name && (anyNS || o.Namespace() == ns)
+		}
+		// Of several of one name, one that runs is enough: which of
+		// them a bare name means is not said.
+		found := false
+		for _, o := range a.out.Objects {
+			if is(o) {
+				found = true
+				// Held (suspended, its automated sync off), it
+				// applies nothing.
+				if !a.held[o.Kind()+" "+o.Namespace()+"/"+o.Name()] {
+					return thereYes
+				}
+			}
+		}
+		if found {
+			return thereNo
+		}
+		return a.skipped(name, func(sk snapshot.Skip) bool {
+			return strings.HasPrefix(sk.Resource, obj.group+"/") && strings.HasSuffix(sk.Resource, "/"+obj.resource) && (anyNS || sk.Namespace == ns)
+		})
+	})
 }
 
 // named asks it of a Crossplane composite, which a reason gives by name
-// alone: any object of that name.
+// alone: an object of that name of an API that is not Kubernetes' own.
 func (a *after) named(name string) there {
-	is := func(o snapshot.Object) bool { return o.Name() == name }
-	for _, o := range a.out.Objects {
-		if is(o) {
-			if a.held[o.Kind()+" "+o.Namespace()+"/"+o.Name()] {
-				return thereNo
-			}
-			return thereYes
+	return a.once("named\x00"+name, func() there {
+		is := func(o snapshot.Object) bool {
+			group, _, versioned := strings.Cut(o.APIVersion(), "/")
+			return o.Name() == name && versioned && !ownGroups[group]
 		}
-	}
-	if slices.ContainsFunc(a.whole.Objects, is) {
-		return thereNo
-	}
-	return a.skipped(name, func(snapshot.Skip) bool { return true })
+		for _, o := range a.out.Objects {
+			if is(o) {
+				if a.held[o.Kind()+" "+o.Namespace()+"/"+o.Name()] {
+					return thereNo
+				}
+				return thereYes
+			}
+		}
+		if slices.ContainsFunc(a.whole.Objects, is) {
+			return thereNo
+		}
+		// By its own name only: a skip that stands for whatever an
+		// object owns, in some namespace, is not known to be it.
+		return a.skipped(name, func(sk snapshot.Skip) bool {
+			group, _, _ := strings.Cut(sk.Resource, "/")
+			return sk.Name == name && !ownGroups[group] && group != "core"
+		})
+	})
 }
 
 var servicesResource = resourceID(schema.GroupVersionResource{Version: "v1", Resource: "services"})

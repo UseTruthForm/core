@@ -254,7 +254,7 @@ func capture(ctx context.Context, args []string) int {
 }
 
 func restore(ctx context.Context, args []string) int {
-	sizeCheck, namesHeld, blockedBy = nil, nil, nil
+	sizeCheck, namesHeld, blockedBy, unscopedHooks = nil, nil, nil, nil
 	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
 	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
 	kctx := fs.String("context", "", "kubeconfig context to restore into")

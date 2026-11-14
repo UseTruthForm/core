@@ -172,6 +172,8 @@ func emitRestore(results []snapshot.Result, target string) {
 	}
 	if scopeDone != nil {
 		doc["scope"] = scopeDone
+	} else if unscopedHooks != nil {
+		doc["webhooksWithoutService"] = unscopedHooks
 	}
 	emit(doc)
 }

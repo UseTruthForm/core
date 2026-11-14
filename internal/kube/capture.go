@@ -328,13 +328,15 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 	}
 	// The Services an owner has are listed by name with its skip: a
 	// Service keeps its name, and something may call it by that name (a
-	// webhook), so that whether it will be there can be told. Pods and
-	// the rest are not: their names are the cluster's, new with every
-	// rollout.
+	// webhook), so that whether it will be there can be told. So are the
+	// GitOps sources it has (the Applications an ApplicationSet
+	// generates), which other skips name as what makes their object.
+	// Pods and the rest are not: their names are the cluster's, new with
+	// every rollout.
 	names := map[string][]string{}
 	selectors := map[string]map[string]map[string]string{}
 	for _, sk := range o.skips {
-		if sk.resource == servicesResource {
+		if sk.resource == servicesResource || isSourceResource(sk.resource) {
 			k, n := o.root(sk.ns, sk.group, sk.kind, sk.name)
 			key := sk.resource + "\x00" + sk.ns + "\x00" + ownedReason(k, n)
 			names[key] = append(names[key], sk.self)
@@ -401,6 +403,17 @@ func resourceID(gvr schema.GroupVersionResource) string {
 func has(verbs metav1.Verbs, v string) bool {
 	for _, x := range verbs {
 		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// isSourceResource reports the resource of a GitOps source's own object,
+// as a capture writes it (group/version/resources).
+func isSourceResource(resource string) bool {
+	for _, obj := range sourceObject {
+		if strings.HasPrefix(resource, obj.group+"/") && strings.HasSuffix(resource, "/"+obj.resource) {
 			return true
 		}
 	}

@@ -455,6 +455,40 @@ func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
 	if !strings.Contains(stderr, "NOTE: ValidatingWebhookConfiguration policy (check.policy)") || !strings.Contains(stderr, "taken out (the scope, or --leave-out)") {
 		t.Errorf("diff with the workload left out, under a scope:\n%s", stderr)
 	}
+	// The check is given what the restore would be: with the webhook
+	// left out, as the refusal advises, it ends 0.
+	code, _, _ = output(t, func() int { return planScope([]string{"--from", dir, "--check", scope, "--leave-out", leave}) })
+	if code != 0 {
+		t.Errorf("plan scope --check with the webhook left out: exit %d, %v", code, lastErr)
+	}
+	code, stdout, _ = output(t, func() int {
+		return planScope([]string{"--from", dir, "--check", heldNothing(t, files), "--leave-out", noWorkload})
+	})
+	if code != 2 || !strings.Contains(stdout, "taken out (the scope, or --leave-out)") {
+		t.Errorf("plan scope --check with the workload left out: exit %d\n%s", code, stdout)
+	}
+	if code := planScope([]string{"--from", dir, "--leave-out", leave}); code != 1 || !strings.Contains(lastErr.Error(), "--leave-out is for --check") {
+		t.Errorf("plan scope --leave-out with no --check: exit %d, %v", code, lastErr)
+	}
+	// The document of a restore that went ahead with no scope lists the
+	// webhooks it said something of, as a scope's report would.
+	was0, hooks0 := scopeDone, unscopedHooks
+	scopeDone, unscopedHooks = nil, []kube.ScopeWebhook{{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "h", Service: "shop/owned", Why: kube.WhyUnknown, Fails: true}}
+	went := asJSON(t, func() { emitRestore(nil, "target") })
+	scopeDone, unscopedHooks = was0, hooks0
+	if l, _ := went["webhooksWithoutService"].([]any); len(l) != 1 || l[0].(map[string]any)["why"] != "unknown" {
+		t.Errorf("the document of a restore with no scope: %v", went["webhooksWithoutService"])
+	}
+	// And a restore that is not refused keeps them for that document.
+	open := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		obj("admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration", "", "policy", hook("Fail")),
+		obj("example.com/v1", "Operand", "shop", "op", nil),
+	}, Skips: []snapshot.Skip{{Resource: "core/v1/services", Namespace: "shop", Name: "*", Reason: "owned by Operand/op, whose controller recreates it"}}}
+	scopeDone = nil
+	if err := refusedForWebhooks(open, open, ""); err != nil || len(unscopedHooks) != 1 || unscopedHooks[0].Why != kube.WhyUnknown {
+		t.Errorf("a restore with no scope and a webhook it cannot tell of: %v, %+v", err, unscopedHooks)
+	}
+	scopeDone, unscopedHooks = was0, hooks0
 	// The document of a refusal says which webhooks.
 	was := command
 	command = "restore"

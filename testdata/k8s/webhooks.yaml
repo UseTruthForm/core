@@ -275,6 +275,336 @@ metadata: {name: hook, namespace: composed, labels: {crossplane.io/composite: th
 spec:
   ports: [{port: 443}]
 ---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: applicationsets.argoproj.io}
+spec:
+  group: argoproj.io
+  scope: Namespaced
+  names: {kind: ApplicationSet, plural: applicationsets, singular: applicationset, listKind: ApplicationSetList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: byset}
+---
+# An Application an ApplicationSet generates has the set as its
+# controller, so a capture leaves it to the set.
+apiVersion: argoproj.io/v1
+kind: ApplicationSet
+metadata: {name: fleet, namespace: argocd}
+spec: {generators: []}
+---
+apiVersion: argoproj.io/v1
+kind: Application
+metadata:
+  name: generated
+  namespace: argocd
+  ownerReferences:
+    - {apiVersion: argoproj.io/v1, kind: ApplicationSet, name: fleet, uid: 00000000-0000-0000-0000-000000005101, controller: true}
+spec: {project: default}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: byset
+  labels: {argocd.argoproj.io/instance: generated}
+spec:
+  ports: [{port: 443}]
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: argocd2}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: bytwin}
+---
+apiVersion: argoproj.io/v1
+kind: Application
+metadata: {name: twin, namespace: argocd}
+spec: {project: default}
+---
+apiVersion: argoproj.io/v1
+kind: Application
+metadata: {name: twin, namespace: argocd2}
+spec: {project: default}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: bytwin
+  labels: {argocd.argoproj.io/instance: twin}
+spec:
+  ports: [{port: 443}]
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: selfmade}
+---
+# Labelled with its own name: a capture then leaves it to itself.
+apiVersion: example.truthform.org/v1
+kind: Gadget
+metadata: {name: self, namespace: selfmade, labels: {crossplane.io/composite: self}}
+spec: {size: 1}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: selfmade
+  labels: {crossplane.io/composite: self}
+spec:
+  ports: [{port: 443}]
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: hidhelm}
+# hidhelm: a workload of the snapshot and one the capture leaves to something else,
+# both behind a Service of the snapshot and behind one its owner makes.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: hidhelm
+spec:
+  ports: [{port: 443}]
+  selector: {app: mixed}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: svc-owner, namespace: hidhelm}
+data: {a: b}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ohook
+  namespace: hidhelm
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: svc-owner, uid: 00000000-0000-0000-0000-000000005301, controller: true}
+spec:
+  ports: [{port: 443}]
+  selector: {app: mixed}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seen
+  namespace: hidhelm
+  labels: {part: answers}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mixed}}
+  template:
+    metadata: {labels: {app: mixed}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hidden
+  namespace: hidhelm
+  labels: {part: answers, helm.toolkit.fluxcd.io/name: gadgets, helm.toolkit.fluxcd.io/namespace: flux}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mixed}}
+  template:
+    metadata: {labels: {app: mixed}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: hidowned}
+# hidowned: a workload of the snapshot and one the capture leaves to something else,
+# both behind a Service of the snapshot and behind one its owner makes.
+---
+apiVersion: example.truthform.org/v1
+kind: Gadget
+metadata: {name: maker, namespace: hidowned}
+spec: {size: 1}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: hidowned
+spec:
+  ports: [{port: 443}]
+  selector: {app: mixed}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: svc-owner, namespace: hidowned}
+data: {a: b}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ohook
+  namespace: hidowned
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: svc-owner, uid: 00000000-0000-0000-0000-000000005302, controller: true}
+spec:
+  ports: [{port: 443}]
+  selector: {app: mixed}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seen
+  namespace: hidowned
+  labels: {part: answers}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mixed}}
+  template:
+    metadata: {labels: {app: mixed}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hidden
+  namespace: hidowned
+  labels: {part: answers}
+  ownerReferences:
+    - {apiVersion: example.truthform.org/v1, kind: Gadget, name: maker, uid: 00000000-0000-0000-0000-000000005201, controller: true}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mixed}}
+  template:
+    metadata: {labels: {app: mixed}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: hidother}
+# hidother: a workload of the snapshot and one the capture leaves to something else,
+# both behind a Service of the snapshot and behind one its owner makes.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: another, namespace: hidother}
+data: {a: b}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: hidother
+spec:
+  ports: [{port: 443}]
+  selector: {app: mixed}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: svc-owner, namespace: hidother}
+data: {a: b}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ohook
+  namespace: hidother
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: svc-owner, uid: 00000000-0000-0000-0000-000000005303, controller: true}
+spec:
+  ports: [{port: 443}]
+  selector: {app: mixed}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seen
+  namespace: hidother
+  labels: {part: answers}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mixed}}
+  template:
+    metadata: {labels: {app: mixed}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hidden
+  namespace: hidother
+  labels: {part: answers}
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: another, uid: 00000000-0000-0000-0000-000000005202, controller: true}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mixed}}
+  template:
+    metadata: {labels: {app: mixed}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: hidaks}
+# hidaks: a workload of the snapshot and one the capture leaves to something else,
+# both behind a Service of the snapshot and behind one its owner makes.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: hidaks
+spec:
+  ports: [{port: 443}]
+  selector: {app: mixed}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: svc-owner, namespace: hidaks}
+data: {a: b}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ohook
+  namespace: hidaks
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: svc-owner, uid: 00000000-0000-0000-0000-000000005304, controller: true}
+spec:
+  ports: [{port: 443}]
+  selector: {app: mixed}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seen
+  namespace: hidaks
+  labels: {part: answers}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mixed}}
+  template:
+    metadata: {labels: {app: mixed}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hidden
+  namespace: hidaks
+  labels: {part: answers, kubernetes.azure.com/managedby: aks}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: mixed}}
+  template:
+    metadata: {labels: {app: mixed}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata: {name: matrix}
@@ -345,6 +675,72 @@ webhooks:
     sideEffects: None
     admissionReviewVersions: [v1]
     clientConfig: {service: {namespace: composed, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: byset.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: byset, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: twin.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: bytwin, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: selfmade.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: selfmade, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: hidhelm.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: hidhelm, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: ohidhelm.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: hidhelm, name: ohook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: hidowned.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: hidowned, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: ohidowned.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: hidowned, name: ohook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: hidother.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: hidother, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: ohidother.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: hidother, name: ohook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: hidaks.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: hidaks, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: ohidaks.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: hidaks, name: ohook}}
   # No rules: it is asked about nothing, and so stops nothing on the test server.
   - name: soft.example.truthform.org
     failurePolicy: Ignore

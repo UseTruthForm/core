@@ -183,6 +183,7 @@ func planScope(args []string) int {
 	from := fs.String("from", "", "snapshot directory")
 	out := fs.String("out", "", "write a scope file to cut down (never over one that is there; default: stdout)")
 	check := fs.String("check", "", "scope file to read against the snapshot")
+	leaveOut := fs.String("leave-out", "", "with --check: "+leaveOutHelp)
 	if err := parseFlags(fs, args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -196,6 +197,8 @@ func planScope(args []string) int {
 		return fail(fmt.Errorf("plan scope: --out writes a file to cut down and --check reads one; give one of them"))
 	case *check == "" && jsonOut:
 		return fail(fmt.Errorf("plan scope: --json is for --check; the file to cut down is YAML"))
+	case *check == "" && *leaveOut != "":
+		return fail(fmt.Errorf("plan scope: --leave-out is for --check, which reads the file as a restore given both would"))
 	}
 	s, err := snapshot.Read(*from)
 	if err != nil {
@@ -230,7 +233,13 @@ func planScope(args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	_, rep, err := kube.Narrow(s, sc)
+	// What a restore would be given to leave out is left out first, as
+	// a restore does it: the check then says what that restore would.
+	whole := s
+	if s, err = leftOut(*leaveOut, s.Platform, s); err != nil {
+		return fail(err)
+	}
+	_, rep, err := kube.NarrowFrom(whole, s, sc)
 	if err != nil {
 		return fail(fmt.Errorf("%s: %w", *check, err))
 	}
@@ -276,12 +285,13 @@ func webhookNote(w kube.ScopeWebhook, what string) string {
 // failure, an update, and whatever is done in the cluster next. With no
 // scope the snapshot is read as it is, --leave-out applied.
 func refusedForWebhooks(whole, snap snapshot.Snapshot, scopeFile string) error {
-	blockedBy = nil
+	blockedBy, unscopedHooks = nil, nil
 	var hooks []kube.ScopeWebhook
 	if scopeDone != nil {
 		hooks = scopeDone.Webhooks
 	} else {
 		hooks = webhookNotesWithoutScope("restore", whole, snap)
+		unscopedHooks = hooks
 	}
 	b := blocking(hooks)
 	if len(b) == 0 {
@@ -300,6 +310,11 @@ func refusedForWebhooks(whole, snap snapshot.Snapshot, scopeFile string) error {
 
 // blockedBy are the webhooks a restore was refused for, for the document.
 var blockedBy []kube.ScopeWebhook
+
+// unscopedHooks are the webhooks of a restore with no scope whose
+// Service will not answer, or of which that cannot be told: the document
+// of a restore that went ahead lists them, as a scope's report would.
+var unscopedHooks []kube.ScopeWebhook
 
 // webhookNotesWithoutScope says, where no scope did, which webhooks of a
 // snapshot call a Service that will not answer: a diff and a plan say it

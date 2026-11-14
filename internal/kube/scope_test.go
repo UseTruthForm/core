@@ -1270,6 +1270,40 @@ func TestWhetherAServiceIsThereIsAskedAllTheWayUp(t *testing.T) {
 	if got := why(whole, out, nil); got != WhyUnseen {
 		t.Errorf("the pods of a workload a source renders, beside one of its kind in the snapshot: %q", got)
 	}
+	// Whatever makes pods is read so: each of the kinds, left to a
+	// source that is brought.
+	for _, r := range [][3]string{{"", "v1", "pods"}, {"", "v1", "replicationcontrollers"}, {"apps", "v1", "replicasets"}, {"apps", "v1", "deployments"}, {"apps", "v1", "statefulsets"}, {"apps", "v1", "daemonsets"}} {
+		whole, out = fronted(skipOf(r[0], r[1], r[2], "app", "x", fmt.Sprintf(byKs, "root")))
+		whole.Objects, out.Objects = append(whole.Objects, ks("root")), append(out.Objects, ks("root"))
+		if got := why(whole, out, nil); got != WhyUnseen {
+			t.Errorf("%s a source renders: %q", r[2], got)
+		}
+	}
+	// The pods of a CronJob of the snapshot are seen as a Deployment's
+	// are: it holds the template of the Jobs it makes.
+	whole, out = fronted(skipOf("", "v1", "pods", "app", "*", ownedReason("CronJob", "tick")))
+	cron := planObject("batch/v1", "CronJob", "app", "tick", map[string]any{"spec": map[string]any{"jobTemplate": map[string]any{"spec": tmpl("tick")["spec"]}}})
+	whole.Objects, out.Objects = append(whole.Objects, cron), append(out.Objects, cron)
+	if got := why(whole, out, nil); got != WhyLeftOut {
+		t.Errorf("the pods of a CronJob of the snapshot: %q", got)
+	}
+	// A workload of that kind and name in another namespace is not the
+	// owner of these pods: theirs is an owner with no template, brought.
+	whole, out = fronted(skipOf("", "v1", "pods", "app", "*", ownedReason("Operand", "operand")))
+	elsewhere := planObject("example.com/v1", "Operand", "other", "operand", tmpl("x"))
+	whole.Objects, out.Objects = append(whole.Objects, elsewhere), append(out.Objects, elsewhere)
+	if got := why(whole, out, nil); got != WhyUnseen {
+		t.Errorf("a workload of the owner's kind and name in another namespace: %q", got)
+	}
+	// What may be there, where the snapshot does not say, may run pods
+	// too: a Deployment an application manages that a set may generate.
+	nameless := skipOf("argoproj.io", "v1alpha1", "applications", "argocd", "*", ownedReason("ApplicationSet", "fleet"))
+	whole, out = fronted(nameless, skipOf("apps", "v1", "deployments", "app", "x", "managed by Argo CD application generated; restoring the application recreates it"))
+	fleet := planObject("argoproj.io/v1alpha1", "ApplicationSet", "argocd", "fleet", nil)
+	whole.Objects, out.Objects = append(whole.Objects, fleet), append(out.Objects, fleet)
+	if got := why(whole, out, nil); got != WhyUnseen {
+		t.Errorf("pods of what may be there: %q", got)
+	}
 	// A pod nothing owns is in the snapshot, and answers by its labels.
 	whole, out = fronted()
 	bare := planObject("v1", "Pod", "app", "bare", map[string]any{"labels": map[string]any{"app": "web"}})
@@ -1400,6 +1434,17 @@ func TestWhetherAServiceIsThereIsAskedAllTheWayUp(t *testing.T) {
 	if got := why(notIt, notIt, nil); got != WhyNotBrought {
 		t.Errorf("a ConfigMap and a Deployment of the composite's name: %q", got)
 	}
+	// Nor is a skip of that name of one of Kubernetes' own APIs, core
+	// or not, though the platform will make what it stands for.
+	for _, sk := range []snapshot.Skip{
+		skipOf("", "v1", "configmaps", "app", "thing-abc12", "in system namespace app"),
+		skipOf("apps", "v1", "deployments", "app", "thing-abc12", "in system namespace app"),
+	} {
+		own := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook")}, Skips: []snapshot.Skip{skipOf("", "v1", "services", "app", "hook", composed), sk}}
+		if got := why(own, own, nil); got != WhyNotBrought {
+			t.Errorf("a skip of %s of the composite's name: %q", sk.Resource, got)
+		}
+	}
 	itself := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook")}, Skips: []snapshot.Skip{
 		skipOf("", "v1", "services", "app", "hook", composed),
 		skipOf("example.org", "v1", "xthings", "app", "thing-abc12", composed),
@@ -1483,6 +1528,7 @@ func TestOwnedServicesAreListedByName(t *testing.T) {
 		{resource: "argoproj.io/v1alpha1/applications", ns: "argocd", kind: "ApplicationSet", name: "fleet", self: "generated-b"},
 		{resource: "argoproj.io/v1alpha1/applications", ns: "argocd", kind: "ApplicationSet", name: "fleet", self: "generated-a"},
 		{resource: "example.com/v1/applications", ns: "argocd", kind: "ApplicationSet", name: "fleet", self: "not-argo"},
+		{resource: "argoproj.io/v1alpha1/appprojects", ns: "argocd", kind: "ApplicationSet", name: "fleet", self: "not-a-source"},
 	}
 	var snap snapshot.Snapshot
 	own.record(&snap)
@@ -1500,6 +1546,7 @@ func TestOwnedServicesAreListedByName(t *testing.T) {
 		// The sources an object owns, by name, as other skips name them.
 		"argoproj.io/v1alpha1/applications " + ownedReason("ApplicationSet", "fleet"): {"generated-a", "generated-b"},
 		"example.com/v1/applications " + ownedReason("ApplicationSet", "fleet"):       nil,
+		"argoproj.io/v1alpha1/appprojects " + ownedReason("ApplicationSet", "fleet"):  nil,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("the skips of what is owned:\n got %q\nwant %q", got, want)

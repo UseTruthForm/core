@@ -375,10 +375,13 @@ func (a *after) podsUnseen(ns string) bool {
 		}
 		if m := ownedBy.FindStringSubmatch(sk.Reason); m != nil {
 			// The pods of a workload of the snapshot are that
-			// workload's, and its labels are known.
+			// workload's, and its labels are known: it has a pod
+			// template, or as a CronJob has, the template of the
+			// Jobs it makes. (A Job's pods end; they are never
+			// what is counted as answering.)
 			known := slices.ContainsFunc(a.whole.Objects, func(o snapshot.Object) bool {
 				spec, _ := o.Body["spec"].(map[string]any)
-				return o.Kind() == m[1] && o.Name() == m[2] && o.Namespace() == ns && spec["template"] != nil
+				return o.Kind() == m[1] && o.Name() == m[2] && o.Namespace() == ns && (spec["template"] != nil || spec["jobTemplate"] != nil)
 			})
 			if known {
 				continue

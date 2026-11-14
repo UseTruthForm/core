@@ -57,6 +57,16 @@ func TestWebhooksOfARealCapture(t *testing.T) {
 			t.Errorf("selectors of Services that have none: %v", sk.Selectors)
 		}
 	}
+	// And the pod of a CronJob's Job is listed under the CronJob, in the
+	// namespace of the plain chart: the rows that take out or hold that
+	// chart's Deployment are still refusals for it.
+	cronPods := false
+	for _, sk := range snap.Skips {
+		cronPods = cronPods || (strings.HasSuffix(sk.Resource, "/pods") && sk.Namespace == "plain" && strings.Contains(sk.Reason, "CronJob/tick"))
+	}
+	if !cronPods {
+		t.Errorf("the pod of the CronJob's Job is not listed under the CronJob in plain")
+	}
 	for ns, want := range map[string][]string{"owned": {"hook"}, "two": {"hook-a", "hook-b"}, "byargo": {"hook"}, "byflux": {"hook"}, "ownsboth": {"hook"}} {
 		got := ownedNames[ns]
 		sort.Strings(got)

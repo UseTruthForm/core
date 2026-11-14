@@ -87,6 +87,50 @@ spec:
     metadata: {labels: {app: hook}}
     spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
 ---
+# A CronJob beside the chart, with a Job of its last run and that Job's
+# pod: an ordinary thing to find in a namespace. The pod is the
+# CronJob's, whose labels the snapshot has.
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: tick, namespace: plain}
+spec:
+  schedule: "0 1 * * *"
+  suspend: true
+  jobTemplate:
+    spec:
+      template:
+        metadata: {labels: {app: tick}}
+        spec:
+          restartPolicy: Never
+          containers: [{name: c, image: registry.example.truthform.org/tick:1}]
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tick-1
+  namespace: plain
+  ownerReferences:
+    - {apiVersion: batch/v1, kind: CronJob, name: tick, uid: 00000000-0000-0000-0000-000000006001, controller: true}
+spec:
+  suspend: true
+  template:
+    metadata: {labels: {app: tick}}
+    spec:
+      restartPolicy: Never
+      containers: [{name: c, image: registry.example.truthform.org/tick:1}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tick-1-abcde
+  namespace: plain
+  labels: {app: tick}
+  ownerReferences:
+    - {apiVersion: batch/v1, kind: Job, name: tick-1, uid: 00000000-0000-0000-0000-000000006002, controller: true}
+spec:
+  restartPolicy: Never
+  containers: [{name: c, image: registry.example.truthform.org/tick:1}]
+---
 apiVersion: v1
 kind: ConfigMap
 metadata: {name: operand, namespace: owned}

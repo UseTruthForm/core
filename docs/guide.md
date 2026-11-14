@@ -831,6 +831,16 @@ closed are refused until their configurations are accepted under
 `withoutService`. That is every spoke of such a fleet: accept them
 once, in the scope file the fleet shares.
 
+**How far the refusal reaches.** It refuses for a Service that is gone,
+and, for one that is brought, in a namespace whose pods all come from
+Deployments, StatefulSets, DaemonSets, Jobs, CronJobs or bare Pods that
+are in the snapshot. Where a workload of the namespace is rendered by a
+GitOps source, or an operator's custom resource owns workloads there, a
+Service gets the `unseen` note once its own workloads are held or taken
+out, and no refusal: a namespace GitOps manages nearly always gets the
+note. That follows from the capture not holding what a source renders,
+and it is said, never passed in silence.
+
 **There are three answers, and only one refuses.** The Service will
 answer, and nothing is said. It will not, and the restore is refused.
 Or the snapshot does not say, and that is said as a NOTE, apart, and
@@ -852,8 +862,9 @@ their names are the cluster's. A selector is labels and their values,
 which pick pods, and holds no credential.
 
 Writing the names changes one file of a snapshot, `coverage.yaml`, and
-only for a cluster where an object owns a Service: its digest then
-differs from one taken before, though nothing in the cluster changed.
+only for a cluster where an object owns a Service or a GitOps source
+(an ApplicationSet's Applications): its digest then differs from one
+taken before, though nothing in the cluster changed.
 **A pipeline that pins a digest, or compares one capture's with the
 last, sees that once, at the first capture with this version.** A diff or a compare reads objects, and
 shows no difference for it; an earlier version reads such a snapshot as

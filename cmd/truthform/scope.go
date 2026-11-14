@@ -266,7 +266,7 @@ func webhookNote(w kube.ScopeWebhook, what string) string {
 		return fmt.Sprintf("%s (%s) is brought, and calls the Service %s, which is brought with every workload of the snapshot behind it held or taken out. Whether anything answers there cannot be told: pods will run in that namespace that the snapshot does not show the labels of (the capture left them to an owner, a GitOps source or the platform), and may be what answers. If nothing does: %s.", w.Configuration, w.Webhook, w.Service, strings.TrimPrefix(what, "while nothing answers there, "))
 	case kube.WhyUnknown:
 		// Not known to be so: said apart, and never as a refusal.
-		return fmt.Sprintf("%s (%s) is brought, and calls the Service %s, which is not in the snapshot. Whether it will be there cannot be told: the snapshot lists what an object owns in that namespace without the names, as captures did before this version, and this may be one of them. A capture taken now settles it. If nothing answers there: %s.", w.Configuration, w.Webhook, w.Service, strings.TrimPrefix(what, "while nothing answers there, "))
+		return fmt.Sprintf("%s (%s) is brought, and calls the Service %s, which is not in the snapshot. Whether it will be there cannot be told: the snapshot lists what an object owns without the names, as captures did before this version, and this, or what makes it, may be among them. A capture taken now settles it. If nothing answers there: %s.", w.Configuration, w.Webhook, w.Service, strings.TrimPrefix(what, "while nothing answers there, "))
 	}
 	how := "Either " + bring + ", or leave the webhook out (--leave-out)."
 	switch {

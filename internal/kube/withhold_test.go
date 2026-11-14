@@ -409,7 +409,11 @@ func TestShapesAreReadInOnePass(t *testing.T) {
 			t.Errorf("%s: read as a credential", name)
 		}
 		textHolds(big)
-		if d := time.Since(start); d > 5*time.Second {
+		// A pass takes a second or two, and five on a slow machine with
+		// other tests running; read once over for each part of itself, a
+		// text this long takes minutes. The limit is between the two, far
+		// from both: nearer the first, it failed on a busy machine.
+		if d := time.Since(start); d > 45*time.Second {
 			t.Errorf("%s: 2 MB took %s", name, d)
 		}
 	}

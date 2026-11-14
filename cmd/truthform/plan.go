@@ -58,15 +58,27 @@ func planCmd(args []string) int {
 	if len(notRead) > 0 {
 		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the plan cannot count what is in them; it lists them first\n", len(notRead))
 	}
+	// With no scope, a webhook whose Service will not answer is said
+	// here too: a restore of the whole is refused for one that fails
+	// closed, and this is where that is found before the restore.
+	var hooks []kube.ScopeWebhook
+	if scopeDone == nil {
+		hooks = kube.WebhooksWithoutService(s, s)
+		for _, n := range scopeNotes(kube.ScopeReport{Webhooks: hooks}) {
+			fmt.Fprintln(os.Stderr, "plan: NOTE: "+n)
+		}
+	}
 	if jsonOut {
 		doc := map[string]any{"schema": jsonSchema, "command": "plan", "plan": p, "gaps": orEmpty(notRead)}
 		if scopeDone != nil {
 			doc["scope"] = scopeDone
+		} else {
+			doc["webhooksWithoutService"] = hooks
 		}
 		emit(doc)
 		return 0
 	}
-	text := planMarkdown(p, notRead, scopeDone)
+	text := planMarkdown(p, notRead, scopeDone, hooks)
 	if *out == "" {
 		_, err = os.Stdout.WriteString(text)
 	} else if err = os.WriteFile(*out, []byte(text), 0o644); err == nil {
@@ -84,7 +96,7 @@ const planShown = 3
 // planMarkdown is the plan for a person, in the order to act on it.
 // Nothing time- or machine-dependent goes in, not the directory's name
 // either: an unchanged snapshot gives an unchanged plan, wherever it is.
-func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport) string {
+func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks []kube.ScopeWebhook) string {
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	// none is what a step with nothing to list says: that there is nothing,
@@ -115,6 +127,13 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport) string
 		if len(scopeNotes(*scope)) > 0 {
 			w("\n")
 		}
+	}
+	if notes := scopeNotes(kube.ScopeReport{Webhooks: hooks}); scope == nil && len(notes) > 0 {
+		w("**Webhooks with nothing to answer them.** A restore of this snapshot brings these:\n\n")
+		for _, n := range notes {
+			w("- **Note.** %s\n", md(n))
+		}
+		w("\n")
 	}
 	// A count is of what was read, and says so where that is not all.
 	seen := ""

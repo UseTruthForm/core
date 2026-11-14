@@ -37,6 +37,12 @@ func readScope(file string) (kube.Scope, error) {
 // out: a restore that brought a part must not look like one that brought
 // the whole.
 func scoped(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, error) {
+	return scopedFrom(file, platform, s, s)
+}
+
+// scopedFrom is scoped for a snapshot that --leave-out took something
+// out of: whole is the snapshot as it was read.
+func scopedFrom(file, platform string, whole, s snapshot.Snapshot) (snapshot.Snapshot, error) {
 	scopeDone = nil
 	if file == "" {
 		return s, nil
@@ -48,7 +54,7 @@ func scoped(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, erro
 	if err != nil {
 		return s, err
 	}
-	out, rep, err := kube.Narrow(s, sc)
+	out, rep, err := kube.NarrowFrom(whole, s, sc)
 	if err != nil {
 		return s, fmt.Errorf("%s: %w", file, err)
 	}
@@ -60,7 +66,11 @@ func scoped(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, erro
 // scopeSaid is the report for a person.
 func scopeSaid(rep kube.ScopeReport, file string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "scope: %d of the %d objects of %d narrowed namespaces are brought, as %s asks (%s)", rep.Kept, rep.Of, len(rep.Narrowed), file, strings.Join(rep.Narrowed, ", "))
+	if len(rep.Narrowed) == 0 && len(rep.Jobs) == 0 {
+		fmt.Fprintf(&b, "scope: %s narrows nothing: the snapshot is brought as it is", file)
+	} else {
+		fmt.Fprintf(&b, "scope: %d of the %d objects of %d narrowed namespaces are brought, as %s asks (%s)", rep.Kept, rep.Of, len(rep.Narrowed), file, strings.Join(rep.Narrowed, ", "))
+	}
 	list := func(what string, l []kube.ScopedRelease) {
 		if len(l) == 0 {
 			return
@@ -255,17 +265,15 @@ func webhookNote(w kube.ScopeWebhook, what string) string {
 // webhook is asked about is refused: a second run, a resume after a
 // failure, an update, and whatever is done in the cluster next. With no
 // scope the snapshot is read as it is, --leave-out applied.
-func refusedForWebhooks(snap snapshot.Snapshot, scopeFile string) error {
+func refusedForWebhooks(whole, snap snapshot.Snapshot, scopeFile string) error {
 	blockedBy = nil
 	var hooks []kube.ScopeWebhook
 	if scopeDone != nil {
 		hooks = scopeDone.Webhooks
 	} else {
-		hooks = kube.WebhooksWithoutService(snap)
-		for _, w := range hooks {
-			if w.Blocks {
-				fmt.Fprintln(os.Stderr, "restore: NOTE: "+webhookNote(w, "while nothing answers there, the API server refuses every write the webhook is asked about"))
-			}
+		hooks = kube.WebhooksWithoutService(whole, snap)
+		for _, n := range scopeNotes(kube.ScopeReport{Webhooks: hooks}) {
+			fmt.Fprintln(os.Stderr, "restore: NOTE: "+n)
 		}
 	}
 	b := blocking(hooks)

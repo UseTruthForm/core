@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -100,8 +101,8 @@ type ScopeReport struct {
 	// restored from making what it makes.
 	StillMade []ScopeMade `json:"stillMade"`
 	// Webhooks are admission and conversion webhooks that are brought and
-	// call a Service the scope leaves out: until that Service answers,
-	// the API server refuses what such a webhook is asked about.
+	// call a Service that will not answer: until it does, the API server
+	// refuses what such a webhook is asked about.
 	Webhooks []ScopeWebhook `json:"webhooksWithoutService"`
 }
 
@@ -129,6 +130,9 @@ type ScopeWebhook struct {
 	Blocks bool `json:"blocks"`
 }
 
+// ownedBy reads the reason capture gives what an object owns.
+var ownedBy = regexp.MustCompile(`^owned by ([^/]+)/(.+), whose controller recreates it$`)
+
 func admissionWebhook(configuration string) bool {
 	return strings.HasPrefix(configuration, "ValidatingWebhookConfiguration ") || strings.HasPrefix(configuration, "MutatingWebhookConfiguration ")
 }
@@ -144,8 +148,8 @@ func acceptWebhooks(found []ScopeWebhook, accept []string) error {
 		if _, err := path.Match(name, ""); !ok || name == "" || err != nil || (kind != "ValidatingWebhookConfiguration" && kind != "MutatingWebhookConfiguration") {
 			return fmt.Errorf("withoutService: %q is not ValidatingWebhookConfiguration/name or MutatingWebhookConfiguration/name (the name may be a pattern)", p)
 		}
-		if strings.Trim(name, "*?") == "" {
-			return fmt.Errorf("withoutService: %q names no configuration: it would accept any that comes later", p)
+		if strings.ContainsAny(name[:1], `*?[\`) {
+			return fmt.Errorf("withoutService: %q names no configuration: a name begins with what it is, and a pattern may follow (policy-*); one that is all pattern would accept any that comes later", p)
 		}
 		used := false
 		for i, w := range found {
@@ -293,8 +297,22 @@ func secretMakers(s snapshot.Snapshot) map[secretKey]int {
 // that fits nothing in the namespaces of its entry, is an error: a
 // mistyped one would otherwise leave out what it was written to bring.
 func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, error) {
+	return NarrowFrom(s, s, sc)
+}
+
+// NarrowFrom is Narrow for a snapshot that something was taken out of
+// before the scope (--leave-out): whole is the snapshot as it was read.
+// What answers behind a webhook's Service is looked for there, so that a
+// workload taken out is known not to answer.
+func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, error) {
 	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}, NotHeld: []string{}, AsTheyAre: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}, Webhooks: []ScopeWebhook{}}
-	if sc.Narrow == nil && !sc.Jobs && len(sc.WithoutService) == 0 {
+	// A file that does no more than accept webhooks leaves the snapshot
+	// as it is, its Jobs with it.
+	acceptOnly := sc.Narrow == nil && !sc.Jobs && len(sc.WithoutService) > 0
+	if acceptOnly {
+		sc.Jobs = true
+	}
+	if sc.Narrow == nil && !sc.Jobs {
 		return s, rep, fmt.Errorf("it narrows nothing: give at least one entry under narrow")
 	}
 	for i, e := range sc.Narrow {
@@ -727,7 +745,7 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 	for _, h := range rep.Held {
 		heldNow[h.Object] = true
 	}
-	rep.Webhooks = webhooksWithoutService(s, out, heldNow)
+	rep.Webhooks = webhooksWithoutService(whole, s, out, heldNow)
 	if err := acceptWebhooks(rep.Webhooks, sc.WithoutService); err != nil {
 		return s, rep, err
 	}
@@ -749,9 +767,10 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 }
 
 // WebhooksWithoutService is webhooksWithoutService for a snapshot
-// restored as it is, with no scope: what is not in it is not brought.
-func WebhooksWithoutService(s snapshot.Snapshot) []ScopeWebhook {
-	return webhooksWithoutService(s, s, nil)
+// restored with no scope: what is not in s is not brought. whole is the
+// snapshot as it was read, before anything was left out of it.
+func WebhooksWithoutService(whole, s snapshot.Snapshot) []ScopeWebhook {
+	return webhooksWithoutService(whole, s, s, nil)
 }
 
 // webhooksWithoutService finds the webhooks of out, what a restore
@@ -762,8 +781,20 @@ func WebhooksWithoutService(s snapshot.Snapshot) []ScopeWebhook {
 // Kind namespace/name). An APIService is read the same way. Such a
 // webhook is asked about every write it matches, and the API server
 // refuses those while nothing answers.
-func webhooksWithoutService(s, out snapshot.Snapshot, held map[string]bool) []ScopeWebhook {
+func webhooksWithoutService(whole, s, out snapshot.Snapshot, held map[string]bool) []ScopeWebhook {
 	there := map[string]bool{}
+	// anyOf are the namespaces where a Service not in the snapshot may
+	// be there all the same: the capture left the Services an object
+	// owns to that object's controller, by namespace and not by name.
+	anyOf := map[string]bool{}
+	has := func(kind, ns, name string) bool {
+		for _, o := range out.Objects {
+			if o.Kind() == kind && o.Namespace() == ns && o.Name() == name {
+				return true
+			}
+		}
+		return false
+	}
 	selector := map[string]map[string]any{}
 	for _, o := range out.Objects {
 		if o.Kind() == "Service" && o.APIVersion() == "v1" {
@@ -780,7 +811,26 @@ func webhooksWithoutService(s, out snapshot.Snapshot, held map[string]bool) []Sc
 	// another reason (the platform's own) is the platform's to make.
 	applied := stillApplied(s, out)
 	for i, sk := range s.Skips {
-		if _, _, bySource := SourceOf(sk.Reason); sk.Resource == services && (applied[i] != "" || !bySource) {
+		if sk.Resource != services {
+			continue
+		}
+		kind, name, bySource := SourceOf(sk.Reason)
+		switch m := ownedBy.FindStringSubmatch(sk.Reason); {
+		case m != nil:
+			// Made again by the controller of what owns it, if that is
+			// brought: in the Service's namespace, or with none.
+			if has(m[1], sk.Namespace, m[2]) || has(m[1], "", m[2]) {
+				anyOf[sk.Namespace] = true
+			}
+		case kind == "Crossplane composite":
+			// Composed again when the composite is brought: it is
+			// named, and has no namespace.
+			for _, o := range out.Objects {
+				if o.Name() == name && o.Namespace() == "" {
+					there[sk.Namespace+"/"+sk.Name] = true
+				}
+			}
+		case applied[i] != "" || !bySource:
 			there[sk.Namespace+"/"+sk.Name] = true
 		}
 	}
@@ -799,15 +849,17 @@ func webhooksWithoutService(s, out snapshot.Snapshot, held map[string]bool) []Sc
 	for key, sel := range selector {
 		ns, _, _ := strings.Cut(key, "/")
 		behind, running := 0, 0
-		for _, o := range s.Objects {
-			if o.Namespace() != ns {
+		for _, o := range whole.Objects {
+			// Not a Job: it runs once and ends, and answers nothing
+			// for long; a scope leaves every one out besides.
+			if o.Namespace() != ns || isJob(o) {
 				continue
 			}
 			spec, _ := o.Body["spec"].(map[string]any)
 			tmpl, _ := spec["template"].(map[string]any)
 			md, _ := tmpl["metadata"].(map[string]any)
 			labels, _ := md["labels"].(map[string]any)
-			picks := len(labels) > 0
+			picks := tmpl != nil // a workload: it has a pod template
 			for k, v := range sel {
 				picks = picks && labels[k] == v
 			}
@@ -829,7 +881,7 @@ func webhooksWithoutService(s, out snapshot.Snapshot, held map[string]bool) []Sc
 		switch {
 		case n == "":
 			return
-		case !there[ns+"/"+n]:
+		case !there[ns+"/"+n] && !anyOf[ns]:
 			why = "notBrought"
 		case quiet[ns+"/"+n]:
 			why = "held"

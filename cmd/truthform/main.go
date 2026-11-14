@@ -305,14 +305,15 @@ func restore(ctx context.Context, args []string) int {
 	}
 	// --leave-out first: its entries name objects of the snapshot as it
 	// is, whether or not the scope would have left them out too.
+	whole := snap
 	if snap, err = leftOut(*leaveOut, *platform, snap); err != nil {
 		return fail(err)
 	}
-	if snap, err = scoped(*scope, *platform, snap); err != nil {
+	if snap, err = scopedFrom(*scope, *platform, whole, snap); err != nil {
 		return fail(err)
 	}
 	if *platform == "kubernetes" {
-		if err := refusedForWebhooks(snap, *scope); err != nil {
+		if err := refusedForWebhooks(whole, snap, *scope); err != nil {
 			return fail(err)
 		}
 	}

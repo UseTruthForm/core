@@ -892,7 +892,7 @@ func TestAWebhooksServiceWillNotAnswer(t *testing.T) {
 	// With no scope: what is in no snapshot is not brought, and what the
 	// platform makes is.
 	nowhere := []string{"default.old notBrought", "fail.old notBrought blocks", "nowhere notBrought blocks"}
-	if got := said(WebhooksWithoutService(s)); !reflect.DeepEqual(got, nowhere) {
+	if got := said(WebhooksWithoutService(s, s)); !reflect.DeepEqual(got, nowhere) {
 		t.Errorf("with no scope: %q", got)
 	}
 	// Held, the workloads behind a Service do not answer: every one of
@@ -930,7 +930,7 @@ func TestAWebhooksServiceWillNotAnswer(t *testing.T) {
 			without.Objects = append(without.Objects, o)
 		}
 	}
-	if got := said(webhooksWithoutService(s, without, nil)); !slices.Contains(got, "policy held blocks") || slices.Contains(got, "two held blocks") {
+	if got := said(webhooksWithoutService(s, s, without, nil)); !slices.Contains(got, "policy held blocks") || slices.Contains(got, "two held blocks") {
 		t.Errorf("the workload left out and the Service brought: %q", got)
 	}
 	// A scope file may do no more than accept, and accepts by
@@ -946,5 +946,95 @@ func TestAWebhooksServiceWillNotAnswer(t *testing.T) {
 	onlySoft.Objects = append(onlySoft.Objects, planObject("admissionregistration.k8s.io/v1beta1", "MutatingWebhookConfiguration", "", "old", map[string]any{"webhooks": []any{hook("default.old", "", "elsewhere", "nowhere")}}))
 	if _, _, err := Narrow(onlySoft, Scope{WithoutService: []string{"MutatingWebhookConfiguration/old"}}); err == nil || !strings.Contains(err.Error(), `withoutService names "MutatingWebhookConfiguration/old"`) {
 		t.Errorf("accepting what does not fail: %v", err)
+	}
+}
+
+// What a capture leaves to something else is there when that is brought:
+// a Service an object owns, which the capture lists by namespace and not
+// by name; one a Crossplane composite composes. And what is no Service
+// of Kubernetes' own, or picks nothing that stays, changes nothing.
+func TestAWebhooksServiceMadeBySomethingElse(t *testing.T) {
+	hook := func(name, ns, svc string) map[string]any {
+		return map[string]any{"name": name, "failurePolicy": "Fail", "clientConfig": map[string]any{"service": map[string]any{"namespace": ns, "name": svc}}}
+	}
+	hooks := planObject("admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration", "", "hooks", map[string]any{"webhooks": []any{
+		hook("owned", "operated", "webhook-service"),
+		hook("composed", "composed", "svc"),
+		hook("other.kind", "serving", "app"),
+		hook("job", "shop", "job"),
+		hook("all", "shop", "all"),
+	}})
+	owner := planObject("example.com/v1", "Operand", "operated", "operand", nil)
+	composite := planObject("example.org/v1", "XThing", "", "thing-abc12", nil)
+	rest := []snapshot.Object{
+		hooks,
+		// Named as a Service is, and not one.
+		planObject("serving.knative.dev/v1", "Service", "serving", "app", nil),
+		// Behind this one is a Job only, which a scope leaves out.
+		planObject("v1", "Service", "shop", "job", map[string]any{"spec": map[string]any{"selector": map[string]any{"app": "job"}}}),
+		planObject("batch/v1", "Job", "shop", "job", map[string]any{"spec": map[string]any{"template": map[string]any{"metadata": map[string]any{"labels": map[string]any{"app": "job"}}}}}),
+		// An empty selector picks nothing: its endpoints are someone's to write.
+		planObject("v1", "Service", "shop", "all", map[string]any{"spec": map[string]any{"selector": map[string]any{}}}),
+		released("apps/v1", "Deployment", "shop", "web", "web", map[string]any{"spec": map[string]any{"replicas": float64(1), "template": map[string]any{"metadata": map[string]any{"labels": map[string]any{"app": "web"}}}}}),
+	}
+	skips := []snapshot.Skip{
+		skipOf("", "v1", "services", "operated", "*", ownedReason("Operand", "operand")),
+		skipOf("", "v1", "services", "composed", "svc", "composed by Crossplane composite thing-abc12; restoring the composite recreates it"),
+	}
+	names := func(l []ScopeWebhook) (out []string) {
+		for _, w := range l {
+			out = append(out, w.Webhook+" "+w.Why)
+		}
+		return out
+	}
+	with := snapshot.Snapshot{Platform: "kubernetes", Objects: append([]snapshot.Object{owner, composite}, rest...), Skips: skips}
+	if got := names(WebhooksWithoutService(with, with)); !reflect.DeepEqual(got, []string{"other.kind notBrought"}) {
+		t.Errorf("with the owner and the composite brought: %q", got)
+	}
+	without := snapshot.Snapshot{Platform: "kubernetes", Objects: rest, Skips: skips}
+	if got := names(WebhooksWithoutService(without, without)); !reflect.DeepEqual(got, []string{"composed notBrought", "other.kind notBrought", "owned notBrought"}) {
+		t.Errorf("with neither brought: %q", got)
+	}
+	// Under a scope that holds everything of the namespace: the Job is
+	// left out and the Deployment held, and neither Service is said not
+	// to answer for it.
+	_, rep, err := Narrow(with, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"web"}, Hold: true, Objects: []string{"Service/*"}}}})
+	if got := names(rep.Webhooks); err != nil || !reflect.DeepEqual(got, []string{"other.kind notBrought"}) {
+		t.Errorf("under a scope: %q, %v", got, err)
+	}
+	// What was taken out before the scope is known not to answer: the
+	// snapshot as it was read still has it.
+	whole := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		planObject("admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration", "", "hooks", map[string]any{"webhooks": []any{hook("web", "shop", "web")}}),
+		planObject("v1", "Service", "shop", "web", map[string]any{"spec": map[string]any{"selector": map[string]any{"app": "web"}}}),
+		rest[len(rest)-1],
+	}}
+	taken := whole
+	taken.Objects = whole.Objects[:2]
+	if got := names(WebhooksWithoutService(whole, taken)); !reflect.DeepEqual(got, []string{"web held"}) {
+		t.Errorf("the workload taken out before: %q", got)
+	}
+	if got := names(WebhooksWithoutService(whole, whole)); len(got) != 0 {
+		t.Errorf("nothing taken out: %q", got)
+	}
+	_, rep, err = NarrowFrom(whole, taken, Scope{WithoutService: []string{"ValidatingWebhookConfiguration/hooks"}})
+	if err != nil || len(rep.Webhooks) != 1 || !rep.Webhooks[0].Accepted || rep.Webhooks[0].Blocks {
+		t.Errorf("taken out before, and accepted: %+v, %v", rep.Webhooks, err)
+	}
+	// A file that only accepts leaves the snapshot as it is, Jobs too.
+	only := snapshot.Snapshot{Platform: "kubernetes", Objects: append(append([]snapshot.Object{}, rest...),
+		planObject("admissionregistration.k8s.io/v1", "MutatingWebhookConfiguration", "", "gone", map[string]any{"webhooks": []any{hook("gone", "nowhere", "gone")}}))}
+	out, rep, err := Narrow(only, Scope{WithoutService: []string{"MutatingWebhookConfiguration/gone"}})
+	if err != nil || len(out.Objects) != len(only.Objects) || len(rep.Jobs) != 0 || len(rep.Narrowed) != 0 {
+		t.Errorf("a file that only accepts: %d of %d objects, Jobs left out %q, %v", len(out.Objects), len(only.Objects), rep.Jobs, err)
+	}
+	// A name begins with what it is.
+	for _, p := range []string{"MutatingWebhookConfiguration/[a-z]*", "MutatingWebhookConfiguration/?one", "MutatingWebhookConfiguration/*one"} {
+		if _, _, err := Narrow(only, Scope{WithoutService: []string{p}}); err == nil || !strings.Contains(err.Error(), "names no configuration") {
+			t.Errorf("%s: %v", p, err)
+		}
+	}
+	if _, _, err := Narrow(only, Scope{WithoutService: []string{"MutatingWebhookConfiguration/g*"}}); err != nil {
+		t.Errorf("a name with a pattern after it: %v", err)
 	}
 }

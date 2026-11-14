@@ -772,7 +772,7 @@ namespace:
   the release is installed once the source runs. The run says so by name
   (`scope.stillMade` with `--json`), and the plan goes on listing it:
   leave the source out with `--leave-out`, or have it apply less;
-- **a webhook that is brought and calls a Service the scope leaves out**
+- **a webhook that is brought and calls a Service that will not answer**
   is named (`scope.webhooksWithoutService` with `--json`): an admission
   webhook with no namespace of its own is brought with everything else,
   and while nothing answers at its Service the API server refuses every
@@ -802,20 +802,28 @@ This is asked of every Kubernetes restore, with a scope or with none,
 and of any Service, wherever it is. A Service will not answer when:
 
 - it is not brought, whatever took it out (the scope, `--leave-out`, a
-  capture that never had it), and no GitOps source that is brought makes
-  it. One the capture left as the platform's own is taken to be there;
+  capture that never had it), and nothing that is brought makes it: no
+  GitOps source, no Crossplane composite, no object that owns it (a
+  capture lists what an object owns by namespace, so with an owner
+  brought any Service of that namespace is taken to be there). One the
+  capture left as the platform's own is taken to be there;
 - it is brought, and every workload of the snapshot that its selector
-  picks is held by the scope (`hold: true`) or left out of it. Where the snapshot has no
+  picks is held by the scope (`hold: true`), left out of it, or taken
+  out with `--leave-out`. A Job is not counted as answering. Where the snapshot has no
   such workload (an operator makes the pods), that cannot be told, and
   the Service is taken to answer.
 
 `plan scope --check` exits 2 for one, so it is found before the restore;
-a diff still runs. With `--json` each webhook listed under
+with no scope, `plan rebuild` lists it, on stderr and in the plan
+("Webhooks with nothing to answer them"; `webhooksWithoutService` with
+`--json`), and exits as it always does. A restore with no scope that ran
+before this version can be refused now. A diff still runs. With `--json` each webhook listed under
 `scope.webhooksWithoutService` says `why` (`notBrought` or `held`) and
 whether it `blocks`, and a refused restore's document lists them as
 `webhooksWithoutService`. Bring what answers at the Service, leave the
 webhook out with `--leave-out`, or, knowing what it will refuse, accept
-it in a scope file, which may hold nothing else:
+it in a scope file, which may hold nothing else (such a file narrows
+nothing and leaves nothing out, Jobs included):
 
 ```yaml
 withoutService:
@@ -823,8 +831,9 @@ withoutService:
 ```
 
 That accepts the configuration: every hook of it, those added to it
-later too. The name may be a pattern, though not one that is all
-pattern (`*`), which would accept any configuration that comes later. A
+later too. The name begins with what it is and a pattern may follow
+(`policy-*`); one that begins with a pattern would accept any
+configuration that comes later, and is refused. A
 name that accepts nothing is an error, so a line for a webhook that
 `--leave-out` also removes has to go. A hook with `failurePolicy:
 Ignore`, a conversion webhook and an APIService are noted and do not

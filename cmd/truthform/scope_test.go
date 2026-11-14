@@ -230,6 +230,7 @@ func TestScopeSaid(t *testing.T) {
 			{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "soft.policy", Service: "shop/soft"},
 			{Configuration: "CustomResourceDefinition widgets.example.com", Webhook: "conversion", Service: "shop/policy", Fails: true},
 			{Configuration: "APIService v1beta1.metrics.example.com", Webhook: "service", Service: "shop/policy", Fails: true},
+			{Configuration: "MutatingWebhookConfiguration quiet", Webhook: "held.hook", Service: "shop/quiet", Why: "held", Fails: true, Blocks: true},
 		},
 	}
 	said := scopeSaid(rep, "scope.yaml")
@@ -241,6 +242,7 @@ func TestScopeSaid(t *testing.T) {
 		"NOTE: ValidatingWebhookConfiguration policy (check.policy) is brought, and calls the Service shop/policy, which is not brought, and no source that is brought makes it: while nothing answers there, the API server refuses every write",
 		"NOTE: ValidatingWebhookConfiguration policy (soft.policy) is brought, and calls the Service shop/soft, which is not brought, and no source that is brought makes it: while nothing answers there, the API server goes on without it",
 		"NOTE: APIService v1beta1.metrics.example.com (service) is brought, and calls the Service shop/policy, which is not brought, and no source that is brought makes it: while nothing answers there, its API is not there",
+		"NOTE: MutatingWebhookConfiguration quiet (held.hook) is brought, and calls the Service shop/quiet, which is brought with every workload behind it held (hold: true) or left out: while nothing answers there, the API server refuses every write the webhook is asked about. A restore is refused while it is so: bring what answers behind the Service, running, leave the webhook out",
 		"NOTE: CustomResourceDefinition widgets.example.com (conversion) is brought, and calls the Service shop/policy, which is not brought, and no source that is brought makes it: while nothing answers there, objects of that kind cannot be read",
 		"nothing checks that what is brought does not need something left out",
 	} {
@@ -250,7 +252,7 @@ func TestScopeSaid(t *testing.T) {
 	}
 	// The plan is what a person keeps: it says it is of a part, and gives
 	// the same notes.
-	plan := planMarkdown(kube.Plan{}, nil, &rep)
+	plan := planMarkdown(kube.Plan{}, nil, &rep, nil)
 	for _, want := range []string{
 		"**A part only.** A scope narrowed shop: 1 of their 3 objects are brought",
 		"- **Note.** Flux Kustomization flux-system/root is brought, and makes 2 objects in shop",
@@ -260,7 +262,7 @@ func TestScopeSaid(t *testing.T) {
 			t.Errorf("the plan does not say %q:\n%s", want, plan)
 		}
 	}
-	if whole := planMarkdown(kube.Plan{}, nil, nil); strings.Contains(whole, "A part only") || strings.Contains(whole, "Note.") {
+	if whole := planMarkdown(kube.Plan{}, nil, nil, nil); strings.Contains(whole, "A part only") || strings.Contains(whole, "Note.") {
 		t.Errorf("the plan of a whole snapshot speaks of a scope:\n%s", whole)
 	}
 	// With everything brought there is no such warning.
@@ -382,6 +384,52 @@ func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
 	if refused("--leave-out", noService, "--scope", onlyAccepts) {
 		t.Errorf("restore with the Service left out, accepted: %v", lastErr)
 	}
+	// The workload behind the Service taken out, and the Service
+	// brought: nothing answers, and the snapshot as it was read says so.
+	noWorkload := writeFile(t, files, "no-workload.yaml", "- Deployment.apps/shop/policy\n")
+	if !refused("--leave-out", noWorkload) || !strings.Contains(lastErr.Error(), "calls shop/policy") {
+		t.Errorf("restore with the workload left out and no scope: %v", lastErr)
+	}
+	if !refused("--leave-out", noWorkload, "--scope", heldNothing(t, files)) {
+		t.Errorf("restore with the workload left out, under a scope that brings the Service: %v", lastErr)
+	}
+	// A file that only accepts says it narrows nothing.
+	_, _, stderr := output(t, func() int {
+		return restore(context.Background(), append(append([]string{}, nowhere...), "--leave-out", noService, "--scope", onlyAccepts))
+	})
+	if !strings.Contains(stderr, "narrows nothing: the snapshot is brought as it is") || strings.Contains(stderr, "Jobs left out") {
+		t.Errorf("a file that only accepts:\n%s", stderr)
+	}
+	// The rebuild plan of the whole says it too, before any restore:
+	// with no scope there is no other check to find it in.
+	bare := filepath.Join(t.TempDir(), "cluster")
+	{
+		sn, err := snapshot.Read(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var kept []snapshot.Object
+		for _, o := range sn.Objects {
+			if o.Kind() != "Service" {
+				kept = append(kept, o)
+			}
+		}
+		sn.Objects = kept
+		if err := sn.Write(bare); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code, stdout, stderr = output(t, func() int { return planCmd([]string{"rebuild", "--from", bare}) })
+	if code != 0 || !strings.Contains(stderr, "plan: NOTE: ValidatingWebhookConfiguration policy (check.policy) is brought") || !strings.Contains(stdout, "Webhooks with nothing to answer them") || !strings.Contains(stdout, "A restore is refused while it is so") {
+		t.Errorf("plan rebuild of a snapshot whose webhook has no Service: exit %d\n%s\n%s", code, stderr, stdout)
+	}
+	doc := asJSON(t, func() { planCmd([]string{"rebuild", "--from", bare}) })
+	if l, _ := doc["webhooksWithoutService"].([]any); len(l) != 1 {
+		t.Errorf("plan rebuild --json: %v", doc["webhooksWithoutService"])
+	}
+	if code, stdout, stderr = output(t, func() int { return planCmd([]string{"rebuild", "--from", dir}) }); strings.Contains(stderr+stdout, "nothing to answer") || strings.Contains(stderr, "NOTE: Validating") {
+		t.Errorf("plan rebuild of a whole snapshot:\n%s\n%s", stderr, stdout)
+	}
 	// The document of a refusal says which webhooks.
 	was := command
 	command = "restore"
@@ -411,4 +459,9 @@ func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
 	if lastErr != nil && strings.Contains(lastErr.Error(), "admission webhooks") {
 		t.Errorf("diff: %v", lastErr)
 	}
+}
+
+// heldNothing is a scope that brings both releases of the shop, running.
+func heldNothing(t *testing.T, dir string) string {
+	return writeFile(t, dir, "both.yaml", "narrow:\n  - namespaces: [shop]\n    releases: [web, policy]\n")
 }

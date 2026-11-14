@@ -457,8 +457,8 @@ empty or denied: capture again later.
 |---|---|
 | 0 | Success: the capture is complete, the restore fully applied, or no differences |
 | 1 | Error: bad flags, cannot connect, cannot read a snapshot |
-| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope that brings an admission webhook failing closed with no Service (plan scope --check) |
-| 3 | Incomplete: the snapshot was written but some types could not be read, or a restore applied only some resources |
+| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer (plan scope --check) |
+| 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, or a restore under a hold brought objects not held |
 
 ## Machine-readable output
 
@@ -805,7 +805,7 @@ and of any Service, wherever it is. A Service will not answer when:
   capture that never had it), and no GitOps source that is brought makes
   it. One the capture left as the platform's own is taken to be there;
 - it is brought, and every workload of the snapshot that its selector
-  picks is held by the scope (`hold: true`). Where the snapshot has no
+  picks is held by the scope (`hold: true`) or left out of it. Where the snapshot has no
   such workload (an operator makes the pods), that cannot be told, and
   the Service is taken to answer.
 
@@ -911,8 +911,14 @@ narrow:
       - KafkaTopic/*
 ```
 
-Each is `Kind/name` as under `objects`, and either part may be a
-pattern. What is named there is still listed (`scope.broughtAsTheyAre`),
+Each is `Kind/name` as under `objects`. The name may be a pattern, and
+the kind too, but not a bare `*`: `Certificate/*` also takes in any
+`Certificate` a later snapshot has, so name what was looked at as
+narrowly as it was looked at. An entry names objects in its own
+namespaces and what its releases made in another, or with no namespace
+(one tied to a release by a label alone is held, and named, with any
+release of that name that is held).
+What is named there is still listed (`scope.broughtAsTheyAre`),
 and the run ends 0 when nothing else is left not held. A name that fits
 no object the hold would have named is an error, as is `asTheyAre` on an
 entry without `hold: true`: it does not hold anything, and does not

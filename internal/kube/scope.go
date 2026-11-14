@@ -113,7 +113,7 @@ type ScopeWebhook struct {
 	Service       string `json:"service"` // namespace/name
 	// Why nothing answers: "notBrought" (the Service is not brought, and
 	// no source that is brought makes it) or "held" (it is brought, and
-	// every workload behind it is held by the scope).
+	// every workload behind it is held by the scope or left out of it).
 	Why string `json:"why"`
 	// Fails: what it is asked about is refused while the Service does
 	// not answer (failurePolicy Fail, the default; a conversion always).
@@ -309,6 +309,13 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		if len(e.AsTheyAre) > 0 && !e.Hold {
 			return s, rep, fmt.Errorf("entry %d: asTheyAre is for an entry with hold: true", i+1)
 		}
+		for _, p := range e.AsTheyAre {
+			// Any kind would take in whatever API a later snapshot has:
+			// what is looked at is at least a kind.
+			if kind, _, _ := strings.Cut(p, "/"); strings.Trim(kind, "*?") == "" && kind != "" {
+				return s, rep, fmt.Errorf("entry %d: asTheyAre %q names no kind: name the kind looked at (Certificate/*)", i+1, p)
+			}
+		}
 		for _, p := range append(append([]string{}, e.Objects...), e.AsTheyAre...) {
 			kind, name, ok := strings.Cut(p, "/")
 			_, errK := path.Match(kind, "")
@@ -390,9 +397,22 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		}
 		return yes, hold
 	}
-	// asItIs says whether a holding entry of the object's namespace names
-	// it under asTheyAre. One with no namespace is any holding entry's to
-	// name.
+	// The namespaces that have a release of each name.
+	relNS := map[string]map[string]bool{}
+	for _, o := range s.Objects {
+		if rns, rname, ok := ReleaseOf(o); ok && rns != "" {
+			if relNS[rname] == nil {
+				relNS[rname] = map[string]bool{}
+			}
+			relNS[rname][rns] = true
+		}
+	}
+	// asItIs says whether a holding entry names the object under
+	// asTheyAre: an entry of the object's namespace, or of the namespace
+	// of the release that made it (a release may make an object in a
+	// namespace other than its own, or with none; where only a label says
+	// which release, any namespace that has a release of the name).
+	// Nothing is held but by one of these.
 	asUsed := make([]map[string]bool, len(sc.Narrow))
 	for i := range sc.Narrow {
 		asUsed[i] = map[string]bool{}
@@ -402,11 +422,14 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		if !versioned {
 			group = ""
 		}
-		es := narrowed[o.Namespace()]
-		if o.Namespace() == "" {
-			es = nil
-			for i := range sc.Narrow {
-				es = append(es, i)
+		es := append([]int{}, narrowed[o.Namespace()]...)
+		if rns, rname, ok := ReleaseOf(o); ok && rns != o.Namespace() {
+			es = append(es, narrowed[rns]...)
+		} else if ok && rns == "" {
+			// Of a release by label alone, with no namespace: of any
+			// namespace that has a release of the name.
+			for ns := range relNS[rname] {
+				es = append(es, narrowed[ns]...)
 			}
 		}
 		for _, i := range es {
@@ -446,16 +469,6 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 	holdIt := make([]bool, len(s.Objects))
 	maker := secretMakers(s)
 	made := make([]bool, len(s.Objects))
-	// The namespaces that have a release of each name.
-	relNS := map[string]map[string]bool{}
-	for _, o := range s.Objects {
-		if rns, rname, ok := ReleaseOf(o); ok && rns != "" {
-			if relNS[rname] == nil {
-				relNS[rname] = map[string]bool{}
-			}
-			relNS[rname][rns] = true
-		}
-	}
 	// loose are the objects in a narrowed namespace that no release of a
 	// narrowed namespace made.
 	loose := make([]bool, len(s.Objects))
@@ -537,6 +550,9 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 			for ns := range relNS[rel[i].name] {
 				if narrowed[ns] == nil || relChosen[relKey{ns, rel[i].name}] {
 					state[i] = brought
+					// Held with any release of the name that is: which
+					// of them made it, the object does not say.
+					holdIt[i] = holdIt[i] || relHeld[relKey{ns, rel[i].name}]
 				} else {
 					leftIn = append(leftIn, ns+"/"+rel[i].name)
 				}
@@ -769,14 +785,21 @@ func webhooksWithoutService(s, out snapshot.Snapshot, held map[string]bool) []Sc
 		}
 	}
 	// A Service answers through the pods its selector picks. Where the
-	// snapshot has the workloads that make them and every one is held,
-	// nothing answers; where it has none (an operator makes the pods),
-	// that cannot be told, and the Service is taken to answer.
+	// snapshot has the workloads that make them and every one is held or
+	// not brought, nothing answers; where it has none (an operator makes
+	// the pods), that cannot be told, and the Service is taken to answer.
+	id := func(o snapshot.Object) string {
+		return o.APIVersion() + "|" + o.Kind() + "|" + o.Namespace() + "|" + o.Name()
+	}
+	brought := map[string]bool{}
+	for _, o := range out.Objects {
+		brought[id(o)] = true
+	}
 	quiet := map[string]bool{}
 	for key, sel := range selector {
 		ns, _, _ := strings.Cut(key, "/")
 		behind, running := 0, 0
-		for _, o := range out.Objects {
+		for _, o := range s.Objects {
 			if o.Namespace() != ns {
 				continue
 			}
@@ -790,7 +813,7 @@ func webhooksWithoutService(s, out snapshot.Snapshot, held map[string]bool) []Sc
 			}
 			if picks {
 				behind++
-				if !held[o.Kind()+" "+o.Namespace()+"/"+o.Name()] {
+				if brought[id(o)] && !held[o.Kind()+" "+o.Namespace()+"/"+o.Name()] {
 					running++
 				}
 			}
@@ -923,6 +946,8 @@ func ScopeDraft(s snapshot.Snapshot) []byte {
 	b.WriteString("# scope, since a Job restored runs again: add \"jobs: true\" to bring them.\n")
 	b.WriteString("# \"hold: true\" on an entry brings its releases with their workloads stopped (zero\n")
 	b.WriteString("# replicas, autoscalers paused): split an entry in two to hold some and run others.\n")
+	b.WriteString("# What a hold does not know how to hold is named, and the run does not end 0 until\n")
+	b.WriteString("# each is left out or, looked at, listed under \"asTheyAre\" on that entry (Kind/name).\n")
 	if len(byNS) == 0 {
 		b.WriteString("# The snapshot has nothing a Helm release made, so there is nothing listed to cut\n")
 		b.WriteString("# down: narrow by labels instead, as\n#   - namespaces: [shop]\n#     labels: {app.kubernetes.io/part-of: checkout}\n")

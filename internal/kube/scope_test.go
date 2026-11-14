@@ -921,6 +921,18 @@ func TestAWebhooksServiceWillNotAnswer(t *testing.T) {
 			t.Errorf("holding %v: %q, %v; want %q", c.held, got, err, c.want)
 		}
 	}
+	// Left out, a workload answers no more than one held does: the
+	// Service brought, and the one Deployment behind it not.
+	without := s
+	without.Objects = nil
+	for _, o := range s.Objects {
+		if !(o.Kind() == "Deployment" && o.Namespace() == "shop" && o.Name() == "policy") {
+			without.Objects = append(without.Objects, o)
+		}
+	}
+	if got := said(webhooksWithoutService(s, without, nil)); !slices.Contains(got, "policy held blocks") || slices.Contains(got, "two held blocks") {
+		t.Errorf("the workload left out and the Service brought: %q", got)
+	}
 	// A scope file may do no more than accept, and accepts by
 	// configuration.
 	_, rep, err := Narrow(s, Scope{WithoutService: []string{"ValidatingWebhookConfiguration/hooks", "MutatingWebhookConfiguration/old"}})

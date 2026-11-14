@@ -236,8 +236,8 @@ func webhookNote(w kube.ScopeWebhook, what string) string {
 	which := "which is not brought, and no source that is brought makes it"
 	bring := "bring what makes the Service"
 	if w.Why == "held" {
-		which = "which is brought with every workload behind it held (hold: true)"
-		bring = "bring what answers behind the Service without the hold"
+		which = "which is brought with every workload behind it held (hold: true) or left out"
+		bring = "bring what answers behind the Service, running"
 	}
 	how := "Either " + bring + ", or leave the webhook out (--leave-out)."
 	switch {

@@ -26,6 +26,12 @@ type Scope struct {
 	// Jobs brings the snapshot's Jobs. A Job restored runs again, so with
 	// a scope they are left out unless this says otherwise.
 	Jobs bool `json:"jobs,omitempty"`
+	// WithoutService accepts admission webhooks that are brought, fail
+	// closed, and call a Service that will not be there, as Kind/name of
+	// the configuration (the name may be a pattern). One not named here
+	// refuses the restore: while nothing answers, the API server refuses
+	// every write such a webhook is asked about.
+	WithoutService []string `json:"withoutService,omitempty"`
 }
 
 // ScopeEntry narrows the namespaces its patterns fit to the releases and
@@ -108,6 +114,43 @@ type ScopeWebhook struct {
 	// Fails: what it is asked about is refused while the Service is not
 	// there (failurePolicy Fail, the default; a conversion always).
 	Fails bool `json:"fails"`
+	// Accepted: the scope file names its configuration under
+	// withoutService.
+	Accepted bool `json:"accepted"`
+}
+
+// Blocks reports an admission webhook that fails closed with no Service
+// and that nobody accepted: the writes it is asked about are refused, a
+// restore's own among them, so a restore does not start with one.
+func (w ScopeWebhook) Blocks() bool {
+	return w.Fails && !w.Accepted && admissionWebhook(w.Configuration)
+}
+
+func admissionWebhook(configuration string) bool {
+	return strings.HasPrefix(configuration, "ValidatingWebhookConfiguration ") || strings.HasPrefix(configuration, "MutatingWebhookConfiguration ")
+}
+
+// acceptWebhooks marks the webhooks a scope file accepts. A name that
+// accepts nothing is an error: mistyped, it would leave the restore
+// refused, and one left behind would accept a webhook that comes later.
+func acceptWebhooks(found []ScopeWebhook, accept []string) error {
+	for _, p := range accept {
+		kind, name, ok := strings.Cut(p, "/")
+		if _, err := path.Match(name, ""); !ok || name == "" || err != nil || (kind != "ValidatingWebhookConfiguration" && kind != "MutatingWebhookConfiguration") {
+			return fmt.Errorf("withoutService: %q is not ValidatingWebhookConfiguration/name or MutatingWebhookConfiguration/name (the name may be a pattern)", p)
+		}
+		used := false
+		for i, w := range found {
+			k, n, _ := strings.Cut(w.Configuration, " ")
+			if fit, _ := path.Match(name, n); k == kind && fit && w.Fails {
+				found[i].Accepted, used = true, true
+			}
+		}
+		if !used {
+			return fmt.Errorf("withoutService names %q, and no such webhook is brought that fails closed and calls a Service that is not there", p)
+		}
+	}
+	return nil
 }
 
 type ScopeHeld struct {
@@ -657,6 +700,9 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 		return a.Source+"\x00"+a.Namespace < b.Source+"\x00"+b.Namespace
 	})
 	rep.Webhooks = webhooksWithoutService(s, out, narrowed)
+	if err := acceptWebhooks(rep.Webhooks, sc.WithoutService); err != nil {
+		return s, rep, err
+	}
 	sort.Strings(rep.ObjectsBrought)
 	sort.Strings(rep.ObjectsLeftOut)
 	for k, n := range relObjects {

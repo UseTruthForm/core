@@ -457,7 +457,7 @@ empty or denied: capture again later.
 |---|---|
 | 0 | Success: the capture is complete, the restore fully applied, or no differences |
 | 1 | Error: bad flags, cannot connect, cannot read a snapshot |
-| 2 | Differences found (diff, compare), or a secret sources file that does not cover its snapshot (plan secrets --check) |
+| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope that brings an admission webhook failing closed with no Service (plan scope --check) |
 | 3 | Incomplete: the snapshot was written but some types could not be read, or a restore applied only some resources |
 
 ## Machine-readable output
@@ -789,6 +789,25 @@ namespace:
 
 Both notes are in the rebuild plan as well, under "A part only", so that
 whoever reads the plan sees them without the command's output.
+
+**A restore is refused, with nothing written, for an admission webhook
+that fails closed and has no Service to answer it** (a
+`ValidatingWebhookConfiguration` or `MutatingWebhookConfiguration` hook
+whose `failurePolicy` is `Fail`, the default): its own writes would be
+among those refused. `plan scope --check` exits 2 for one, so it is
+found before the restore; a diff still runs. Bring what makes the
+Service, leave the webhook out with `--leave-out`, or, knowing what it
+will refuse, accept it in the scope file:
+
+```yaml
+withoutService:
+  - ValidatingWebhookConfiguration/policy
+```
+
+The name may be a pattern. One that accepts nothing is an error. A hook
+with `failurePolicy: Ignore`, a conversion webhook and an APIService are
+noted and do not refuse a restore: none of them refuses a write of
+anything but its own kind.
 
 Two entries that fit one namespace choose from it together. A release or
 a label is looked for in the namespaces of its own entry: one that fits

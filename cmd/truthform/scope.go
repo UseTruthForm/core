@@ -128,7 +128,14 @@ func scopeNotes(rep kube.ScopeReport) []string {
 		if strings.HasPrefix(w.Configuration, "APIService ") {
 			what = "while nothing answers there, its API is not there, and what lists every API (a namespace's deletion, for one) waits on it"
 		}
-		out = append(out, fmt.Sprintf("%s (%s) is brought, and calls the Service %s, which the scope leaves out: %s. Bring what makes the Service, or leave the webhook out (--leave-out).", w.Configuration, w.Webhook, w.Service, what))
+		how := "Bring what makes the Service, or leave the webhook out (--leave-out)."
+		switch {
+		case w.Blocks():
+			how = "A restore is refused while it is so: bring what makes the Service, leave the webhook out (--leave-out), or accept it by naming its configuration under withoutService in the scope file."
+		case w.Accepted:
+			how = "Accepted in the scope file (withoutService)."
+		}
+		out = append(out, fmt.Sprintf("%s (%s) is brought, and calls the Service %s, which the scope leaves out: %s. %s", w.Configuration, w.Webhook, w.Service, what, how))
 	}
 	return out
 }
@@ -138,10 +145,22 @@ func scopeNotes(rep kube.ScopeReport) []string {
 // 0, or a pipeline could not tell a hold that holds from one that passed
 // an operator's database through. With none it is 0.
 func notHeldCode(rep kube.ScopeReport, code int) int {
-	if len(rep.NotHeld) > 0 {
+	if len(rep.NotHeld) > 0 || len(blocking(rep)) > 0 {
 		return code
 	}
 	return 0
+}
+
+// blocking are the webhooks a restore is refused for: brought, failing
+// closed, their Service not there, and not accepted in the scope file.
+func blocking(rep kube.ScopeReport) []string {
+	var out []string
+	for _, w := range rep.Webhooks {
+		if w.Blocks() {
+			out = append(out, fmt.Sprintf("%s (%s) calls %s", w.Configuration, w.Webhook, w.Service))
+		}
+	}
+	return out
 }
 
 // scopeLine is the scope in one line, for beside a total: "applied 5 of

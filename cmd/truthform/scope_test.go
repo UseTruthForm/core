@@ -288,3 +288,88 @@ func TestScopeSaidOfAHold(t *testing.T) {
 		t.Errorf("a hold with what it does not know looked at:\n%s", said)
 	}
 }
+
+// A restore is not begun with an admission webhook that fails closed and
+// has no Service to answer it: its own writes would be refused. The check
+// finds it first, and the scope file or --leave-out clears it.
+func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
+	if captureOnly {
+		t.Skip("a restore, which the capture-only build refuses")
+	}
+	obj := elsewhereObject
+	ofRelease := func(o snapshot.Object, release string) snapshot.Object {
+		md := o.Body["metadata"].(map[string]any)
+		md["annotations"] = map[string]any{"meta.helm.sh/release-name": release, "meta.helm.sh/release-namespace": "shop"}
+		md["labels"] = map[string]any{"app.kubernetes.io/managed-by": "Helm"}
+		return o
+	}
+	hook := func(policy string) map[string]any {
+		return map[string]any{"webhooks": []any{map[string]any{"name": "check.policy", "failurePolicy": policy,
+			"clientConfig": map[string]any{"service": map[string]any{"namespace": "shop", "name": "policy"}}}}}
+	}
+	write := func(policy string) string {
+		s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Objects: []snapshot.Object{
+			obj("v1", "Namespace", "", "shop", nil),
+			ofRelease(obj("v1", "ConfigMap", "shop", "web", nil), "web"),
+			ofRelease(obj("v1", "Service", "shop", "policy", nil), "policy"),
+			obj("admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration", "", "policy", hook(policy)),
+		}}
+		dir := filepath.Join(t.TempDir(), "cluster")
+		if err := s.Write(dir); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	dir := write("Fail")
+	const narrow = "narrow:\n  - namespaces: [shop]\n    releases: [web]\n"
+	files := t.TempDir()
+	scope := writeFile(t, files, "scope.yaml", narrow)
+	accepted := writeFile(t, files, "accepted.yaml", narrow+"withoutService:\n  - ValidatingWebhookConfiguration/policy\n")
+	leave := writeFile(t, files, "leave.yaml", "- ValidatingWebhookConfiguration.admissionregistration.k8s.io/policy\n")
+	// Nowhere to restore to: what is refused is refused before that.
+	nowhere := []string{"--kubeconfig", filepath.Join(files, "no-such-kubeconfig"), "--context", "none", "--from", dir}
+	refused := func(args ...string) bool {
+		lastErr = nil
+		code := restore(context.Background(), append(append([]string{}, nowhere...), args...))
+		if code == 0 {
+			t.Errorf("%v: a restore to nowhere ended 0", args)
+		}
+		return lastErr != nil && strings.Contains(lastErr.Error(), "admission webhooks are brought that fail closed")
+	}
+
+	code, stdout, _ := output(t, func() int { return planScope([]string{"--from", dir, "--check", scope}) })
+	if code != 2 || !strings.Contains(stdout, "A restore is refused while it is so") {
+		t.Errorf("plan scope --check: exit %d\n%s", code, stdout)
+	}
+	if !refused("--scope", scope) || !strings.Contains(lastErr.Error(), "ValidatingWebhookConfiguration policy (check.policy) calls shop/policy") || !strings.Contains(lastErr.Error(), "nothing was restored") {
+		t.Errorf("restore: %v", lastErr)
+	}
+	// Accepted in the scope file, or left out, it is not.
+	code, stdout, _ = output(t, func() int { return planScope([]string{"--from", dir, "--check", accepted}) })
+	if code != 0 || !strings.Contains(stdout, "Accepted in the scope file (withoutService)") {
+		t.Errorf("plan scope --check, accepted: exit %d\n%s", code, stdout)
+	}
+	if refused("--scope", accepted) {
+		t.Errorf("restore, accepted: %v", lastErr)
+	}
+	if refused("--scope", scope, "--leave-out", leave) {
+		t.Errorf("restore, with the webhook left out: %v", lastErr)
+	}
+	// One that goes on without its Service is a note only.
+	soft := write("Ignore")
+	code, stdout, _ = output(t, func() int { return planScope([]string{"--from", soft, "--check", scope}) })
+	if code != 0 || !strings.Contains(stdout, "NOTE: ValidatingWebhookConfiguration policy") {
+		t.Errorf("plan scope --check of an Ignore webhook: exit %d\n%s", code, stdout)
+	}
+	nowhere[len(nowhere)-1] = soft
+	if refused("--scope", scope) {
+		t.Errorf("restore of an Ignore webhook: %v", lastErr)
+	}
+	// And a diff is not refused for it.
+	lastErr = nil
+	nowhere[len(nowhere)-1] = dir
+	diff(context.Background(), append(append([]string{}, nowhere...), "--scope", scope))
+	if lastErr != nil && strings.Contains(lastErr.Error(), "admission webhooks") {
+		t.Errorf("diff: %v", lastErr)
+	}
+}

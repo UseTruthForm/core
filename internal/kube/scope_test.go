@@ -766,6 +766,44 @@ func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 	if err != nil || len(rep.Webhooks) != 1 || rep.Webhooks[0].Webhook != "gone.gitops" {
 		t.Errorf("with their Services brought: %+v, %v", rep.Webhooks, err)
 	}
+	// One that fails closed and is an admission webhook blocks a restore
+	// until the scope file accepts its configuration; an Ignore hook, a
+	// conversion and an APIService do not.
+	only := Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web"}}}}
+	blocks := func(rep ScopeReport) (out []string) {
+		for _, w := range rep.Webhooks {
+			if w.Blocks() {
+				out = append(out, w.Webhook)
+			}
+		}
+		return out
+	}
+	_, rep, _ = Narrow(s, only)
+	if got := blocks(rep); !reflect.DeepEqual(got, []string{"gone.gitops", "check.policy"}) {
+		t.Errorf("blocking: %q", got)
+	}
+	only.WithoutService = []string{"ValidatingWebhookConfiguration/pol*"}
+	_, rep, err = Narrow(s, only)
+	if got := blocks(rep); err != nil || !reflect.DeepEqual(got, []string{"gone.gitops"}) {
+		t.Errorf("blocking with one accepted: %q, %v", got, err)
+	}
+	for _, w := range rep.Webhooks {
+		if want := w.Webhook == "check.policy"; w.Accepted != want {
+			t.Errorf("%s accepted: %v", w.Webhook, w.Accepted)
+		}
+	}
+	for want, accept := range map[string]string{
+		`withoutService names "ValidatingWebhookConfiguration/polcy"`: "ValidatingWebhookConfiguration/polcy",
+		`withoutService names "MutatingWebhookConfiguration/policy"`:  "MutatingWebhookConfiguration/policy", // the other kind
+		"is not ValidatingWebhookConfiguration/name":                  "CustomResourceDefinition/widgets.example.com",
+		`"policy" is not`: "policy",
+		`"*/*" is not`:    "*/*",
+	} {
+		only.WithoutService = []string{accept}
+		if _, _, err := Narrow(s, only); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: want an error with %q, got %v", accept, want, err)
+		}
+	}
 	// A Service left to a source is there only when the source is
 	// brought: with the source left out by the scope, or not in the
 	// snapshot at all, nothing makes it.

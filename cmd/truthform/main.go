@@ -311,6 +311,14 @@ func restore(ctx context.Context, args []string) int {
 	if snap, err = scoped(*scope, *platform, snap); err != nil {
 		return fail(err)
 	}
+	// A webhook that fails closed with nothing to answer it refuses the
+	// writes it is asked about, this restore's among them: it is not
+	// begun with one, unless the scope file accepts it.
+	if scopeDone != nil {
+		if b := blocking(*scopeDone); len(b) > 0 {
+			return fail(fmt.Errorf("%d admission webhooks are brought that fail closed, and the Service each calls is not brought and no source that is brought makes it: %s. Bring what makes the Service, leave the webhook out (--leave-out), or accept it by naming its configuration under withoutService in %s; nothing was restored", len(b), strings.Join(b, "; "), *scope))
+		}
+	}
 	if *keepStores && (*rename == "" || *platform != "kubernetes") {
 		return fail(fmt.Errorf("--keep-source-stores is for a kubernetes restore with --rename; nothing was restored"))
 	}

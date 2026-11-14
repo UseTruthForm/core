@@ -390,6 +390,12 @@ func restore(ctx context.Context, args []string) int {
 	if ok != len(results) {
 		return 3
 	}
+	// A hold that brought what it does not know how to hold is not the
+	// hold that was asked for, whatever was applied.
+	if scopeDone != nil && len(scopeDone.NotHeld) > 0 {
+		fmt.Printf("%d objects under hold: true were brought not held (see the NOTE above): %s\n", len(scopeDone.NotHeld), strings.Join(scopeDone.NotHeld, ", "))
+		return 3
+	}
 	return 0
 }
 
@@ -720,7 +726,7 @@ func parseFlags(fs *flag.FlagSet, args []string) error {
 	return fs.Parse(args)
 }
 
-const renameHelp = "kubernetes: YAML file of where Secrets are read from instead, '<start of a store reference>: <what replaces it>' (a 1Password item path, a vault's address, an ExternalSecret's key); only fields that name a store or an item in it change, and each reference is listed as changed or not, for a restore into another environment (give diff the same file). azure: YAML file of new names for resources whose names are unique across Azure (storage accounts, key vaults, registries), 'Type/name: newname'; renames each one in every group that has it, its children and every reference to it, for a restore into another subscription while the source exists (give diff the same file)"
+const renameHelp = "kubernetes: YAML file of where Secrets are read from instead, '<start of a store reference>: <what replaces it>' (a 1Password item path, a vault's address, an ExternalSecret's key); and of where images are pulled from instead ('<start of an image reference>: <what replaces it>'); only fields that name a store, an item in it or a container's image change, and each reference is listed as changed or not, for a restore into another environment (give diff the same file). azure: YAML file of new names for resources whose names are unique across Azure (storage accounts, key vaults, registries), 'Type/name: newname'; renames each one in every group that has it, its children and every reference to it, for a restore into another subscription while the source exists (give diff the same file)"
 
 const leaveOutHelp = "kubernetes: YAML list of objects a restore leaves out and a diff does not expect, 'Kind/namespace/name' or 'Kind/name' for one with no namespace; Kind may be Kind.group and '*' is any (quote an entry that starts with one; give diff the same file). azure: YAML list of objects a restore leaves out and a diff does not expect, keyed 'Kind/resourceGroup/name' as --values is, with the names the snapshot has (before --rename); refused if anything left in still needs one (give diff the same file)"
 
@@ -868,6 +874,22 @@ func renamed(file, platform string, s snapshot.Snapshot, strict bool) (map[strin
 			for _, u := range rep.Unreached {
 				fmt.Fprintln(os.Stderr, "  ", u)
 			}
+		}
+		if len(rep.Images) > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d images are pulled from elsewhere, as %s asks (they have to be there: built again, or copied):\n", len(rep.Images), file)
+			for _, r := range rep.Images {
+				fmt.Fprintf(os.Stderr, "   %s %s: %s -> %s\n", r.Object, r.Field, r.From, r.To)
+			}
+		}
+		if len(rep.ImagesKept) > 0 {
+			fmt.Fprintf(os.Stderr, "rename: %d images are pulled from where the source pulls them, as %s asks\n", len(rep.ImagesKept), file)
+		}
+		if len(rep.ImagesLeft) > 0 {
+			var l []string
+			for _, r := range rep.ImagesLeft {
+				l = append(l, fmt.Sprintf("%s (%d)", r.Registry, r.References))
+			}
+			fmt.Fprintf(os.Stderr, "rename: images no start fits are pulled from where the source pulls them, and the new cluster has to be allowed to: %s\n", strings.Join(l, ", "))
 		}
 		// What a PushSecret pushes it writes, and where it is told to it
 		// deletes: left as the source's, that is the source's store.

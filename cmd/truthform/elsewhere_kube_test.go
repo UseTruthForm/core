@@ -214,14 +214,14 @@ func TestElsewhereFilesAreRefusedBeforeTheCluster(t *testing.T) {
 		args []string
 		file string
 	}{
-		"names nothing to rename":                                         {append(base, "--rename"), "# none yet\n"},
-		"name nothing in the snapshot: ConfigMap/shop/rot":                {append(base, "--leave-out"), "- ConfigMap/shop/rot\n"},
-		"no store reference in the snapshot starts with: vaults/typo/":    {append(base, "--rename"), "vaults/typo/: vaults/x/\n"},
-		"already set in map":                                              {append(base, "--rename"), "vaults/apps/: vaults/a/\nvaults/apps/: vaults/b/\n"},
-		"want a list of":                                                  {append(base, "--leave-out"), "ConfigMap/shop/root: yes\n"},
-		"2 objects would use the source's secret store":                   {append(wider, "--rename"), "vaults/apps/: vaults/apps-test/\n"},
-		"1 objects would use the source's secret store":                   {append(wider, "--rename"), "vaults/apps/: vaults/apps-test/\nvaults/shared/: vaults/shared/\n"},
-		"--keep-source-stores is for a kubernetes restore with --rename;": {append(base, "--keep-source-stores", "--leave-out"), "- ConfigMap/shop/root\n"},
+		"names nothing to rename":                                                   {append(base, "--rename"), "# none yet\n"},
+		"name nothing in the snapshot: ConfigMap/shop/rot":                          {append(base, "--leave-out"), "- ConfigMap/shop/rot\n"},
+		"no store reference and no image in the snapshot starts with: vaults/typo/": {append(base, "--rename"), "vaults/typo/: vaults/x/\n"},
+		"already set in map":                                                        {append(base, "--rename"), "vaults/apps/: vaults/a/\nvaults/apps/: vaults/b/\n"},
+		"want a list of":                                                            {append(base, "--leave-out"), "ConfigMap/shop/root: yes\n"},
+		"2 objects would use the source's secret store":                             {append(wider, "--rename"), "vaults/apps/: vaults/apps-test/\n"},
+		"1 objects would use the source's secret store":                             {append(wider, "--rename"), "vaults/apps/: vaults/apps-test/\nvaults/shared/: vaults/shared/\n"},
+		"--keep-source-stores is for a kubernetes restore with --rename;":           {append(base, "--keep-source-stores", "--leave-out"), "- ConfigMap/shop/root\n"},
 	} {
 		file := writeFile(t, t.TempDir(), "file.yaml", c.file)
 		lastErr = nil

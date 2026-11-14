@@ -184,7 +184,8 @@ func storeRefsJSON() map[string]any {
 		return out
 	}
 	return map[string]any{"kinds_read": kube.StoreKinds(), "changed": refs(storeRefs.Changed), "kept": refs(storeRefs.Kept), "unnamed": refs(storeRefs.Unnamed), "items_unchanged": refs(storeRefs.Within),
-		"unreached": append([]string{}, storeRefs.Unreached...)}
+		"unreached": append([]string{}, storeRefs.Unreached...),
+		"images":    map[string]any{"changed": refs(storeRefs.Images), "kept": refs(storeRefs.ImagesKept), "left": append([]kube.ImagesLeft{}, storeRefs.ImagesLeft...)}}
 }
 
 // needElsewhere is what the snapshot restored or compared needs outside its

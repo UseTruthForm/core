@@ -120,7 +120,7 @@ func scopeNotes(rep kube.ScopeReport) []string {
 	for _, w := range rep.Webhooks {
 		what := "while nothing answers there, the API server goes on without it (failurePolicy Ignore), and what it would have checked or changed is not"
 		if w.Fails {
-			what = "while nothing answers there, the API server refuses every write the webhook is asked about, which can stop the restore itself"
+			what = "while nothing answers there, the API server refuses every write the webhook is asked about"
 		}
 		if w.Webhook == "conversion" {
 			what = "while nothing answers there, objects of that kind cannot be read or written in any version but the stored one"
@@ -128,14 +128,7 @@ func scopeNotes(rep kube.ScopeReport) []string {
 		if strings.HasPrefix(w.Configuration, "APIService ") {
 			what = "while nothing answers there, its API is not there, and what lists every API (a namespace's deletion, for one) waits on it"
 		}
-		how := "Bring what makes the Service, or leave the webhook out (--leave-out)."
-		switch {
-		case w.Blocks():
-			how = "A restore is refused while it is so: bring what makes the Service, leave the webhook out (--leave-out), or accept it by naming its configuration under withoutService in the scope file."
-		case w.Accepted:
-			how = "Accepted in the scope file (withoutService)."
-		}
-		out = append(out, fmt.Sprintf("%s (%s) is brought, and calls the Service %s, which the scope leaves out: %s. %s", w.Configuration, w.Webhook, w.Service, what, how))
+		out = append(out, webhookNote(w, what))
 	}
 	return out
 }
@@ -145,7 +138,7 @@ func scopeNotes(rep kube.ScopeReport) []string {
 // 0, or a pipeline could not tell a hold that holds from one that passed
 // an operator's database through. With none it is 0.
 func notHeldCode(rep kube.ScopeReport, code int) int {
-	if len(rep.NotHeld) > 0 || len(blocking(rep)) > 0 {
+	if len(rep.NotHeld) > 0 || len(blocking(rep.Webhooks)) > 0 {
 		return code
 	}
 	return 0
@@ -153,10 +146,10 @@ func notHeldCode(rep kube.ScopeReport, code int) int {
 
 // blocking are the webhooks a restore is refused for: brought, failing
 // closed, their Service not there, and not accepted in the scope file.
-func blocking(rep kube.ScopeReport) []string {
+func blocking(hooks []kube.ScopeWebhook) []string {
 	var out []string
-	for _, w := range rep.Webhooks {
-		if w.Blocks() {
+	for _, w := range hooks {
+		if w.Blocks {
 			out = append(out, fmt.Sprintf("%s (%s) calls %s", w.Configuration, w.Webhook, w.Service))
 		}
 	}
@@ -237,3 +230,58 @@ func planScope(args []string) int {
 	fmt.Println(scopeSaid(rep, *check))
 	return notHeldCode(rep, 2)
 }
+
+// webhookNote is one webhook whose Service will not answer, for a person.
+func webhookNote(w kube.ScopeWebhook, what string) string {
+	which := "which is not brought, and no source that is brought makes it"
+	bring := "bring what makes the Service"
+	if w.Why == "held" {
+		which = "which is brought with every workload behind it held (hold: true)"
+		bring = "bring what answers behind the Service without the hold"
+	}
+	how := "Either " + bring + ", or leave the webhook out (--leave-out)."
+	switch {
+	case w.Blocks:
+		how = "A restore is refused while it is so: " + bring + ", leave the webhook out (--leave-out), or accept it by naming its configuration under withoutService in the scope file."
+	case w.Accepted:
+		how = "Accepted in the scope file (withoutService)."
+	}
+	return fmt.Sprintf("%s (%s) is brought, and calls the Service %s, %s: %s. %s", w.Configuration, w.Webhook, w.Service, which, what, how)
+}
+
+// refusedForWebhooks refuses a restore that brings an admission webhook
+// failing closed with no Service to answer it. Webhooks are applied last,
+// so the first restore would go through; from then on every write such a
+// webhook is asked about is refused: a second run, a resume after a
+// failure, an update, and whatever is done in the cluster next. With no
+// scope the snapshot is read as it is, --leave-out applied.
+func refusedForWebhooks(snap snapshot.Snapshot, scopeFile string) error {
+	blockedBy = nil
+	var hooks []kube.ScopeWebhook
+	if scopeDone != nil {
+		hooks = scopeDone.Webhooks
+	} else {
+		hooks = kube.WebhooksWithoutService(snap)
+		for _, w := range hooks {
+			if w.Blocks {
+				fmt.Fprintln(os.Stderr, "restore: NOTE: "+webhookNote(w, "while nothing answers there, the API server refuses every write the webhook is asked about"))
+			}
+		}
+	}
+	b := blocking(hooks)
+	if len(b) == 0 {
+		return nil
+	}
+	blockedBy = hooks
+	n, where := "admission webhooks are brought that fail closed, and the Service each calls", "a scope file given with --scope"
+	if len(b) == 1 {
+		n = "admission webhook is brought that fails closed, and the Service it calls"
+	}
+	if scopeFile != "" {
+		where = scopeFile
+	}
+	return fmt.Errorf("%d %s will not answer: %s. The first restore would go through, since webhooks are applied last; every write such a webhook is asked about after it is refused (a second run, a resume, an update). Bring what answers at the Service, leave the webhook out (--leave-out), or accept it by naming its configuration under withoutService in %s; nothing was restored", len(b), n, strings.Join(b, "; "), where)
+}
+
+// blockedBy are the webhooks a restore was refused for, for the document.
+var blockedBy []kube.ScopeWebhook

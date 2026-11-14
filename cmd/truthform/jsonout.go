@@ -52,6 +52,12 @@ func emitError(code int) {
 		doc["complete"] = false
 		doc["store_references"] = storeRefsJSON()
 	}
+	// A restore refused for webhooks whose Service will not answer says
+	// which, as the check does.
+	if blockedBy != nil && command == "restore" {
+		doc["complete"] = false
+		doc["webhooksWithoutService"] = blockedBy
+	}
 	emit(doc)
 }
 

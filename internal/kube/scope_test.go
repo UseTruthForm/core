@@ -3,6 +3,7 @@ package kube
 import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -710,7 +711,7 @@ func TestNarrowSmallRules(t *testing.T) {
 
 // A webhook that is brought and calls a Service the scope leaves out is
 // named: the API server refuses what it is asked about while nothing
-// answers, which can stop the restore that left the Service out.
+// answers, from the restore that brought it on.
 func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 	hook := func(name, policy, ns, svc string) map[string]any {
 		h := map[string]any{"name": name, "clientConfig": map[string]any{"service": map[string]any{"namespace": ns, "name": svc}}}
@@ -733,7 +734,7 @@ func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 			hook("soft.policy", "Ignore", "team-a", "soft"),      // goes on without it
 			hook("ok.web", "Fail", "team-a", "web"),              // its Service is brought
 			hook("elsewhere", "Fail", "other", "x"),              // a namespace the scope does not narrow
-			hook("not.there", "Fail", "other", "never-captured"), // nor is this the scope's doing
+			hook("not.there", "Fail", "other", "never-captured"), // not the scope's doing, and not there all the same
 			map[string]any{"name": "by.url", "clientConfig": map[string]any{"url": "https://hooks.example.com/check"}},
 		}}),
 		planObject("admissionregistration.k8s.io/v1", "MutatingWebhookConfiguration", "", "gitops", map[string]any{"webhooks": []any{
@@ -751,19 +752,21 @@ func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	nb := "notBrought"
 	want := []ScopeWebhook{
-		{Configuration: "APIService v1beta1.metrics.example.com", Webhook: "service", Service: "team-a/policy", Fails: true},
-		{Configuration: "CustomResourceDefinition widgets.example.com", Webhook: "conversion", Service: "team-a/policy", Fails: true},
-		{Configuration: "MutatingWebhookConfiguration gitops", Webhook: "gone.gitops", Service: "team-a/gone", Fails: true},
-		{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "check.policy", Service: "team-a/policy", Fails: true},
-		{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "soft.policy", Service: "team-a/soft", Fails: false},
+		{Configuration: "APIService v1beta1.metrics.example.com", Webhook: "service", Service: "team-a/policy", Why: nb, Fails: true},
+		{Configuration: "CustomResourceDefinition widgets.example.com", Webhook: "conversion", Service: "team-a/policy", Why: nb, Fails: true},
+		{Configuration: "MutatingWebhookConfiguration gitops", Webhook: "gone.gitops", Service: "team-a/gone", Why: nb, Fails: true, Blocks: true},
+		{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "check.policy", Service: "team-a/policy", Why: nb, Fails: true, Blocks: true},
+		{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "not.there", Service: "other/never-captured", Why: nb, Fails: true, Blocks: true},
+		{Configuration: "ValidatingWebhookConfiguration policy", Webhook: "soft.policy", Service: "team-a/soft", Why: nb, Fails: false},
 	}
 	if !reflect.DeepEqual(rep.Webhooks, want) {
 		t.Errorf("webhooks without their Service:\n got %+v\nwant %+v", rep.Webhooks, want)
 	}
 	// With the releases brought, none is named.
 	_, rep, err = Narrow(s, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web", "policy", "soft"}}}})
-	if err != nil || len(rep.Webhooks) != 1 || rep.Webhooks[0].Webhook != "gone.gitops" {
+	if err != nil || len(rep.Webhooks) != 2 || rep.Webhooks[0].Webhook != "gone.gitops" || rep.Webhooks[1].Webhook != "not.there" {
 		t.Errorf("with their Services brought: %+v, %v", rep.Webhooks, err)
 	}
 	// One that fails closed and is an admission webhook blocks a restore
@@ -772,14 +775,14 @@ func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 	only := Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web"}}}}
 	blocks := func(rep ScopeReport) (out []string) {
 		for _, w := range rep.Webhooks {
-			if w.Blocks() {
+			if w.Blocks {
 				out = append(out, w.Webhook)
 			}
 		}
 		return out
 	}
 	_, rep, _ = Narrow(s, only)
-	if got := blocks(rep); !reflect.DeepEqual(got, []string{"gone.gitops", "check.policy"}) {
+	if got := blocks(rep); !reflect.DeepEqual(got, []string{"gone.gitops", "check.policy", "not.there"}) {
 		t.Errorf("blocking: %q", got)
 	}
 	only.WithoutService = []string{"ValidatingWebhookConfiguration/pol*"}
@@ -788,7 +791,8 @@ func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 		t.Errorf("blocking with one accepted: %q, %v", got, err)
 	}
 	for _, w := range rep.Webhooks {
-		if want := w.Webhook == "check.policy"; w.Accepted != want {
+		// By configuration: every failing hook of the one named.
+		if want := w.Webhook == "check.policy" || w.Webhook == "not.there"; w.Accepted != want {
 			t.Errorf("%s accepted: %v", w.Webhook, w.Accepted)
 		}
 	}
@@ -798,6 +802,7 @@ func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 		"is not ValidatingWebhookConfiguration/name":                  "CustomResourceDefinition/widgets.example.com",
 		`"policy" is not`: "policy",
 		`"*/*" is not`:    "*/*",
+		`"ValidatingWebhookConfiguration/*" names no configuration`: "ValidatingWebhookConfiguration/*",
 	} {
 		only.WithoutService = []string{accept}
 		if _, _, err := Narrow(s, only); err == nil || !strings.Contains(err.Error(), want) {
@@ -829,5 +834,105 @@ func TestNarrowNamesAWebhookWhoseServiceIsLeftOut(t *testing.T) {
 	_, rep, err = Narrow(without, Scope{Narrow: []ScopeEntry{{Namespaces: []string{"team-a"}, Releases: []string{"web"}}}})
 	if err != nil || !made(rep) {
 		t.Errorf("with no such source in the snapshot: %+v, %v", rep.Webhooks, err)
+	}
+}
+
+// Whether a webhook's Service will answer is asked of the restore, not
+// of the scope: wherever the Service is, whatever took it out, with a
+// scope or with none; and one that is brought with all that answers
+// behind it held does not answer either.
+func TestAWebhooksServiceWillNotAnswer(t *testing.T) {
+	hook := func(name, policy, ns, svc string) map[string]any {
+		h := map[string]any{"name": name, "clientConfig": map[string]any{"service": map[string]any{"namespace": ns, "name": svc}}}
+		if policy != "" {
+			h["failurePolicy"] = policy
+		}
+		return h
+	}
+	service := func(ns, name, release string, selector map[string]any) snapshot.Object {
+		return released("v1", "Service", ns, name, release, map[string]any{"spec": map[string]any{"selector": selector}})
+	}
+	workload := func(kind, ns, name, release, app string) snapshot.Object {
+		return released("apps/v1", kind, ns, name, release, map[string]any{"spec": map[string]any{"replicas": float64(2),
+			"template": map[string]any{"metadata": map[string]any{"labels": map[string]any{"app": app, "tier": "hook"}}, "spec": map[string]any{"containers": []any{map[string]any{"name": "c", "image": "x"}}}}}})
+	}
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		service("shop", "policy", "policy", map[string]any{"app": "policy"}),
+		workload("Deployment", "shop", "policy", "policy", "policy"),
+		workload("Deployment", "far", "policy", "policy", "policy"), // the same labels in another namespace answer nothing here
+		service("shop", "two", "two", map[string]any{"app": "two"}),
+		workload("Deployment", "shop", "two-a", "two", "two"),
+		workload("StatefulSet", "shop", "two-b", "other", "two"),
+		service("shop", "byoperator", "policy", map[string]any{"app": "made-by-an-operator"}),
+		planObject("v1", "Service", "shop", "noselector", nil),
+		planObject("admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration", "", "hooks", map[string]any{"webhooks": []any{
+			hook("policy", "Fail", "shop", "policy"),
+			hook("two", "Fail", "shop", "two"),
+			hook("byoperator", "Fail", "shop", "byoperator"),
+			hook("platform", "Fail", "kube-system", "platform"),
+			hook("nowhere", "", "elsewhere", "nowhere"),
+		}}),
+		planObject("admissionregistration.k8s.io/v1beta1", "MutatingWebhookConfiguration", "", "old", map[string]any{"webhooks": []any{
+			hook("default.old", "", "elsewhere", "nowhere"), // that version went on without it
+			hook("fail.old", "Fail", "elsewhere", "nowhere"),
+		}}),
+	}, Skips: []snapshot.Skip{
+		skipOf("", "v1", "services", "kube-system", "platform", "the platform's own; it is there in any cluster"),
+	}}
+	said := func(hooks []ScopeWebhook) (out []string) {
+		for _, w := range hooks {
+			b := ""
+			if w.Blocks {
+				b = " blocks"
+			}
+			out = append(out, w.Webhook+" "+w.Why+b)
+		}
+		return out
+	}
+	// With no scope: what is in no snapshot is not brought, and what the
+	// platform makes is.
+	nowhere := []string{"default.old notBrought", "fail.old notBrought blocks", "nowhere notBrought blocks"}
+	if got := said(WebhooksWithoutService(s)); !reflect.DeepEqual(got, nowhere) {
+		t.Errorf("with no scope: %q", got)
+	}
+	// Held, the workloads behind a Service do not answer: every one of
+	// them, where there are several. What an operator makes, and is not
+	// in the snapshot, cannot be told, and is taken to answer.
+	for _, c := range []struct {
+		held []string
+		want []string
+	}{
+		{[]string{"policy"}, append([]string{"policy held blocks"}, nowhere...)},
+		{[]string{"two"}, nowhere}, // two-b still answers
+		{[]string{"two", "other"}, append(append([]string{}, nowhere...), "two held blocks")},
+	} {
+		running := []string{}
+		for _, r := range []string{"policy", "two", "other"} {
+			if !slices.Contains(c.held, r) {
+				running = append(running, r)
+			}
+		}
+		sc := Scope{Narrow: []ScopeEntry{{Namespaces: []string{"shop"}, Releases: c.held, Hold: true, Objects: []string{"Service/noselector"}}, {Namespaces: []string{"shop"}, Releases: running}}}
+		_, rep, err := Narrow(s, sc)
+		got := said(rep.Webhooks)
+		sort.Strings(got)
+		sort.Strings(c.want)
+		if err != nil || !reflect.DeepEqual(got, c.want) {
+			t.Errorf("holding %v: %q, %v; want %q", c.held, got, err, c.want)
+		}
+	}
+	// A scope file may do no more than accept, and accepts by
+	// configuration.
+	_, rep, err := Narrow(s, Scope{WithoutService: []string{"ValidatingWebhookConfiguration/hooks", "MutatingWebhookConfiguration/old"}})
+	if got := said(rep.Webhooks); err != nil || !reflect.DeepEqual(got, []string{"default.old notBrought", "fail.old notBrought", "nowhere notBrought"}) {
+		t.Errorf("a scope that only accepts: %q, %v", got, err)
+	}
+	// One whose hooks all go on without their Service has nothing to
+	// accept.
+	onlySoft := s
+	onlySoft.Objects = append([]snapshot.Object{}, s.Objects[:len(s.Objects)-1]...)
+	onlySoft.Objects = append(onlySoft.Objects, planObject("admissionregistration.k8s.io/v1beta1", "MutatingWebhookConfiguration", "", "old", map[string]any{"webhooks": []any{hook("default.old", "", "elsewhere", "nowhere")}}))
+	if _, _, err := Narrow(onlySoft, Scope{WithoutService: []string{"MutatingWebhookConfiguration/old"}}); err == nil || !strings.Contains(err.Error(), `withoutService names "MutatingWebhookConfiguration/old"`) {
+		t.Errorf("accepting what does not fail: %v", err)
 	}
 }

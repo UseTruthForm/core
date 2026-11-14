@@ -238,10 +238,10 @@ func TestScopeSaid(t *testing.T) {
 		"1 objects that no release made are brought, named under objects or by label: ConfigMap shop/shared",
 		"NOTE: Flux Kustomization flux-system/root is brought, and makes 2 objects in shop",
 		"ClusterRole x (it may be of other/x, left out)",
-		"NOTE: ValidatingWebhookConfiguration policy (check.policy) is brought, and calls the Service shop/policy, which the scope leaves out: while nothing answers there, the API server refuses every write",
-		"NOTE: ValidatingWebhookConfiguration policy (soft.policy) is brought, and calls the Service shop/soft, which the scope leaves out: while nothing answers there, the API server goes on without it",
-		"NOTE: APIService v1beta1.metrics.example.com (service) is brought, and calls the Service shop/policy, which the scope leaves out: while nothing answers there, its API is not there",
-		"NOTE: CustomResourceDefinition widgets.example.com (conversion) is brought, and calls the Service shop/policy, which the scope leaves out: while nothing answers there, objects of that kind cannot be read",
+		"NOTE: ValidatingWebhookConfiguration policy (check.policy) is brought, and calls the Service shop/policy, which is not brought, and no source that is brought makes it: while nothing answers there, the API server refuses every write",
+		"NOTE: ValidatingWebhookConfiguration policy (soft.policy) is brought, and calls the Service shop/soft, which is not brought, and no source that is brought makes it: while nothing answers there, the API server goes on without it",
+		"NOTE: APIService v1beta1.metrics.example.com (service) is brought, and calls the Service shop/policy, which is not brought, and no source that is brought makes it: while nothing answers there, its API is not there",
+		"NOTE: CustomResourceDefinition widgets.example.com (conversion) is brought, and calls the Service shop/policy, which is not brought, and no source that is brought makes it: while nothing answers there, objects of that kind cannot be read",
 		"nothing checks that what is brought does not need something left out",
 	} {
 		if !strings.Contains(said, want) {
@@ -290,7 +290,7 @@ func TestScopeSaidOfAHold(t *testing.T) {
 }
 
 // A restore is not begun with an admission webhook that fails closed and
-// has no Service to answer it: its own writes would be refused. The check
+// has no Service to answer it: every write after it would be refused. The check
 // finds it first, and the scope file or --leave-out clears it.
 func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
 	if captureOnly {
@@ -311,7 +311,9 @@ func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
 		s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Objects: []snapshot.Object{
 			obj("v1", "Namespace", "", "shop", nil),
 			ofRelease(obj("v1", "ConfigMap", "shop", "web", nil), "web"),
-			ofRelease(obj("v1", "Service", "shop", "policy", nil), "policy"),
+			ofRelease(obj("v1", "Service", "shop", "policy", map[string]any{"spec": map[string]any{"selector": map[string]any{"app": "policy"}}}), "policy"),
+			ofRelease(obj("apps/v1", "Deployment", "shop", "policy", map[string]any{"spec": map[string]any{"replicas": float64(1),
+				"template": map[string]any{"metadata": map[string]any{"labels": map[string]any{"app": "policy"}}, "spec": map[string]any{"containers": []any{map[string]any{"name": "c", "image": "x"}}}}}}), "policy"),
 			obj("admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration", "", "policy", hook(policy)),
 		}}
 		dir := filepath.Join(t.TempDir(), "cluster")
@@ -334,7 +336,7 @@ func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
 		if code == 0 {
 			t.Errorf("%v: a restore to nowhere ended 0", args)
 		}
-		return lastErr != nil && strings.Contains(lastErr.Error(), "admission webhooks are brought that fail closed")
+		return lastErr != nil && strings.Contains(lastErr.Error(), "brought that fail")
 	}
 
 	code, stdout, _ := output(t, func() int { return planScope([]string{"--from", dir, "--check", scope}) })
@@ -364,6 +366,43 @@ func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
 	nowhere[len(nowhere)-1] = soft
 	if refused("--scope", scope) {
 		t.Errorf("restore of an Ignore webhook: %v", lastErr)
+	}
+	// With no scope it is the same question: the Service taken out by
+	// --leave-out, the webhook refuses the restore, and a scope file that
+	// does no more than accept it lets it through.
+	nowhere[len(nowhere)-1] = dir
+	if refused() {
+		t.Errorf("restore of the whole snapshot, the Service with it: %v", lastErr)
+	}
+	noService := writeFile(t, files, "no-service.yaml", "- Service/shop/policy\n")
+	if !refused("--leave-out", noService) || !strings.Contains(lastErr.Error(), "1 admission webhook is brought that fails closed") || !strings.Contains(lastErr.Error(), "a scope file given with --scope") {
+		t.Errorf("restore with the Service left out and no scope: %v", lastErr)
+	}
+	onlyAccepts := writeFile(t, files, "only-accepts.yaml", "withoutService:\n  - ValidatingWebhookConfiguration/policy\n")
+	if refused("--leave-out", noService, "--scope", onlyAccepts) {
+		t.Errorf("restore with the Service left out, accepted: %v", lastErr)
+	}
+	// The document of a refusal says which webhooks.
+	was := command
+	command = "restore"
+	d := asJSON(t, func() {
+		emitError(restore(context.Background(), append(append([]string{}, nowhere...), "--leave-out", noService)))
+	})
+	command = was
+	hooks, _ := d["webhooksWithoutService"].([]any)
+	if len(hooks) != 1 {
+		t.Fatalf("the document of a refusal: %v", d)
+	}
+	if h, _ := hooks[0].(map[string]any); h["blocks"] != true || h["why"] != "notBrought" || h["service"] != "shop/policy" || d["complete"] != false {
+		t.Errorf("the document of a refusal: %v", d)
+	}
+	// Brought with what answers behind it held, the Service does not
+	// answer either.
+	lastErr = nil
+	nowhere[len(nowhere)-1] = write("Fail")
+	heldBehind := writeFile(t, files, "held.yaml", "narrow:\n  - namespaces: [shop]\n    releases: [web, policy]\n    hold: true\n")
+	if !refused("--scope", heldBehind) || !strings.Contains(lastErr.Error(), "calls shop/policy") {
+		t.Errorf("restore with what answers held: %v", lastErr)
 	}
 	// And a diff is not refused for it.
 	lastErr = nil

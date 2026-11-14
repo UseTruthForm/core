@@ -776,8 +776,7 @@ namespace:
   is named (`scope.webhooksWithoutService` with `--json`): an admission
   webhook with no namespace of its own is brought with everything else,
   and while nothing answers at its Service the API server refuses every
-  write it is asked about (unless its `failurePolicy` is `Ignore`),
-  which can stop the restore that left the Service out. The same is
+  write it is asked about (unless its `failurePolicy` is `Ignore`). The same is
   said of a CustomResourceDefinition whose conversion webhook calls such
   a Service (a `v1` definition; the long-removed `v1beta1` form is not
   read), and of an APIService served by one: its API is then not there,
@@ -791,23 +790,46 @@ Both notes are in the rebuild plan as well, under "A part only", so that
 whoever reads the plan sees them without the command's output.
 
 **A restore is refused, with nothing written, for an admission webhook
-that fails closed and has no Service to answer it** (a
+that fails closed and whose Service will not answer** (a
 `ValidatingWebhookConfiguration` or `MutatingWebhookConfiguration` hook
-whose `failurePolicy` is `Fail`, the default): its own writes would be
-among those refused. `plan scope --check` exits 2 for one, so it is
-found before the restore; a diff still runs. Bring what makes the
-Service, leave the webhook out with `--leave-out`, or, knowing what it
-will refuse, accept it in the scope file:
+whose `failurePolicy` is `Fail`, the default in `v1`). Webhooks are
+applied last, so the first restore would go through; from then on the
+API server refuses every write such a webhook is asked about: a second
+run, a resume after a failure, an update, and whatever is done in that
+cluster next.
+
+This is asked of every Kubernetes restore, with a scope or with none,
+and of any Service, wherever it is. A Service will not answer when:
+
+- it is not brought, whatever took it out (the scope, `--leave-out`, a
+  capture that never had it), and no GitOps source that is brought makes
+  it. One the capture left as the platform's own is taken to be there;
+- it is brought, and every workload of the snapshot that its selector
+  picks is held by the scope (`hold: true`). Where the snapshot has no
+  such workload (an operator makes the pods), that cannot be told, and
+  the Service is taken to answer.
+
+`plan scope --check` exits 2 for one, so it is found before the restore;
+a diff still runs. With `--json` each webhook listed under
+`scope.webhooksWithoutService` says `why` (`notBrought` or `held`) and
+whether it `blocks`, and a refused restore's document lists them as
+`webhooksWithoutService`. Bring what answers at the Service, leave the
+webhook out with `--leave-out`, or, knowing what it will refuse, accept
+it in a scope file, which may hold nothing else:
 
 ```yaml
 withoutService:
   - ValidatingWebhookConfiguration/policy
 ```
 
-The name may be a pattern. One that accepts nothing is an error. A hook
-with `failurePolicy: Ignore`, a conversion webhook and an APIService are
-noted and do not refuse a restore: none of them refuses a write of
-anything but its own kind.
+That accepts the configuration: every hook of it, those added to it
+later too. The name may be a pattern, though not one that is all
+pattern (`*`), which would accept any configuration that comes later. A
+name that accepts nothing is an error, so a line for a webhook that
+`--leave-out` also removes has to go. A hook with `failurePolicy:
+Ignore`, a conversion webhook and an APIService are noted and do not
+refuse a restore: none of them refuses a write of anything but its own
+kind, and a restore goes on with an APIService unavailable.
 
 Two entries that fit one namespace choose from it together. A release or
 a label is looked for in the namespaces of its own entry: one that fits

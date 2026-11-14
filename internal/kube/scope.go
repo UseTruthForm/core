@@ -327,10 +327,10 @@ func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeR
 			return s, rep, fmt.Errorf("entry %d: asTheyAre is for an entry with hold: true", i+1)
 		}
 		for _, p := range e.AsTheyAre {
-			// Any kind would take in whatever API a later snapshot has:
-			// what is looked at is at least a kind.
-			if kind, _, _ := strings.Cut(p, "/"); strings.Trim(kind, "*?") == "" && kind != "" {
-				return s, rep, fmt.Errorf("entry %d: asTheyAre %q names no kind: name the kind looked at (Certificate/*)", i+1, p)
+			// A pattern for the kind would take in whatever API a later
+			// snapshot has: what is looked at is a kind, by its name.
+			if kind, _, _ := strings.Cut(p, "/"); strings.ContainsAny(kind, `*?[\`) {
+				return s, rep, fmt.Errorf("entry %d: asTheyAre %q names no kind: name the kind looked at, with no pattern in it (Certificate/*)", i+1, p)
 			}
 		}
 		for _, p := range append(append([]string{}, e.Objects...), e.AsTheyAre...) {
@@ -424,40 +424,6 @@ func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeR
 			relNS[rname][rns] = true
 		}
 	}
-	// asItIs says whether a holding entry names the object under
-	// asTheyAre: an entry of the object's namespace, or of the namespace
-	// of the release that made it (a release may make an object in a
-	// namespace other than its own, or with none; where only a label says
-	// which release, any namespace that has a release of the name).
-	// Nothing is held but by one of these.
-	asUsed := make([]map[string]bool, len(sc.Narrow))
-	for i := range sc.Narrow {
-		asUsed[i] = map[string]bool{}
-	}
-	asItIs := func(o snapshot.Object) (yes bool) {
-		group, _, versioned := strings.Cut(o.APIVersion(), "/")
-		if !versioned {
-			group = ""
-		}
-		es := append([]int{}, narrowed[o.Namespace()]...)
-		if rns, rname, ok := ReleaseOf(o); ok && rns != o.Namespace() {
-			es = append(es, narrowed[rns]...)
-		} else if ok && rns == "" {
-			// Of a release by label alone, with no namespace: of any
-			// namespace that has a release of the name.
-			for ns := range relNS[rname] {
-				es = append(es, narrowed[ns]...)
-			}
-		}
-		for _, i := range es {
-			for _, p := range sc.Narrow[i].AsTheyAre {
-				if fitsObject(p, o, group) {
-					asUsed[i][p], yes = true, true
-				}
-			}
-		}
-		return yes
-	}
 	// labelled says whether an entry's labels choose the object, and
 	// whether one that does holds.
 	labelled := func(o snapshot.Object, es []int) (yes, hold bool) {
@@ -483,6 +449,44 @@ func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeR
 	relObjects := map[relKey]int{}
 	relChosen := map[relKey]bool{}
 	relHeld := map[relKey]bool{}
+	// asItIs says whether a holding entry names the object under
+	// asTheyAre: an entry of the object's namespace, or of the namespace
+	// of the release that made it (a release may make an object in a
+	// namespace other than its own, or with none; where only a label says
+	// which release, a namespace whose release of the name is held).
+	// Nothing is held but by one of these.
+	asUsed := make([]map[string]bool, len(sc.Narrow))
+	for i := range sc.Narrow {
+		asUsed[i] = map[string]bool{}
+	}
+	asItIs := func(o snapshot.Object) (yes bool) {
+		group, _, versioned := strings.Cut(o.APIVersion(), "/")
+		if !versioned {
+			group = ""
+		}
+		es := append([]int{}, narrowed[o.Namespace()]...)
+		if rns, rname, ok := ReleaseOf(o); ok && rns != o.Namespace() {
+			es = append(es, narrowed[rns]...)
+		} else if ok && rns == "" {
+			// Of a release by label alone, with no namespace: of a
+			// namespace whose release of the name is held. One that
+			// only has such a release, left out or running, holds
+			// nothing of it.
+			for ns := range relNS[rname] {
+				if relHeld[relKey{ns, rname}] {
+					es = append(es, narrowed[ns]...)
+				}
+			}
+		}
+		for _, i := range es {
+			for _, p := range sc.Narrow[i].AsTheyAre {
+				if fitsObject(p, o, group) {
+					asUsed[i][p], yes = true, true
+				}
+			}
+		}
+		return yes
+	}
 	holdIt := make([]bool, len(s.Objects))
 	maker := secretMakers(s)
 	made := make([]bool, len(s.Objects))
@@ -563,21 +567,28 @@ func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeR
 			// Left only when every release of the name is one the scope
 			// leaves out.
 			state[i] = left
-			var leftIn []string
+			var leftIn, running []string
 			for ns := range relNS[rel[i].name] {
-				if narrowed[ns] == nil || relChosen[relKey{ns, rel[i].name}] {
-					state[i] = brought
+				switch k := (relKey{ns, rel[i].name}); {
+				case narrowed[ns] != nil && !relChosen[k]:
+					leftIn = append(leftIn, ns+"/"+rel[i].name)
+				case relHeld[k]:
 					// Held with any release of the name that is: which
 					// of them made it, the object does not say.
-					holdIt[i] = holdIt[i] || relHeld[relKey{ns, rel[i].name}]
-				} else {
-					leftIn = append(leftIn, ns+"/"+rel[i].name)
+					state[i], holdIt[i] = brought, true
+				default:
+					state[i] = brought
+					running = append(running, ns+"/"+rel[i].name)
 				}
 			}
+			o := s.Objects[i]
 			if state[i] == brought && len(leftIn) > 0 {
 				sort.Strings(leftIn)
-				o := s.Objects[i]
 				rep.SharedName = append(rep.SharedName, o.Kind()+" "+o.Name()+" (it may be of "+strings.Join(leftIn, ", ")+", left out)")
+			}
+			if holdIt[i] && len(running) > 0 {
+				sort.Strings(running)
+				rep.SharedName = append(rep.SharedName, o.Kind()+" "+o.Name()+" (held; it may be of "+strings.Join(running, ", ")+", which is not)")
 			}
 		}
 	}

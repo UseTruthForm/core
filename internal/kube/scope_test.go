@@ -208,6 +208,10 @@ func TestScopeDraft(t *testing.T) {
 	if empty := string(ScopeDraft(snapshot.Snapshot{})); !strings.Contains(empty, "narrow by labels instead") {
 		t.Errorf("draft of a snapshot with no release:\n%s", empty)
 	}
+	// It says how a hold that is not whole is answered.
+	if d := string(ScopeDraft(s)); !strings.Contains(d, `listed under "asTheyAre"`) {
+		t.Errorf("the draft does not mention asTheyAre:\n%s", d)
+	}
 }
 
 // A release is known by what Helm writes on what it makes: the

@@ -401,8 +401,23 @@ func restore(ctx context.Context, args []string) int {
 	// hold that was asked for, whatever was applied. Said beside a
 	// failure too: 3 alone does not say which.
 	if scopeDone != nil && len(scopeDone.NotHeld) > 0 {
-		fmt.Printf("%d objects under hold: true were brought not held (see the NOTE above): %s\n", len(scopeDone.NotHeld), strings.Join(scopeDone.NotHeld, ", "))
 		code = 3
+		// Not one that was not applied: it was not brought at all.
+		failed := map[string]bool{}
+		for _, r := range results {
+			if p := strings.Split(r.Key, "|"); !r.OK && len(p) == 4 {
+				failed[p[1]+" "+p[2]+"/"+p[3]] = true
+			}
+		}
+		var there []string
+		for _, o := range scopeDone.NotHeld {
+			if !failed[o] {
+				there = append(there, o)
+			}
+		}
+		if len(there) > 0 {
+			fmt.Printf("%d objects under hold: true were brought not held (see the NOTE above): %s\n", len(there), strings.Join(there, ", "))
+		}
 	}
 	return code
 }

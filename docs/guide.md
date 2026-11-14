@@ -980,13 +980,18 @@ narrow:
       - KafkaTopic/*
 ```
 
-Each is `Kind/name` as under `objects`. The name may be a pattern, and
-the kind too, but not a bare `*`: `Certificate/*` also takes in any
+Each is `Kind/name` as under `objects` (`Kind.group` where two APIs
+share a kind). The name may be a pattern; the kind may not, so that a
+line takes in one kind and no more. `Certificate/*` also takes in any
 `Certificate` a later snapshot has, so name what was looked at as
 narrowly as it was looked at. An entry names objects in its own
 namespaces and what its releases made in another, or with no namespace
 (one tied to a release by a label alone is held, and named, with any
-release of that name that is held).
+release of that name that is held, and the entry that holds such a
+release names it; where another release of the name is brought running,
+the run says the object may be that one's). A scope that brought such an
+object with a pod template and no count now refuses it, as a hold
+refuses any workload it cannot stop.
 What is named there is still listed (`scope.broughtAsTheyAre`),
 and the run ends 0 when nothing else is left not held. A name that fits
 no object the hold would have named is an error, as is `asTheyAre` on an

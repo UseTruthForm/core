@@ -406,9 +406,16 @@ func TestAsTheyAre(t *testing.T) {
 		`asTheyAre names "Certificate/tsl"`:   entry("Certificate/tls", "Certificate/tsl"),
 		"is not Kind/name":                    entry("tls"),
 		// Any kind at all is not something looked at.
-		`asTheyAre "*/*" names no kind`:       entry("*/*"),
-		`asTheyAre "*/tls" names no kind`:     entry("Cluster/*", "*/tls"),
-		"asTheyAre is for an entry with hold": {Narrow: []ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"worker"}, AsTheyAre: []string{"Certificate/tls"}}}},
+		`asTheyAre "*/*" names no kind`:             entry("*/*"),
+		`asTheyAre "*/tls" names no kind`:           entry("Cluster/*", "*/tls"),
+		`asTheyAre "?*/tls" names no kind`:          entry("?*/tls"),
+		`asTheyAre "*.*/*" names no kind`:           entry("*.*/*"),
+		`asTheyAre "*.example.com/*" names no kind`: entry("*.example.com/*"),
+		`asTheyAre "[A-Z]*/*" names no kind`:        entry("[A-Z]*/*"),
+		`asTheyAre "*e/*" names no kind`:            entry("*e/*"),
+		`asTheyAre "Certificat?/tls" names no kind`: entry("Certificat?/tls"),
+		`asTheyAre "[CK]luster/db" names no kind`:   entry("[CK]luster/db"),
+		"asTheyAre is for an entry with hold":       {Narrow: []ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"worker"}, AsTheyAre: []string{"Certificate/tls"}}}},
 	} {
 		if _, _, err := Narrow(s, sc); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("want an error with %q, got %v", want, err)
@@ -452,5 +459,71 @@ func TestAsTheyAre(t *testing.T) {
 	s.Objects = append(s.Objects, rel("v1", "Pod", "once", map[string]any{"containers": []any{map[string]any{"name": "c", "image": "x"}}}))
 	if _, _, err := Narrow(s, entry("Certificate/*", "Cluster/*", "Pod/once")); err == nil || !strings.Contains(err.Error(), "Pod shop/once") {
 		t.Errorf("a Pod named under asTheyAre: %v", err)
+	}
+}
+
+// What only a label ties to a release, with no namespace, is held with a
+// release of the name that is held, and with none that is not; and only
+// an entry that holds such a release may say it is looked at.
+func TestWhatALabelTiesToAHeldRelease(t *testing.T) {
+	labelled := func(kind, name string, spec map[string]any) snapshot.Object {
+		o := planObject("example.com/v1", kind, "", name, map[string]any{"spec": spec})
+		o.Body["metadata"].(map[string]any)["labels"] = map[string]any{"app.kubernetes.io/managed-by": "Helm", "app.kubernetes.io/instance": "worker"}
+		return o
+	}
+	annotated := released("example.com/v1", "GadgetClass", "", "ofshop", "worker", map[string]any{"spec": map[string]any{"size": "big"}})
+	annotated.Body["metadata"].(map[string]any)["annotations"].(map[string]any)["meta.helm.sh/release-namespace"] = "shop"
+	s := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{
+		released("apps/v1", "Deployment", "shop", "worker", "worker", map[string]any{"spec": map[string]any{"replicas": float64(3)}}),
+		released("apps/v1", "Deployment", "other", "worker", "worker", map[string]any{"spec": map[string]any{"replicas": float64(2)}}),
+		released("apps/v1", "Deployment", "other", "api", "api", map[string]any{"spec": map[string]any{"replicas": float64(1)}}),
+		labelled("GadgetClass", "bare", map[string]any{"size": "big"}),
+		labelled("GadgetSet", "counted", map[string]any{"replicas": float64(4)}),
+		annotated,
+	}}
+	shop := func(hold bool, as ...string) ScopeEntry {
+		return ScopeEntry{Namespaces: []string{"shop"}, Releases: []string{"worker"}, Hold: hold, AsTheyAre: as}
+	}
+	other := func(releases []string, hold bool, as ...string) ScopeEntry {
+		return ScopeEntry{Namespaces: []string{"other"}, Releases: releases, Hold: hold, AsTheyAre: as}
+	}
+	heldOf := func(rep ScopeReport) (out []string) {
+		for _, h := range rep.Held {
+			out = append(out, h.Object)
+		}
+		return out
+	}
+	// Held where a release of the name is: the count to zero, the other
+	// named. The release of that name left out in another namespace
+	// takes nothing from that.
+	_, rep, err := Narrow(s, Scope{Narrow: []ScopeEntry{shop(true), other([]string{"api"}, false)}})
+	if err != nil || !reflect.DeepEqual(rep.NotHeld, []string{"GadgetClass /bare", "GadgetClass /ofshop"}) ||
+		!reflect.DeepEqual(heldOf(rep), []string{"Deployment shop/worker", "GadgetSet /counted"}) {
+		t.Errorf("held with shop/worker: held %q, not held %q, %v", heldOf(rep), rep.NotHeld, err)
+	}
+	// With no release of the name held, nothing of it is held or named.
+	_, rep, err = Narrow(s, Scope{Narrow: []ScopeEntry{shop(false), other([]string{"api"}, true)}})
+	if err != nil || len(rep.NotHeld) != 0 || !reflect.DeepEqual(heldOf(rep), []string{"Deployment other/api"}) {
+		t.Errorf("no release of the name held: held %q, not held %q, %v", heldOf(rep), rep.NotHeld, err)
+	}
+	// Held with one, running with another: said, since it may be the
+	// running one's.
+	_, rep, err = Narrow(s, Scope{Narrow: []ScopeEntry{shop(true), other([]string{"api", "worker"}, false)}})
+	if want := "GadgetSet counted (held; it may be of other/worker, which is not)"; err != nil || !strings.Contains(strings.Join(rep.SharedName, "\n"), want) {
+		t.Errorf("held with one and running with another: %q, %v", rep.SharedName, err)
+	}
+	// The entry that holds the release says it is looked at.
+	_, rep, err = Narrow(s, Scope{Narrow: []ScopeEntry{shop(true, "GadgetClass/*"), other([]string{"api"}, false)}})
+	if err != nil || len(rep.NotHeld) != 0 || len(rep.AsTheyAre) != 2 {
+		t.Errorf("named by the entry that holds it: not held %q, as they are %q, %v", rep.NotHeld, rep.AsTheyAre, err)
+	}
+	// An entry that holds something else does not: not one whose
+	// namespace has a release of the name that it leaves out, and not,
+	// for what an annotation ties to shop, any entry but shop's.
+	for _, as := range []string{"GadgetClass/bare", "GadgetClass/ofshop"} {
+		_, _, err = Narrow(s, Scope{Narrow: []ScopeEntry{shop(true), other([]string{"api"}, true, as)}})
+		if err == nil || !strings.Contains(err.Error(), `entry 2: asTheyAre names "`+as+`"`) {
+			t.Errorf("%s named by an entry that does not hold its release: %v", as, err)
+		}
 	}
 }

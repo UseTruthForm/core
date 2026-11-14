@@ -121,7 +121,7 @@ func TestPlanRebuildCountsAKeyTheSnapshotDoesNotHold(t *testing.T) {
 	}, Objects: []snapshot.Object{
 		{Body: map[string]any{"apiVersion": "bitnami.com/v1alpha1", "kind": "SealedSecret", "metadata": map[string]any{"name": "card", "namespace": "pay"}}},
 	}}
-	text := planMarkdown(kube.RebuildPlan(s), nil, nil)
+	text := planMarkdown(kube.RebuildPlan(s), nil, nil, nil)
 	for _, want := range []string{
 		"| 3 | Supply by hand the secrets no store holds | 0 secrets, and 1 keys the snapshot does not hold |",
 		"No Secret in the snapshot is left for a person to supply:",
@@ -147,7 +147,7 @@ func TestPlanRebuildWhenEverySourceFollows(t *testing.T) {
 		"The snapshot holds these repository objects: GitRepository flux-system/fleet.": {root, repo},
 		"**Not in the snapshot: where the sources are read from.**":                     {root},
 	} {
-		text := planMarkdown(kube.RebuildPlan(snapshot.Snapshot{Platform: "kubernetes", Skips: skips, Objects: objects}), nil, nil)
+		text := planMarkdown(kube.RebuildPlan(snapshot.Snapshot{Platform: "kubernetes", Skips: skips, Objects: objects}), nil, nil, nil)
 		for _, line := range []string{"| 1 | Install what a GitOps source makes | 0 sources by hand, 1 follow |", "**Applied again by sources the snapshot holds: 1 sources, 1 objects.**", "Nothing else:", want} {
 			if !strings.Contains(text, line) {
 				t.Errorf("the plan lacks %q:\n%s", line, text)
@@ -258,10 +258,10 @@ func TestPlanRebuildSaysWhatWasNotRead(t *testing.T) {
 // step still does not say there is nothing else.
 func TestPlanRebuildNothingElseOfAnIncompleteSnapshot(t *testing.T) {
 	p := kube.Plan{Follows: []kube.PlanSource{{Kind: "Flux Kustomization", Name: "flux-system/root", Objects: 1}}}
-	if text := planMarkdown(p, []string{"core/v1/secrets: list failed"}, nil); strings.Contains(text, "Nothing else:") || !strings.Contains(text, "None in what the capture read.") {
+	if text := planMarkdown(p, []string{"core/v1/secrets: list failed"}, nil, nil); strings.Contains(text, "Nothing else:") || !strings.Contains(text, "None in what the capture read.") {
 		t.Errorf("says there is nothing else of a snapshot not all read:\n%s", text)
 	}
-	if text := planMarkdown(p, nil, nil); !strings.Contains(text, "Nothing else:") {
+	if text := planMarkdown(p, nil, nil, nil); !strings.Contains(text, "Nothing else:") {
 		t.Errorf("a whole snapshot whose sources all follow:\n%s", text)
 	}
 }

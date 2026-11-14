@@ -22,12 +22,13 @@ func planCmd(args []string) int {
 		return planScope(args[1:])
 	}
 	if len(args) == 0 || args[0] != "rebuild" {
-		return fail(fmt.Errorf("plan: it gives rebuild, secrets and scope: truthform plan rebuild --from <dir> [--scope <file>] [--out <file>] [--json], truthform plan secrets --from <dir> [--scope <file>] [--out <file> | --check <file> [--resolve]], truthform plan scope --from <dir> [--out <file> | --check <file>]"))
+		return fail(fmt.Errorf("plan: it gives rebuild, secrets and scope: truthform plan rebuild --from <dir> [--scope <file>] [--leave-out <file>] [--out <file>] [--json], truthform plan secrets --from <dir> [--scope <file>] [--out <file> | --check <file> [--resolve]], truthform plan scope --from <dir> [--out <file> | --check <file>]"))
 	}
 	fs := flag.NewFlagSet("plan rebuild", flag.ContinueOnError)
 	from := fs.String("from", "", "snapshot directory")
 	out := fs.String("out", "", "file to write (default: stdout)")
 	scope := fs.String("scope", "", scopeHelp)
+	leaveOut := fs.String("leave-out", "", leaveOutHelp)
 	if err := parseFlags(fs, args[1:]); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -47,8 +48,13 @@ func planCmd(args []string) int {
 	if s.Platform != "kubernetes" {
 		return fail(fmt.Errorf("plan rebuild: %s is a %s snapshot; the plan is for kubernetes snapshots", *from, s.Platform))
 	}
-	// The plan of a part: what the chosen part needs, and no more.
-	if s, err = scoped(*scope, s.Platform, s); err != nil {
+	// The plan of a part: what the chosen part needs, and no more. What
+	// a restore would be given to leave out is left out here as well.
+	whole := s
+	if s, err = leftOut(*leaveOut, s.Platform, s); err != nil {
+		return fail(err)
+	}
+	if s, err = scopedFrom(*scope, s.Platform, whole, s); err != nil {
 		return fail(err)
 	}
 	p := kube.RebuildPlan(s)
@@ -58,15 +64,21 @@ func planCmd(args []string) int {
 	if len(notRead) > 0 {
 		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the plan cannot count what is in them; it lists them first\n", len(notRead))
 	}
+	// With no scope, a webhook whose Service will not answer is said
+	// here too: a restore of the whole is refused for one that fails
+	// closed, and this is where that is found before the restore.
+	hooks := webhookNotesWithoutScope("plan", whole, s)
 	if jsonOut {
 		doc := map[string]any{"schema": jsonSchema, "command": "plan", "plan": p, "gaps": orEmpty(notRead)}
 		if scopeDone != nil {
 			doc["scope"] = scopeDone
+		} else {
+			doc["webhooksWithoutService"] = hooks
 		}
 		emit(doc)
 		return 0
 	}
-	text := planMarkdown(p, notRead, scopeDone)
+	text := planMarkdown(p, notRead, scopeDone, hooks)
 	if *out == "" {
 		_, err = os.Stdout.WriteString(text)
 	} else if err = os.WriteFile(*out, []byte(text), 0o644); err == nil {
@@ -84,7 +96,7 @@ const planShown = 3
 // planMarkdown is the plan for a person, in the order to act on it.
 // Nothing time- or machine-dependent goes in, not the directory's name
 // either: an unchanged snapshot gives an unchanged plan, wherever it is.
-func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport) string {
+func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks []kube.ScopeWebhook) string {
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	// none is what a step with nothing to list says: that there is nothing,
@@ -115,6 +127,13 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport) string
 		if len(scopeNotes(*scope)) > 0 {
 			w("\n")
 		}
+	}
+	if notes := scopeNotes(kube.ScopeReport{Webhooks: hooks}); scope == nil && len(notes) > 0 {
+		w("**Webhooks with nothing to answer them.** A restore of this snapshot brings these:\n\n")
+		for _, n := range notes {
+			w("- **Note.** %s\n", md(n))
+		}
+		w("\n")
 	}
 	// A count is of what was read, and says so where that is not all.
 	seen := ""

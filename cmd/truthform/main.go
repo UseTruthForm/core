@@ -77,7 +77,7 @@ As a graph (resources and their relationships, for an asset inventory or a secur
       Azure; JSON nodes and edges from the snapshot alone, no request made
 
 Before a rebuild (what the snapshot does not hold: what to install first, the secrets, the names):
-  truthform plan rebuild --from <dir> [--scope <file>] [--out <file>] [--json]
+  truthform plan rebuild --from <dir> [--scope <file>] [--leave-out <file>] [--out <file>] [--json]
   truthform plan scope --from <dir> [--out <file> | --check <file> [--json]]
   truthform plan secrets --from <dir> [--out <file> | --check <file> [--resolve] [--allow-exec] [--json]]
       Kubernetes; Markdown, or one JSON document; from the snapshot alone, no request made
@@ -254,7 +254,7 @@ func capture(ctx context.Context, args []string) int {
 }
 
 func restore(ctx context.Context, args []string) int {
-	sizeCheck, namesHeld = nil, nil
+	sizeCheck, namesHeld, blockedBy, unscopedHooks = nil, nil, nil, nil
 	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
 	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
 	kctx := fs.String("context", "", "kubeconfig context to restore into")
@@ -305,11 +305,17 @@ func restore(ctx context.Context, args []string) int {
 	}
 	// --leave-out first: its entries name objects of the snapshot as it
 	// is, whether or not the scope would have left them out too.
+	whole := snap
 	if snap, err = leftOut(*leaveOut, *platform, snap); err != nil {
 		return fail(err)
 	}
-	if snap, err = scoped(*scope, *platform, snap); err != nil {
+	if snap, err = scopedFrom(*scope, *platform, whole, snap); err != nil {
 		return fail(err)
+	}
+	if *platform == "kubernetes" {
+		if err := refusedForWebhooks(whole, snap, *scope); err != nil {
+			return fail(err)
+		}
 	}
 	if *keepStores && (*rename == "" || *platform != "kubernetes") {
 		return fail(fmt.Errorf("--keep-source-stores is for a kubernetes restore with --rename; nothing was restored"))
@@ -455,12 +461,16 @@ func diff(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	warnGaps(want)
+	whole := want
 	if want, err = leftOut(*leaveOut, *platform, want); err != nil {
 		return fail(err)
 	}
-	if want, err = scoped(*scope, *platform, want); err != nil {
+	if want, err = scopedFrom(*scope, *platform, whole, want); err != nil {
 		return fail(err)
 	}
+	// Said as a restore says it; a diff writes nothing, and is not
+	// refused for it.
+	webhookNotesWithoutScope("diff", whole, want)
 	_ = *keepStoresDiff // a diff lists and never refuses: the flag is taken so that a restore's arguments can be given to it
 	names, want, err := renamed(*rename, *platform, want, false)
 	if err != nil {

@@ -457,7 +457,7 @@ empty or denied: capture again later.
 |---|---|
 | 0 | Success: the capture is complete, the restore fully applied, or no differences |
 | 1 | Error: bad flags, cannot connect, cannot read a snapshot |
-| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold (plan scope --check) |
+| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer (plan scope --check) |
 | 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, or a restore under a hold brought objects not held |
 
 ## Machine-readable output
@@ -772,12 +772,11 @@ namespace:
   the release is installed once the source runs. The run says so by name
   (`scope.stillMade` with `--json`), and the plan goes on listing it:
   leave the source out with `--leave-out`, or have it apply less;
-- **a webhook that is brought and calls a Service the scope leaves out**
+- **a webhook that is brought and calls a Service that will not answer**
   is named (`scope.webhooksWithoutService` with `--json`): an admission
   webhook with no namespace of its own is brought with everything else,
   and while nothing answers at its Service the API server refuses every
-  write it is asked about (unless its `failurePolicy` is `Ignore`),
-  which can stop the restore that left the Service out. The same is
+  write it is asked about (unless its `failurePolicy` is `Ignore`). The same is
   said of a CustomResourceDefinition whose conversion webhook calls such
   a Service (a `v1` definition; the long-removed `v1beta1` form is not
   read), and of an APIService served by one: its API is then not there,
@@ -789,6 +788,117 @@ namespace:
 
 Both notes are in the rebuild plan as well, under "A part only", so that
 whoever reads the plan sees them without the command's output.
+
+**A restore is refused, with nothing written, for an admission webhook
+that fails closed and whose Service will not answer** (a
+`ValidatingWebhookConfiguration` or `MutatingWebhookConfiguration` hook
+whose `failurePolicy` is `Fail`, the default in `v1`). Webhooks are
+applied last, so the first restore would go through; from then on the
+API server refuses every write such a webhook is asked about: a second
+run, a resume after a failure, an update, and whatever is done in that
+cluster next.
+
+This is asked of every Kubernetes restore, with a scope or with none,
+and of any Service, wherever it is. It is one question, "is it there
+once the restore has run?", asked of the Service and then of whatever
+is said to make it, as far up as that goes:
+
+- an object the restore brings is there. A Service that is brought
+  answers unless every workload of the snapshot that its selector picks
+  is held by the scope (`hold: true`), left out of it, or taken out with
+  `--leave-out`; a Job is not counted, and where the snapshot has no
+  such workload (an operator makes the pods) the Service is taken to
+  answer;
+- an object of the snapshot that this restore takes out (the scope,
+  `--leave-out`) is not there;
+- what the capture left to something else is there if that is: the
+  object that owns it, the Flux HelmRelease or Kustomization or Argo CD
+  application that makes it, the Crossplane composite that composes it,
+  each asked the same question in turn (an owner a HelmRelease renders,
+  which a Kustomization applies, is there if the Kustomization is). One
+  of these that is brought and held makes nothing, and what it would
+  have made is not there;
+- what the capture left as the platform's or the cluster's own (a
+  system namespace, the cloud's objects) is there;
+- what is in no snapshot and left to nothing is not there.
+
+A source is asked like any other object: an Argo CD Application that an
+ApplicationSet generates is there if the ApplicationSet is. **Where the
+source is in another cluster** (a hub that runs Argo CD for its spokes),
+the spoke's snapshot has what the source labelled and not the source:
+nothing in it makes those Services, and a spoke's webhooks that fail
+closed are refused until their configurations are accepted under
+`withoutService`. That is every spoke of such a fleet: accept them
+once, in the scope file the fleet shares.
+
+**How far the refusal reaches.** It refuses for a Service that is gone,
+and, for one that is brought, in a namespace whose pods all come from
+Deployments, StatefulSets, DaemonSets, Jobs, CronJobs or bare Pods that
+are in the snapshot. Where a workload of the namespace is rendered by a
+GitOps source, or an operator's custom resource owns workloads there, a
+Service gets the `unseen` note once its own workloads are held or taken
+out, and no refusal: a namespace GitOps manages nearly always gets the
+note. That follows from the capture not holding what a source renders,
+and it is said, never passed in silence.
+
+**There are three answers, and only one refuses.** The Service will
+answer, and nothing is said. It will not, and the restore is refused.
+Or the snapshot does not say, and that is said as a NOTE, apart, and
+refuses nothing: a snapshot taken before this version lists what an
+object owns by namespace and without the names, so whether a webhook's
+Service is one of them is not in it. A capture taken now lists the
+Services by name (`names` on the skip, in `coverage.yaml`), and the
+GitOps sources an object owns likewise, and settles it, and beside each name its selector (`selectors`), so that what
+answers behind a Service the snapshot does not hold is looked for as it
+is behind one it does: among the workloads of the snapshot that the
+selector picks. Where pods will run in that namespace that the
+snapshot cannot show the labels of (the capture left them, or what
+makes them, to an owner, a GitOps source or the platform that will be
+there), they may be what answers: that is said as a NOTE (`why:
+unseen`), and nothing is refused for it. A chart's own Deployment is not
+such a case: its ReplicaSets and pods are its own, and its labels are
+in the snapshot. Pods and the rest are still listed once per owner:
+their names are the cluster's. A selector is labels and their values,
+which pick pods, and holds no credential.
+
+Writing the names changes one file of a snapshot, `coverage.yaml`, and
+only for a cluster where an object owns a Service or a GitOps source
+(an ApplicationSet's Applications): its digest then differs from one
+taken before, though nothing in the cluster changed.
+**A pipeline that pins a digest, or compares one capture's with the
+last, sees that once, at the first capture with this version.** A diff or a compare reads objects, and
+shows no difference for it; an earlier version reads such a snapshot as
+it reads any other, and a snapshot taken before is read by this one.
+
+`plan scope --check` exits 2 for one that refuses, so it is found before
+the restore; with no scope, `plan rebuild` lists it, on stderr and in
+the plan ("Webhooks with nothing to answer them";
+`webhooksWithoutService` with `--json`), and exits as it always does.
+`plan rebuild`, `plan scope --check` and `diff` take `--leave-out` as a
+restore does, and say what the restore would. A restore with no scope that ran before this
+version can be refused now. A diff still runs, and says it as a NOTE. With `--json` each webhook listed under
+`scope.webhooksWithoutService` says `why` (`notBrought`, `held`,
+`leftOut`, or `unknown` and `unseen` where the snapshot does not say)
+and whether it `blocks`, and a refused restore's document lists them as
+`webhooksWithoutService`. Bring what answers at the Service, leave the
+webhook out with `--leave-out`, or, knowing what it will refuse, accept
+it in a scope file, which may hold nothing else (such a file narrows
+nothing and leaves nothing out, Jobs included):
+
+```yaml
+withoutService:
+  - ValidatingWebhookConfiguration/policy
+```
+
+That accepts the configuration: every hook of it, those added to it
+later too. The name begins with what it is and a pattern may follow
+(`policy-*`); one that begins with a pattern would accept any
+configuration that comes later, and is refused. A
+name that accepts nothing is an error, so a line for a webhook that
+`--leave-out` also removes has to go. A hook with `failurePolicy:
+Ignore`, a conversion webhook and an APIService are noted and do not
+refuse a restore: none of them refuses a write of anything but its own
+kind, and a restore goes on with an APIService unavailable.
 
 Two entries that fit one namespace choose from it together. A release or
 a label is looked for in the namespaces of its own entry: one that fits

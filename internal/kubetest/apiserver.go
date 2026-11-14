@@ -135,10 +135,17 @@ func Start(t *testing.T, name string) *Server {
 		cancel()
 		t.Fatalf("start kube-apiserver: %v", err)
 	}
+	// Should this binary be killed, a watcher stops the two.
+	dismiss, err := watch(api.Process.Pid, etcd.Process.Pid)
+	if err != nil {
+		cancel()
+		t.Fatalf("start the watcher of the API server: %v", err)
+	}
 	stop := func() {
 		cancel()
 		_ = api.Wait()
 		_ = etcd.Wait()
+		dismiss()
 	}
 
 	url := "https://127.0.0.1:" + strconv.Itoa(apiPort)

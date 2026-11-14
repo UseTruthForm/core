@@ -231,6 +231,8 @@ func TestScopeSaid(t *testing.T) {
 			{Configuration: "CustomResourceDefinition widgets.example.com", Webhook: "conversion", Service: "shop/policy", Fails: true},
 			{Configuration: "APIService v1beta1.metrics.example.com", Webhook: "service", Service: "shop/policy", Fails: true},
 			{Configuration: "MutatingWebhookConfiguration quiet", Webhook: "held.hook", Service: "shop/quiet", Why: "held", Fails: true, Blocks: true},
+			{Configuration: "MutatingWebhookConfiguration quiet", Webhook: "gone.hook", Service: "shop/gone", Why: "leftOut", Fails: true, Blocks: true},
+			{Configuration: "MutatingWebhookConfiguration open", Webhook: "open.hook", Service: "shop/owned", Why: "unknown", Fails: true},
 		},
 	}
 	said := scopeSaid(rep, "scope.yaml")
@@ -239,11 +241,13 @@ func TestScopeSaid(t *testing.T) {
 		"1 objects that no release made are brought, named under objects or by label: ConfigMap shop/shared",
 		"NOTE: Flux Kustomization flux-system/root is brought, and makes 2 objects in shop",
 		"ClusterRole x (it may be of other/x, left out)",
-		"NOTE: ValidatingWebhookConfiguration policy (check.policy) is brought, and calls the Service shop/policy, which is not brought, and no source that is brought makes it: while nothing answers there, the API server refuses every write",
-		"NOTE: ValidatingWebhookConfiguration policy (soft.policy) is brought, and calls the Service shop/soft, which is not brought, and no source that is brought makes it: while nothing answers there, the API server goes on without it",
-		"NOTE: APIService v1beta1.metrics.example.com (service) is brought, and calls the Service shop/policy, which is not brought, and no source that is brought makes it: while nothing answers there, its API is not there",
-		"NOTE: MutatingWebhookConfiguration quiet (held.hook) is brought, and calls the Service shop/quiet, which is brought with every workload behind it held (hold: true) or left out: while nothing answers there, the API server refuses every write the webhook is asked about. A restore is refused while it is so: bring what answers behind the Service, running, leave the webhook out",
-		"NOTE: CustomResourceDefinition widgets.example.com (conversion) is brought, and calls the Service shop/policy, which is not brought, and no source that is brought makes it: while nothing answers there, objects of that kind cannot be read",
+		"NOTE: ValidatingWebhookConfiguration policy (check.policy) is brought, and calls the Service shop/policy, which is not brought, and nothing that is brought makes it: while nothing answers there, the API server refuses every write",
+		"NOTE: ValidatingWebhookConfiguration policy (soft.policy) is brought, and calls the Service shop/soft, which is not brought, and nothing that is brought makes it: while nothing answers there, the API server goes on without it",
+		"NOTE: APIService v1beta1.metrics.example.com (service) is brought, and calls the Service shop/policy, which is not brought, and nothing that is brought makes it: while nothing answers there, its API is not there",
+		"NOTE: MutatingWebhookConfiguration quiet (held.hook) is brought, and calls the Service shop/quiet, which is brought with every workload behind it held (hold: true): while nothing answers there, the API server refuses every write the webhook is asked about. A restore is refused while it is so: bring what answers behind the Service without the hold, leave the webhook out",
+		"NOTE: MutatingWebhookConfiguration quiet (gone.hook) is brought, and calls the Service shop/gone, which is brought with every workload behind it taken out (the scope, or --leave-out): while nothing answers",
+		"NOTE: MutatingWebhookConfiguration open (open.hook) is brought, and calls the Service shop/owned, which is not in the snapshot. Whether it will be there cannot be told: the snapshot lists what an object owns in that namespace without the names, as captures did before this version, and this may be one of them. A capture taken now settles it. If nothing answers there: the API server refuses every write the webhook is asked about.",
+		"NOTE: CustomResourceDefinition widgets.example.com (conversion) is brought, and calls the Service shop/policy, which is not brought, and nothing that is brought makes it: while nothing answers there, objects of that kind cannot be read",
 		"nothing checks that what is brought does not need something left out",
 	} {
 		if !strings.Contains(said, want) {
@@ -397,7 +401,7 @@ func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
 	_, _, stderr := output(t, func() int {
 		return restore(context.Background(), append(append([]string{}, nowhere...), "--leave-out", noService, "--scope", onlyAccepts))
 	})
-	if !strings.Contains(stderr, "narrows nothing: the snapshot is brought as it is") || strings.Contains(stderr, "Jobs left out") {
+	if !strings.Contains(stderr, "narrows nothing: the snapshot is brought as it is") || strings.Contains(stderr, "Jobs left out") || strings.Contains(stderr, "a part only") {
 		t.Errorf("a file that only accepts:\n%s", stderr)
 	}
 	// The rebuild plan of the whole says it too, before any restore:
@@ -429,6 +433,25 @@ func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
 	}
 	if code, stdout, stderr = output(t, func() int { return planCmd([]string{"rebuild", "--from", dir}) }); strings.Contains(stderr+stdout, "nothing to answer") || strings.Contains(stderr, "NOTE: Validating") {
 		t.Errorf("plan rebuild of a whole snapshot:\n%s\n%s", stderr, stdout)
+	}
+	// What a restore would be given to leave out, the plan and a diff are
+	// given too, and say what the restore would: neither is refused.
+	code, stdout, stderr = output(t, func() int { return planCmd([]string{"rebuild", "--from", dir, "--leave-out", noWorkload}) })
+	if code != 0 || !strings.Contains(stderr, "plan: NOTE: ValidatingWebhookConfiguration policy (check.policy)") || !strings.Contains(stdout, "taken out (the scope, or --leave-out)") {
+		t.Errorf("plan rebuild with the workload left out: exit %d\n%s\n%s", code, stderr, stdout)
+	}
+	lastErr = nil
+	_, _, stderr = output(t, func() int {
+		return diff(context.Background(), append(append([]string{}, nowhere...), "--leave-out", noWorkload))
+	})
+	if !strings.Contains(stderr, "diff: NOTE: ValidatingWebhookConfiguration policy (check.policy)") || (lastErr != nil && strings.Contains(lastErr.Error(), "brought that fail")) {
+		t.Errorf("diff with the workload left out:\n%s\n%v", stderr, lastErr)
+	}
+	_, _, stderr = output(t, func() int {
+		return diff(context.Background(), append(append([]string{}, nowhere...), "--leave-out", noWorkload, "--scope", heldNothing(t, files)))
+	})
+	if !strings.Contains(stderr, "NOTE: ValidatingWebhookConfiguration policy (check.policy)") || !strings.Contains(stderr, "taken out (the scope, or --leave-out)") {
+		t.Errorf("diff with the workload left out, under a scope:\n%s", stderr)
 	}
 	// The document of a refusal says which webhooks.
 	was := command
@@ -464,4 +487,19 @@ func TestRestoreRefusesAWebhookWithNoService(t *testing.T) {
 // heldNothing is a scope that brings both releases of the shop, running.
 func heldNothing(t *testing.T, dir string) string {
 	return writeFile(t, dir, "both.yaml", "narrow:\n  - namespaces: [shop]\n    releases: [web, policy]\n")
+}
+
+// A scope file that narrows nothing brought the whole, and a total beside
+// it is not said to be of a part.
+func TestScopeLineOfAFileThatNarrowsNothing(t *testing.T) {
+	was := scopeDone
+	defer func() { scopeDone = was }()
+	scopeDone = &kube.ScopeReport{}
+	if l := scopeLine(); l != "" {
+		t.Errorf("a file that narrows nothing: %q", l)
+	}
+	scopeDone = &kube.ScopeReport{Narrowed: []string{"shop"}, Kept: 2, Of: 3}
+	if l := scopeLine(); !strings.Contains(l, "2 of the 3 objects of shop") {
+		t.Errorf("a file that narrows: %q", l)
+	}
 }

@@ -75,6 +75,10 @@ type Skip struct {
 	Namespace string `json:"namespace,omitempty"`
 	Name      string `json:"name"`
 	Reason    string `json:"reason"`
+	// Names are the objects a skip named "*" stands for, where a capture
+	// lists them: the Services an object owns, whose names do not change
+	// from one day to the next as its pods' do.
+	Names []string `json:"names,omitempty"`
 }
 
 // Coverage summarises one resource type: how many objects were captured, how

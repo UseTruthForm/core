@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/usetruthform/core/internal/snapshot"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // A restore need not bring everything: a drill wants the platform, the
@@ -112,9 +111,8 @@ type ScopeWebhook struct {
 	Configuration string `json:"configuration"` // Kind name
 	Webhook       string `json:"webhook"`
 	Service       string `json:"service"` // namespace/name
-	// Why nothing answers: "notBrought" (the Service is not brought, and
-	// no source that is brought makes it) or "held" (it is brought, and
-	// every workload behind it is held by the scope or left out of it).
+	// Why nothing answers (WhyNotBrought, WhyHeld, WhyLeftOut), or
+	// WhyUnknown where the snapshot does not say whether anything will.
 	Why string `json:"why"`
 	// Fails: what it is asked about is refused while the Service does
 	// not answer (failurePolicy Fail, the default; a conversion always).
@@ -122,8 +120,8 @@ type ScopeWebhook struct {
 	// Accepted: the scope file names its configuration under
 	// withoutService.
 	Accepted bool `json:"accepted"`
-	// Blocks: an admission webhook that fails closed and that nobody
-	// accepted. Applied last, it lets a first restore through, and
+	// Blocks: an admission webhook that fails closed, whose Service is
+	// known not to answer, and that nobody accepted. Applied last, it lets a first restore through, and
 	// refuses the writes it is asked about from then on: a second run, a
 	// resume after a failure, an update, whatever is done in the cluster
 	// next. A restore is not begun with one.
@@ -764,164 +762,6 @@ func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeR
 	}
 	sort.Strings(rep.Jobs)
 	return out, rep, nil
-}
-
-// WebhooksWithoutService is webhooksWithoutService for a snapshot
-// restored with no scope: what is not in s is not brought. whole is the
-// snapshot as it was read, before anything was left out of it.
-func WebhooksWithoutService(whole, s snapshot.Snapshot) []ScopeWebhook {
-	return webhooksWithoutService(whole, s, s, nil)
-}
-
-// webhooksWithoutService finds the webhooks of out, what a restore
-// brings of s, that call a Service which will not answer: one that is
-// neither brought nor left to a GitOps source that is, wherever it is and
-// whatever took it out (a scope, --leave-out, a capture that never had
-// it), or one that is brought with every workload behind it held (held:
-// Kind namespace/name). An APIService is read the same way. Such a
-// webhook is asked about every write it matches, and the API server
-// refuses those while nothing answers.
-func webhooksWithoutService(whole, s, out snapshot.Snapshot, held map[string]bool) []ScopeWebhook {
-	there := map[string]bool{}
-	// anyOf are the namespaces where a Service not in the snapshot may
-	// be there all the same: the capture left the Services an object
-	// owns to that object's controller, by namespace and not by name.
-	anyOf := map[string]bool{}
-	has := func(kind, ns, name string) bool {
-		for _, o := range out.Objects {
-			if o.Kind() == kind && o.Namespace() == ns && o.Name() == name {
-				return true
-			}
-		}
-		return false
-	}
-	selector := map[string]map[string]any{}
-	for _, o := range out.Objects {
-		if o.Kind() == "Service" && o.APIVersion() == "v1" {
-			there[o.Namespace()+"/"+o.Name()] = true
-			spec, _ := o.Body["spec"].(map[string]any)
-			if sel, _ := spec["selector"].(map[string]any); len(sel) > 0 {
-				selector[o.Namespace()+"/"+o.Name()] = sel
-			}
-		}
-	}
-	services := resourceID(schema.GroupVersionResource{Version: "v1", Resource: "services"})
-	// One the capture left to a source is there when that source is
-	// brought, and not otherwise: nothing else makes it. One it left for
-	// another reason (the platform's own) is the platform's to make.
-	applied := stillApplied(s, out)
-	for i, sk := range s.Skips {
-		if sk.Resource != services {
-			continue
-		}
-		kind, name, bySource := SourceOf(sk.Reason)
-		switch m := ownedBy.FindStringSubmatch(sk.Reason); {
-		case m != nil:
-			// Made again by the controller of what owns it, if that is
-			// brought: in the Service's namespace, or with none.
-			if has(m[1], sk.Namespace, m[2]) || has(m[1], "", m[2]) {
-				anyOf[sk.Namespace] = true
-			}
-		case kind == "Crossplane composite":
-			// Composed again when the composite is brought: it is
-			// named, and has no namespace.
-			for _, o := range out.Objects {
-				if o.Name() == name && o.Namespace() == "" {
-					there[sk.Namespace+"/"+sk.Name] = true
-				}
-			}
-		case applied[i] != "" || !bySource:
-			there[sk.Namespace+"/"+sk.Name] = true
-		}
-	}
-	// A Service answers through the pods its selector picks. Where the
-	// snapshot has the workloads that make them and every one is held or
-	// not brought, nothing answers; where it has none (an operator makes
-	// the pods), that cannot be told, and the Service is taken to answer.
-	id := func(o snapshot.Object) string {
-		return o.APIVersion() + "|" + o.Kind() + "|" + o.Namespace() + "|" + o.Name()
-	}
-	brought := map[string]bool{}
-	for _, o := range out.Objects {
-		brought[id(o)] = true
-	}
-	quiet := map[string]bool{}
-	for key, sel := range selector {
-		ns, _, _ := strings.Cut(key, "/")
-		behind, running := 0, 0
-		for _, o := range whole.Objects {
-			// Not a Job: it runs once and ends, and answers nothing
-			// for long; a scope leaves every one out besides.
-			if o.Namespace() != ns || isJob(o) {
-				continue
-			}
-			spec, _ := o.Body["spec"].(map[string]any)
-			tmpl, _ := spec["template"].(map[string]any)
-			md, _ := tmpl["metadata"].(map[string]any)
-			labels, _ := md["labels"].(map[string]any)
-			picks := tmpl != nil // a workload: it has a pod template
-			for k, v := range sel {
-				picks = picks && labels[k] == v
-			}
-			if picks {
-				behind++
-				if brought[id(o)] && !held[o.Kind()+" "+o.Namespace()+"/"+o.Name()] {
-					running++
-				}
-			}
-		}
-		quiet[key] = behind > 0 && running == 0
-	}
-	found := []ScopeWebhook{}
-	add := func(o snapshot.Object, name string, config any, fails bool) {
-		c, _ := config.(map[string]any)
-		svc, _ := c["service"].(map[string]any)
-		ns, n := strOf(svc["namespace"]), strOf(svc["name"])
-		why := ""
-		switch {
-		case n == "":
-			return
-		case !there[ns+"/"+n] && !anyOf[ns]:
-			why = "notBrought"
-		case quiet[ns+"/"+n]:
-			why = "held"
-		default:
-			return
-		}
-		w := ScopeWebhook{Configuration: o.Kind() + " " + o.Name(), Webhook: name, Service: ns + "/" + n, Why: why, Fails: fails}
-		w.Blocks = fails && admissionWebhook(w.Configuration)
-		found = append(found, w)
-	}
-	for _, o := range out.Objects {
-		group, _, _ := strings.Cut(o.APIVersion(), "/")
-		switch {
-		case group == "admissionregistration.k8s.io" && (o.Kind() == "ValidatingWebhookConfiguration" || o.Kind() == "MutatingWebhookConfiguration"):
-			for _, w := range list(o.Body["webhooks"]) {
-				m, _ := w.(map[string]any)
-				policy := strOf(m["failurePolicy"])
-				if policy == "" && strings.HasSuffix(o.APIVersion(), "/v1beta1") {
-					policy = "Ignore" // that version's default
-				}
-				add(o, strOf(m["name"]), m["clientConfig"], policy != "Ignore")
-			}
-		case group == "apiextensions.k8s.io" && o.Kind() == "CustomResourceDefinition":
-			spec, _ := o.Body["spec"].(map[string]any)
-			conv, _ := spec["conversion"].(map[string]any)
-			hook, _ := conv["webhook"].(map[string]any)
-			add(o, "conversion", hook["clientConfig"], true)
-		case group == "apiregistration.k8s.io" && o.Kind() == "APIService":
-			// An API served by a Service: with none, the API is not
-			// there, and what lists every API (a namespace's deletion,
-			// a garbage collection) waits on it.
-			spec, _ := o.Body["spec"].(map[string]any)
-			add(o, "service", map[string]any{"service": spec["service"]}, true)
-		}
-	}
-	sort.Slice(found, func(i, j int) bool {
-		a, b := found[i], found[j]
-		return a.Configuration+"\x00"+a.Webhook < b.Configuration+"\x00"+b.Webhook
-	})
-	return found
 }
 
 // stillApplied says, for each thing the capture left to a GitOps source,

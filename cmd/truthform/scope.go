@@ -169,7 +169,8 @@ func blocking(hooks []kube.ScopeWebhook) []string {
 // scopeLine is the scope in one line, for beside a total: "applied 5 of
 // 5" would otherwise read as the whole snapshot.
 func scopeLine() string {
-	if scopeDone == nil {
+	// A file that narrows nothing brought the whole.
+	if scopeDone == nil || len(scopeDone.Narrowed) == 0 {
 		return ""
 	}
 	return fmt.Sprintf("a part only (--scope): %d of the %d objects of %s were in it", scopeDone.Kept, scopeDone.Of, strings.Join(scopeDone.Narrowed, ", "))
@@ -243,11 +244,18 @@ func planScope(args []string) int {
 
 // webhookNote is one webhook whose Service will not answer, for a person.
 func webhookNote(w kube.ScopeWebhook, what string) string {
-	which := "which is not brought, and no source that is brought makes it"
+	which := "which is not brought, and nothing that is brought makes it"
 	bring := "bring what makes the Service"
-	if w.Why == "held" {
-		which = "which is brought with every workload behind it held (hold: true) or left out"
-		bring = "bring what answers behind the Service, running"
+	switch w.Why {
+	case kube.WhyHeld:
+		which = "which is brought with every workload behind it held (hold: true)"
+		bring = "bring what answers behind the Service without the hold"
+	case kube.WhyLeftOut:
+		which = "which is brought with every workload behind it taken out (the scope, or --leave-out)"
+		bring = "bring what answers behind the Service"
+	case kube.WhyUnknown:
+		// Not known to be so: said apart, and never as a refusal.
+		return fmt.Sprintf("%s (%s) is brought, and calls the Service %s, which is not in the snapshot. Whether it will be there cannot be told: the snapshot lists what an object owns in that namespace without the names, as captures did before this version, and this may be one of them. A capture taken now settles it. If nothing answers there: %s.", w.Configuration, w.Webhook, w.Service, strings.TrimPrefix(what, "while nothing answers there, "))
 	}
 	how := "Either " + bring + ", or leave the webhook out (--leave-out)."
 	switch {
@@ -271,10 +279,7 @@ func refusedForWebhooks(whole, snap snapshot.Snapshot, scopeFile string) error {
 	if scopeDone != nil {
 		hooks = scopeDone.Webhooks
 	} else {
-		hooks = kube.WebhooksWithoutService(whole, snap)
-		for _, n := range scopeNotes(kube.ScopeReport{Webhooks: hooks}) {
-			fmt.Fprintln(os.Stderr, "restore: NOTE: "+n)
-		}
+		hooks = webhookNotesWithoutScope("restore", whole, snap)
 	}
 	b := blocking(hooks)
 	if len(b) == 0 {
@@ -293,3 +298,17 @@ func refusedForWebhooks(whole, snap snapshot.Snapshot, scopeFile string) error {
 
 // blockedBy are the webhooks a restore was refused for, for the document.
 var blockedBy []kube.ScopeWebhook
+
+// webhookNotesWithoutScope says, where no scope did, which webhooks of a
+// snapshot call a Service that will not answer: a diff and a plan say it
+// as a restore does, though only a restore is refused for it.
+func webhookNotesWithoutScope(command string, whole, snap snapshot.Snapshot) []kube.ScopeWebhook {
+	if scopeDone != nil || snap.Platform != "kubernetes" {
+		return nil
+	}
+	hooks := kube.WebhooksWithoutService(whole, snap)
+	for _, n := range scopeNotes(kube.ScopeReport{Webhooks: hooks}) {
+		fmt.Fprintln(os.Stderr, command+": NOTE: "+n)
+	}
+	return hooks
+}

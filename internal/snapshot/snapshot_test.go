@@ -248,3 +248,35 @@ func TestUnusualCharactersRoundTrip(t *testing.T) {
 		t.Fatalf("read-back differs: %+v", ch)
 	}
 }
+
+// The names a skip stands for are written and read back, and a skip with
+// none is written as it always was: a snapshot of a cluster where nothing
+// owns a Service has the digest it had.
+func TestSkipNamesRoundTrip(t *testing.T) {
+	plain := Snapshot{Platform: "kubernetes", Skips: []Skip{{Resource: "core/v1/pods", Namespace: "shop", Name: "*", Reason: "owned by Deployment/api, whose controller recreates it"}}}
+	named := plain
+	named.Skips = append([]Skip{}, plain.Skips...)
+	named.Skips = append(named.Skips, Skip{Resource: "core/v1/services", Namespace: "shop", Name: "*", Reason: "owned by Operand/op, whose controller recreates it", Names: []string{"hook", "metrics"}})
+
+	dir := t.TempDir()
+	for name, s := range map[string]Snapshot{"plain": plain, "named": named} {
+		if err := s.Write(filepath.Join(dir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cov, _ := os.ReadFile(filepath.Join(dir, "plain", "coverage.yaml"))
+	if strings.Contains(string(cov), "names:") {
+		t.Errorf("a skip with no names is written with the key:\n%s", cov)
+	}
+	got, err := Read(filepath.Join(dir, "named"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, sk := range got.Skips {
+		names = append(names, sk.Names...)
+	}
+	if strings.Join(names, " ") != "hook metrics" {
+		t.Errorf("names read back: %q", names)
+	}
+}

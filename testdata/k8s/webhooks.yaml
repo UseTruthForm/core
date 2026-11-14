@@ -1,0 +1,258 @@
+# Webhooks and the Services they call, in the shapes a capture writes
+# differently: a Service in the snapshot, one an object owns, one whose
+# owner a GitOps source renders, one in a system namespace, one nowhere.
+# Read by TestWebhooksOfARealCapture, which says what each should give.
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: gadgets.example.truthform.org}
+spec:
+  group: example.truthform.org
+  scope: Namespaced
+  names: {kind: Gadget, plural: gadgets, singular: gadget, listKind: GadgetList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: applications.argoproj.io}
+spec:
+  group: argoproj.io
+  scope: Namespaced
+  names: {kind: Application, plural: applications, singular: application, listKind: ApplicationList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: helmreleases.helm.toolkit.fluxcd.io}
+spec:
+  group: helm.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: HelmRelease, plural: helmreleases, singular: helmrelease, listKind: HelmReleaseList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: plain}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: owned}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: two}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: byargo}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: byflux}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: argocd}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: flux}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: hook, namespace: plain}
+spec:
+  ports: [{port: 443}]
+  selector: {app: hook}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: hook, namespace: plain, labels: {part: answers}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: hook}}
+  template:
+    metadata: {labels: {app: hook}}
+    spec: {containers: [{name: c, image: registry.example.truthform.org/hook:1}]}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: operand, namespace: owned}
+data: {a: b}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: owned
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: operand, uid: 00000000-0000-0000-0000-000000003977, controller: true}
+spec:
+  ports: [{port: 443}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: owner-a, namespace: two}
+data: {a: b}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook-a
+  namespace: two
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: owner-a, uid: 00000000-0000-0000-0000-000000003128, controller: true}
+spec:
+  ports: [{port: 443}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: owner-b, namespace: two}
+data: {a: b}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook-b
+  namespace: two
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: owner-b, uid: 00000000-0000-0000-0000-000000007914, controller: true}
+spec:
+  ports: [{port: 443}]
+---
+apiVersion: argoproj.io/v1
+kind: Application
+metadata: {name: root, namespace: argocd}
+spec: {project: default}
+---
+apiVersion: argoproj.io/v1
+kind: Application
+metadata: {name: child, namespace: argocd, labels: {argocd.argoproj.io/instance: root}}
+spec: {project: default}
+---
+apiVersion: example.truthform.org/v1
+kind: Gadget
+metadata: {name: operand, namespace: byargo, labels: {argocd.argoproj.io/instance: child}}
+spec: {size: 1}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: byargo
+  ownerReferences:
+    - {apiVersion: example.truthform.org/v1, kind: Gadget, name: operand, uid: 00000000-0000-0000-0000-000000003977, controller: true}
+spec:
+  ports: [{port: 443}]
+---
+apiVersion: helm.toolkit.fluxcd.io/v1
+kind: HelmRelease
+metadata: {name: gadgets, namespace: flux}
+spec: {interval: 5m}
+---
+apiVersion: example.truthform.org/v1
+kind: Gadget
+metadata: {name: operand, namespace: byflux, labels: {helm.toolkit.fluxcd.io/name: gadgets, helm.toolkit.fluxcd.io/namespace: flux}}
+spec: {size: 1}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: byflux
+  ownerReferences:
+    - {apiVersion: example.truthform.org/v1, kind: Gadget, name: operand, uid: 00000000-0000-0000-0000-000000003977, controller: true}
+spec:
+  ports: [{port: 443}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: operand, namespace: kube-system}
+data: {a: b}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hook
+  namespace: kube-system
+  ownerReferences:
+    - {apiVersion: v1, kind: ConfigMap, name: operand, uid: 00000000-0000-0000-0000-000000003977, controller: true}
+spec:
+  ports: [{port: 443}]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata: {name: matrix}
+webhooks:
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: plain.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: plain, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: owned.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: owned, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: owned-other.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: owned, name: not-the-owners}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: two-a.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: two, name: hook-a}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: two-b.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: two, name: hook-b}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: byargo.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: byargo, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: byflux.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: byflux, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: system.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: kube-system, name: hook}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: nowhere.example.truthform.org
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: plain, name: nowhere}}
+  # No rules: it is asked about nothing, and so stops nothing on the test server.
+  - name: soft.example.truthform.org
+    failurePolicy: Ignore
+    sideEffects: None
+    admissionReviewVersions: [v1]
+    clientConfig: {service: {namespace: plain, name: nowhere}}

@@ -799,27 +799,55 @@ run, a resume after a failure, an update, and whatever is done in that
 cluster next.
 
 This is asked of every Kubernetes restore, with a scope or with none,
-and of any Service, wherever it is. A Service will not answer when:
+and of any Service, wherever it is. It is one question, "is it there
+once the restore has run?", asked of the Service and then of whatever
+is said to make it, as far up as that goes:
 
-- it is not brought, whatever took it out (the scope, `--leave-out`, a
-  capture that never had it), and nothing that is brought makes it: no
-  GitOps source, no Crossplane composite, no object that owns it (a
-  capture lists what an object owns by namespace, so with an owner
-  brought any Service of that namespace is taken to be there). One the
-  capture left as the platform's own is taken to be there;
-- it is brought, and every workload of the snapshot that its selector
-  picks is held by the scope (`hold: true`), left out of it, or taken
-  out with `--leave-out`. A Job is not counted as answering. Where the snapshot has no
-  such workload (an operator makes the pods), that cannot be told, and
-  the Service is taken to answer.
+- an object the restore brings is there. A Service that is brought
+  answers unless every workload of the snapshot that its selector picks
+  is held by the scope (`hold: true`), left out of it, or taken out with
+  `--leave-out`; a Job is not counted, and where the snapshot has no
+  such workload (an operator makes the pods) the Service is taken to
+  answer;
+- an object of the snapshot that this restore takes out (the scope,
+  `--leave-out`) is not there;
+- what the capture left to something else is there if that is: the
+  object that owns it, the Flux HelmRelease or Kustomization or Argo CD
+  application that makes it, the Crossplane composite that composes it,
+  each asked the same question in turn (an owner a HelmRelease renders,
+  which a Kustomization applies, is there if the Kustomization is). One
+  of these that is brought and held makes nothing, and what it would
+  have made is not there;
+- what the capture left as the platform's or the cluster's own (a
+  system namespace, the cloud's objects) is there;
+- what is in no snapshot and left to nothing is not there.
 
-`plan scope --check` exits 2 for one, so it is found before the restore;
-with no scope, `plan rebuild` lists it, on stderr and in the plan
-("Webhooks with nothing to answer them"; `webhooksWithoutService` with
-`--json`), and exits as it always does. A restore with no scope that ran
-before this version can be refused now. A diff still runs. With `--json` each webhook listed under
-`scope.webhooksWithoutService` says `why` (`notBrought` or `held`) and
-whether it `blocks`, and a refused restore's document lists them as
+**There are three answers, and only one refuses.** The Service will
+answer, and nothing is said. It will not, and the restore is refused.
+Or the snapshot does not say, and that is said as a NOTE, apart, and
+refuses nothing: a snapshot taken before this version lists what an
+object owns by namespace and without the names, so whether a webhook's
+Service is one of them is not in it. A capture taken now lists the
+Services by name (`names` on the skip, in `coverage.yaml`) and settles
+it. Pods and the rest are still listed once per owner: their names are
+the cluster's.
+
+Writing the names changes one file of a snapshot, `coverage.yaml`, and
+only for a cluster where an object owns a Service: its digest then
+differs from one taken before. A diff or a compare reads objects, and
+shows no difference for it; an earlier version reads such a snapshot as
+it reads any other, and a snapshot taken before is read by this one.
+
+`plan scope --check` exits 2 for one that refuses, so it is found before
+the restore; with no scope, `plan rebuild` lists it, on stderr and in
+the plan ("Webhooks with nothing to answer them";
+`webhooksWithoutService` with `--json`), and exits as it always does.
+`plan rebuild` and `diff` take `--leave-out` as a restore does, and say
+what the restore would. A restore with no scope that ran before this
+version can be refused now. A diff still runs, and says it as a NOTE. With `--json` each webhook listed under
+`scope.webhooksWithoutService` says `why` (`notBrought`, `held`,
+`leftOut`, or `unknown` where the snapshot does not say) and whether it
+`blocks`, and a refused restore's document lists them as
 `webhooksWithoutService`. Bring what answers at the Service, leave the
 webhook out with `--leave-out`, or, knowing what it will refuse, accept
 it in a scope file, which may hold nothing else (such a file narrows

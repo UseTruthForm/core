@@ -1,6 +1,7 @@
 package kube
 
 import (
+	"fmt"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"reflect"
 	"slices"
@@ -930,7 +931,7 @@ func TestAWebhooksServiceWillNotAnswer(t *testing.T) {
 			without.Objects = append(without.Objects, o)
 		}
 	}
-	if got := said(webhooksWithoutService(s, s, without, nil)); !slices.Contains(got, "policy held blocks") || slices.Contains(got, "two held blocks") {
+	if got := said(webhooksWithoutService(s, s, without, nil)); !slices.Contains(got, "policy leftOut blocks") || slices.Contains(got, "two held blocks") || slices.Contains(got, "two leftOut blocks") {
 		t.Errorf("the workload left out and the Service brought: %q", got)
 	}
 	// A scope file may do no more than accept, and accepts by
@@ -978,7 +979,7 @@ func TestAWebhooksServiceMadeBySomethingElse(t *testing.T) {
 		released("apps/v1", "Deployment", "shop", "web", "web", map[string]any{"spec": map[string]any{"replicas": float64(1), "template": map[string]any{"metadata": map[string]any{"labels": map[string]any{"app": "web"}}}}}),
 	}
 	skips := []snapshot.Skip{
-		skipOf("", "v1", "services", "operated", "*", ownedReason("Operand", "operand")),
+		owned("operated", ownedReason("Operand", "operand"), "webhook-service", "metrics"),
 		skipOf("", "v1", "services", "composed", "svc", "composed by Crossplane composite thing-abc12; restoring the composite recreates it"),
 	}
 	names := func(l []ScopeWebhook) (out []string) {
@@ -1011,7 +1012,7 @@ func TestAWebhooksServiceMadeBySomethingElse(t *testing.T) {
 	}}
 	taken := whole
 	taken.Objects = whole.Objects[:2]
-	if got := names(WebhooksWithoutService(whole, taken)); !reflect.DeepEqual(got, []string{"web held"}) {
+	if got := names(WebhooksWithoutService(whole, taken)); !reflect.DeepEqual(got, []string{"web leftOut"}) {
 		t.Errorf("the workload taken out before: %q", got)
 	}
 	if got := names(WebhooksWithoutService(whole, whole)); len(got) != 0 {
@@ -1036,5 +1037,204 @@ func TestAWebhooksServiceMadeBySomethingElse(t *testing.T) {
 	}
 	if _, _, err := Narrow(only, Scope{WithoutService: []string{"MutatingWebhookConfiguration/g*"}}); err != nil {
 		t.Errorf("a name with a pattern after it: %v", err)
+	}
+}
+
+// owned is the skip a capture writes for the Services an object owns in
+// a namespace: one skip, named "*", with their names.
+func owned(ns, reason string, names ...string) snapshot.Skip {
+	sk := skipOf("", "v1", "services", ns, "*", reason)
+	sk.Names = names
+	return sk
+}
+
+// The one question is asked again of whatever makes a thing, however far
+// that goes: a chain three sources deep, one cut half way, one that
+// comes back to itself, an owner another object owns.
+func TestWhetherAServiceIsThereIsAskedAllTheWayUp(t *testing.T) {
+	hook := func(svc string) snapshot.Object {
+		return planObject("admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration", "", "hooks", map[string]any{"webhooks": []any{
+			map[string]any{"name": "h", "failurePolicy": "Fail", "clientConfig": map[string]any{"service": map[string]any{"namespace": "app", "name": svc}}}}})
+	}
+	const (
+		byKs = "applied by Flux Kustomization flux/%s; restoring it recreates this"
+		byHR = "rendered by Flux HelmRelease flux/%s; restoring the HelmRelease recreates it"
+	)
+	ks := func(name string) snapshot.Object {
+		return planObject("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "flux", name, map[string]any{"spec": map[string]any{"path": "./"}})
+	}
+	// root (an object) applies the Kustomization mid, which applies the
+	// HelmRelease leaf, which renders the Operand that owns the Service.
+	chain := []snapshot.Skip{
+		skipOf("kustomize.toolkit.fluxcd.io", "v1", "kustomizations", "flux", "mid", fmt.Sprintf(byKs, "root")),
+		skipOf("helm.toolkit.fluxcd.io", "v2", "helmreleases", "flux", "leaf", fmt.Sprintf(byKs, "mid")),
+		skipOf("example.com", "v1", "operands", "app", "operand", fmt.Sprintf(byHR, "leaf")),
+		owned("app", ownedReason("Operand", "operand"), "hook"),
+	}
+	why := func(s, out snapshot.Snapshot, held map[string]bool) string {
+		got := webhooksWithoutService(s, s, out, held)
+		if len(got) == 0 {
+			return ""
+		}
+		return got[0].Why
+	}
+	deep := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook"), ks("root")}, Skips: chain}
+	if got := why(deep, deep, nil); got != "" {
+		t.Errorf("four steps up to a source that is brought: %q", got)
+	}
+	// The same with the root not brought, held, and never in the snapshot.
+	noRoot := deep
+	noRoot.Objects = deep.Objects[:1]
+	if got := why(deep, noRoot, nil); got != WhyNotBrought {
+		t.Errorf("the root taken out: %q", got)
+	}
+	if got := why(deep, deep, map[string]bool{"Kustomization flux/root": true}); got != WhyNotBrought {
+		t.Errorf("the root held: %q", got)
+	}
+	if got := why(noRoot, noRoot, nil); got != WhyNotBrought {
+		t.Errorf("no root in the snapshot: %q", got)
+	}
+	// Cut half way: the middle of the chain is an object of the snapshot
+	// that the restore leaves out, though the root is brought.
+	cut := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook"), ks("root"), ks("mid")}, Skips: chain[1:]}
+	if got := why(cut, cut, nil); got != "" {
+		t.Errorf("the middle an object, and brought: %q", got)
+	}
+	cutOut := cut
+	cutOut.Objects = cut.Objects[:2]
+	if got := why(cut, cutOut, nil); got != WhyNotBrought {
+		t.Errorf("the middle taken out, the root brought: %q", got)
+	}
+	// A chain that comes back to itself ends, and makes nothing.
+	loop := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook")}, Skips: []snapshot.Skip{
+		skipOf("kustomize.toolkit.fluxcd.io", "v1", "kustomizations", "flux", "a", fmt.Sprintf(byKs, "b")),
+		skipOf("kustomize.toolkit.fluxcd.io", "v1", "kustomizations", "flux", "b", fmt.Sprintf(byKs, "a")),
+		skipOf("", "v1", "services", "app", "hook", fmt.Sprintf(byKs, "a")),
+	}}
+	if got := why(loop, loop, nil); got != WhyNotBrought {
+		t.Errorf("a chain that comes back to itself: %q", got)
+	}
+	selfOwned := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook")}, Skips: []snapshot.Skip{
+		owned("app", ownedReason("Operand", "operand"), "hook"),
+		skipOf("example.com", "v1", "operands", "app", "operand", ownedReason("Operand", "operand")),
+	}}
+	if got := why(selfOwned, selfOwned, nil); got != WhyNotBrought {
+		t.Errorf("an owner said to own itself: %q", got)
+	}
+	// The owner's kind is matched: a skip of that name and another kind
+	// is not it, in that namespace or any other.
+	wrong := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook")}, Skips: []snapshot.Skip{
+		owned("app", ownedReason("Operand", "operand"), "hook"),
+		skipOf("example.com", "v1", "widgets", "app", "operand", "in system namespace app"),
+		skipOf("example.com", "v1", "operands", "elsewhere", "operand", "in system namespace elsewhere"),
+		skipOf("example.com", "v1", "operands", "app", "another", "in system namespace app"),
+	}}
+	if got := why(wrong, wrong, nil); got != WhyNotBrought {
+		t.Errorf("a skip of another kind, namespace or name: %q", got)
+	}
+	// By what the capture recorded of a resource, where its name does
+	// not give the kind.
+	odd := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook")},
+		Coverage: []snapshot.Coverage{{Resource: "example.com/v1/operandi", Kind: "Operand"}},
+		Skips: []snapshot.Skip{
+			owned("app", ownedReason("Operand", "operand"), "hook"),
+			skipOf("example.com", "v1", "operandi", "app", "operand", "in system namespace app"),
+		}}
+	if got := why(odd, odd, nil); got != "" {
+		t.Errorf("the kind by what the capture recorded: %q", got)
+	}
+	// An object of that name and another kind is not the owner.
+	other := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook"), planObject("example.com/v1", "Widget", "app", "operand", nil)},
+		Skips: []snapshot.Skip{owned("app", ownedReason("Operand", "operand"), "hook")}}
+	if got := why(other, other, nil); got != WhyNotBrought {
+		t.Errorf("an object of the owner's name and another kind: %q", got)
+	}
+	// Where two skips cover it, one that leaves it to something brought
+	// is enough, whichever comes first.
+	for _, order := range [][]int{{0, 1}, {1, 0}} {
+		two := []snapshot.Skip{
+			skipOf("", "v1", "services", "app", "hook", fmt.Sprintf(byKs, "root")),
+			skipOf("", "v1", "services", "app", "hook", fmt.Sprintf(byKs, "gone")),
+		}
+		either := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook"), ks("root")}, Skips: []snapshot.Skip{two[order[0]], two[order[1]]}}
+		if got := why(either, either, nil); got != "" {
+			t.Errorf("two skips, in the order %v: %q", order, got)
+		}
+	}
+	// What this restore takes out is not there, though a skip of the
+	// snapshot's from before could be read as covering it: a Service of
+	// the snapshot, and an owner of it.
+	old := skipOf("", "v1", "services", "app", "*", ownedReason("Operand", "operand")) // with no names
+	svcTaken := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook"), planObject("example.com/v1", "Operand", "app", "operand", nil), planObject("v1", "Service", "app", "hook", nil)}, Skips: []snapshot.Skip{old}}
+	svcOut := svcTaken
+	svcOut.Objects = svcTaken.Objects[:2]
+	if got := why(svcTaken, svcOut, nil); got != WhyNotBrought {
+		t.Errorf("a Service of the snapshot taken out, beside a skip with no names: %q", got)
+	}
+	ownerTaken := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook"), planObject("example.com/v1", "Operand", "app", "operand", nil), planObject("example.com/v1", "Thing", "app", "t", nil)}, Skips: []snapshot.Skip{
+		owned("app", ownedReason("Operand", "operand"), "hook"),
+		skipOf("example.com", "v1", "operands", "app", "*", ownedReason("Thing", "t")), // with no names
+	}}
+	ownerOut := ownerTaken
+	ownerOut.Objects = []snapshot.Object{ownerTaken.Objects[0], ownerTaken.Objects[2]}
+	if got := why(ownerTaken, ownerOut, nil); got != WhyNotBrought {
+		t.Errorf("an owner of the snapshot taken out, beside a skip with no names: %q", got)
+	}
+	// An owner with no namespace owns across them; a Crossplane composite
+	// is asked the same question, held and left to something else too.
+	cluster := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook"), planObject("example.com/v1", "Operand", "", "operand", nil)},
+		Skips: []snapshot.Skip{owned("app", ownedReason("Operand", "operand"), "hook")}}
+	if got := why(cluster, cluster, nil); got != "" {
+		t.Errorf("an owner with no namespace: %q", got)
+	}
+	if got := why(cluster, cluster, map[string]bool{"Operand /operand": true}); got != WhyNotBrought {
+		t.Errorf("an owner with no namespace, held: %q", got)
+	}
+	composed := "composed by Crossplane composite thing-abc12; restoring the composite recreates it"
+	xr := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook"), planObject("example.org/v1", "XThing", "team", "thing-abc12", nil)},
+		Skips: []snapshot.Skip{skipOf("", "v1", "services", "app", "hook", composed)}}
+	if got := why(xr, xr, nil); got != "" {
+		t.Errorf("a composite with a namespace, brought: %q", got)
+	}
+	if got := why(xr, xr, map[string]bool{"XThing team/thing-abc12": true}); got != WhyNotBrought {
+		t.Errorf("a composite held: %q", got)
+	}
+	xrSkipped := snapshot.Snapshot{Platform: "kubernetes", Objects: []snapshot.Object{hook("hook"), ks("root")}, Skips: []snapshot.Skip{
+		skipOf("", "v1", "services", "app", "hook", composed),
+		skipOf("example.org", "v1", "xthings", "", "thing-abc12", fmt.Sprintf(byKs, "root")),
+	}}
+	if got := why(xrSkipped, xrSkipped, nil); got != "" {
+		t.Errorf("a composite a source applies: %q", got)
+	}
+}
+
+// A capture lists by name the Services an object owns, and nothing else
+// it owns: a pod's name is new with every rollout, and listed, an
+// unchanged cluster would be captured differently every time.
+func TestOwnedServicesAreListedByName(t *testing.T) {
+	own := newOwnership()
+	pods := resourceID(schema.GroupVersionResource{Version: "v1", Resource: "pods"})
+	own.skips = []ownedSkip{
+		{resource: servicesResource, ns: "app", kind: "Operand", name: "op", self: "metrics"},
+		{resource: servicesResource, ns: "app", kind: "Operand", name: "op", self: "hook"},
+		{resource: servicesResource, ns: "app", kind: "Operand", name: "other", self: "third"},
+		{resource: pods, ns: "app", kind: "Operand", name: "op", self: "op-7d9f-abcde"},
+	}
+	var snap snapshot.Snapshot
+	own.record(&snap)
+	got := map[string][]string{}
+	for _, sk := range snap.Skips {
+		if sk.Name != "*" {
+			t.Errorf("%s: named %q", sk.Resource, sk.Name)
+		}
+		got[sk.Resource+" "+sk.Reason] = sk.Names
+	}
+	want := map[string][]string{
+		servicesResource + " " + ownedReason("Operand", "op"):    {"hook", "metrics"},
+		servicesResource + " " + ownedReason("Operand", "other"): {"third"},
+		pods + " " + ownedReason("Operand", "op"):                nil,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("the skips of what is owned:\n got %q\nwant %q", got, want)
 	}
 }

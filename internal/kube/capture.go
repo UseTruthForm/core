@@ -202,7 +202,7 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 					own.owner[ns+"|"+gvr.Group+"|"+kind+"|"+strOf(md["name"])] = [3]string{g, k, n}
 					if reason == ownedReason(k, n) {
 						// Listed and counted once its owner's owner is known.
-						own.skips = append(own.skips, ownedSkip{resource: resourceID(gvr), ns: ns, group: g, kind: k, name: n})
+						own.skips = append(own.skips, ownedSkip{resource: resourceID(gvr), ns: ns, group: g, kind: k, name: n, self: strOf(md["name"])})
 						continue
 					}
 				}
@@ -272,7 +272,9 @@ type ownership struct {
 
 func newOwnership() *ownership { return &ownership{owner: map[string][3]string{}} }
 
-type ownedSkip struct{ resource, ns, group, kind, name string }
+// ownedSkip is an owned object: its resource and namespace, its
+// controller (group, kind, name), and its own name (self).
+type ownedSkip struct{ resource, ns, group, kind, name, self string }
 
 // root follows an owner up to the controller nothing owns.
 func (o *ownership) root(ns, group, kind, name string) (string, string) {
@@ -298,6 +300,19 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 	for i, c := range snap.Coverage {
 		byType[c.Resource] = i
 	}
+	// The Services an owner has are listed by name with its skip: a
+	// Service keeps its name, and something may call it by that name (a
+	// webhook), so that whether it will be there can be told. Pods and
+	// the rest are not: their names are the cluster's, new with every
+	// rollout.
+	names := map[string][]string{}
+	for _, sk := range o.skips {
+		if sk.resource == servicesResource {
+			k, n := o.root(sk.ns, sk.group, sk.kind, sk.name)
+			key := sk.resource + "\x00" + sk.ns + "\x00" + ownedReason(k, n)
+			names[key] = append(names[key], sk.self)
+		}
+	}
 	for _, sk := range o.skips {
 		k, n := o.root(sk.ns, sk.group, sk.kind, sk.name)
 		reason := ownedReason(k, n)
@@ -306,7 +321,8 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 			continue
 		}
 		seen[key] = true
-		snap.Skips = append(snap.Skips, snapshot.Skip{Resource: sk.resource, Namespace: sk.ns, Name: "*", Reason: reason})
+		sort.Strings(names[key])
+		snap.Skips = append(snap.Skips, snapshot.Skip{Resource: sk.resource, Namespace: sk.ns, Name: "*", Reason: reason, Names: names[key]})
 		if i, ok := byType[sk.resource]; ok {
 			c := &snap.Coverage[i]
 			if c.Skipped == nil {

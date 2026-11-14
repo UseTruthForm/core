@@ -214,6 +214,20 @@ func TestAHoldThatIsNotWholeDoesNotEndZero(t *testing.T) {
 
 	srv := kubetest.Start(t, "notheld")
 	ctx := context.Background()
+	// With an object that could not be applied too, both are said: 3
+	// alone does not say which.
+	bare := s
+	bare.Objects = s.Objects[1:] // without the definition
+	bareDir := filepath.Join(t.TempDir(), "cluster")
+	if err := bare.Write(bareDir); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, _ = output(t, func() int {
+		return restore(ctx, []string{"--kubeconfig", srv.Kubeconfig, "--context", srv.Context, "--from", bareDir, "--scope", notWhole})
+	})
+	if code != 3 || !strings.Contains(stdout, "NOT APPLIED") || !strings.Contains(stdout, "applied 2 of 3 objects") || !strings.Contains(stdout, "were brought not held (see the NOTE above): Gadget shop/g") {
+		t.Errorf("restore with a failure and a hold that is not whole: exit %d\n%s", code, stdout)
+	}
 	base := []string{"--kubeconfig", srv.Kubeconfig, "--context", srv.Context, "--from", dir}
 	code, stdout, stderr := output(t, func() int { return restore(ctx, append(base, "--scope", notWhole)) })
 	if code != 3 || !strings.Contains(stdout, "applied 4 of 4 objects") || !strings.Contains(stdout, "1 objects under hold: true were brought not held (see the NOTE above): Gadget shop/g") {

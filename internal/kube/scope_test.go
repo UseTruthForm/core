@@ -1196,6 +1196,11 @@ func TestWhetherAServiceIsThereIsAskedAllTheWayUp(t *testing.T) {
 	if got := why(xr, xr, nil); got != "" {
 		t.Errorf("a composite with a namespace, brought: %q", got)
 	}
+	xrOut := xr
+	xrOut.Objects = xr.Objects[:1]
+	if got := why(xr, xrOut, nil); got != WhyNotBrought {
+		t.Errorf("a composite with a namespace, taken out: %q", got)
+	}
 	if got := why(xr, xr, map[string]bool{"XThing team/thing-abc12": true}); got != WhyNotBrought {
 		t.Errorf("a composite held: %q", got)
 	}

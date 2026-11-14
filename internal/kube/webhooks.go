@@ -144,6 +144,11 @@ func (a *after) skipped(name string, of func(snapshot.Skip) bool) there {
 			if !slices.Contains(sk.Names, name) {
 				continue
 			}
+		case sk.Name == "*" && systemNamespaces[sk.Namespace]:
+			// In a system namespace it is the platform's whichever
+			// it is, and a cluster has it.
+			best = thereYes
+			continue
 		case sk.Name == "*":
 			// What an object owns, listed with no names: a snapshot
 			// from before they were written. Whether this is one of

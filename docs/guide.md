@@ -834,7 +834,9 @@ the cluster's.
 
 Writing the names changes one file of a snapshot, `coverage.yaml`, and
 only for a cluster where an object owns a Service: its digest then
-differs from one taken before. A diff or a compare reads objects, and
+differs from one taken before, though nothing in the cluster changed.
+**A pipeline that pins a digest, or compares one capture's with the
+last, sees that once, at the first capture with this version.** A diff or a compare reads objects, and
 shows no difference for it; an earlier version reads such a snapshot as
 it reads any other, and a snapshot taken before is read by this one.
 

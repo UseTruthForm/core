@@ -133,14 +133,17 @@ func TestWebhooksOfARealCapture(t *testing.T) {
 			want: with(map[string]string{"byflux": kube.WhyNotBrought}), blocks: []string{"byflux", "nowhere", "owned-other"}},
 		{name: "the HelmRelease held", whole: snap, scope: ptr(kube.Scope{Narrow: []kube.ScopeEntry{{Namespaces: []string{"flux"}, Objects: []string{"HelmRelease/*"}, Hold: true}}}),
 			want: with(map[string]string{"byflux": kube.WhyNotBrought}), blocks: []string{"byflux", "nowhere", "owned-other"}},
+		{name: "the composite taken out, which has a namespace", whole: snap, taken: []string{"Gadget/composed/thing-abc12"},
+			want: with(map[string]string{"composed": kube.WhyNotBrought}), blocks: []string{"composed", "nowhere", "owned-other"}},
 		{name: "a snapshot from before the names were written", whole: before,
 			// Whether a Service is one an owner has is not said: every
 			// one in a namespace where an object owns Services is open,
-			// the one no owner has among them, and none refuses.
-			want: with(map[string]string{"owned": kube.WhyUnknown, "owned-other": kube.WhyUnknown, "two-a": kube.WhyUnknown, "two-b": kube.WhyUnknown, "byargo": kube.WhyUnknown, "byflux": kube.WhyUnknown, "system": kube.WhyUnknown}), blocks: []string{"nowhere"}},
+			// the one no owner has among them, and none refuses. In a
+			// system namespace it is the platform's either way.
+			want: with(map[string]string{"owned": kube.WhyUnknown, "owned-other": kube.WhyUnknown, "two-a": kube.WhyUnknown, "two-b": kube.WhyUnknown, "byargo": kube.WhyUnknown, "byflux": kube.WhyUnknown}), blocks: []string{"nowhere"}},
 		{name: "from before, and the owner taken out", whole: before, taken: []string{"ConfigMap/owned/operand"},
 			// With no owner brought, it is not there whichever it was.
-			want: with(map[string]string{"owned": kube.WhyNotBrought, "two-a": kube.WhyUnknown, "two-b": kube.WhyUnknown, "byargo": kube.WhyUnknown, "byflux": kube.WhyUnknown, "system": kube.WhyUnknown}), blocks: []string{"nowhere", "owned", "owned-other"}},
+			want: with(map[string]string{"owned": kube.WhyNotBrought, "two-a": kube.WhyUnknown, "two-b": kube.WhyUnknown, "byargo": kube.WhyUnknown, "byflux": kube.WhyUnknown}), blocks: []string{"nowhere", "owned", "owned-other"}},
 	} {
 		s := without(row.whole, row.taken...)
 		var hooks []kube.ScopeWebhook

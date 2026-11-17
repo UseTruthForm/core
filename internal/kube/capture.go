@@ -162,15 +162,8 @@ func fluxRoots(ctx context.Context, c *Clients, lists []*metav1.APIResourceList)
 					if !selfApplied(obj) {
 						continue
 					}
-					md, _ := obj["metadata"].(map[string]any)
-					spec, _ := obj["spec"].(map[string]any)
-					ref, _ := spec["sourceRef"].(map[string]any)
-					ns := strOf(ref["namespace"])
-					if ns == "" {
-						ns = strOf(md["namespace"])
-					}
-					if strOf(ref["kind"]) != "" && strOf(ref["name"]) != "" {
-						roots[strOf(ref["kind"])+"|"+ns+"|"+strOf(ref["name"])] = true
+					if ref, ok := sourceRef(obj); ok {
+						roots[ref] = true
 					}
 				}
 				if cont = ul.GetContinue(); cont == "" {
@@ -180,6 +173,21 @@ func fluxRoots(ctx context.Context, c *Clients, lists []*metav1.APIResourceList)
 		}
 	}
 	return roots
+}
+
+// sourceRef is what a Flux Kustomization reads from, as kind|namespace|name.
+func sourceRef(obj map[string]any) (string, bool) {
+	md, _ := obj["metadata"].(map[string]any)
+	spec, _ := obj["spec"].(map[string]any)
+	ref, _ := spec["sourceRef"].(map[string]any)
+	ns := strOf(ref["namespace"])
+	if ns == "" {
+		ns = strOf(md["namespace"])
+	}
+	if strOf(ref["kind"]) == "" || strOf(ref["name"]) == "" {
+		return "", false
+	}
+	return strOf(ref["kind"]) + "|" + ns + "|" + strOf(ref["name"]), true
 }
 
 func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVersionResource, kind string, cov *snapshot.Coverage, snap *snapshot.Snapshot, own *ownership) error {

@@ -322,11 +322,61 @@ func aksOwn(md map[string]any) bool {
 // CaptureRules is the version of the rules for what a Kubernetes capture
 // leaves out and why, written to every snapshot (snapshot.Snapshot.Rules).
 // Bump it with any change to what skipReason, renderedBy, root or
-// selfApplied decide: compare reads a move between captured and left out
-// only across two versions, since under one an unchanged object stays on
-// its side. Forgetting to bump it is safe: what the change moved is then
-// shown as differences, not hidden as moves.
+// selfApplied decide, and add the change to ruleChanges: compare reads a
+// move between captured and left out only from lower rules to higher, for
+// what a change between them keeps. Forgetting to is safe: what the change
+// moved is then shown as differences, not hidden as moves.
 const CaptureRules = 1
+
+// ruleChange is one change of capture rules: from version-1 to version,
+// kept says which objects a capture under the new rules keeps that one
+// under the old left out. A change that leaves out what was kept has no
+// entry: compare reads no move that way.
+type ruleChange struct {
+	version int
+	what    string
+	kept    func(o snapshot.Object, s snapshot.Snapshot) bool
+}
+
+// ruleChanges are every change of capture rules, oldest first. Snapshots
+// written before rules were recorded are 0.
+var ruleChanges = []ruleChange{
+	{version: 1, what: "a self-applied root, and the source a self-applied Kustomization names, are captured (were skipped)", kept: keptAsRoot},
+}
+
+// keptAsRoot says whether o is, in s, where GitOps starts: a source that
+// applies itself, or what a self-applying Kustomization in s reads from.
+func keptAsRoot(o snapshot.Object, s snapshot.Snapshot) bool {
+	if selfApplied(o.Body) {
+		return true
+	}
+	self := o.Kind() + "|" + o.Namespace() + "|" + o.Name()
+	for _, k := range s.Objects {
+		// selfApplied holds a Kustomization to Flux's own group.
+		if k.Kind() != "Kustomization" || !selfApplied(k.Body) {
+			continue
+		}
+		if ref, ok := sourceRef(k.Body); ok && ref == self {
+			return true
+		}
+	}
+	return false
+}
+
+// keptByRules says whether s, captured under rules hi, kept o because of a
+// change of rules after lo: each change between the two counts.
+func keptByRules(o snapshot.Object, s snapshot.Snapshot, lo, hi int) bool {
+	for _, c := range ruleChanges {
+		if c.version > lo && c.version <= hi && c.kept(o, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// Moves is what compare needs of these rules to tell a move from a
+// difference (snapshot.SplitMoved).
+var Moves = snapshot.Moves{MadeBy: MadeBy, Kept: keptByRules}
 
 // root reports whether a rendered object is where GitOps starts: a source
 // that applies itself (the Kustomization "flux bootstrap" makes, an Argo

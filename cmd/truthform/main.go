@@ -602,7 +602,7 @@ var movedObjects []snapshot.Moved
 // (snapshot.MadeElsewhere), so a diff of another platform does not call it;
 // compare does, for any. A real add or remove is still a difference.
 func differences(want, got snapshot.Snapshot, changes []snapshot.Change) []snapshot.Change {
-	real, m := snapshot.SplitMoved(want, got, changes, kube.MadeBy)
+	real, m := snapshot.SplitMoved(want, got, changes, kube.Moves)
 	movedObjects = m
 	return real
 }

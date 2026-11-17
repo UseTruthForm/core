@@ -353,7 +353,7 @@ func captureEnvironment(ctx context.Context, configPath, out string) int {
 			code = 3
 		}
 	}
-	fmt.Printf("environment %s: %d targets into %s; see %s\n", env.Name, len(results), out, filepath.Join(out, "REPORT.md"))
+	fmt.Printf("environment %s: %s into %s; see %s\n", env.Name, count(len(results), "target"), out, filepath.Join(out, "REPORT.md"))
 	return code
 }
 
@@ -470,7 +470,7 @@ func diffEnvironment(ctx context.Context, configPath, from string) int {
 			failTarget(t, fmt.Sprintf("captured with policy %q but the config now gives %q", want.Policy, got.Policy))
 			continue
 		}
-		ch, moved := snapshot.SplitMoved(want, got, compareTarget(t.Platform, want, got), kube.MadeBy)
+		ch, moved := snapshot.SplitMoved(want, got, compareTarget(t.Platform, want, got), kube.Moves)
 		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Differences: len(ch), Changes: changesJSON(ch), Moved: movedListJSON(moved)})
 		fmt.Printf("== %s (%s): %s%s\n", t.Name, t.Platform, count(len(ch), "difference"), movedNote(moved))
 		movedLines("  ", moved)

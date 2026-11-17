@@ -239,56 +239,64 @@ when there are differences, so it can gate a pipeline or raise an alert.
 `compare` does the same between two snapshots, and a diff of an environment
 (`--config`) for each target.
 
-**An object a GitOps source applies, as both captures saw it, is not a
-difference (Kubernetes).** One capture took it and the other left it out to the
-Flux HelmRelease, Flux Kustomization or Argo CD application that applies it,
-and the copy that was captured already carries that source's labels: a newer
-version of TruthForm stopped leaving out a self-applying root Kustomization, or
-an older one captured what this one leaves out. What changed is how a capture
-accounts for the object, so it is listed as `moved`, with the reason the
-capture that left it out gave, and does not change the exit code:
+**A root a change of capture rules keeps is not a difference (Kubernetes).**
+Every Kubernetes snapshot records the version of the rules it was captured
+under (`rules` in `snapshot.yaml`, outside the digest; one from before they
+were recorded counts as 0). Version 1 captures what earlier builds left out: a
+self-applying root Kustomization or Argo CD application, and the source such a
+Kustomization reads from. Between a snapshot under older rules that left one
+out and a snapshot under newer rules that captured it, in either order, the
+object is listed as `moved`, with the reason the older capture gave, and does
+not change the exit code:
 
 ```text
 moved    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root: no longer skipped (was: applied by Flux Kustomization gitops/root; restoring it recreates this), so now captured
 ```
 
-**Only across a change of capture rules.** Every Kubernetes snapshot records
-the version of the rules it was captured under (`rules` in `snapshot.yaml`,
-outside the digest). Under one version an object is captured or left out by
-what it holds and what is around it, so one that crossed was changed: two
-snapshots under the same rules never have a move, and nor does a diff of a
-snapshot this build wrote, since a diff captures with this build's rules. A
-move is read only between snapshots of different rules, or where one is from
-before rules were recorded.
+That is the only move. Each part is checked, and anything else is a
+difference:
 
-**Review the first drift after an upgrade by hand.** In that one comparison,
-an object edited while it also became, or stopped being, a GitOps root (a
-self-applying Kustomization or Argo CD application, or what such a
-Kustomization reads from) shows as moved and is not compared.
+- **Only from older rules to newer.** Under one version (two snapshots from
+  before rules were recorded among them) nothing moves: an object captured or
+  left out by what it holds and what is around it, which crossed, was changed.
+  Two old snapshots compared with each other therefore show a root one kept and
+  the other left out as a difference. And what the older rules captured and the
+  newer left out is a difference too, since no change of rules leaves out what
+  was kept: an edit that also takes away an object's root status reads that way,
+  against any baseline, however old.
+- **Only what the change keeps.** The newer snapshot must hold the object as a
+  root: one that applies itself, or what a self-applying Kustomization in it
+  reads from.
+- **Only where the captured copy agrees.** The reason the capture would give
+  the captured copy must be exactly the older side's. Otherwise, and for each
+  of these, the object is `missing` or `extra` as before, and exits 2:
 
-The check on top is the capture's own: the reason it would give the captured
-copy must be exactly the other side's. Anything else is `missing` or `extra`
-as before, and exits 2:
-
-- **Marks added or taken off in the cluster.** A namespace or a ConfigMap that
-  a GitOps tool really began to apply, its labels added since the last capture,
-  is a difference: the copy in the snapshot does not carry them, and labels
-  anyone with write access can add would otherwise hide an edit made with them.
-  The same goes for labels taken off. Merge the change once it is expected.
-- **Owned by a controller.** A capture keeps no owner references, so a move
-  across one cannot be checked.
-- **Identical to a baseline.** That skip is decided by content: an object
-  edited away from the baseline, or put back to it, crosses it.
-- **Could not be read.** Nothing was seen of it: on the target, a diff says it
-  is missing.
-- **Any other reason, on any platform**, including one added later, until it is
-  added to the list.
+  - **Marks added or taken off in the cluster.** A namespace or a ConfigMap that
+    a GitOps tool really began to apply, its labels added since the last capture,
+    is a difference: the copy in the snapshot does not carry them, and labels
+    anyone with write access can add would otherwise hide an edit made with them.
+    The same goes for labels taken off. Merge the change once it is expected.
+  - **Owned by a controller.** A capture keeps no owner references, so a move
+    across one cannot be checked.
+  - **Identical to a baseline.** That skip is decided by content: an object
+    edited away from the baseline, or put back to it, crosses it.
+  - **Could not be read.** Nothing was seen of it: on the target, a diff says it
+    is missing.
+  - **Any other reason, on any platform**, including one added later, until it is
+    added to the list.
 
 A move checks the marks on the copy, not that the source they name exists. An
-object counts as moved only when the other capture's left-out list names it by
+object counts as moved only when the older capture's left-out list names it by
 its own type, namespace and name, and every entry that names it gives the
 reason its copy does. A moved object's content is not compared, since one side
-does not hold it.
+does not hold it. So an object an older capture left out, edited and made a
+root of its own (an Argo CD application given a tracking-id naming itself),
+reads as moved. That hides nothing a snapshot shows: the older snapshot never
+held the object, and an edit to it left out, with no flip, shows in no build.
+
+**The digest detects accidents, not tampering.** It is a plain SHA-256 of the
+files: anyone who can write a snapshot can write its digest. Keep snapshots
+where only the pipeline that captures them can write.
 
 ## Restore
 

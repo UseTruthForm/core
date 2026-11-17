@@ -119,9 +119,8 @@ type Snapshot struct {
 	Policy string
 	// Rules is the version of the platform's rules for what a capture leaves
 	// out and why (kube.CaptureRules), 0 where the capture did not say
-	// (every snapshot written before it was recorded). Under one version an
-	// unchanged object is not captured on one side and left out on the
-	// other, so compare reads a move only across two versions
+	// (every snapshot written before it was recorded). Compare reads a move
+	// only from lower rules to higher, for what a change between them keeps
 	// (SplitMoved). It is written to the manifest, outside the digest: it
 	// says which rules made the files, not what the system holds.
 	Rules    int

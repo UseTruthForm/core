@@ -5,14 +5,16 @@ import (
 	"strings"
 )
 
-// Moved is an object that one snapshot captured and the other left out
-// because a GitOps source applies it (MadeElsewhere), where the captured copy
-// itself already says so. Compare sees it as missing or extra; what changed
-// is how a capture accounts for it, not what the system holds.
+// Moved is an object that a snapshot under older capture rules left out to
+// the GitOps source that applies it, and one under newer rules captured,
+// because a change of rules keeps it (a self-applying root). Compare sees it
+// as missing or extra; what changed is how a capture accounts for it, not
+// what the system holds.
 type Moved struct {
 	Key string
-	// Kind is "no longer captured" (captured in want, left out of got) or
-	// "no longer skipped" (left out of want, captured in got).
+	// Kind is "no longer captured" (captured in want, left out of got: want
+	// is the newer) or "no longer skipped" (left out of want, captured in
+	// got: got is the newer).
 	Kind string
 	// Reason is the skip's reason, as the snapshot that left it out gives it.
 	Reason string
@@ -24,58 +26,58 @@ const (
 	NoLongerSkipped  = "no longer skipped"
 )
 
-// SplitMoved takes out of changes each "missing" object that got left out
-// because a GitOps source applies it, and each "extra" object that want left
-// out for that reason, and returns them apart. What is left is what differs.
+// Moves is what SplitMoved needs to know of a platform's capture rules,
+// from the package that has them (kube.Moves).
+type Moves struct {
+	// MadeBy is the capture's own classifier: the reason it gives an object
+	// for leaving it out to the source that applies it, from the object
+	// alone, or "".
+	MadeBy func(Object) string
+	// Kept says whether s, captured under rules hi, kept o because of a
+	// change of rules after lo: o is what the rules of lo left out and a
+	// later change keeps (a self-applying root, from rules 1).
+	Kept func(o Object, s Snapshot, lo, hi int) bool
+}
+
+// SplitMoved takes out of changes what a change of capture rules moved,
+// and returns it apart. What is left is what differs.
 //
-// madeBy is the capture's own classifier: what reason it gives an object
-// for leaving it out to the source that applies it, from the object alone.
-// A move is accepted only if madeBy, run on the copy that was captured,
-// gives exactly the reason the other side's skip gives. A copy that does
-// not carry its maker's marks (a label added in the cluster since, to hide
-// an edit) was not left out for that reason, and stays a difference. A skip
-// for any other reason is never a move: one left out as identical to a
-// baseline was left out for its content, one left out as unreadable was not
-// seen, and one left out as owned by a controller cannot be checked, since a
-// capture keeps no owner references. A nil madeBy finds no moves.
+// A move is read in one direction only: the snapshot under the lower rules
+// (Snapshot.Rules; one that does not say counts as 0) left the object out,
+// and the one under the higher rules captured it because a change between
+// the two keeps it (Moves.Kept). Whichever argument each is. And the
+// capture's classifier, run on the captured copy, must give exactly the
+// skip's reason, which must be one a GitOps source gives (MadeElsewhere).
+// Anything else is a difference:
 //
-// Nor are there moves between two snapshots made under the same capture
-// rules (Snapshot.Rules): under one set of rules, an object is captured or
-// left out by what it holds and what is around it, so one that crossed was
-// changed, by its marks or its root status. A move is how a change of rules
-// shows, and is read only across one, or where a side does not say its
-// rules (a snapshot from before they were recorded). Across that one
-// comparison, an object that also became or stopped being a GitOps root
-// while being edited shows as moved: the guide says to review the first
-// drift after an upgrade by hand.
-func SplitMoved(want, got Snapshot, changes []Change, madeBy func(Object) string) ([]Change, []Moved) {
-	if madeBy == nil || !rulesDiffer(want, got) {
+//   - Under one set of rules (two old snapshots among them) nothing moves:
+//     an object captured or left out by what it holds and what is around
+//     it, which crossed, was changed.
+//   - An object captured under the lower rules and left out under the
+//     higher was not moved by any change of rules made so far, all of which
+//     keep what was left out: an edit that also took away its root status
+//     reads that way.
+//   - A skip for any other reason: one left out as identical to a baseline
+//     was left out for its content, one left out as unreadable was not
+//     seen, and one left out as owned by a controller cannot be checked,
+//     since a capture keeps no owner references.
+func SplitMoved(want, got Snapshot, changes []Change, m Moves) ([]Change, []Moved) {
+	if m.MadeBy == nil || m.Kept == nil {
 		return changes, nil
 	}
-	var gotSkips, wantSkips *skipIndex
 	var real []Change
 	var moved []Moved
 	for _, c := range changes {
-		switch c.Kind {
-		case "missing":
-			if o, ok := findObject(want, c.Key); ok {
-				if gotSkips == nil {
-					gotSkips = indexSkips(got)
-				}
-				if r, hit := gotSkips.reason(o, madeBy); hit {
-					moved = append(moved, Moved{Key: c.Key, Kind: NoLongerCaptured, Reason: r})
-					continue
-				}
+		switch {
+		case c.Kind == "missing" && want.Rules > got.Rules:
+			if r, ok := keptByRules(want, got, c.Key, m); ok {
+				moved = append(moved, Moved{Key: c.Key, Kind: NoLongerCaptured, Reason: r})
+				continue
 			}
-		case "extra":
-			if o, ok := findObject(got, c.Key); ok {
-				if wantSkips == nil {
-					wantSkips = indexSkips(want)
-				}
-				if r, hit := wantSkips.reason(o, madeBy); hit {
-					moved = append(moved, Moved{Key: c.Key, Kind: NoLongerSkipped, Reason: r})
-					continue
-				}
+		case c.Kind == "extra" && got.Rules > want.Rules:
+			if r, ok := keptByRules(got, want, c.Key, m); ok {
+				moved = append(moved, Moved{Key: c.Key, Kind: NoLongerSkipped, Reason: r})
+				continue
 			}
 		}
 		real = append(real, c)
@@ -84,19 +86,23 @@ func SplitMoved(want, got Snapshot, changes []Change, madeBy func(Object) string
 	return real, moved
 }
 
+// keptByRules is the reason lower left the object of key out, when higher,
+// under higher rules, captured it because a change of rules keeps it, and
+// its captured copy says the same.
+func keptByRules(higher, lower Snapshot, key string, m Moves) (string, bool) {
+	o, ok := findObject(higher, key)
+	if !ok || !m.Kept(o, higher, lower.Rules, higher.Rules) {
+		return "", false
+	}
+	return indexSkips(lower).reason(o, m.MadeBy)
+}
+
 // Describe says what a Moved is, in a line.
 func (m Moved) Describe() string {
 	if m.Kind == NoLongerSkipped {
 		return "no longer skipped (was: " + m.Reason + "), so now captured"
 	}
 	return "no longer captured: " + m.Reason
-}
-
-// rulesDiffer says whether a move can be read between want and got: their
-// capture rules differ, or neither says which it was made under (where one
-// does not, they differ already).
-func rulesDiffer(want, got Snapshot) bool {
-	return want.Rules != got.Rules || want.Rules == 0
 }
 
 func findObject(s Snapshot, key string) (Object, bool) {

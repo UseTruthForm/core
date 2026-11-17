@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/usetruthform/core/internal/kube"
@@ -142,109 +143,111 @@ func TestMarksAddedInTheClusterDoNotHideEdits(t *testing.T) {
 	check("compare", code, stdout)
 }
 
-// The genuine case, on a real API server: a ConfigMap a GitOps source
-// applies, which a build that did not yet leave such objects out captured
-// with the source's labels on it (made here in the same shape, from this
-// capture), and which this build leaves out to that source. The copy says
-// what the skip says, so it is moved, by diff and an environment's diff,
-// and is not a difference; a deletion beside it still is.
-func TestMovedWhereTheCapturedCopySaysSo(t *testing.T) {
-	srv := kubetest.Start(t, "moved")
-	settle(t, srv)
+// The genuine case, on a real API server: a self-applying root
+// Kustomization and the GitRepository it reads from, which a build from
+// before rules were recorded left out (made here in that shape, from this
+// capture: no rules, the two as skips), and which this build keeps. The
+// rules rose and a change between them keeps both, and each copy says what
+// its skip says, so diff and an environment's diff say they moved and are
+// not differences; a deletion beside them still is one.
+func TestMovedWhereTheRulesChanged(t *testing.T) {
+	w := newRootFlipWorld(t, "moved", "gitops")
+	ks := serveCRD(t, w.dyn, "kustomize.toolkit.fluxcd.io", "Kustomization", "kustomizations")
+	repos := serveCRD(t, w.dyn, "source.toolkit.fluxcd.io", "GitRepository", "gitrepositories")
+	by := map[string]any{"kustomize.toolkit.fluxcd.io/name": "root", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}
+	w.create(ks, map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization",
+		"metadata": map[string]any{"name": "root", "namespace": "gitops", "labels": by},
+		"spec":     map[string]any{"path": "./cluster", "sourceRef": map[string]any{"kind": "GitRepository", "name": "repo"}}})
+	w.create(repos, map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
+		"metadata": map[string]any{"name": "repo", "namespace": "gitops", "labels": by},
+		"spec":     map[string]any{"url": "https://git.example.com/good.git"}})
 	ctx := context.Background()
-	w, err := kube.Connect(srv.Kubeconfig, srv.Context, false)
+	cms := schema.GroupVersionResource{Version: "v1", Resource: "configmaps"}
+	w.create(cms, map[string]any{"apiVersion": "v1", "kind": "ConfigMap", "metadata": map[string]any{"name": "plain", "namespace": "gitops"}, "data": map[string]any{"b": "2"}})
+	w.captureBefore(false)
+	why := snapshot.FluxKustomizationReason("gitops", "root")
+	old, err := snapshot.Read(w.before)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs := kubernetes.NewForConfigOrDie(w.Config)
-	flux := map[string]string{"kustomize.toolkit.fluxcd.io/name": "root", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}
-	if _, err := cs.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "shop"}}, metav1.CreateOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	for _, cm := range []*corev1.ConfigMap{
-		{ObjectMeta: metav1.ObjectMeta{Name: "synced", Namespace: "shop", Labels: flux}, Data: map[string]string{"a": "1"}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "plain", Namespace: "shop"}, Data: map[string]string{"b": "2"}},
-	} {
-		if _, err := cs.CoreV1().ConfigMaps("shop").Create(ctx, cm, metav1.CreateOptions{}); err != nil {
-			t.Fatal(err)
+	var objects []snapshot.Object
+	for _, o := range old.Objects {
+		switch o.Key() {
+		case "kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root", "source.toolkit.fluxcd.io/v1|GitRepository|gitops|repo":
+		default:
+			objects = append(objects, o)
 		}
 	}
-	dir := t.TempDir()
-	cfg := writeFile(t, dir, "env.yaml", "name: shop\ntargets:\n  - {name: cluster, platform: kubernetes, kubeconfig: '"+srv.Kubeconfig+"', context: "+srv.Context+"}\n")
-	env := filepath.Join(dir, "env")
-	if code := captureEnvironment(ctx, cfg, env); code != 0 {
-		t.Fatalf("capture: exit %d", code)
-	}
-	before := filepath.Join(env, "cluster")
-	wantSkip(t, before, "v1|ConfigMap|shop|synced", true)
-	// As the older build captured it: the object, labels and all, and no skip.
-	old, err := snapshot.Read(before)
-	if err != nil {
+	old.Objects, old.Rules = objects, 0
+	old.Skips = append(old.Skips,
+		snapshot.Skip{Resource: "kustomize.toolkit.fluxcd.io/v1/kustomizations", Namespace: "gitops", Name: "root", Reason: why},
+		snapshot.Skip{Resource: "source.toolkit.fluxcd.io/v1/gitrepositories", Namespace: "gitops", Name: "repo", Reason: why})
+	if err := old.Write(w.before); err != nil {
 		t.Fatal(err)
 	}
-	var skips []snapshot.Skip
-	for _, sk := range old.Skips {
-		if sk.Name != "synced" {
-			skips = append(skips, sk)
-		}
-	}
-	old.Skips = skips
-	old.Rules = 0 // that build did not record its rules
-	old.Objects = append(old.Objects, snapshot.Object{Body: map[string]any{"apiVersion": "v1", "kind": "ConfigMap",
-		"metadata": map[string]any{"name": "synced", "namespace": "shop", "labels": map[string]any{"kustomize.toolkit.fluxcd.io/name": "root", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}},
-		"data":     map[string]any{"a": "1"}}})
-	if err := old.Write(before); err != nil {
-		t.Fatal(err)
-	}
-	wantSkip(t, before, "v1|ConfigMap|shop|synced", false)
 
-	line := "moved    v1|ConfigMap|shop|synced: no longer captured: applied by Flux Kustomization gitops/root; restoring it recreates this"
-	diffArgs := []string{"--kubeconfig", srv.Kubeconfig, "--context", srv.Context, "--from", before}
+	lines := []string{
+		"moved    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root: no longer skipped (was: " + why + "), so now captured",
+		"moved    source.toolkit.fluxcd.io/v1|GitRepository|gitops|repo: no longer skipped (was: " + why + "), so now captured",
+	}
+	has := func(what, stdout string, want ...string) {
+		t.Helper()
+		for _, l := range append(append([]string{}, lines...), want...) {
+			if !strings.Contains(stdout, l) {
+				t.Errorf("%s: no %q in\n%s", what, l, stdout)
+			}
+		}
+	}
+	diffArgs := []string{"--kubeconfig", w.srv.Kubeconfig, "--context", w.srv.Context, "--from", w.before}
 	code, stdout, _ := output(t, func() int { return diff(ctx, diffArgs) })
-	if code != 0 || !strings.Contains(stdout, line) || !strings.Contains(stdout, "no differences:") || !strings.Contains(stdout, "; 1 object moved between captured and left out, which is not a difference") {
-		t.Errorf("diff: exit %d, want 0 and the move\n%s", code, stdout)
+	if code != 0 {
+		t.Errorf("diff: exit %d, want 0\n%s", code, stdout)
 	}
-	code, stdout, _ = output(t, func() int { return diffEnvironment(ctx, cfg, env) })
-	if code != 0 || !strings.Contains(stdout, "  "+line) || !strings.Contains(stdout, "== cluster (kubernetes): 0 differences; 1 object moved") {
-		t.Errorf("environment diff: exit %d, want 0 and the move\n%s", code, stdout)
+	has("diff", stdout, "no differences:", "; 2 objects moved between captured and left out, which are not differences")
+	code, stdout, _ = output(t, func() int { return diffEnvironment(ctx, w.cfg, w.env) })
+	if code != 0 {
+		t.Errorf("environment diff: exit %d, want 0\n%s", code, stdout)
 	}
+	has("environment diff", strings.ReplaceAll(stdout, "  moved", "moved"), "== cluster (kubernetes): 0 differences; 2 objects moved")
 	envDiff := func() (int, map[string]any) {
 		t.Helper()
 		var code int
-		d := asJSON(t, func() { code = diffEnvironment(ctx, cfg, env) })
+		d := asJSON(t, func() { code = diffEnvironment(ctx, w.cfg, w.env) })
 		return code, d["targets"].([]any)[0].(map[string]any)
 	}
-	if code, tgt := envDiff(); code != 0 || tgt["differences"] != float64(0) || len(tgt["changes"].([]any)) != 0 || len(tgt["moved"].([]any)) != 1 {
+	if code, tgt := envDiff(); code != 0 || tgt["differences"] != float64(0) || len(tgt["changes"].([]any)) != 0 || len(tgt["moved"].([]any)) != 2 {
 		t.Errorf("environment diff --json: exit %d, %v", code, tgt)
 	}
 
-	if err := cs.CoreV1().ConfigMaps("shop").Delete(ctx, "plain", metav1.DeleteOptions{}); err != nil {
+	if err := w.dyn.Resource(cms).Namespace("gitops").Delete(ctx, "plain", metav1.DeleteOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	code, stdout, _ = output(t, func() int { return diff(ctx, diffArgs) })
-	if code != 2 || !strings.Contains(stdout, "missing  v1|ConfigMap|shop|plain") || !strings.Contains(stdout, line) || !strings.Contains(stdout, "1 difference between") {
+	if code != 2 {
 		t.Errorf("diff after a deletion: exit %d, want 2\n%s", code, stdout)
 	}
+	has("diff after a deletion", stdout, "missing  v1|ConfigMap|gitops|plain", "1 difference between")
 	d := asJSON(t, func() { code = diff(ctx, diffArgs) })
-	if code != 2 || d["differences"] != float64(1) || len(d["changes"].([]any)) != 1 || len(d["moved"].([]any)) != 1 {
+	if code != 2 || d["differences"] != float64(1) || len(d["changes"].([]any)) != 1 || len(d["moved"].([]any)) != 2 {
 		t.Errorf("--json: exit %d, %v", code, d)
 	}
-	if m := d["moved"].([]any)[0].(map[string]any); m["kind"] != snapshot.NoLongerCaptured || m["key"] != "v1|ConfigMap|shop|synced" || m["reason"] != snapshot.FluxKustomizationReason("gitops", "root") {
+	if m := d["moved"].([]any)[0].(map[string]any); m["kind"] != snapshot.NoLongerSkipped || m["key"] != "kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root" || m["reason"] != why {
 		t.Errorf("--json moved: %v", m)
 	}
-	code, stdout, _ = output(t, func() int { return diffEnvironment(ctx, cfg, env) })
-	if code != 2 || !strings.Contains(stdout, "== cluster (kubernetes): 1 difference; 1 object moved") {
+	code, stdout, _ = output(t, func() int { return diffEnvironment(ctx, w.cfg, w.env) })
+	if code != 2 || !strings.Contains(stdout, "== cluster (kubernetes): 1 difference; 2 objects moved") {
 		t.Errorf("environment diff after a deletion: exit %d\n%s", code, stdout)
 	}
-	if code, tgt := envDiff(); code != 2 || tgt["differences"] != float64(1) || len(tgt["changes"].([]any)) != 1 || len(tgt["moved"].([]any)) != 1 {
+	if code, tgt := envDiff(); code != 2 || tgt["differences"] != float64(1) || len(tgt["changes"].([]any)) != 1 || len(tgt["moved"].([]any)) != 2 {
 		t.Errorf("environment diff --json after a deletion: exit %d, %v", code, tgt)
 	}
 }
 
-// The root case through compare, in the shape a build from before roots
-// were kept wrote it: a self-applying Kustomization that one snapshot left
-// out and the other captured, carrying its own labels, is moved both ways;
-// the same with the labels gone from the captured copy is a difference.
+// The root case through compare, in the shape a build from before rules
+// were recorded wrote it: a self-applying Kustomization it left out, which
+// this build captures with its own labels, is moved in both orders; the
+// same with the labels gone from the captured copy is a difference, and so
+// is the pair when neither says its rules.
 func TestCompareMovesASelfApplyingRoot(t *testing.T) {
 	why := snapshot.FluxKustomizationReason("gitops", "root")
 	cov := []snapshot.Coverage{{Resource: "kustomize.toolkit.fluxcd.io/v1/kustomizations", Kind: "Kustomization"}}
@@ -255,7 +258,6 @@ func TestCompareMovesASelfApplyingRoot(t *testing.T) {
 		}
 		return snapshot.Object{Body: map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization", "metadata": md, "spec": map[string]any{"path": "./cluster"}}}
 	}
-	skipped := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Coverage: cov, Skips: []snapshot.Skip{{Resource: "kustomize.toolkit.fluxcd.io/v1/kustomizations", Namespace: "gitops", Name: "root", Reason: why}}}
 	write := func(s snapshot.Snapshot) string {
 		d := filepath.Join(t.TempDir(), "s")
 		if err := s.Write(d); err != nil {
@@ -263,19 +265,20 @@ func TestCompareMovesASelfApplyingRoot(t *testing.T) {
 		}
 		return d
 	}
-	old := write(skipped)
-	for _, labelled := range []bool{true, false} {
-		now := write(snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Coverage: cov, Objects: []snapshot.Object{root(labelled)}})
-		for _, c := range []struct {
+	old := write(snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Coverage: cov, Skips: []snapshot.Skip{{Resource: "kustomize.toolkit.fluxcd.io/v1/kustomizations", Namespace: "gitops", Name: "root", Reason: why}}})
+	for _, c := range []struct {
+		labelled bool
+		rules    int
+		moves    bool
+	}{{true, kube.CaptureRules, true}, {false, kube.CaptureRules, false}, {true, 0, false}} {
+		now := write(snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Rules: c.rules, Coverage: cov, Objects: []snapshot.Object{root(c.labelled)}})
+		for _, o := range []struct {
 			from, to, kind string
 		}{{old, now, snapshot.NoLongerSkipped}, {now, old, snapshot.NoLongerCaptured}} {
-			code, stdout, _ := output(t, func() int { return compare([]string{c.from, c.to}) })
-			moved := strings.Contains(stdout, "moved    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root: "+c.kind)
-			if labelled && (code != 0 || !moved) {
-				t.Errorf("labelled root, %s: exit %d, want 0 and moved\n%s", c.kind, code, stdout)
-			}
-			if !labelled && (code != 2 || moved) {
-				t.Errorf("root without its labels, %s: exit %d, want 2 and a difference\n%s", c.kind, code, stdout)
+			code, stdout, _ := output(t, func() int { return compare([]string{o.from, o.to}) })
+			moved := strings.Contains(stdout, "moved    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root: "+o.kind)
+			if c.moves != moved || (c.moves && code != 0) || (!c.moves && code != 2) {
+				t.Errorf("labelled %v, rules %d, %s: exit %d, moved %v, want %v\n%s", c.labelled, c.rules, o.kind, code, moved, c.moves, stdout)
 			}
 		}
 	}
@@ -285,14 +288,14 @@ func TestCompareMovesASelfApplyingRoot(t *testing.T) {
 // the same run, of a diff that looks for none, does not repeat them.
 func TestReportSaysMovesOnce(t *testing.T) {
 	why := snapshot.FluxKustomizationReason("gitops", "root")
-	cov := []snapshot.Coverage{{Resource: "core/v1/namespaces", Kind: "Namespace"}}
-	ns := elsewhereObject("v1", "Namespace", "", "shop", nil)
-	ns.Body["metadata"].(map[string]any)["labels"] = map[string]any{"kustomize.toolkit.fluxcd.io/name": "root", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}
-	want := snapshot.Snapshot{Platform: "kubernetes", Coverage: cov, Objects: []snapshot.Object{ns}}
-	got := snapshot.Snapshot{Platform: "kubernetes", Coverage: cov, Skips: []snapshot.Skip{{Resource: "core/v1/namespaces", Name: "shop", Reason: why}}}
+	cov := []snapshot.Coverage{{Resource: "kustomize.toolkit.fluxcd.io/v1/kustomizations", Kind: "Kustomization"}}
+	root := snapshot.Object{Body: map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization",
+		"metadata": map[string]any{"name": "root", "namespace": "gitops", "labels": map[string]any{"kustomize.toolkit.fluxcd.io/name": "root", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}}}}
+	want := snapshot.Snapshot{Platform: "kubernetes", Coverage: cov, Skips: []snapshot.Skip{{Resource: "kustomize.toolkit.fluxcd.io/v1/kustomizations", Namespace: "gitops", Name: "root", Reason: why}}}
+	got := snapshot.Snapshot{Platform: "kubernetes", Rules: kube.CaptureRules, Coverage: cov, Objects: []snapshot.Object{root}}
 	_, first, _ := output(t, func() int { return report(differences(want, got, snapshot.Compare(want, got)), "a", "b") })
 	_, second, _ := output(t, func() int { return report(nil, "a", "c") })
-	if !strings.Contains(first, "moved    v1|Namespace||shop") || strings.Contains(second, "moved") {
+	if !strings.Contains(first, "moved    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root") || strings.Contains(second, "moved") {
 		t.Errorf("first:\n%s\nsecond:\n%s", first, second)
 	}
 }

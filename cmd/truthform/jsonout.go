@@ -116,9 +116,9 @@ func movedListJSON(ms []snapshot.Moved) []movedJSON {
 	return out
 }
 
-func emitDiff(changes []snapshot.Change, from, target string) {
+func emitDiff(changes []snapshot.Change, moved []snapshot.Moved, from, target string) {
 	doc := map[string]any{"schema": jsonSchema, "command": command, "from": from, "target": target,
-		"differences": len(changes), "changes": changesJSON(changes), "moved": movedListJSON(movedObjects), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
+		"differences": len(changes), "changes": changesJSON(changes), "moved": movedListJSON(moved), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
 	if scopeDone != nil {
 		doc["scope"] = scopeDone
 	}

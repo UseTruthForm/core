@@ -109,6 +109,15 @@ func TestMovedBetweenCaptures(t *testing.T) {
 		t.Errorf("environment diff: exit %d, want 0\n%s", code, stdout)
 	}
 	check("environment diff", strings.ReplaceAll(stdout, "  moved", "moved"), "== cluster (kubernetes): 0 differences; 2 objects moved")
+	envDiff := func() (int, map[string]any) {
+		t.Helper()
+		var code int
+		d := asJSON(t, func() { code = diffEnvironment(ctx, cfg, env) })
+		return code, d["targets"].([]any)[0].(map[string]any)
+	}
+	if code, tgt := envDiff(); code != 0 || tgt["differences"] != float64(0) || len(tgt["changes"].([]any)) != 0 || len(tgt["moved"].([]any)) != 2 {
+		t.Errorf("environment diff --json: exit %d, %v", code, tgt)
+	}
 
 	// A real removal is still one, and the moves are still apart from it.
 	if err := cs.CoreV1().ConfigMaps("shop").Delete(ctx, "plain", metav1.DeleteOptions{}); err != nil {
@@ -122,6 +131,9 @@ func TestMovedBetweenCaptures(t *testing.T) {
 	code, stdout, _ = output(t, func() int { return diffEnvironment(ctx, cfg, env) })
 	if code != 2 {
 		t.Errorf("environment diff after a deletion: exit %d, want 2\n%s", code, stdout)
+	}
+	if code, tgt := envDiff(); code != 2 || tgt["differences"] != float64(1) || len(tgt["changes"].([]any)) != 1 || len(tgt["moved"].([]any)) != 2 {
+		t.Errorf("environment diff --json after a deletion: exit %d, %v", code, tgt)
 	}
 	d := asJSON(t, func() { code = diff(ctx, diffArgs) })
 	if code != 2 || d["differences"] != float64(1) || len(d["changes"].([]any)) != 1 || len(d["moved"].([]any)) != 2 {
@@ -147,5 +159,18 @@ func wantSkip(t *testing.T, dir, key string, skipped bool) {
 	}
 	if captured == skipped {
 		t.Fatalf("%s: captured %v, want skipped %v", key, captured, skipped)
+	}
+}
+
+// A report says the moves its own comparison found, once: the next one in
+// the same run, of a diff that looks for none, does not repeat them.
+func TestReportSaysMovesOnce(t *testing.T) {
+	cov := []snapshot.Coverage{{Resource: "core/v1/namespaces", Kind: "Namespace"}}
+	want := snapshot.Snapshot{Platform: "kubernetes", Coverage: cov, Objects: []snapshot.Object{elsewhereObject("v1", "Namespace", "", "shop", nil)}}
+	got := snapshot.Snapshot{Platform: "kubernetes", Coverage: cov, Skips: []snapshot.Skip{{Resource: "core/v1/namespaces", Name: "shop", Reason: snapshot.FluxKustomizationReason("gitops", "root")}}}
+	_, first, _ := output(t, func() int { return report(differences(want, got, snapshot.Compare(want, got)), "a", "b") })
+	_, second, _ := output(t, func() int { return report(nil, "a", "c") })
+	if !strings.Contains(first, "moved    v1|Namespace||shop") || strings.Contains(second, "moved") {
+		t.Errorf("first:\n%s\nsecond:\n%s", first, second)
 	}
 }

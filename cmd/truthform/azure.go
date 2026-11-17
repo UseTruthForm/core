@@ -285,7 +285,7 @@ func diffAzure(ctx context.Context, a *azureFlags, want snapshot.Snapshot, from 
 	if err != nil {
 		return fail(err)
 	}
-	return report(differences(want, got, compareTarget("azure", want, got)), from, "azure "+a.subscription)
+	return report(compareTarget("azure", want, got), from, "azure "+a.subscription)
 }
 
 // compareTarget compares a snapshot with a capture of its target now. An Azure

@@ -309,7 +309,7 @@ func controllerRef(md map[string]any) (kind, name, group string, ok bool) {
 }
 
 func ownedReason(kind, name string) string {
-	return "owned by " + kind + "/" + name + ", whose controller recreates it"
+	return snapshot.OwnedReason(kind, name)
 }
 
 // aksOwn reports what AKS labels as its own.
@@ -363,15 +363,15 @@ func renderedBy(md map[string]any) string {
 	l := func(k string) string { return strOf(labels[k]) }
 	switch {
 	case l("helm.toolkit.fluxcd.io/name") != "":
-		return "rendered by Flux HelmRelease " + l("helm.toolkit.fluxcd.io/namespace") + "/" + l("helm.toolkit.fluxcd.io/name") + "; restoring the HelmRelease recreates it"
+		return snapshot.FluxHelmReleaseReason(l("helm.toolkit.fluxcd.io/namespace"), l("helm.toolkit.fluxcd.io/name"))
 	case l("kustomize.toolkit.fluxcd.io/name") != "":
-		return "applied by Flux Kustomization " + l("kustomize.toolkit.fluxcd.io/namespace") + "/" + l("kustomize.toolkit.fluxcd.io/name") + "; restoring it recreates this"
+		return snapshot.FluxKustomizationReason(l("kustomize.toolkit.fluxcd.io/namespace"), l("kustomize.toolkit.fluxcd.io/name"))
 	case l("argocd.argoproj.io/instance") != "" || annotation(md, "argocd.argoproj.io/tracking-id") != "":
 		app := l("argocd.argoproj.io/instance")
 		if app == "" {
 			app = strings.SplitN(annotation(md, "argocd.argoproj.io/tracking-id"), ":", 2)[0]
 		}
-		return "managed by Argo CD application " + app + "; restoring the application recreates it"
+		return snapshot.ArgoCDReason(app)
 	case l("crossplane.io/composite") != "":
 		return "composed by Crossplane composite " + l("crossplane.io/composite") + "; restoring the composite recreates it"
 	}

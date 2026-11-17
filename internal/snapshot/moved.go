@@ -5,16 +5,16 @@ import (
 	"strings"
 )
 
-// Moved is an object that one snapshot captured and the other left out on
-// purpose. Compare sees it as missing or extra, and nothing in the system
-// changed: what changed is how a capture accounts for it (a GitOps tool
-// began to apply it, or a version of the capture stopped leaving it out).
+// Moved is an object that one snapshot captured and the other left out
+// because something else makes it now: a controller that owns it, or a
+// GitOps source that applies it (MadeElsewhere). Compare sees it as missing
+// or extra; what changed is who makes it, not what the system holds.
 type Moved struct {
 	Key string
-	// Kind is "no longer captured" (captured in want, skipped in got) or
-	// "no longer skipped" (skipped in want, captured in got).
+	// Kind is "no longer captured" (captured in want, left out of got) or
+	// "no longer skipped" (left out of want, captured in got).
 	Kind string
-	// Reason is the skip's reason, as the snapshot that skipped it gives it.
+	// Reason is the skip's reason, as the snapshot that left it out gives it.
 	Reason string
 }
 
@@ -24,22 +24,22 @@ const (
 	NoLongerSkipped  = "no longer skipped"
 )
 
-// SplitMoved takes out of changes each "missing" object that got skipped and
-// each "extra" object that want skipped, and returns them apart. What is
-// left is what differs; a missing or extra object no skip names stays one.
+// SplitMoved takes out of changes each "missing" object that got left out
+// because something else makes it, and each "extra" object that want left
+// out for that reason, and returns them apart. What is left is what
+// differs. A skip for any other reason is not a move: one left out as
+// identical to a baseline was left out for its content, and one left out
+// as unreadable was not seen, so across either an object may have changed.
 func SplitMoved(want, got Snapshot, changes []Change) ([]Change, []Moved) {
 	var gotSkips, wantSkips *skipIndex
 	var real []Change
 	var moved []Moved
 	for _, c := range changes {
-		var o Object
-		var ok bool
 		switch c.Kind {
 		case "missing":
-			o, ok = findObject(want, c.Key)
-			if ok {
+			if o, ok := findObject(want, c.Key); ok {
 				if gotSkips == nil {
-					gotSkips = indexSkips(got, want)
+					gotSkips = indexSkips(got)
 				}
 				if r, hit := gotSkips.reason(o); hit {
 					moved = append(moved, Moved{Key: c.Key, Kind: NoLongerCaptured, Reason: r})
@@ -47,10 +47,9 @@ func SplitMoved(want, got Snapshot, changes []Change) ([]Change, []Moved) {
 				}
 			}
 		case "extra":
-			o, ok = findObject(got, c.Key)
-			if ok {
+			if o, ok := findObject(got, c.Key); ok {
 				if wantSkips == nil {
-					wantSkips = indexSkips(want, got)
+					wantSkips = indexSkips(want)
 				}
 				if r, hit := wantSkips.reason(o); hit {
 					moved = append(moved, Moved{Key: c.Key, Kind: NoLongerSkipped, Reason: r})
@@ -78,99 +77,65 @@ func findObject(s Snapshot, key string) (Object, bool) {
 			return o, true
 		}
 	}
-	// Compare may match keys as its platform does (Azure's without regard
-	// to case); find as loosely.
-	for _, o := range s.Objects {
-		if strings.EqualFold(o.Key(), key) {
-			return o, true
-		}
-	}
 	return Object{}, false
 }
 
-// skipIndex answers which skip, if any, names an object.
+// skipIndex answers which skip, if any, says an object is made elsewhere.
 type skipIndex struct {
-	fold bool
-	// by resource|namespace|name; a skip of "*" is under each of its Names.
-	reasons map[string]string
-	// kind -> the resources the coverage of either snapshot gives for it
+	platform string
+	// by resource|namespace|name, every reason given; a skip of "*" is
+	// under each of its Names.
+	reasons map[string][]string
+	// kind -> the resources the snapshot's coverage gives for it
 	resources map[string][]string
 }
 
-// indexSkips indexes s's skips. Coverage, of s and of other, says which
-// resource ("group/version/plural" on Kubernetes) an object's kind is.
-func indexSkips(s, other Snapshot) *skipIndex {
-	ix := &skipIndex{fold: movedFoldsCase(s.Platform) || movedFoldsCase(other.Platform), reasons: map[string]string{}, resources: map[string][]string{}}
+// indexSkips indexes s's skips. Its coverage, which lists every type it
+// left anything out of, says which resource ("group/version/plural") an
+// object's kind is.
+func indexSkips(s Snapshot) *skipIndex {
+	ix := &skipIndex{platform: s.Platform, reasons: map[string][]string{}, resources: map[string][]string{}}
 	for _, sk := range s.Skips {
 		names := []string{sk.Name}
 		if sk.Name == "*" {
-			// A skip of "*" without names stands for objects it does not name:
-			// none of them can be told from a real removal.
+			// A skip of "*" without names stands for objects it does not
+			// name: none of them can be told from a real removal.
 			names = sk.Names
 		}
 		for _, n := range names {
-			k := ix.key(sk.Resource, sk.Namespace, n)
-			if _, dup := ix.reasons[k]; !dup {
-				ix.reasons[k] = sk.Reason
-			}
+			k := sk.Resource + "|" + sk.Namespace + "|" + n
+			ix.reasons[k] = append(ix.reasons[k], sk.Reason)
 		}
 	}
-	seen := map[string]bool{}
-	for _, cov := range append(append([]Coverage(nil), s.Coverage...), other.Coverage...) {
-		if cov.Kind == "" || seen[cov.Kind+"|"+cov.Resource] {
-			continue
-		}
-		seen[cov.Kind+"|"+cov.Resource] = true
-		ix.resources[ix.norm(cov.Kind)] = append(ix.resources[ix.norm(cov.Kind)], cov.Resource)
+	for _, cov := range s.Coverage {
+		ix.resources[cov.Kind] = append(ix.resources[cov.Kind], cov.Resource)
 	}
 	return ix
 }
 
-func (ix *skipIndex) norm(s string) string {
-	if ix.fold {
-		return strings.ToLower(s)
-	}
-	return s
-}
-
-func (ix *skipIndex) key(resource, ns, name string) string {
-	return ix.norm(resource + "|" + ns + "|" + name)
-}
-
+// reason is the reason a skip gives o, when every skip that names it says
+// something else makes it.
 func (ix *skipIndex) reason(o Object) (string, bool) {
 	gv := o.APIVersion()
 	if !strings.Contains(gv, "/") {
 		gv = "core/" + gv
 	}
-	var resources []string
-	for _, r := range ix.resources[ix.norm(o.Kind())] {
-		// Kubernetes names a resource by group, version and plural; the
-		// object's kind is that resource only in its own group and version.
-		// Elsewhere the resource is the kind.
-		if strings.HasPrefix(ix.norm(r), ix.norm(gv+"/")) || ix.norm(r) == ix.norm(o.Kind()) {
-			resources = append(resources, r)
+	for _, r := range ix.resources[o.Kind()] {
+		// A resource is group/version/plural: the object's kind is it only
+		// in its own group and version.
+		if !strings.HasPrefix(r, gv+"/") {
+			continue
 		}
-	}
-	ns, name := o.Namespace(), o.Name()
-	for _, r := range resources {
-		// As a capture records a skip: in its namespace, or (where the
-		// platform has none for it, as Azure's resource groups) with the
-		// group as part of its name. Never by name alone for an object in a
-		// namespace: one of that name elsewhere is another object, and its
-		// skip would hide a real removal.
-		keys := []string{ix.key(r, "", name)}
-		if ns != "" {
-			keys = []string{ix.key(r, ns, name), ix.key(r, "", ns+"/"+name)}
+		reasons := ix.reasons[r+"|"+o.Namespace()+"|"+o.Name()]
+		if len(reasons) == 0 {
+			continue
 		}
-		for _, k := range keys {
-			if why, ok := ix.reasons[k]; ok {
-				return why, true
+		for _, why := range reasons {
+			if !MadeElsewhere(ix.platform, why) {
+				return "", false
 			}
 		}
+		return reasons[0], true
 	}
 	return "", false
 }
-
-// movedFoldsCase says whether a platform's names match without regard to
-// case: Azure Resource Manager's do.
-func movedFoldsCase(platform string) bool { return platform == "azure" }

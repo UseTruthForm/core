@@ -591,13 +591,16 @@ func schemaDiff(args []string) int {
 }
 
 // movedObjects is what the last comparison took out of its differences: the
-// objects one side captured and the other left out on purpose (a GitOps tool
-// began to apply it; a version of the capture stopped leaving it out).
+// objects one side captured and the other left out because something else
+// makes them now (a GitOps tool began to apply it; a version of the capture
+// stopped leaving it out). report says them, once.
 var movedObjects []snapshot.Moved
 
-// differences is changes without what moved between captured and skipped,
-// which it keeps in movedObjects for report to say apart. Nothing in the
-// system changed for one; a real add or remove is still a difference.
+// differences is changes without what moved between captured and left out
+// because something else makes it now, which it keeps in movedObjects for
+// report to say apart. Only a Kubernetes capture gives such a reason
+// (snapshot.MadeElsewhere), so a diff of another platform does not call it;
+// compare does, for any. A real add or remove is still a difference.
 func differences(want, got snapshot.Snapshot, changes []snapshot.Change) []snapshot.Change {
 	real, m := snapshot.SplitMoved(want, got, changes)
 	movedObjects = m
@@ -621,8 +624,11 @@ func movedNote(moved []snapshot.Moved) string {
 }
 
 func report(changes []snapshot.Change, want, got string) int {
+	moved := movedObjects
+	// Said by this report only: a later one in the same run did not find them.
+	defer func() { movedObjects = nil }()
 	if jsonOut {
-		emitDiff(changes, want, got)
+		emitDiff(changes, moved, want, got)
 	}
 	held := ""
 	if len(heldBack) > 0 {
@@ -631,9 +637,9 @@ func report(changes []snapshot.Change, want, got string) int {
 	if l := scopeLine(); l != "" {
 		held += "; " + l
 	}
-	held += movedNote(movedObjects)
+	held += movedNote(moved)
 	if len(changes) == 0 {
-		movedLines("", movedObjects)
+		movedLines("", moved)
 		fmt.Printf("no differences: %s matches %s%s\n", got, want, held)
 		return 0
 	}
@@ -645,7 +651,7 @@ func report(changes []snapshot.Change, want, got string) int {
 			fmt.Printf("%-8s %s\n", ch.Kind, ch.Key)
 		}
 	}
-	movedLines("", movedObjects)
+	movedLines("", moved)
 	fmt.Printf("%d differences between %s and %s%s\n", len(changes), want, got, held)
 	return 2
 }

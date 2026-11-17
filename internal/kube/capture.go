@@ -243,7 +243,7 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 			// (review of #41).
 			if !hasWithheld(obj) && p.matchesBaseline(obj) {
 				md, _ := obj["metadata"].(map[string]any)
-				reason := "identical to the distribution baseline; a new cluster provides it"
+				reason := baselineReason
 				snap.Skips = append(snap.Skips, snapshot.Skip{
 					Resource: resourceID(gvr), Namespace: strOf(md["namespace"]), Name: strOf(md["name"]), Reason: reason,
 				})
@@ -369,6 +369,12 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 }
 
 const helmReleasePrefix = "sh.helm.release.v1."
+
+// baselineReason is the reason for an object identical to the baseline. It
+// is decided by the object's content, so it is never read as a move: an
+// object captured on one side and left out as this on the other may have
+// been edited to or from the baseline.
+const baselineReason = "identical to the distribution baseline; a new cluster provides it"
 
 var helmHistoryRE = regexp.MustCompile(`^sh\.helm\.release\.v1\.(.+)\.v\d+$`)
 

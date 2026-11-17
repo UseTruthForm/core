@@ -84,6 +84,15 @@ A snapshot directory holds `objects/` (one YAML file per resource),
 the same one). **REPORT.md** beside it says, in plain words, what was
 captured, what was not and why, and what a restore will need.
 
+A snapshot can be kept in git. Its `.gitattributes` (`* -text`) tells git
+to leave its files as they were written: Git for Windows otherwise checks
+text files out with Windows line endings (`core.autocrlf=true`, its
+default). A snapshot whose files have Windows line endings anyway (one
+from an earlier build, cloned on Windows) is still read, because TruthForm
+never writes a carriage return and reads CRLF back as the LF it wrote; a
+build from before this one refuses it as changed after capture. Neither
+file is part of the digest.
+
 What a GitOps source renders (a Flux HelmRelease or Kustomization, an Argo
 CD application, a Crossplane composite) is left to its source: restoring
 the source recreates it, and `--capture-rendered` keeps it anyway. Where

@@ -81,7 +81,8 @@ A snapshot directory holds `objects/` (one YAML file per resource),
 `schemas/` (the field list of every type, so schema changes show up),
 `coverage.yaml` (what was read, what was skipped and why) and
 `snapshot.yaml` (with a digest: two captures of an unchanged system have
-the same one). **REPORT.md** beside it says, in plain words, what was
+the same one, unless Azure returned a name in another case; see
+[Names in another case](#names-in-another-case-azure)). **REPORT.md** beside it says, in plain words, what was
 captured, what was not and why, and what a restore will need.
 
 What a GitOps source renders (a Flux HelmRelease or Kustomization, an Argo
@@ -1318,11 +1319,31 @@ is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
 An Azure snapshot written by this build stores its objects under paths in
 lower case (see [Names in another case](#names-in-another-case-azure)). An
 earlier one is read as it is. Captured again, its files move to the new
-paths with the same contents, so its digest changes once, and a snapshot
-kept in git shows every Azure object file renamed.
+paths with the same contents, so its digest changes once.
+
+Kept in git:
+
+- **On Linux,** git records every Azure object file as renamed.
+- **On Windows and macOS** (`core.ignorecase`, git's default there), git
+  keeps each path in the case it was first committed in, with the new
+  contents. This build reads such a snapshot, a clone of it included: where
+  a path differs only in case from the one it writes, the digest is checked
+  as if it were that one. A build from before this one refuses it as
+  changed after capture. To have git record the new paths, in the working
+  copy the capture was written to:
+
+  ```sh
+  git rm -r -q --cached <snapshot-dir> && git add <snapshot-dir>
+  ```
 
 ## Known limits
 
+- Azure objects whose names differ only in case are taken as one: capture
+  keeps one of them, and compare, diff and `--values` match either. Azure
+  Resource Manager names ignore case, and so far no captured type has been
+  seen to keep two apart; if one does (Cosmos DB database and container
+  names are case-sensitive), only one of them is in the snapshot. An ID
+  inside a property that differs only in case is still reported as changed.
 - A Log Analytics workspace's data sources can only be listed one kind at
   a time. TruthForm lists every kind Azure's definition names; a data
   source of a kind it does not name is not found. The change-tracking

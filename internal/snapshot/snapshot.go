@@ -253,6 +253,9 @@ func Read(dir string) (Snapshot, error) {
 	}
 
 	files := map[string][]byte{}
+	// Each file's path as Write names it, where the platform's names ignore
+	// case: a check of the digest that does not depend on the case of a path.
+	canonical := map[string]string{}
 	s := Snapshot{Platform: m.Platform, ServerVersion: m.ServerVersion, Policy: m.Policy}
 	objDir := filepath.Join(dir, "objects")
 	err = filepath.WalkDir(objDir, func(p string, d fs.DirEntry, err error) error {
@@ -270,6 +273,7 @@ func Read(dir string) (Snapshot, error) {
 			return fmt.Errorf("parse %s: %w", rel, err)
 		}
 		s.Objects = append(s.Objects, Object{Body: body})
+		canonical[filepath.ToSlash(rel)] = objectPath(Object{Body: body}, true)
 		return nil
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -291,6 +295,7 @@ func Read(dir string) (Snapshot, error) {
 			return fmt.Errorf("parse %s: %w", rel, err)
 		}
 		s.Schemas = append(s.Schemas, ts)
+		canonical[filepath.ToSlash(rel)] = schemaPath(ts, true)
 		return nil
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -307,7 +312,7 @@ func Read(dir string) (Snapshot, error) {
 	}
 	s.Coverage, s.Skips = cov.Types, cov.Skips
 
-	if got := digest(files); got != m.Digest {
+	if got := digest(files); got != m.Digest && !(FoldsCase(m.Platform) && digestFolded(files, canonical) == m.Digest) {
 		return Snapshot{}, fmt.Errorf("snapshot %s does not match its manifest digest (have %s, manifest says %s): files were changed, added or removed after capture", dir, got, m.Digest)
 	}
 	if len(s.Objects) != m.Objects {
@@ -440,6 +445,23 @@ func setStyles(n *yaml3.Node) {
 	for _, c := range n.Content {
 		setStyles(c)
 	}
+}
+
+// digestFolded is the digest of files under the paths Write gives them where
+// names ignore case, for each file whose path differs from that one only in
+// case. On a filesystem that ignores case (Windows, macOS), git keeps the case
+// a path was first committed in: Azure snapshots from before paths were
+// written in lower case came back from a clone under the old paths, with this
+// build's contents, and were refused as changed after capture.
+func digestFolded(files map[string][]byte, canonical map[string]string) string {
+	out := make(map[string][]byte, len(files))
+	for rel, b := range files {
+		if c, ok := canonical[rel]; ok && strings.EqualFold(c, rel) {
+			rel = c
+		}
+		out[rel] = b
+	}
+	return digest(out)
 }
 
 func digest(files map[string][]byte) string {

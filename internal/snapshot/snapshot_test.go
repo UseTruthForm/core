@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -287,4 +288,170 @@ func TestSkipNamesRoundTrip(t *testing.T) {
 	if strings.Contains(string(cov), "selectors:") {
 		t.Errorf("a skip with no selectors is written with the key:\n%s", cov)
 	}
+}
+
+// Where a platform's names ignore case, an object's file does not depend on
+// the case its name was returned in, and two spellings of one name are one
+// object. Elsewhere they are two.
+func TestAzureFilesDoNotDependOnCase(t *testing.T) {
+	obj := func(name string) Object {
+		return Object{Body: map[string]any{"apiVersion": "azure.truthform.org/v1", "kind": "Microsoft.OperationalInsights/workspaces/tables",
+			"metadata": map[string]any{"namespace": "Logs", "name": name}}}
+	}
+	files := func(s Snapshot) []string {
+		dir := filepath.Join(t.TempDir(), "s")
+		if err := s.Write(dir); err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		_ = filepath.WalkDir(filepath.Join(dir, "objects"), func(p string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() {
+				rel, _ := filepath.Rel(dir, p)
+				out = append(out, filepath.ToSlash(rel))
+			}
+			return err
+		})
+		return out
+	}
+	a := files(Snapshot{Platform: "azure", Objects: []Object{obj("law/ACSUsage")}})
+	b := files(Snapshot{Platform: "azure", Objects: []Object{obj("law/AcsUsage")}})
+	if len(a) != 1 || len(b) != 1 || a[0] != b[0] {
+		t.Errorf("one table in two cases is in two files: %v %v", a, b)
+	}
+	if want := "objects/azure.truthform.org/v1/microsoft.operationalinsights%2Fworkspaces%2Ftables/logs/law%2Facsusage.yaml"; len(a) == 1 && a[0] != want {
+		t.Errorf("file %s, want %s", a[0], want)
+	}
+	err := Snapshot{Platform: "azure", Objects: []Object{obj("law/ACSUsage"), obj("law/AcsUsage")}}.Write(filepath.Join(t.TempDir(), "s"))
+	if err == nil || !strings.Contains(err.Error(), "ignore case") {
+		t.Errorf("two spellings of one Azure object were written: %v", err)
+	}
+	// Asked of the path, not the filesystem: on Windows and macOS cfg and
+	// Cfg are one file whatever TruthForm names them.
+	k := func(name string) Object {
+		return Object{Body: map[string]any{"apiVersion": "v1", "kind": "ConfigMap", "metadata": map[string]any{"namespace": "Shop", "name": name}}}
+	}
+	if got := objectPath(k("Cfg"), FoldsCase("kubernetes")); got != "objects/core/v1/ConfigMap/Shop/Cfg.yaml" {
+		t.Errorf("Kubernetes names are case-sensitive: %s", got)
+	}
+	// Schemas too.
+	sch := TypeSchema{APIVersion: "azure.truthform.org/v1", Kind: "Microsoft.Insights/diagnosticSettings"}
+	if got := schemaPath(sch, FoldsCase("azure")); got != "schemas/azure.truthform.org/v1/microsoft.insights%2Fdiagnosticsettings.yaml" {
+		t.Errorf("schema file %s", got)
+	}
+	dir := filepath.Join(t.TempDir(), "s")
+	if err := (Snapshot{Platform: "azure", Objects: []Object{obj("law/ACSUsage")}, Schemas: []TypeSchema{sch}}).Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "schemas", "azure.truthform.org", "v1", "microsoft.insights%2Fdiagnosticsettings.yaml")); err != nil {
+		t.Errorf("the schema is not under its lower-case path: %v", err)
+	}
+}
+
+// On Windows and macOS git keeps the case a path was first committed in, so a
+// clone of an Azure snapshot committed before paths were in lower case, and
+// then replaced by this build's, has the old paths and the new contents. It is
+// read; a file whose contents changed is still refused.
+func TestAzurePathsInAnotherCaseAreRead(t *testing.T) {
+	o := Object{Body: map[string]any{"apiVersion": "azure.truthform.org/v1", "kind": "Microsoft.OperationalInsights/workspaces/tables",
+		"metadata": map[string]any{"namespace": "Logs", "name": "law/ACSUsage"}, "spec": map[string]any{"properties": map[string]any{"plan": "Analytics"}}}}
+	sch := TypeSchema{APIVersion: "azure.truthform.org/v1", Kind: "Microsoft.OperationalInsights/workspaces/tables"}
+	write := func(platform string) string {
+		dir := filepath.Join(t.TempDir(), "s")
+		if err := (Snapshot{Platform: platform, Objects: []Object{o}, Schemas: []TypeSchema{sch}}).Write(dir); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	// Each file moved to the path an earlier build gave it.
+	asBefore := func(dir string) {
+		for _, f := range []string{objectPath(o, true), schemaPath(sch, true)} {
+			old := filepath.Join(dir, filepath.FromSlash(objectPathOrSchema(f, o, sch)))
+			if err := os.MkdirAll(filepath.Dir(old), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(filepath.Join(dir, filepath.FromSlash(f)), old); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	dir := write("azure")
+	asBefore(dir)
+	if _, err := Read(dir); err != nil {
+		t.Errorf("paths in the case an earlier build wrote: %v", err)
+	}
+	// A Windows clone does both: the old case, and CRLF (core.autocrlf).
+	both := write("azure")
+	asBefore(both)
+	if err := filepath.WalkDir(both, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(p, []byte(strings.ReplaceAll(string(b), "\n", "\r\n")), 0o644)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(both); err != nil {
+		t.Errorf("old-case paths with CRLF line endings: %v", err)
+	}
+	p := filepath.Join(dir, filepath.FromSlash(objectPath(o, false)))
+	b, _ := os.ReadFile(p)
+	if err := os.WriteFile(p, []byte(strings.Replace(string(b), "Analytics", "Basic", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(dir); err == nil || !strings.Contains(err.Error(), "does not match its manifest digest") {
+		t.Errorf("a changed file under such a path was read: %v", err)
+	}
+	// Only where the path differs in case: a file moved elsewhere is refused.
+	dir = write("azure")
+	elsewhere := filepath.Join(dir, "objects", "azure.truthform.org", "v1", "elsewhere.yaml")
+	if err := os.Rename(filepath.Join(dir, filepath.FromSlash(objectPath(o, true))), elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(dir); err == nil {
+		t.Error("an Azure file moved to another path was read")
+	}
+	// Only where names ignore case. A path all in lower case, moved to
+	// another case: on a filesystem that ignores case (NTFS, APFS) the file
+	// is still found at its own path, and nothing was moved to test.
+	if !caseSensitiveFS(t) {
+		return
+	}
+	o.Body["apiVersion"], o.Body["kind"] = "example.com/v1", "widget"
+	o.Body["metadata"] = map[string]any{"namespace": "shop", "name": "w"}
+	sch = TypeSchema{APIVersion: "example.com/v1", Kind: "widget"}
+	dir = write("kubernetes")
+	moved := filepath.Join(dir, "objects", "example.com", "v1", "Widget", "shop", "w.yaml")
+	if err := os.MkdirAll(filepath.Dir(moved), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(dir, filepath.FromSlash(objectPath(o, false))), moved); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(dir); err == nil {
+		t.Error("a Kubernetes file under a path in another case was read")
+	}
+}
+
+// objectPathOrSchema is f as an earlier build named it: in the case given.
+func objectPathOrSchema(f string, o Object, sch TypeSchema) string {
+	if strings.HasPrefix(f, "schemas/") {
+		return schemaPath(sch, false)
+	}
+	return objectPath(o, false)
+}
+
+// caseSensitiveFS reports whether the temporary directory's filesystem tells
+// two names apart by case.
+func caseSensitiveFS(t *testing.T) bool {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := os.Stat(filepath.Join(dir, "A"))
+	return err != nil
 }

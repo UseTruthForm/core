@@ -140,15 +140,113 @@ func scopeNotes(rep kube.ScopeReport) []string {
 		}
 		out = append(out, webhookNote(w, what))
 	}
+	for _, src := range rep.Sources {
+		out = append(out, sourceNote(src))
+	}
 	return out
 }
+
+// sourceWhy is why a source brought not held, in a scope that holds
+// something, refuses a restore.
+const sourceWhy = "a drill target that syncs the source's Git path starts what the scope held back, and anything in it that reaches outside (image automation, notifications) acts for real"
+
+// sourceOut is why an object that acts outside the cluster, brought not
+// held in a scope that holds something, refuses a restore.
+const sourceOut = "in a drill target it acts for real, with the source's settings"
+
+// trackingNote is what the refusal cannot see: an Argo CD that tracks
+// what it manages by an annotation alone, or by a label renamed in its
+// settings, leaves nothing the capture reads.
+const trackingNote = "What an Argo CD application manages is known by its tracking label or annotation (argocd.argoproj.io/instance, argocd.argoproj.io/tracking-id, or Argo CD 2's app.kubernetes.io/instance where no Helm release installed the object); one set to track by another label is not seen, and a restore is not refused for it. app.kubernetes.io/instance is also what ordinary Helm charts set to their release's name: an object that carries it so, beside an Application of that name, is taken as that Application's, and the refusal is then wrong; hold or accept it"
+
+// sourceNote is one object brought not held that the scope refuses, for
+// a person.
+func sourceNote(src kube.ScopeSource) string {
+	how := "A restore is refused while it is so: hold it (an entry with hold: true that brings its object), leave it out (--leave-out), or, having read what it does, accept it by naming it under sourcesRunning in the scope file (" + sourceRef(src) + ")."
+	if src.Accepted {
+		how = "Accepted in the scope file (sourcesRunning)."
+	}
+	if src.Reaches != "" {
+		return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses: %s, and %s. %s", src.Source, src.Reaches, sourceOut, how)
+	}
+	return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses; once it runs it %s: %s. %s", src.Source, appliesWhat(src), sourceWhy, how)
+}
+
+// appliesWhat is what a source brought not held applies that a scope
+// which holds something refuses it for: into the namespaces it narrows,
+// and what acts outside, wherever that is.
+func appliesWhat(src kube.ScopeSource) string {
+	var l []string
+	if len(src.Namespaces) > 0 {
+		l = append(l, "applies into "+strings.Join(src.Namespaces, ", ")+", which the scope narrows")
+	}
+	if len(src.Outside) > 0 {
+		l = append(l, "applies what acts outside the cluster, "+strings.Join(src.Outside, ", ")+", which the restore does not bring and the source makes again")
+	}
+	return strings.Join(l, ", and ")
+}
+
+// sourceRef is a source as sourcesRunning names it.
+func sourceRef(src kube.ScopeSource) string {
+	kind, nsName, _ := strings.Cut(src.Object, " ")
+	return kind + "/" + nsName
+}
+
+// blockingSources are the objects a restore is refused for: brought not
+// held, in a scope that holds something, applying into a namespace it
+// narrows or acting outside, and not accepted in the scope file.
+func blockingSources(srcs []kube.ScopeSource) []string {
+	var out []string
+	for _, src := range srcs {
+		switch {
+		case !src.Blocks:
+		case src.Reaches != "":
+			out = append(out, fmt.Sprintf("%s (%s)", src.Source, src.Reaches))
+		default:
+			var l []string
+			if len(src.Namespaces) > 0 {
+				l = append(l, "applies into "+strings.Join(src.Namespaces, ", "))
+			}
+			if len(src.Outside) > 0 {
+				l = append(l, "applies "+strings.Join(src.Outside, ", "))
+			}
+			out = append(out, src.Source+" "+strings.Join(l, " and "))
+		}
+	}
+	return out
+}
+
+// refusedForSources refuses a restore whose scope holds something and
+// brings, not held, a GitOps source that applies into a namespace the
+// scope narrows, or an object that acts outside the cluster. Asked
+// before anything is connected to or written.
+func refusedForSources(scopeFile string) error {
+	sourcesBlocked = nil
+	if scopeDone == nil {
+		return nil
+	}
+	b := blockingSources(scopeDone.Sources)
+	if len(b) == 0 {
+		return nil
+	}
+	sourcesBlocked = scopeDone.Sources
+	n := "objects are brought, not held, by a scope that holds what it chooses, and would run"
+	if len(b) == 1 {
+		n = "object is brought, not held, by a scope that holds what it chooses, and would run"
+	}
+	return fmt.Errorf("%d %s: %s. Once a GitOps source runs, %s; what acts outside, %s. Hold each (an entry with hold: true that brings its object), leave it out (--leave-out), or accept it by naming it as Kind/namespace/name under sourcesRunning in %s. %s", len(b), n, strings.Join(b, "; "), sourceWhy, sourceOut, scopeFile, trackingNote)
+}
+
+// sourcesBlocked are the sources a restore was refused for, for the
+// document.
+var sourcesBlocked []kube.ScopeSource
 
 // notHeldCode is how a run ends when a hold brought what it does not know
 // how to hold, and the scope file does not say a person looked at it: not
 // 0, or a pipeline could not tell a hold that holds from one that passed
 // an operator's database through. With none it is 0.
 func notHeldCode(rep kube.ScopeReport, code int) int {
-	if len(rep.NotHeld) > 0 || len(blocking(rep.Webhooks)) > 0 {
+	if len(rep.NotHeld) > 0 || len(blocking(rep.Webhooks)) > 0 || len(blockingSources(rep.Sources)) > 0 {
 		return code
 	}
 	return 0

@@ -81,7 +81,8 @@ A snapshot directory holds `objects/` (one YAML file per resource),
 `schemas/` (the field list of every type, so schema changes show up),
 `coverage.yaml` (what was read, what was skipped and why) and
 `snapshot.yaml` (with a digest: two captures of an unchanged system have
-the same one). **REPORT.md** beside it says, in plain words, what was
+the same one, unless Azure returned a name in another case; see
+[Names in another case](#names-in-another-case-azure)). **REPORT.md** beside it says, in plain words, what was
 captured, what was not and why, and what a restore will need.
 
 A snapshot can be kept in git. Its `.gitattributes` (`* -text`) tells git
@@ -245,6 +246,30 @@ truthform diff --platform aws --region us-east-2 --from snap/aws
 
 It lists what was added, removed or changed, field by field, and exits 2
 when there are differences, so it can gate a pipeline or raise an alert.
+
+### Names in another case (Azure)
+
+Azure's resource types, resource groups and names ignore case, and Azure
+does not always return one in the same case: a Log Analytics table has come
+back as `ACSCallAutomationStreamingUsage` on one day and
+`AcsCallAutomationStreamingUsage` on the next. For Azure, TruthForm takes
+them as one object:
+
+- **A snapshot** stores the object in the same file whatever the case (its
+  path is in lower case), and the file keeps the case Azure returned. Two
+  spellings of one object in a capture are an error.
+- **`diff`, `compare` and an environment's diff** match it in any case, and
+  a type, group, name or ID that differs only in case is not a difference.
+- **`restore`** finds it in the target in any case (Azure's own reads ignore
+  case), and does not create it beside the one there.
+- **`--values`** keys match it in any case. Two keys for one object are
+  refused.
+
+The digest is of the files as written, so on a day Azure returns a name in
+another case it differs although `compare` finds nothing: compare by
+content, not by digest. Kubernetes and Google Cloud names are case-sensitive
+and are matched as they are; so are AWS's, where some services ignore case
+and others do not.
 
 ## Restore
 
@@ -466,7 +491,7 @@ empty or denied: capture again later.
 |---|---|
 | 0 | Success: the capture is complete, the restore fully applied, or no differences |
 | 1 | Error: bad flags, cannot connect, cannot read a snapshot |
-| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer (plan scope --check) |
+| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer, or that holds something and brings, not held, a GitOps source that applies into a namespace it narrows or a Flux object that acts outside the cluster (plan scope --check) |
 | 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, or a restore under a hold brought objects not held |
 
 ## Machine-readable output
@@ -780,7 +805,9 @@ namespace:
   HelmRelease in a namespace the scope narrows, left out whole or not,
   the release is installed once the source runs. The run says so by name
   (`scope.stillMade` with `--json`), and the plan goes on listing it:
-  leave the source out with `--leave-out`, or have it apply less;
+  leave the source out with `--leave-out`, or have it apply less. Where
+  the scope holds anything, such a source refuses the restore unless it
+  is held or accepted (see the hold, below);
 - **a webhook that is brought and calls a Service that will not answer**
   is named (`scope.webhooksWithoutService` with `--json`): an admission
   webhook with no namespace of its own is brought with everything else,
@@ -943,6 +970,7 @@ narrow:
 | `CronJob`, and a `Job` brought with `jobs: true` | suspended |
 | a Flux object (`HelmRelease`, `Kustomization`, a source), an Argo `CronWorkflow`, and another API's object with `spec.suspend` (a `ScheduledSparkApplication`) | `spec.suspend: true` |
 | Argo CD `Application` | `spec.syncPolicy.automated` taken out |
+| Argo CD `ApplicationSet` | `spec.template.spec.syncPolicy.automated` taken out, so what it makes does not sync by itself; refused, by name, where a `templatePatch` or a generator's own template could put it back, or a `RollingSync` strategy syncs what it makes from its controller |
 | KEDA `ScaledObject` | `autoscaling.keda.sh/paused-replicas: "0"` |
 | KEDA `ScaledJob` | `autoscaling.keda.sh/paused: "true"` |
 | `HorizontalPodAutoscaler` | as it is: it stops while what it scales is at zero |
@@ -1013,6 +1041,124 @@ the same file expects it held. **Restoring again with the hold taken out
 of the file starts it**, and that is how one is released: there is no
 other command.
 
+**A GitOps source brought without a hold refuses the restore**, with
+nothing written and before anything is connected to, when the scope holds
+anything and the source applies into a namespace the scope narrows. A
+drill target that syncs the source's Git path starts what the scope held
+back, and anything in it that reaches outside the cluster (image
+automation, notifications) acts for real. A root Kustomization that
+`flux bootstrap` made, or an Argo CD application that manages itself, is
+in the snapshot, in a namespace a drill's scope seldom names, and so is
+brought as it is unless something says otherwise.
+
+What a source applies into is what the capture left to it, followed as
+the webhook check follows it: from what is in a narrowed namespace to the
+source or owner the capture left it to, and on through what that one was
+left to, until it reaches an object the restore brings. A Kustomization
+that applies a HelmRelease that renders into `store` applies into
+`store`; an Application that an ApplicationSet generates is not in the
+snapshot (the capture leaves it to the ApplicationSet), so the
+ApplicationSet is what applies, and what is refused or held. Argo CD 2
+tracks what it manages by `app.kubernetes.io/instance` unless told
+otherwise (the application's name, or `namespace_name` for one outside
+Argo CD's own namespace), and the capture takes such an object as one of
+its own: in a narrowed namespace, that label naming an Application that
+is brought counts as that Application applying there. **The label is
+shared with ordinary Helm charts**, which set it to their release's
+name. An object Helm installed (`meta.helm.sh/release-name`) is not read
+this way; one a chart made that was applied some other way, beside an
+Application of the release's name, is, and the restore is then refused
+wrongly. The refusal says so; hold the Application or accept it. An
+Argo CD set to track by an annotation alone, or by another label, leaves
+nothing of this to read, and a restore is not refused for it: the
+refusal says so.
+
+**Flux's objects that act outside** are refused under a hold wherever
+they are, as a source is: an `ImageUpdateAutomation` (it commits and
+pushes to Git), an `ImageRepository` (it scans a registry with its
+credentials), a notification `Provider` and `Alert` (they send), and a
+`Receiver` (it takes webhooks from outside, and has the sources it names
+reconcile when one comes: the outside then decides when they sync). An
+`ImagePolicy` only chooses a tag from what an `ImageRepository` found,
+and is not refused; nor is a `GitRepository`, `OCIRepository` or
+`HelmRepository`, which reads and does not write.
+
+Where such an object is in the snapshot (made by hand), it is refused
+itself. Where a GitOps source's Git path applies it, the capture leaves
+it to that source and it is not in the snapshot: the source makes it
+again once it runs, so **the source is refused for it, wherever either
+is**, in a namespace the scope narrows or not, and the refusal names the
+object and what it does (`appliesOutside` with `--json`). That is the
+usual `flux bootstrap` with image automation: the root applies the
+`ImageUpdateAutomation` from Git. Taking the root out with
+`--leave-out`, or holding it, takes what it applies with it; what is in
+the snapshot by hand stays, and is refused. Naming such an object under
+`sourcesRunning` is an error that names the source that applies it:
+accept or hold that.
+
+**What an operator's resource makes is not followed.** Flux, Argo CD
+and Helm set no owner on what they apply; a third-party operator does.
+An operator's custom resource that owns an `ImageUpdateAutomation`,
+`Provider`, `Alert` or `Receiver` (a tenant resource whose operator
+makes one for it) is brought as it is under a hold, its operator makes
+the object again, and **the restore is not refused for it**: leave the
+resource out, or hold it.
+
+Not refused:
+
+- a source that applies only into namespaces the scope does not narrow,
+  and applies nothing that acts outside;
+- one already stopped: a Flux object with `spec.suspend: true`, an Argo
+  CD application with no automated sync (or `automated.enabled:
+  false`), an ApplicationSet whose template has none and that has no
+  `templatePatch`, no generator template and no `RollingSync` strategy;
+- anything, in a scope that holds nothing (the NOTE above,
+  `scope.stillMade`, still names what a source makes).
+
+`plan scope --check` names each in a NOTE, with the namespaces it
+applies into or what it does outside (`scope.sourcesNotHeld` with
+`--json`, each with `blocks`, `accepted`, `reaches` for one that acts
+outside, and `appliesOutside` for a source that applies one), and exits 2 while one is left. A refused restore exits 1, says
+every cause at once (webhooks and these together), and its document
+lists them as `sourcesNotHeld` (and `webhooksWithoutService`), with
+`complete: false`. Either hold it, with an entry that brings its object
+under a hold (a Flux object is suspended, an Argo CD application's
+automated sync taken out, an ApplicationSet's taken out of its
+template):
+
+```yaml
+  - namespaces: [flux-system]
+    hold: true
+    objects: [Kustomization/flux-system, GitRepository/flux-system]
+```
+
+or leave it out with `--leave-out`, or, having read what it does, accept
+it by name:
+
+```yaml
+sourcesRunning:
+  - Kustomization/flux-system/flux-system
+```
+
+An ApplicationSet with a `templatePatch` or a generator's own template
+cannot be held by its template, since either can give what it makes a
+sync policy back; nor can one with `strategy: {type: RollingSync}`,
+whose controller turns the automated sync of what it makes off and syncs
+them itself, step by step (from Argo CD's documentation of progressive
+syncs; `AllAtOnce`, the default and the only other type, leaves syncing
+to each Application). A hold refuses such a set, by name, as it refuses
+a `Pod`, and it is not taken as already stopped. Leave it out, or accept
+it.
+
+Each is `Kind/namespace/name` of the object, with no pattern: it is let
+run by someone who has read what it does, and a pattern would let one
+run that came later. One that is accepted is still listed (`accepted:
+true`), and the run ends 0 when nothing else is left. A name that
+accepts nothing is an error: one that is held, stopped, left out, or
+applies nowhere the scope narrows, and any in a scope that holds
+nothing (a file with `sourcesRunning` and nothing to narrow says that
+too).
+
 What to know before relying on a hold:
 
 - it is of the objects in the snapshot. What a GitOps source or an
@@ -1020,8 +1166,11 @@ What to know before relying on a hold:
   Flux or Argo CD source makes nothing until it is released, and then
   makes all of it;
 - a GitOps source that is brought without a hold and applies a held
-  object puts it back as the source has it: hold the source too, or
-  leave it out;
+  object puts it back as the source has it. Where it applies into a
+  namespace the scope narrows, the restore is refused for it (below);
+  where it applies only into namespaces the scope does not narrow, it
+  is not, and a held object it applies there is put back all the same:
+  hold the source too, or leave it out;
 - a `CronJob` released may run at once what it missed while suspended,
   unless it sets `startingDeadlineSeconds`;
 - KEDA before 2.13 does not read `autoscaling.keda.sh/paused` on a
@@ -1298,8 +1447,36 @@ is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
   an earlier build applied, and the snapshot no longer has, stays on the
   object under the old manager.
 
+## Azure snapshots from an earlier build
+
+An Azure snapshot written by this build stores its objects under paths in
+lower case (see [Names in another case](#names-in-another-case-azure)). An
+earlier one is read as it is. Captured again, its files move to the new
+paths with the same contents, so its digest changes once.
+
+Kept in git:
+
+- **On Linux,** git records every Azure object file as renamed.
+- **On Windows and macOS** (`core.ignorecase`, git's default there), git
+  keeps each path in the case it was first committed in, with the new
+  contents. This build reads such a snapshot, a clone of it included: where
+  a path differs only in case from the one it writes, the digest is checked
+  as if it were that one. A build from before this one refuses it as
+  changed after capture. To have git record the new paths, in the working
+  copy the capture was written to:
+
+  ```sh
+  git rm -r -q --cached <snapshot-dir> && git add <snapshot-dir>
+  ```
+
 ## Known limits
 
+- Azure objects whose names differ only in case are taken as one: capture
+  keeps one of them, and compare, diff and `--values` match either. Azure
+  Resource Manager names ignore case, and so far no captured type has been
+  seen to keep two apart; if one does (Cosmos DB database and container
+  names are case-sensitive), only one of them is in the snapshot. An ID
+  inside a property that differs only in case is still reported as changed.
 - A Log Analytics workspace's data sources can only be listed one kind at
   a time. TruthForm lists every kind Azure's definition names; a data
   source of a kind it does not name is not found. The change-tracking

@@ -470,7 +470,7 @@ func diffEnvironment(ctx context.Context, configPath, from string) int {
 			failTarget(t, fmt.Sprintf("captured with policy %q but the config now gives %q", want.Policy, got.Policy))
 			continue
 		}
-		ch, moved := snapshot.SplitMoved(want, got, compareTarget(t.Platform, want, got))
+		ch, moved := snapshot.SplitMoved(want, got, compareTarget(t.Platform, want, got), kube.MadeBy)
 		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Differences: len(ch), Changes: changesJSON(ch), Moved: movedListJSON(moved)})
 		fmt.Printf("== %s (%s): %d differences%s\n", t.Name, t.Platform, len(ch), movedNote(moved))
 		movedLines("  ", moved)

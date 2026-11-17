@@ -1153,3 +1153,12 @@ func allPlatform(mgrs []string) bool {
 func list(v any) []any { l, _ := v.([]any); return l }
 
 func strOf(v any) string { s, _ := v.(string); return s }
+
+// MadeBy is the reason a capture gives an object it leaves out to the
+// GitOps source that applies it, read from the object alone, or "". For
+// compare to check a move against the copy that was captured
+// (snapshot.SplitMoved).
+func MadeBy(o snapshot.Object) string {
+	md, _ := o.Body["metadata"].(map[string]any)
+	return renderedBy(md)
+}

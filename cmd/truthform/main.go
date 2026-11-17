@@ -591,18 +591,18 @@ func schemaDiff(args []string) int {
 }
 
 // movedObjects is what the last comparison took out of its differences: the
-// objects one side captured and the other left out because something else
-// makes them now (a GitOps tool began to apply it; a version of the capture
-// stopped leaving it out). report says them, once.
+// objects one side captured and the other left out to the GitOps source that
+// applies them, where the captured copy says so too (a version of the capture
+// stopped leaving out a self-applying root). report says them, once.
 var movedObjects []snapshot.Moved
 
 // differences is changes without what moved between captured and left out
-// because something else makes it now, which it keeps in movedObjects for
+// to a GitOps source, which it keeps in movedObjects for
 // report to say apart. Only a Kubernetes capture gives such a reason
 // (snapshot.MadeElsewhere), so a diff of another platform does not call it;
 // compare does, for any. A real add or remove is still a difference.
 func differences(want, got snapshot.Snapshot, changes []snapshot.Change) []snapshot.Change {
-	real, m := snapshot.SplitMoved(want, got, changes)
+	real, m := snapshot.SplitMoved(want, got, changes, kube.MadeBy)
 	movedObjects = m
 	return real
 }
@@ -620,7 +620,10 @@ func movedNote(moved []snapshot.Moved) string {
 	if len(moved) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("; %d objects moved between captured and left out, which is not a difference", len(moved))
+	if len(moved) == 1 {
+		return "; 1 object moved between captured and left out, which is not a difference"
+	}
+	return fmt.Sprintf("; %d objects moved between captured and left out, which are not differences", len(moved))
 }
 
 func report(changes []snapshot.Change, want, got string) int {

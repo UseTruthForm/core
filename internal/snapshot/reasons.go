@@ -12,11 +12,9 @@ import (
 // itself among them). Capture writes them with these formats, and
 // SplitMoved reads them with the same, so the two cannot drift apart.
 //
-// They are decided by who makes an object, never by what it holds. That
-// is what lets an object that moves across one be told apart from a
-// difference: a capture that leaves an object out because of its content
-// (identical to a baseline) or because it could not read it says nothing
-// of who makes it, and a move across that is a change.
+// Only the GitOps reasons can be a move, and only where the captured copy
+// carries the same marks (SplitMoved). An owner reference is not kept in a
+// capture, so a move across "owned by" cannot be checked, and is not one.
 const (
 	OwnedFormat             = "owned by %s/%s, whose controller recreates it"
 	FluxHelmReleaseFormat   = "rendered by Flux HelmRelease %s/%s; restoring the HelmRelease recreates it"
@@ -44,7 +42,7 @@ func ArgoCDReason(app string) string { return fmt.Sprintf(ArgoCDFormat, app) }
 // added later is not one until it is added here.
 var madeElsewhere = func() []*regexp.Regexp {
 	var out []*regexp.Regexp
-	for _, f := range []string{OwnedFormat, FluxHelmReleaseFormat, FluxKustomizationFormat, ArgoCDFormat} {
+	for _, f := range []string{FluxHelmReleaseFormat, FluxKustomizationFormat, ArgoCDFormat} {
 		// A name as Kubernetes allows one in a label or a reference: no
 		// space, and none of the separators the reason itself uses.
 		out = append(out, regexp.MustCompile("^"+strings.ReplaceAll(regexp.QuoteMeta(f), "%s", `[^\s/;,]+`)+"$"))
@@ -53,8 +51,9 @@ var madeElsewhere = func() []*regexp.Regexp {
 }()
 
 // MadeElsewhere says whether a skip reason, given by a capture of
-// platform, means that something else makes the object now: the only
-// reasons a move between captured and left out may be read across.
+// platform, means that a GitOps source applies the object: the only
+// reasons a move between captured and left out may be read across, and
+// then only where the captured copy says the same (SplitMoved).
 // Kubernetes' only: no other platform's capture gives one.
 func MadeElsewhere(platform, reason string) bool {
 	if platform != "kubernetes" {

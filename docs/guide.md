@@ -239,38 +239,42 @@ when there are differences, so it can gate a pipeline or raise an alert.
 `compare` does the same between two snapshots, and a diff of an environment
 (`--config`) for each target.
 
-**An object that something else makes now is not a difference (Kubernetes).**
-One capture took it and the other left it out because a controller owns it or
-a GitOps source applies it, or the other way round: a Flux Kustomization began
-to apply a namespace, or a newer version of TruthForm stopped leaving out a
-self-applying root Kustomization. What changed is who makes the object, so it is
-listed as `moved`, with the reason the capture that left it out gave, and does
-not change the exit code:
+**An object a GitOps source applies, as both captures saw it, is not a
+difference (Kubernetes).** One capture took it and the other left it out to the
+Flux HelmRelease, Flux Kustomization or Argo CD application that applies it,
+and the copy that was captured already carries that source's labels: a newer
+version of TruthForm stopped leaving out a self-applying root Kustomization, or
+an older one captured what this one leaves out. What changed is how a capture
+accounts for the object, so it is listed as `moved`, with the reason the
+capture that left it out gave, and does not change the exit code:
 
 ```text
-moved    v1|Namespace||shop: no longer captured: applied by Flux Kustomization gitops/root; restoring it recreates this
 moved    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root: no longer skipped (was: applied by Flux Kustomization gitops/root; restoring it recreates this), so now captured
 ```
 
-Only these reasons, as a Kubernetes capture writes them, can be a move: owned by
-a controller, rendered by a Flux HelmRelease, applied by a Flux Kustomization
-(one that applies itself among them), managed by an Argo CD application. Every
-other reason for leaving an object out is not, on any platform, and an object
-that crosses it is `missing` or `extra` as before:
+The check is the capture's own: the reason it would give the captured copy
+must be exactly the other side's. Anything else is `missing` or `extra` as
+before, and exits 2:
 
-- **Left out as identical to a baseline.** That is decided by the object's
-  content: one edited away from the baseline, or put back to it, crosses it.
-- **Left out because it could not be read.** Nothing was seen of it: on the
-  target, a diff says it is missing.
-- **Any reason added later**, until it is added to the list.
+- **Marks added or taken off in the cluster.** A namespace or a ConfigMap that
+  a GitOps tool really began to apply, its labels added since the last capture,
+  is a difference: the copy in the snapshot does not carry them, and labels
+  anyone with write access can add would otherwise hide an edit made with them.
+  The same goes for labels taken off. Merge the change once it is expected.
+- **Owned by a controller.** A capture keeps no owner references, so a move
+  across one cannot be checked.
+- **Identical to a baseline.** That skip is decided by content: an object
+  edited away from the baseline, or put back to it, crosses it.
+- **Could not be read.** Nothing was seen of it: on the target, a diff says it
+  is missing.
+- **Any other reason, on any platform**, including one added later, until it is
+  added to the list.
 
-An object counts as moved only when the other capture's left-out list names it
-by its own type, namespace and name, or as one of the Services a skip of `*`
-lists, and when every entry that names it gives one of those reasons. What a
-skip of `*` stands for without naming it (the pods a ReplicaSet owns) is still
-`missing` or `extra`. A moved object's content is not compared, since one side
-does not hold it: an edit made together with the labels or owner reference that
-hand the object to its maker is shown as the move.
+A move checks the marks on the copy, not that the source they name exists. An
+object counts as moved only when the other capture's left-out list names it by
+its own type, namespace and name, and every entry that names it gives the
+reason its copy does. A moved object's content is not compared, since one side
+does not hold it.
 
 ## Restore
 

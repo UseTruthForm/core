@@ -6,9 +6,9 @@ import (
 )
 
 // Moved is an object that one snapshot captured and the other left out
-// because something else makes it now: a controller that owns it, or a
-// GitOps source that applies it (MadeElsewhere). Compare sees it as missing
-// or extra; what changed is who makes it, not what the system holds.
+// because a GitOps source applies it (MadeElsewhere), where the captured copy
+// itself already says so. Compare sees it as missing or extra; what changed
+// is how a capture accounts for it, not what the system holds.
 type Moved struct {
 	Key string
 	// Kind is "no longer captured" (captured in want, left out of got) or
@@ -25,12 +25,23 @@ const (
 )
 
 // SplitMoved takes out of changes each "missing" object that got left out
-// because something else makes it, and each "extra" object that want left
-// out for that reason, and returns them apart. What is left is what
-// differs. A skip for any other reason is not a move: one left out as
-// identical to a baseline was left out for its content, and one left out
-// as unreadable was not seen, so across either an object may have changed.
-func SplitMoved(want, got Snapshot, changes []Change) ([]Change, []Moved) {
+// because a GitOps source applies it, and each "extra" object that want left
+// out for that reason, and returns them apart. What is left is what differs.
+//
+// madeBy is the capture's own classifier: what reason it gives an object
+// for leaving it out to the source that applies it, from the object alone.
+// A move is accepted only if madeBy, run on the copy that was captured,
+// gives exactly the reason the other side's skip gives. A copy that does
+// not carry its maker's marks (a label added in the cluster since, to hide
+// an edit) was not left out for that reason, and stays a difference. A skip
+// for any other reason is never a move: one left out as identical to a
+// baseline was left out for its content, one left out as unreadable was not
+// seen, and one left out as owned by a controller cannot be checked, since a
+// capture keeps no owner references. A nil madeBy finds no moves.
+func SplitMoved(want, got Snapshot, changes []Change, madeBy func(Object) string) ([]Change, []Moved) {
+	if madeBy == nil {
+		return changes, nil
+	}
 	var gotSkips, wantSkips *skipIndex
 	var real []Change
 	var moved []Moved
@@ -41,7 +52,7 @@ func SplitMoved(want, got Snapshot, changes []Change) ([]Change, []Moved) {
 				if gotSkips == nil {
 					gotSkips = indexSkips(got)
 				}
-				if r, hit := gotSkips.reason(o); hit {
+				if r, hit := gotSkips.reason(o, madeBy); hit {
 					moved = append(moved, Moved{Key: c.Key, Kind: NoLongerCaptured, Reason: r})
 					continue
 				}
@@ -51,7 +62,7 @@ func SplitMoved(want, got Snapshot, changes []Change) ([]Change, []Moved) {
 				if wantSkips == nil {
 					wantSkips = indexSkips(want)
 				}
-				if r, hit := wantSkips.reason(o); hit {
+				if r, hit := wantSkips.reason(o, madeBy); hit {
 					moved = append(moved, Moved{Key: c.Key, Kind: NoLongerSkipped, Reason: r})
 					continue
 				}
@@ -80,11 +91,10 @@ func findObject(s Snapshot, key string) (Object, bool) {
 	return Object{}, false
 }
 
-// skipIndex answers which skip, if any, says an object is made elsewhere.
+// skipIndex answers which skip, if any, says a GitOps source applies an object.
 type skipIndex struct {
 	platform string
-	// by resource|namespace|name, every reason given; a skip of "*" is
-	// under each of its Names.
+	// by resource|namespace|name, every reason given
 	reasons map[string][]string
 	// kind -> the resources the snapshot's coverage gives for it
 	resources map[string][]string
@@ -92,20 +102,16 @@ type skipIndex struct {
 
 // indexSkips indexes s's skips. Its coverage, which lists every type it
 // left anything out of, says which resource ("group/version/plural") an
-// object's kind is.
+// object's kind is. A skip of "*" stands for what a controller owns, which
+// is never a move.
 func indexSkips(s Snapshot) *skipIndex {
 	ix := &skipIndex{platform: s.Platform, reasons: map[string][]string{}, resources: map[string][]string{}}
 	for _, sk := range s.Skips {
-		names := []string{sk.Name}
 		if sk.Name == "*" {
-			// A skip of "*" without names stands for objects it does not
-			// name: none of them can be told from a real removal.
-			names = sk.Names
+			continue
 		}
-		for _, n := range names {
-			k := sk.Resource + "|" + sk.Namespace + "|" + n
-			ix.reasons[k] = append(ix.reasons[k], sk.Reason)
-		}
+		k := sk.Resource + "|" + sk.Namespace + "|" + sk.Name
+		ix.reasons[k] = append(ix.reasons[k], sk.Reason)
 	}
 	for _, cov := range s.Coverage {
 		ix.resources[cov.Kind] = append(ix.resources[cov.Kind], cov.Resource)
@@ -113,9 +119,9 @@ func indexSkips(s Snapshot) *skipIndex {
 	return ix
 }
 
-// reason is the reason a skip gives o, when every skip that names it says
-// something else makes it.
-func (ix *skipIndex) reason(o Object) (string, bool) {
+// reason is the reason the skips give o, when every skip that names it says
+// a GitOps source applies it and madeBy, run on o as captured, says the same.
+func (ix *skipIndex) reason(o Object, madeBy func(Object) string) (string, bool) {
 	gv := o.APIVersion()
 	if !strings.Contains(gv, "/") {
 		gv = "core/" + gv
@@ -130,8 +136,9 @@ func (ix *skipIndex) reason(o Object) (string, bool) {
 		if len(reasons) == 0 {
 			continue
 		}
+		own := madeBy(o)
 		for _, why := range reasons {
-			if !MadeElsewhere(ix.platform, why) {
+			if !MadeElsewhere(ix.platform, why) || why != own {
 				return "", false
 			}
 		}

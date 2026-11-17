@@ -127,6 +127,10 @@ type ScopeSource struct {
 	// (a Flux image automation, a notification provider): it is refused
 	// wherever it is, and has no namespaces.
 	Reaches string `json:"reaches,omitempty"`
+	// Outside is what acts outside the cluster that a source applies (the
+	// capture left it to the source), as Kind namespace/name (what it
+	// does): the source is refused for it, wherever it is.
+	Outside []string `json:"appliesOutside,omitempty"`
 	// Accepted: the scope file names it under sourcesRunning.
 	Accepted bool `json:"accepted"`
 	// Blocks: not accepted. A restore is not begun with one.

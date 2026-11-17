@@ -16,28 +16,44 @@ import (
 // Such an object refuses the restore unless it is held, or accepted by
 // name (sourcesRunning).
 
+// runners are the kinds that run under a hold when brought not held: the
+// GitOps sources that apply (by their kind as a reason names one), and
+// Flux's objects that act outside the cluster, with what they do there.
+// Not Flux's ImagePolicy, which only chooses a tag from what an
+// ImageRepository found, nor the sources that only read (GitRepository,
+// OCIRepository, HelmRepository).
+var runners = []struct{ group, kind, resource, name, reaches string }{
+	{"kustomize.toolkit.fluxcd.io", "Kustomization", "kustomizations", "Flux Kustomization", ""},
+	{"helm.toolkit.fluxcd.io", "HelmRelease", "helmreleases", "Flux HelmRelease", ""},
+	{"argoproj.io", "Application", "applications", "Argo CD application", ""},
+	{"argoproj.io", "ApplicationSet", "applicationsets", "Argo CD ApplicationSet", ""},
+	{"image.toolkit.fluxcd.io", "ImageUpdateAutomation", "imageupdateautomations", "Flux ImageUpdateAutomation", "it commits and pushes image updates to its Git repository"},
+	{"image.toolkit.fluxcd.io", "ImageRepository", "imagerepositories", "Flux ImageRepository", "it scans its image registry with the registry's credentials"},
+	{"notification.toolkit.fluxcd.io", "Provider", "providers", "Flux notification Provider", "it sends what it is given to its chat, webhook or Git host"},
+	{"notification.toolkit.fluxcd.io", "Alert", "alerts", "Flux notification Alert", "it sends the cluster's events to its Provider"},
+	{"notification.toolkit.fluxcd.io", "Receiver", "receivers", "Flux notification Receiver", "it takes webhooks from outside, which have the sources it names reconcile"},
+}
+
 // runner is what of an object brought not held runs under a hold: a
-// source that applies (its kind as a reason names one), or "" with
-// reaches saying what it does outside.
+// source that applies (reaches ""), or what acts outside, and what it
+// does there.
 func runner(o snapshot.Object) (kind, reaches string, ok bool) {
 	group, _, _ := strings.Cut(o.APIVersion(), "/")
-	switch {
-	case group == "kustomize.toolkit.fluxcd.io" && o.Kind() == "Kustomization":
-		return "Flux Kustomization", "", true
-	case group == "helm.toolkit.fluxcd.io" && o.Kind() == "HelmRelease":
-		return "Flux HelmRelease", "", true
-	case group == "argoproj.io" && o.Kind() == "Application":
-		return "Argo CD application", "", true
-	case group == "argoproj.io" && o.Kind() == "ApplicationSet":
-		return "Argo CD ApplicationSet", "", true
-	case group == "image.toolkit.fluxcd.io" && o.Kind() == "ImageUpdateAutomation":
-		return "Flux ImageUpdateAutomation", "it commits and pushes image updates to its Git repository", true
-	case group == "image.toolkit.fluxcd.io" && o.Kind() == "ImageRepository":
-		return "Flux ImageRepository", "it scans its image registry with the registry's credentials", true
-	case group == "notification.toolkit.fluxcd.io" && o.Kind() == "Provider":
-		return "Flux notification Provider", "it sends what it is given to its chat, webhook or Git host", true
-	case group == "notification.toolkit.fluxcd.io" && o.Kind() == "Alert":
-		return "Flux notification Alert", "it sends the cluster's events to its Provider", true
+	for _, r := range runners {
+		if r.group == group && r.kind == o.Kind() {
+			return r.name, r.reaches, true
+		}
+	}
+	return "", "", false
+}
+
+// outsideSkip is, for a skip of what acts outside (one a source applies,
+// which the capture left to it), its kind and what it does there.
+func outsideSkip(sk snapshot.Skip) (kind, reaches string, ok bool) {
+	for _, r := range runners {
+		if r.reaches != "" && strings.HasPrefix(sk.Resource, r.group+"/") && strings.HasSuffix(sk.Resource, "/"+r.resource) {
+			return r.kind, r.reaches, true
+		}
 	}
 	return "", "", false
 }
@@ -57,7 +73,8 @@ func stopped(o snapshot.Object) bool {
 	case group == "argoproj.io" && o.Kind() == "ApplicationSet":
 		tmpl, _ := spec["template"].(map[string]any)
 		ts, _ := tmpl["spec"].(map[string]any)
-		return !automated(ts) && setTemplates(spec) == ""
+		at, _ := setSyncs(spec)
+		return !automated(ts) && at == ""
 	}
 	return false
 }
@@ -76,12 +93,20 @@ func automated(spec map[string]any) bool {
 	return true
 }
 
-// setTemplates names what in an ApplicationSet can give the Applications
-// it makes a sync policy its template does not have: a templatePatch, or
-// a generator's own template. "" when it has neither.
-func setTemplates(spec map[string]any) string {
+// setSyncs names what in an ApplicationSet can sync the Applications it
+// makes though its template has no automated sync, and why: a
+// templatePatch or a generator's own template can give them a sync policy,
+// and a RollingSync strategy has the ApplicationSet controller sync them
+// itself (it requires their automated sync off, and syncs them step by
+// step). "" when it has none of these. AllAtOnce, the other strategy and
+// the default, leaves syncing to each Application.
+func setSyncs(spec map[string]any) (at, why string) {
+	const patched = "can give the Applications it makes a sync policy its template does not have, and a hold changes only the template"
 	if p, _ := spec["templatePatch"].(string); p != "" {
-		return "spec.templatePatch"
+		return "spec.templatePatch", patched
+	}
+	if st, _ := spec["strategy"].(map[string]any); strOf(st["type"]) == "RollingSync" {
+		return "spec.strategy RollingSync", "has the ApplicationSet controller sync the Applications it makes itself, whatever their sync policy, and a hold changes only the template"
 	}
 	var walk func(v any, at string) string
 	walk = func(v any, at string) string {
@@ -109,7 +134,10 @@ func setTemplates(spec map[string]any) string {
 		}
 		return ""
 	}
-	return walk(spec["generators"], "spec.generators")
+	if at := walk(spec["generators"], "spec.generators"); at != "" {
+		return at, patched
+	}
+	return "", ""
 }
 
 // sources finds, for what the capture left to something in the
@@ -185,55 +213,80 @@ func (w *sources) brought(is func(snapshot.Object) bool, hit func(snapshot.Objec
 }
 
 // legacyInstance is the label Argo CD 2 tracks what an application
-// manages by, unless told otherwise. Helm charts carry it too (the
-// release's name), so it is read only where an Application of that name
-// is brought, and not on what Helm installed (meta.helm.sh/release-name):
-// what Argo CD renders from a chart has no such annotation.
+// manages by, unless told otherwise: the application's name, or
+// namespace_name for one outside Argo CD's own namespace. Ordinary Helm
+// charts set it too (to the release's name), so it is read only where an
+// Application of that name is brought, and not on what Helm installed
+// (meta.helm.sh/release-name): what Argo CD renders from a chart has no
+// such annotation. A chart's object applied some other way, beside an
+// Application of the release's name, is read as that Application's: the
+// refusal is then wrong, and says so, and can be held or accepted.
 const legacyInstance = "app.kubernetes.io/instance"
 
 // sourcesNotHeld are the objects brought in out that run as brought (held
-// by the scope, an object is brought stopped: see stopped),
-// that a scope which holds something refuses a restore for: a GitOps
-// source that makes, directly or through what it makes, what the capture
-// left to it in a namespace the scope narrows, or an object of the
-// snapshot there that carries Argo CD 2's tracking label of an
-// Application brought; and, wherever they are, Flux's objects that act
-// outside the cluster.
+// by the scope, an object is brought stopped: see stopped), that a scope
+// which holds something refuses a restore for:
+//
+//   - a GitOps source that makes, directly or through what it makes, what
+//     the capture left to it in a namespace the scope narrows;
+//   - an Application brought that Argo CD 2's tracking label names on an
+//     object of the snapshot in a namespace the scope narrows;
+//   - a GitOps source that applies, wherever it is, what acts outside the
+//     cluster (the capture left that to it, and the restore does not
+//     bring it: the source does);
+//   - what acts outside, brought itself, wherever it is.
 func sourcesNotHeld(s, out snapshot.Snapshot, narrowed map[string][]int) []ScopeSource {
 	w := &sources{a: newAfter(s, s, out, nil), seen: map[string]bool{}}
 	found := map[string]*ScopeSource{}
-	add := func(o snapshot.Object, ns string) {
+	entry := func(o snapshot.Object) *ScopeSource {
 		kind, reaches, ok := runner(o)
 		who := o.Kind() + " " + o.Namespace() + "/" + o.Name()
 		// As brought: held by the scope, it is suspended, or its
 		// automated sync is off, as it is when it was so already.
 		if !ok || stopped(o) {
-			return
+			return nil
 		}
 		f := found[who]
 		if f == nil {
 			f = &ScopeSource{Source: kind + " " + o.Namespace() + "/" + o.Name(), Object: who, Namespaces: []string{}, Reaches: reaches, Blocks: true}
 			found[who] = f
 		}
-		if ns != "" && !contains(f.Namespaces, ns) {
+		return f
+	}
+	add := func(o snapshot.Object, ns string) {
+		if f := entry(o); f != nil && !contains(f.Namespaces, ns) {
 			f.Namespaces = append(f.Namespaces, ns)
 		}
 	}
 	for _, sk := range s.Skips {
-		if narrowed[sk.Namespace] == nil {
+		if narrowed[sk.Namespace] != nil {
+			w.seen = map[string]bool{}
+			w.maker(sk, func(o snapshot.Object) { add(o, sk.Namespace) })
+		}
+		kind, reaches, ok := outsideSkip(sk)
+		if !ok {
 			continue
 		}
+		// By its name: one a source applies is skipped by name. What
+		// acts outside and is listed per owner ("*") has an owner that is
+		// no source, and the walk finds nothing for it.
 		w.seen = map[string]bool{}
 		w.maker(sk, func(o snapshot.Object) {
-			if _, reaches, _ := runner(o); reaches == "" {
-				add(o, sk.Namespace)
+			if f := entry(o); f != nil {
+				if what := kind + " " + sk.Namespace + "/" + sk.Name + " (" + reaches + ")"; !contains(f.Outside, what) {
+					f.Outside = append(f.Outside, what)
+				}
 			}
 		})
 	}
+	// An Application by name, as the label gives it: bare, or
+	// namespace_name for one outside Argo CD's own namespace (a name has
+	// no "_", so the two do not meet).
 	apps := map[string][]snapshot.Object{}
 	for _, o := range out.Objects {
 		if group, _, _ := strings.Cut(o.APIVersion(), "/"); group == "argoproj.io" && o.Kind() == "Application" {
 			apps[o.Name()] = append(apps[o.Name()], o)
+			apps[o.Namespace()+"_"+o.Name()] = append(apps[o.Namespace()+"_"+o.Name()], o)
 		}
 	}
 	for _, o := range s.Objects {
@@ -249,12 +302,13 @@ func sourcesNotHeld(s, out snapshot.Snapshot, narrowed map[string][]int) []Scope
 	}
 	for _, o := range out.Objects {
 		if _, reaches, ok := runner(o); ok && reaches != "" {
-			add(o, "")
+			entry(o)
 		}
 	}
 	list := make([]ScopeSource, 0, len(found))
 	for _, f := range found {
 		sort.Strings(f.Namespaces)
+		sort.Strings(f.Outside)
 		list = append(list, *f)
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].Object < list[j].Object })

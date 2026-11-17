@@ -33,6 +33,8 @@ func TestStoppedAndTheHoldOfAnApplicationSet(t *testing.T) {
 		"Kustomization not suspended":               {planObject("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "f", "k", map[string]any{"spec": map[string]any{"path": "."}}), false},
 		"applicationset whose template syncs":       {set(map[string]any{"template": tmpl}), false},
 		"applicationset whose template does not":    {set(map[string]any{"template": map[string]any{"spec": map[string]any{}}}), true},
+		"applicationset with RollingSync":           {set(map[string]any{"template": map[string]any{"spec": map[string]any{}}, "strategy": map[string]any{"type": "RollingSync"}}), false},
+		"applicationset with AllAtOnce":             {set(map[string]any{"template": map[string]any{"spec": map[string]any{}}, "strategy": map[string]any{"type": "AllAtOnce"}}), true},
 		"applicationset whose generator has a template": {set(map[string]any{"template": map[string]any{"spec": map[string]any{}},
 			"generators": []any{map[string]any{"matrix": map[string]any{"generators": []any{map[string]any{"list": map[string]any{"elements": []any{}, "template": map[string]any{}}}}}}}}), false},
 	} {

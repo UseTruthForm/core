@@ -936,7 +936,7 @@ narrow:
 | `CronJob`, and a `Job` brought with `jobs: true` | suspended |
 | a Flux object (`HelmRelease`, `Kustomization`, a source), an Argo `CronWorkflow`, and another API's object with `spec.suspend` (a `ScheduledSparkApplication`) | `spec.suspend: true` |
 | Argo CD `Application` | `spec.syncPolicy.automated` taken out |
-| Argo CD `ApplicationSet` | `spec.template.spec.syncPolicy.automated` taken out, so what it makes does not sync by itself; refused, by name, where a `templatePatch` or a generator's own template could put it back |
+| Argo CD `ApplicationSet` | `spec.template.spec.syncPolicy.automated` taken out, so what it makes does not sync by itself; refused, by name, where a `templatePatch` or a generator's own template could put it back, or a `RollingSync` strategy syncs what it makes from its controller |
 | KEDA `ScaledObject` | `autoscaling.keda.sh/paused-replicas: "0"` |
 | KEDA `ScaledJob` | `autoscaling.keda.sh/paused: "true"` |
 | `HorizontalPodAutoscaler` | as it is: it stops while what it scales is at zero |
@@ -1026,23 +1026,38 @@ that applies a HelmRelease that renders into `store` applies into
 snapshot (the capture leaves it to the ApplicationSet), so the
 ApplicationSet is what applies, and what is refused or held. Argo CD 2
 tracks what it manages by `app.kubernetes.io/instance` unless told
-otherwise, and the capture takes such an object as one of its own: in a
-narrowed namespace, that label naming an Application that is brought
-counts as that Application applying there. Helm charts carry the same
-label, with the release's name, so an object Helm installed
-(`meta.helm.sh/release-name`) is not read this way; one that carries the
-label for another reason, beside an Application of that name, is, and
-can be accepted. An Argo CD set to track by an annotation alone, or by
+otherwise (the application's name, or `namespace_name` for one outside
+Argo CD's own namespace), and the capture takes such an object as one of
+its own: in a narrowed namespace, that label naming an Application that
+is brought counts as that Application applying there. **The label is
+shared with ordinary Helm charts**, which set it to their release's
+name. An object Helm installed (`meta.helm.sh/release-name`) is not read
+this way; one a chart made that was applied some other way, beside an
+Application of the release's name, is, and the restore is then refused
+wrongly. The refusal says so; hold the Application or accept it. An Argo CD set to track by an annotation alone, or by
 another label, leaves nothing of this to read, and a restore is not
 refused for it: the refusal says so.
 
 **Flux's objects that act outside** are refused under a hold wherever
 they are, as a source is: an `ImageUpdateAutomation` (it commits and
 pushes to Git), an `ImageRepository` (it scans a registry with its
-credentials), a notification `Provider` and an `Alert`. Taking the root
-out with `--leave-out` does not take these out, and they are not
-sources. A `GitRepository`, `OCIRepository` or `HelmRepository` only
-reads, and is not refused.
+credentials), a notification `Provider` and `Alert` (they send), and a
+`Receiver` (it takes webhooks from outside, and has the sources it names
+reconcile when one comes: the outside then decides when they sync). An
+`ImagePolicy` only chooses a tag from what an `ImageRepository` found,
+and is not refused; nor is a `GitRepository`, `OCIRepository` or
+`HelmRepository`, which reads and does not write.
+
+Where such an object is in the snapshot (made by hand), it is refused
+itself. Where a source's Git path applies it, the capture leaves it to
+that source and it is not in the snapshot: the source makes it again
+once it runs, so **the source is refused for it, wherever either is**,
+in a namespace the scope narrows or not, and the refusal names the
+object and what it does (`appliesOutside` with `--json`). That is the
+usual `flux bootstrap` with image automation: the root applies the
+`ImageUpdateAutomation` from Git. Taking the root out with
+`--leave-out`, or holding it, takes what it applies with it; what is in
+the snapshot by hand stays, and is refused.
 
 Not refused:
 
@@ -1050,7 +1065,7 @@ Not refused:
 - one already stopped: a Flux object with `spec.suspend: true`, an Argo
   CD application with no automated sync (or `automated.enabled:
   false`), an ApplicationSet whose template has none and that has no
-  `templatePatch` and no generator template;
+  `templatePatch`, no generator template and no `RollingSync` strategy;
 - anything, in a scope that holds nothing (the NOTE above,
   `scope.stillMade`, still names what a source makes).
 
@@ -1081,8 +1096,13 @@ sourcesRunning:
 
 An ApplicationSet with a `templatePatch` or a generator's own template
 cannot be held by its template, since either can give what it makes a
-sync policy back: a hold refuses it, by name, as it refuses a `Pod`.
-Leave it out, or accept it.
+sync policy back; nor can one with `strategy: {type: RollingSync}`,
+whose controller turns the automated sync of what it makes off and syncs
+them itself, step by step (from Argo CD's documentation of progressive
+syncs; `AllAtOnce`, the default and the only other type, leaves syncing
+to each Application). A hold refuses such a set, by name, as it refuses
+a `Pod`, and it is not taken as already stopped. Leave it out, or accept
+it.
 
 Each is `Kind/namespace/name` of the object, with no pattern: it is let
 run by someone who has read what it does, and a pattern would let one

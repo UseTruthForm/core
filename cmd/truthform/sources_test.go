@@ -76,7 +76,7 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 	if !refused("--scope", scope) {
 		t.Fatalf("restore: %v", lastErr)
 	}
-	for _, want := range []string{"Flux Kustomization gitops/root applies into shop", "starts what the scope held back", "acts for real", "sourcesRunning in " + scope, "app.kubernetes.io/instance", "nothing was restored"} {
+	for _, want := range []string{"Flux Kustomization gitops/root applies into shop", "starts what the scope held back", "acts for real", "sourcesRunning in " + scope, "app.kubernetes.io/instance", "also what ordinary Helm charts set", "nothing was restored"} {
 		if !strings.Contains(lastErr.Error(), want) {
 			t.Errorf("the refusal does not say %q: %v", want, lastErr)
 		}
@@ -204,5 +204,22 @@ func TestSourceNoteOfWhatActsOutside(t *testing.T) {
 	}
 	if b := blockingSources([]kube.ScopeSource{{Source: "Flux notification Provider imaging/chat", Reaches: "it sends", Blocks: true}}); len(b) != 1 || b[0] != "Flux notification Provider imaging/chat (it sends)" {
 		t.Errorf("as the refusal lists it: %q", b)
+	}
+	// A source whose Git path applies what acts outside is named with it,
+	// and with the namespaces it applies into.
+	root := kube.ScopeSource{Source: "Flux Kustomization flux2/flux2", Object: "Kustomization flux2/flux2", Namespaces: []string{"shop"},
+		Outside: []string{"ImageUpdateAutomation flux2/autobump (it pushes)"}, Blocks: true}
+	n = sourceNote(root)
+	for _, want := range []string{"applies into shop, which the scope narrows", "applies what acts outside the cluster, ImageUpdateAutomation flux2/autobump (it pushes), which the restore does not bring and the source makes again", "(Kustomization/flux2/flux2)"} {
+		if !strings.Contains(n, want) {
+			t.Errorf("the note of a source that applies what acts outside does not say %q: %s", want, n)
+		}
+	}
+	if b := blockingSources([]kube.ScopeSource{root}); len(b) != 1 || b[0] != "Flux Kustomization flux2/flux2 applies into shop and applies ImageUpdateAutomation flux2/autobump (it pushes)" {
+		t.Errorf("as the refusal lists a source that applies what acts outside: %q", b)
+	}
+	root.Namespaces = nil
+	if b := blockingSources([]kube.ScopeSource{root}); len(b) != 1 || b[0] != "Flux Kustomization flux2/flux2 applies ImageUpdateAutomation flux2/autobump (it pushes)" {
+		t.Errorf("as the refusal lists a source that only applies what acts outside: %q", b)
 	}
 }

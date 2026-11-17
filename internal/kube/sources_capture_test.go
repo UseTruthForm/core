@@ -46,13 +46,17 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 	for _, k := range []string{"Kustomization gitops/root", "GitRepository gitops/root", "Kustomization gitops/edge", "Kustomization gitops/quiet",
 		"Application argocd/apps", "Application argocd/legacy", "Application argocd/manual", "ApplicationSet argocd/set",
 		"Deployment shop/web", "Deployment legacyns/legacyapp", "Deployment helmns/legacy", "ConfigMap fleet/settings",
-		"ImageUpdateAutomation imaging/bump", "ImageRepository imaging/images", "Provider imaging/chat", "Alert imaging/alerts"} {
+		"ImageUpdateAutomation imaging/bump", "ImageRepository imaging/images", "ImageRepository imaging/scan", "Provider imaging/chat", "Alert imaging/alerts",
+		"Receiver imaging/hook", "ImagePolicy imaging/pick", "Kustomization flux2/flux2", "Kustomization gitops/decoy", "ApplicationSet argocd/rolling",
+		"ApplicationSet argo2/set2", "Application apps2/svc", "Deployment legacy2ns/svcapp"} {
 		if !have[k] {
 			t.Errorf("the capture did not take %s", k)
 		}
 	}
-	if have["Application argocd/gen"] {
-		t.Errorf("the capture took the Application an ApplicationSet generates")
+	for _, k := range []string{"Application argocd/gen", "Application argo2/gen2", "ImageUpdateAutomation flux2/autobump", "Provider flux2/f2chat", "ImageUpdateAutomation botns/gitbump", "ApplicationSet argo2/decoy"} {
+		if have[k] {
+			t.Errorf("the capture took %s, which it leaves to what makes it", k)
+		}
 	}
 	reasons := map[string]string{}
 	for _, sk := range snap.Skips {
@@ -63,15 +67,22 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		}
 	}
 	for k, want := range map[string]string{
-		"gitops/payments helmreleases": "applied by Flux Kustomization gitops/root",
-		"store/payments deployments":   "rendered by Flux HelmRelease gitops/payments",
-		"shop/cart deployments":        "applied by Flux Kustomization gitops/root",
-		"edge/proxy deployments":       "applied by Flux Kustomization gitops/edge",
-		"fleet/worker deployments":     "managed by Argo CD application apps",
-		"argocd/gen applications":      "owned by ApplicationSet/set",
-		"setns/genapp deployments":     "managed by Argo CD application gen",
-		"quietns/q deployments":        "applied by Flux Kustomization gitops/quiet",
-		"manualns/m deployments":       "managed by Argo CD application manual",
+		"gitops/payments helmreleases":          "applied by Flux Kustomization gitops/root",
+		"store/payments deployments":            "rendered by Flux HelmRelease gitops/payments",
+		"shop/cart deployments":                 "applied by Flux Kustomization gitops/root",
+		"edge/proxy deployments":                "applied by Flux Kustomization gitops/edge",
+		"fleet/worker deployments":              "managed by Argo CD application apps",
+		"argocd/gen applications":               "owned by ApplicationSet/set",
+		"setns/genapp deployments":              "managed by Argo CD application gen",
+		"quietns/q deployments":                 "applied by Flux Kustomization gitops/quiet",
+		"manualns/m deployments":                "managed by Argo CD application manual",
+		"flux2/autobump imageupdateautomations": "applied by Flux Kustomization flux2/flux2",
+		"flux2/f2chat providers":                "applied by Flux Kustomization flux2/flux2",
+		"botns/gitbump imageupdateautomations":  "applied by Flux Kustomization flux2/flux2",
+		"gitops/other helmreleases":             "applied by Flux Kustomization gitops/edge",
+		"argo2/gen2 applications":               "owned by ApplicationSet/set2",
+		"setns2/genapp2 deployments":            "managed by Argo CD application gen2",
+		"argo2/decoy applicationsets":           "applied by Flux Kustomization gitops/decoy",
 	} {
 		if !strings.HasPrefix(reasons[k], want) {
 			t.Errorf("the capture left %s as %q, want %q", k, reasons[k], want)
@@ -88,14 +99,27 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 	apps := src("Argo CD application argocd/apps", "Application argocd/apps", "fleet")
 	set := src("Argo CD ApplicationSet argocd/set", "ApplicationSet argocd/set", "setns")
 	legacy := src("Argo CD application argocd/legacy", "Application argocd/legacy", "legacyns")
-	// Acting outside, they are refused under any hold, wherever they are;
-	// the ImageRepository is suspended, and is not.
+	legacy2 := src("Argo CD application apps2/svc", "Application apps2/svc", "legacy2ns")
+	decoy := src("Flux Kustomization gitops/decoy", "Kustomization gitops/decoy", "argo2")
+	// Acting outside, they are refused under any hold, wherever they are:
+	// brought, or applied by a source (the second root, whose Git path
+	// applies image automation and a Provider, one of them in a namespace
+	// of its own). The suspended ImageRepository is not, nor the
+	// ImagePolicy, which only chooses a tag.
+	const commits, sends = "it commits and pushes image updates to its Git repository", "it sends what it is given to its chat, webhook or Git host"
 	outside := []kube.ScopeSource{
 		{Source: "Flux notification Alert imaging/alerts", Object: "Alert imaging/alerts", Namespaces: []string{}, Reaches: "it sends the cluster's events to its Provider", Blocks: true},
-		{Source: "Flux ImageUpdateAutomation imaging/bump", Object: "ImageUpdateAutomation imaging/bump", Namespaces: []string{}, Reaches: "it commits and pushes image updates to its Git repository", Blocks: true},
-		{Source: "Flux notification Provider imaging/chat", Object: "Provider imaging/chat", Namespaces: []string{}, Reaches: "it sends what it is given to its chat, webhook or Git host", Blocks: true},
+		{Source: "Flux ImageUpdateAutomation imaging/bump", Object: "ImageUpdateAutomation imaging/bump", Namespaces: []string{}, Reaches: commits, Blocks: true},
+		{Source: "Flux ImageRepository imaging/scan", Object: "ImageRepository imaging/scan", Namespaces: []string{}, Reaches: "it scans its image registry with the registry's credentials", Blocks: true},
+		{Source: "Flux Kustomization flux2/flux2", Object: "Kustomization flux2/flux2", Namespaces: []string{}, Outside: []string{
+			"ImageUpdateAutomation botns/gitbump (" + commits + ")", "ImageUpdateAutomation flux2/autobump (" + commits + ")", "Provider flux2/f2chat (" + sends + ")"}, Blocks: true},
+		{Source: "Flux notification Provider imaging/chat", Object: "Provider imaging/chat", Namespaces: []string{}, Reaches: sends, Blocks: true},
+		{Source: "Flux notification Receiver imaging/hook", Object: "Receiver imaging/hook", Namespaces: []string{}, Reaches: "it takes webhooks from outside, which have the sources it names reconcile", Blocks: true},
 	}
-	holdOutside := kube.ScopeEntry{Namespaces: []string{"imaging"}, Hold: true, Objects: []string{"ImageUpdateAutomation/bump", "ImageRepository/images", "Provider/chat", "Alert/alerts"}}
+	holdOutside := []kube.ScopeEntry{
+		{Namespaces: []string{"imaging"}, Hold: true, Objects: []string{"ImageUpdateAutomation/bump", "ImageRepository/images", "ImageRepository/scan", "Provider/chat", "Alert/alerts", "Receiver/hook"}},
+		{Namespaces: []string{"flux2"}, Hold: true, Objects: []string{"Kustomization/flux2"}},
+	}
 	with := func(l ...kube.ScopeSource) []kube.ScopeSource {
 		out := append(append([]kube.ScopeSource{}, l...), outside...)
 		sort.Slice(out, func(i, j int) bool { return out[i].Object < out[j].Object })
@@ -147,12 +171,21 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		// automated sync. Neither is refused, and neither needs a hold.
 		{"already stopped", kube.Scope{Narrow: entries(kube.ScopeEntry{Namespaces: []string{"quietns"}, Hold: true}, kube.ScopeEntry{Namespaces: []string{"manualns"}, Hold: true})}, with(), ""},
 		// What acts outside, held: nothing is refused.
-		{"outside held", kube.Scope{Narrow: append(entries(shopHeld...), holdRoot, holdOutside)}, []kube.ScopeSource{}, "ImageUpdateAutomation imaging/bump: suspended"},
+		{"outside held", kube.Scope{Narrow: append(append(entries(shopHeld...), holdRoot), holdOutside...)}, []kube.ScopeSource{}, "Kustomization flux2/flux2: suspended"},
+		// An Application an ApplicationSet generates, the ApplicationSet
+		// left out: nothing makes what it manages. The ApplicationSet of
+		// another name in its namespace is not it (the Kustomization that
+		// applies that one applies into argo2, and is refused for that
+		// alone).
+		{"applicationset left out", kube.Scope{Narrow: entries(kube.ScopeEntry{Namespaces: []string{"setns2"}, Hold: true}, kube.ScopeEntry{Namespaces: []string{"argo2"}, Hold: true})}, with(decoy), ""},
+		// Argo CD 2's label for an application outside Argo CD's own
+		// namespace is namespace_name.
+		{"application tracked by app.kubernetes.io/instance as namespace_name", kube.Scope{Narrow: entries(kube.ScopeEntry{Namespaces: []string{"legacy2ns"}, Hold: true})}, with(legacy2), ""},
 		// Sources that apply only into namespaces the scope does not
 		// narrow are not refused: the root and the Kustomization of edge
 		// are brought not held, and apply into shop, store and edge, none
 		// of which this scope narrows.
-		{"sources applying only where the scope does not narrow", kube.Scope{Narrow: entries(fleetHeld, holdApps, holdOutside)}, []kube.ScopeSource{}, ""},
+		{"sources applying only where the scope does not narrow", kube.Scope{Narrow: append(entries(fleetHeld, holdApps), holdOutside...)}, []kube.ScopeSource{}, ""},
 		// A scope that holds nothing is not affected, though the root
 		// still makes what it makes there (stillMade says so).
 		{"a scope that holds nothing", kube.Scope{Narrow: []kube.ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"web"}}}}, []kube.ScopeSource{}, ""},
@@ -183,6 +216,11 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 	// sync policy cannot be held by its template: refused by name.
 	if _, _, err := kube.Narrow(snap, kube.Scope{Narrow: entries(kube.ScopeEntry{Namespaces: []string{"argocd"}, Hold: true, Objects: []string{"ApplicationSet/patched"}})}); err == nil || !strings.Contains(err.Error(), "ApplicationSet argocd/patched: its spec.templatePatch can give") {
 		t.Errorf("holding an ApplicationSet with a templatePatch: %v", err)
+	}
+	// Nor one whose RollingSync strategy has its controller sync what it
+	// makes, whatever their sync policy.
+	if _, _, err := kube.Narrow(snap, kube.Scope{Narrow: entries(kube.ScopeEntry{Namespaces: []string{"argocd"}, Hold: true, Objects: []string{"ApplicationSet/rolling"}})}); err == nil || !strings.Contains(err.Error(), "ApplicationSet argocd/rolling: its spec.strategy RollingSync has the ApplicationSet controller sync") {
+		t.Errorf("holding an ApplicationSet with RollingSync: %v", err)
 	}
 
 	// What sourcesRunning names is an object, whole: a pattern, a part of

@@ -157,7 +157,7 @@ const sourceOut = "in a drill target it acts for real, with the source's setting
 // trackingNote is what the refusal cannot see: an Argo CD that tracks
 // what it manages by an annotation alone, or by a label renamed in its
 // settings, leaves nothing the capture reads.
-const trackingNote = "What an Argo CD application manages is known by its tracking label or annotation (argocd.argoproj.io/instance, argocd.argoproj.io/tracking-id, or Argo CD 2's app.kubernetes.io/instance where no Helm release installed the object); one set to track by another label is not seen, and a restore is not refused for it"
+const trackingNote = "What an Argo CD application manages is known by its tracking label or annotation (argocd.argoproj.io/instance, argocd.argoproj.io/tracking-id, or Argo CD 2's app.kubernetes.io/instance where no Helm release installed the object); one set to track by another label is not seen, and a restore is not refused for it. app.kubernetes.io/instance is also what ordinary Helm charts set to their release's name: an object that carries it so, beside an Application of that name, is taken as that Application's, and the refusal is then wrong; hold or accept it"
 
 // sourceNote is one object brought not held that the scope refuses, for
 // a person.
@@ -169,7 +169,21 @@ func sourceNote(src kube.ScopeSource) string {
 	if src.Reaches != "" {
 		return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses: %s, and %s. %s", src.Source, src.Reaches, sourceOut, how)
 	}
-	return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses; once it runs it applies into %s, which the scope narrows: %s. %s", src.Source, strings.Join(src.Namespaces, ", "), sourceWhy, how)
+	return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses; once it runs it %s: %s. %s", src.Source, appliesWhat(src), sourceWhy, how)
+}
+
+// appliesWhat is what a source brought not held applies that a scope
+// which holds something refuses it for: into the namespaces it narrows,
+// and what acts outside, wherever that is.
+func appliesWhat(src kube.ScopeSource) string {
+	var l []string
+	if len(src.Namespaces) > 0 {
+		l = append(l, "applies into "+strings.Join(src.Namespaces, ", ")+", which the scope narrows")
+	}
+	if len(src.Outside) > 0 {
+		l = append(l, "applies what acts outside the cluster, "+strings.Join(src.Outside, ", ")+", which the restore does not bring and the source makes again")
+	}
+	return strings.Join(l, ", and ")
 }
 
 // sourceRef is a source as sourcesRunning names it.
@@ -189,7 +203,14 @@ func blockingSources(srcs []kube.ScopeSource) []string {
 		case src.Reaches != "":
 			out = append(out, fmt.Sprintf("%s (%s)", src.Source, src.Reaches))
 		default:
-			out = append(out, fmt.Sprintf("%s applies into %s", src.Source, strings.Join(src.Namespaces, ", ")))
+			var l []string
+			if len(src.Namespaces) > 0 {
+				l = append(l, "applies into "+strings.Join(src.Namespaces, ", "))
+			}
+			if len(src.Outside) > 0 {
+				l = append(l, "applies "+strings.Join(src.Outside, ", "))
+			}
+			out = append(out, src.Source+" "+strings.Join(l, " and "))
 		}
 	}
 	return out

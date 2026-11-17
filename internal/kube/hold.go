@@ -113,9 +113,10 @@ func held(o snapshot.Object) (out snapshot.Object, said, why string, unknown boo
 		// What it makes is not in the snapshot, so it is held by its
 		// template: the Applications it makes then do not sync by
 		// themselves. A templatePatch or a generator's own template can
-		// give them a sync policy all the same.
-		if at := setTemplates(spec); at != "" {
-			return o, "", "its " + at + " can give the Applications it makes a sync policy its template does not have, and a hold changes only the template", false
+		// give them a sync policy all the same, and a RollingSync
+		// strategy syncs them from the ApplicationSet controller.
+		if at, why := setSyncs(spec); at != "" {
+			return o, "", "its " + at + " " + why, false
 		}
 		how, said = setManual, "automated sync off in its template"
 	case group == "argoproj.io" && o.Kind() == "CronWorkflow":

@@ -180,21 +180,30 @@ func TestTablesAzureDefinesAndOthers(t *testing.T) {
 }
 
 // A --values key that matches nothing was ignored, and the restore said
-// "created" with the snapshot's value (re-review of #73).
+// "created" with the snapshot's value (re-review of #73). One in another case
+// is its object's: Azure's names ignore case.
 func TestAValuesKeyThatMatchesNothingIsSaid(t *testing.T) {
 	reg, src, _ := worlds(t)
 	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
 	put(t, src, "rg", "Microsoft.Network/virtualNetworks", "net", map[string]any{"location": "eastus", "properties": map[string]any{"addressSpace": map[string]any{"addressPrefixes": []any{"10.0.0.0/16"}}}})
 	snap := capture(t, src, reg)
-	got := UnmatchedValues(snap, map[string]map[string]any{
-		"Microsoft.Network/virtualNetworks/rg/net":  {},
+	spelled, err := AsSpelled(snap, map[string]map[string]any{
 		"Microsoft.Resources/resourceGroups/rg":     {},
-		"microsoft.network/virtualnetworks/rg/net":  {},
+		"microsoft.network/virtualnetworks/RG/net":  {"tags": map[string]any{"a": "b"}},
 		"Microsoft.Network/virtualNetworks/rg/gone": {},
 	})
-	want := []string{"Microsoft.Network/virtualNetworks/rg/gone", "microsoft.network/virtualnetworks/rg/net (the snapshot has Microsoft.Network/virtualNetworks/rg/net)"}
-	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := spelled["Microsoft.Network/virtualNetworks/rg/net"]; v == nil {
+		t.Errorf("the key in another case is not its object's: %v", spelled)
+	}
+	got := UnmatchedValues(snap, spelled)
+	if want := "Microsoft.Network/virtualNetworks/rg/gone"; strings.Join(got, "\n") != want {
 		t.Errorf("UnmatchedValues = %q, want %q", got, want)
+	}
+	if _, err := AsSpelled(snap, map[string]map[string]any{"Microsoft.Network/virtualNetworks/rg/net": {}, "microsoft.network/virtualnetworks/rg/net": {}}); err == nil || !strings.Contains(err.Error(), "name one object") {
+		t.Errorf("two keys for one object: %v", err)
 	}
 }
 

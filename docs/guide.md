@@ -81,7 +81,8 @@ A snapshot directory holds `objects/` (one YAML file per resource),
 `schemas/` (the field list of every type, so schema changes show up),
 `coverage.yaml` (what was read, what was skipped and why) and
 `snapshot.yaml` (with a digest: two captures of an unchanged system have
-the same one). **REPORT.md** beside it says, in plain words, what was
+the same one, unless Azure returned a name in another case; see
+[Names in another case](#names-in-another-case-azure)). **REPORT.md** beside it says, in plain words, what was
 captured, what was not and why, and what a restore will need.
 
 What a GitOps source renders (a Flux HelmRelease or Kustomization, an Argo
@@ -236,6 +237,30 @@ truthform diff --platform aws --region us-east-2 --from snap/aws
 
 It lists what was added, removed or changed, field by field, and exits 2
 when there are differences, so it can gate a pipeline or raise an alert.
+
+### Names in another case (Azure)
+
+Azure's resource types, resource groups and names ignore case, and Azure
+does not always return one in the same case: a Log Analytics table has come
+back as `ACSCallAutomationStreamingUsage` on one day and
+`AcsCallAutomationStreamingUsage` on the next. For Azure, TruthForm takes
+them as one object:
+
+- **A snapshot** stores the object in the same file whatever the case (its
+  path is in lower case), and the file keeps the case Azure returned. Two
+  spellings of one object in a capture are an error.
+- **`diff`, `compare` and an environment's diff** match it in any case, and
+  a type, group, name or ID that differs only in case is not a difference.
+- **`restore`** finds it in the target in any case (Azure's own reads ignore
+  case), and does not create it beside the one there.
+- **`--values`** keys match it in any case. Two keys for one object are
+  refused.
+
+The digest is of the files as written, so on a day Azure returns a name in
+another case it differs although `compare` finds nothing: compare by
+content, not by digest. Kubernetes and Google Cloud names are case-sensitive
+and are matched as they are; so are AWS's, where some services ignore case
+and others do not.
 
 ## Restore
 
@@ -1413,8 +1438,36 @@ is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
   an earlier build applied, and the snapshot no longer has, stays on the
   object under the old manager.
 
+## Azure snapshots from an earlier build
+
+An Azure snapshot written by this build stores its objects under paths in
+lower case (see [Names in another case](#names-in-another-case-azure)). An
+earlier one is read as it is. Captured again, its files move to the new
+paths with the same contents, so its digest changes once.
+
+Kept in git:
+
+- **On Linux,** git records every Azure object file as renamed.
+- **On Windows and macOS** (`core.ignorecase`, git's default there), git
+  keeps each path in the case it was first committed in, with the new
+  contents. This build reads such a snapshot, a clone of it included: where
+  a path differs only in case from the one it writes, the digest is checked
+  as if it were that one. A build from before this one refuses it as
+  changed after capture. To have git record the new paths, in the working
+  copy the capture was written to:
+
+  ```sh
+  git rm -r -q --cached <snapshot-dir> && git add <snapshot-dir>
+  ```
+
 ## Known limits
 
+- Azure objects whose names differ only in case are taken as one: capture
+  keeps one of them, and compare, diff and `--values` match either. Azure
+  Resource Manager names ignore case, and so far no captured type has been
+  seen to keep two apart; if one does (Cosmos DB database and container
+  names are case-sensitive), only one of them is in the snapshot. An ID
+  inside a property that differs only in case is still reported as changed.
 - A Log Analytics workspace's data sources can only be listed one kind at
   a time. TruthForm lists every kind Azure's definition names; a data
   source of a kind it does not name is not found. The change-tracking

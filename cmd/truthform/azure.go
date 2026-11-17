@@ -246,20 +246,25 @@ func readValues(file string, snap snapshot.Snapshot, names map[string]string) (m
 	if err := yaml.Unmarshal(b, &vals); err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
+	// Azure's names ignore case: a key is the object's in any case.
 	held := map[string]bool{}
 	for _, k := range heldBack {
-		held[strings.Replace(k, "Microsoft.Resources/resourceGroups//", "Microsoft.Resources/resourceGroups/", 1)] = true
+		held[strings.ToLower(strings.Replace(k, "Microsoft.Resources/resourceGroups//", "Microsoft.Resources/resourceGroups/", 1))] = true
 	}
 	check := map[string]map[string]any{}
 	for k, v := range vals {
-		if !held[k] {
+		if !held[strings.ToLower(k)] {
 			check[k] = v
 		}
 	}
-	if bad := azarm.UnmatchedValues(snap, azarm.RenameValues(check, names)); len(bad) > 0 {
+	spelled, err := azarm.AsSpelled(snap, azarm.RenameValues(check, names))
+	if err != nil {
+		return nil, err
+	}
+	if bad := azarm.UnmatchedValues(snap, spelled); len(bad) > 0 {
 		return nil, fmt.Errorf("--values: nothing in the snapshot has %s (keys are Kind/resourceGroup/name, as the snapshot spells them); nothing was restored", strings.Join(bad, ", "))
 	}
-	return azarm.RenameValues(vals, names), nil
+	return azarm.AsSpelled(snap, azarm.RenameValues(vals, names))
 }
 
 func diffAzure(ctx context.Context, a *azureFlags, want snapshot.Snapshot, from string, vals map[string]map[string]any) int {

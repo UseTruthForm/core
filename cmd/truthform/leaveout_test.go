@@ -196,10 +196,10 @@ func TestRestoreRefusesAValuesKeyThatMatchesNothing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("microsoft.network/privatednszones/rg/corp.example:\n  tags: {a: b}\n")
+	write("Microsoft.Network/privateDnsZones/rg/corp.example.org:\n  tags: {a: b}\n")
 	code, out, errOut := output(t, func() int { return restore(ctx, target) })
-	if code != 1 || !strings.Contains(errOut, "--values: nothing in the snapshot has microsoft.network/privatednszones/rg/corp.example (the snapshot has Microsoft.Network/privateDnsZones/rg/corp.example)") {
-		t.Errorf("a key in the wrong case: exit %d\n%s%s", code, out, errOut)
+	if code != 1 || !strings.Contains(errOut, "--values: nothing in the snapshot has Microsoft.Network/privateDnsZones/rg/corp.example.org") {
+		t.Errorf("a key that matches nothing: exit %d\n%s%s", code, out, errOut)
 	}
 	if _, err := dst.Get(ctx, "/subscriptions/"+leaveDst+"/resourceGroups/rg", "2024-11-01"); err == nil {
 		t.Error("something was restored before the refusal")
@@ -224,13 +224,16 @@ func TestAValueForAHeldBackGroupIsNotRefused(t *testing.T) {
 	if err := os.WriteFile(leave, []byte("- Microsoft.Resources/resourceGroups//rg\n- Microsoft.Network/privateDnsZones/rg/corp.example\n- "+leaveKey+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(vals, []byte("Microsoft.Resources/resourceGroups/rg:\n  tags: {a: b}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	code, out, errOut := output(t, func() int {
-		return restore(ctx, []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--from", dir, "--leave-out", leave, "--values", vals})
-	})
-	if strings.Contains(errOut, "--values: nothing in the snapshot has") {
-		t.Errorf("a value for a held-back group was refused: exit %d\n%s%s", code, out, errOut)
+	// Azure's names ignore case, and --leave-out matches without it.
+	for _, key := range []string{"Microsoft.Resources/resourceGroups/rg", "microsoft.resources/resourcegroups/RG"} {
+		if err := os.WriteFile(vals, []byte(key+":\n  tags: {a: b}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		code, out, errOut := output(t, func() int {
+			return restore(ctx, []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--from", dir, "--leave-out", leave, "--values", vals})
+		})
+		if strings.Contains(errOut, "--values: nothing in the snapshot has") {
+			t.Errorf("a value for a held-back group (%s) was refused: exit %d\n%s%s", key, code, out, errOut)
+		}
 	}
 }

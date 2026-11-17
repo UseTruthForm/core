@@ -57,8 +57,10 @@ func (p Policy) WithBaseline(b snapshot.Snapshot, digest string) Policy {
 	for k, v := range p.Baseline {
 		merged[k] = v
 	}
+	// In lower case: Azure returns a name in either case from one read to the
+	// next, and a resource in the baseline is the same in any.
 	for _, o := range b.Objects {
-		merged[o.Key()] = o.Body
+		merged[strings.ToLower(o.Key())] = o.Body
 	}
 	p.Baseline = merged
 	if p.BaselineDigest != "" {
@@ -542,7 +544,8 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		rid := c.rid
 		obj := toObject(c)
 		if p.Baseline != nil {
-			if b, ok := p.Baseline[snapshot.Object{Body: obj}.Key()]; ok && sameSpec(obj, b) {
+			o := snapshot.Object{Body: obj}
+			if b, ok := p.Baseline[strings.ToLower(o.Key())]; ok && sameSpec(sameCase(o, snapshot.Object{Body: b}).Body, b) {
 				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, "identical to the baseline snapshot (already there, or created by Azure)")
 				continue
 			}

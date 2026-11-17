@@ -37,6 +37,13 @@ var runners = []struct{ group, kind, resource, name, reaches string }{
 	{"source.toolkit.fluxcd.io", "HelmRepository", "helmrepositories", "Flux HelmRepository", "it fetches its chart repository or registry with the source's credentials"},
 	{"source.toolkit.fluxcd.io", "OCIRepository", "ocirepositories", "Flux OCIRepository", "it pulls its artifact from its OCI registry with the source's credentials"},
 	{"source.toolkit.fluxcd.io", "Bucket", "buckets", "Flux Bucket", "it fetches from its storage bucket with the source's credentials"},
+	// What helm-controller makes for a HelmRelease is skipped, rendered by
+	// it, and the walk refuses the release for it; a held release makes
+	// none (helm-controller does not reconcile a suspended one). A
+	// HelmChart in the snapshot pulls for itself: with a HelmRepository of
+	// type oci, which source-controller does not reconcile, it is what
+	// fetches.
+	{"source.toolkit.fluxcd.io", "HelmChart", "helmcharts", "Flux HelmChart", "it pulls its chart from the chart source's repository or registry with that source's credentials"},
 }
 
 // runner is what of an object brought not held runs under a hold: a

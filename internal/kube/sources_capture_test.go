@@ -3,6 +3,7 @@ package kube_test
 import (
 	"context"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -49,12 +50,13 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		"ImageUpdateAutomation imaging/bump", "ImageRepository imaging/images", "ImageRepository imaging/scan", "Provider imaging/chat", "Alert imaging/alerts",
 		"Receiver imaging/hook", "ImagePolicy imaging/pick", "Kustomization flux2/flux2", "Kustomization gitops/decoy", "ApplicationSet argocd/rolling",
 		"ApplicationSet argo2/set2", "Application apps2/svc", "Deployment legacy2ns/svcapp",
-		"HelmRepository imaging/charts", "Bucket imaging/store"} {
+		"HelmRepository imaging/charts", "Bucket imaging/store",
+		"HelmRepository charts/ocirepo", "HelmRelease apprel/app", "HelmChart charts/manual"} {
 		if !have[k] {
 			t.Errorf("the capture did not take %s", k)
 		}
 	}
-	for _, k := range []string{"Application argocd/gen", "Application argo2/gen2", "ImageUpdateAutomation flux2/autobump", "Provider flux2/f2chat", "ImageUpdateAutomation botns/gitbump", "ApplicationSet argo2/decoy", "OCIRepository flux2/oci"} {
+	for _, k := range []string{"Application argocd/gen", "Application argo2/gen2", "ImageUpdateAutomation flux2/autobump", "Provider flux2/f2chat", "ImageUpdateAutomation botns/gitbump", "ApplicationSet argo2/decoy", "OCIRepository flux2/oci", "HelmChart charts/apprel-app"} {
 		if have[k] {
 			t.Errorf("the capture took %s, which it leaves to what makes it", k)
 		}
@@ -81,6 +83,7 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		"flux2/f2chat providers":                "applied by Flux Kustomization flux2/flux2",
 		"botns/gitbump imageupdateautomations":  "applied by Flux Kustomization flux2/flux2",
 		"flux2/oci ocirepositories":             "applied by Flux Kustomization flux2/flux2",
+		"charts/apprel-app helmcharts":          "rendered by Flux HelmRelease apprel/app",
 		"gitops/other helmreleases":             "applied by Flux Kustomization gitops/edge",
 		"argo2/gen2 applications":               "owned by ApplicationSet/set2",
 		"setns2/genapp2 deployments":            "managed by Argo CD application gen2",
@@ -109,6 +112,10 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 	// of its own). The suspended ImageRepository is not, nor the
 	// ImagePolicy, which only chooses a tag.
 	const commits, sends = "it commits and pushes image updates to its Git repository", "it sends what it is given to its chat, webhook or Git host"
+	pulls := "it pulls its chart from the chart source's repository or registry with that source's credentials"
+	ociRepo := kube.ScopeSource{Source: "Flux HelmRepository charts/ocirepo", Object: "HelmRepository charts/ocirepo", Namespaces: []string{}, Reaches: "it fetches its chart repository or registry with the source's credentials", Blocks: true}
+	appRelease := kube.ScopeSource{Source: "Flux HelmRelease apprel/app", Object: "HelmRelease apprel/app", Namespaces: []string{}, Outside: []string{"HelmChart charts/apprel-app (" + pulls + ")"}, Blocks: true}
+	manualChart := kube.ScopeSource{Source: "Flux HelmChart charts/manual", Object: "HelmChart charts/manual", Namespaces: []string{}, Reaches: pulls, Blocks: true}
 	outside := []kube.ScopeSource{
 		{Source: "Flux notification Alert imaging/alerts", Object: "Alert imaging/alerts", Namespaces: []string{}, Reaches: "it sends the cluster's events to its Provider", Blocks: true},
 		{Source: "Flux ImageUpdateAutomation imaging/bump", Object: "ImageUpdateAutomation imaging/bump", Namespaces: []string{}, Reaches: commits, Blocks: true},
@@ -119,13 +126,31 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		// Flux's sources that fetch, made by hand.
 		{Source: "Flux HelmRepository imaging/charts", Object: "HelmRepository imaging/charts", Namespaces: []string{}, Reaches: "it fetches its chart repository or registry with the source's credentials", Blocks: true},
 		{Source: "Flux Bucket imaging/store", Object: "Bucket imaging/store", Namespaces: []string{}, Reaches: "it fetches from its storage bucket with the source's credentials", Blocks: true},
+		// A HelmRepository of type oci, the HelmRelease made of it, for
+		// the HelmChart helm-controller made for it (skipped, rendered by
+		// it), and a HelmChart made by hand.
+		ociRepo, appRelease, manualChart,
 		{Source: "Flux notification Provider imaging/chat", Object: "Provider imaging/chat", Namespaces: []string{}, Reaches: sends, Blocks: true},
 		{Source: "Flux notification Receiver imaging/hook", Object: "Receiver imaging/hook", Namespaces: []string{}, Reaches: "it takes webhooks from outside, which have the sources it names reconcile", Blocks: true},
 	}
 	holdOutside := []kube.ScopeEntry{
 		{Namespaces: []string{"imaging"}, Hold: true, Objects: []string{"ImageUpdateAutomation/bump", "ImageRepository/images", "ImageRepository/scan", "Provider/chat", "Alert/alerts", "Receiver/hook", "HelmRepository/charts", "Bucket/store"}},
 		{Namespaces: []string{"flux2"}, Hold: true, Objects: []string{"Kustomization/flux2"}},
+		{Namespaces: []string{"charts"}, Hold: true, Objects: []string{"HelmRepository/ocirepo", "HelmChart/manual"}},
+		{Namespaces: []string{"apprel"}, Hold: true, Objects: []string{"HelmRelease/app"}},
 	}
+	// drop is a list without the objects named, and with those given.
+	drop := func(l []kube.ScopeSource, objects []string, add ...kube.ScopeSource) []kube.ScopeSource {
+		out := append([]kube.ScopeSource{}, add...)
+		for _, x := range l {
+			if !slices.Contains(objects, x.Object) {
+				out = append(out, x)
+			}
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].Object < out[j].Object })
+		return out
+	}
+	holdCharts := kube.ScopeEntry{Namespaces: []string{"charts"}, Hold: true, Objects: []string{"HelmRepository/ocirepo", "HelmChart/manual"}}
 	// The GitRepository the root reads fetches too: brought not held in
 	// every scope that does not narrow its namespace.
 	gitRoot := kube.ScopeSource{Source: "Flux GitRepository gitops/root", Object: "GitRepository gitops/root", Namespaces: []string{}, Reaches: "it fetches its Git repository with the source's credentials", Blocks: true}
@@ -183,6 +208,19 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		// automated sync. Neither is refused, and neither needs a hold.
 		{"already stopped", kube.Scope{Narrow: entries(kube.ScopeEntry{Namespaces: []string{"quietns"}, Hold: true}, kube.ScopeEntry{Namespaces: []string{"manualns"}, Hold: true})}, with(), ""},
 		// What acts outside, held: nothing is refused.
+		// The HelmRepository of type oci held, and its HelmRelease not:
+		// the release is refused for the HelmChart it makes, which pulls
+		// (and for charts, now narrowed, where that chart is).
+		{"oci HelmRepository held, its release not", kube.Scope{Narrow: append(entries(shopHeld...), holdCharts)},
+			drop(with(root), []string{"HelmRepository charts/ocirepo", "HelmChart charts/manual", "HelmRelease apprel/app"},
+				kube.ScopeSource{Source: appRelease.Source, Object: appRelease.Object, Namespaces: []string{"charts"}, Outside: appRelease.Outside, Blocks: true}), "HelmChart charts/manual: suspended"},
+		// The release held: helm-controller does not reconcile a
+		// suspended one, so it makes no chart, and it is not refused.
+		{"helm release held", kube.Scope{Narrow: append(entries(shopHeld...), kube.ScopeEntry{Namespaces: []string{"apprel"}, Hold: true, Objects: []string{"HelmRelease/app"}})},
+			drop(with(root), []string{"HelmRelease apprel/app"}), "HelmRelease apprel/app: suspended"},
+		// A HelmChart in the snapshot, accepted by name.
+		{"helm chart accepted", kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"HelmChart/charts/manual"}},
+			drop(with(root), []string{"HelmChart charts/manual"}, kube.ScopeSource{Source: manualChart.Source, Object: manualChart.Object, Namespaces: []string{}, Reaches: pulls, Accepted: true}), ""},
 		{"outside held", kube.Scope{Narrow: append(append(entries(shopHeld...), holdRoot), holdOutside...)}, []kube.ScopeSource{}, "Kustomization flux2/flux2: suspended"},
 		// An Application an ApplicationSet generates, the ApplicationSet
 		// left out: nothing makes what it manages. The ApplicationSet of

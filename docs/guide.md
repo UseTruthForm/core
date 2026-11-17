@@ -1077,6 +1077,28 @@ registry or bucket with the source's credentials, every interval. The
 brings it too, as the example below does. An `ImagePolicy` only chooses
 a tag from what an `ImageRepository` found, and is not refused.
 
+**A `HelmChart` is what pulls a chart.** helm-controller makes one for
+each `HelmRelease`, in the chart source's namespace, and source-controller
+pulls with it from the chart source's repository or registry, with that
+source's credentials. A `HelmRepository` of `type: oci` is not reconciled
+at all: refusing one is harmless, but holding it stops nothing, since its
+`HelmChart`s do the pulling. So:
+
+- the `HelmChart` helm-controller made is skipped by the capture
+  (rendered by its `HelmRelease`), and a restore does not bring it: the
+  release makes it again once it runs, so **a `HelmRelease` brought not
+  held is refused for its chart**, wherever either is, and the refusal
+  names both;
+- **a held `HelmRelease` makes no chart in a new cluster**:
+  helm-controller does not reconcile a suspended release, and it makes
+  the chart only when it does. It is not refused;
+- a `HelmChart` in the snapshot (made by hand, or captured for another
+  reason) pulls for itself, and is refused like the sources above unless
+  it is held or accepted;
+- **on a cluster that already has the chart** (a restore in place), a
+  held release leaves it there, and source-controller goes on pulling
+  with it: suspend the chart too.
+
 **Argo CD's repository Secrets are not refused**
 (`argocd.argoproj.io/secret-type: repository` or `repo-creds`). Such a
 Secret fetches nothing: it holds the credentials Argo CD's repo server

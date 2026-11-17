@@ -117,27 +117,51 @@ func UnmatchedTypes(s snapshot.Snapshot, types []string) []string {
 	return out
 }
 
-// UnmatchedValues lists the --values keys no object in the snapshot has, each
-// with the key it was probably meant for when one differs only in case. Such a
-// key was ignored, and the restore said "created" with the snapshot's value
-// (re-review of #73; keys are matched exactly, as they are looked up).
-func UnmatchedValues(s snapshot.Snapshot, values map[string]map[string]any) []string {
+// AsSpelled gives each --values key the case the snapshot spells its object
+// in. Azure's names ignore case and it returns one in either case from one
+// capture to the next, so a file written against one capture names the object
+// of the next in another case; looked up exactly, its values were ignored. A
+// key that matches nothing stays as it is, for UnmatchedValues to refuse.
+// Two keys for one object are an error: which one meant what cannot be told.
+func AsSpelled(s snapshot.Snapshot, values map[string]map[string]any) (map[string]map[string]any, error) {
+	if len(values) == 0 {
+		return values, nil
+	}
 	have := map[string]string{}
 	for _, o := range s.Objects {
 		k := valuesRef(o, objectID(o, tokSub))
-		have[k] = k
 		have[strings.ToLower(k)] = k
+	}
+	out := make(map[string]map[string]any, len(values))
+	from := map[string]string{}
+	for _, k := range sortedKeys(values) {
+		to := k
+		if sp, ok := have[strings.ToLower(k)]; ok {
+			to = sp
+		}
+		if prev, ok := from[to]; ok {
+			return nil, fmt.Errorf("--values: %s and %s name one object, %s (Azure names ignore case); give its values once", prev, k, to)
+		}
+		from[to] = k
+		out[to] = values[k]
+	}
+	return out, nil
+}
+
+// UnmatchedValues lists the --values keys no object in the snapshot has. Such
+// a key was ignored, and the restore said "created" with the snapshot's value
+// (re-review of #73). Keys are matched exactly, as they are looked up: a file
+// is first given the snapshot's spelling with AsSpelled.
+func UnmatchedValues(s snapshot.Snapshot, values map[string]map[string]any) []string {
+	have := map[string]bool{}
+	for _, o := range s.Objects {
+		have[valuesRef(o, objectID(o, tokSub))] = true
 	}
 	var out []string
 	for k := range values {
-		if _, ok := have[k]; ok && have[k] == k {
-			continue
+		if !have[k] {
+			out = append(out, k)
 		}
-		if near, ok := have[strings.ToLower(k)]; ok {
-			out = append(out, k+" (the snapshot has "+near+")")
-			continue
-		}
-		out = append(out, k)
 	}
 	sort.Strings(out)
 	return out

@@ -58,6 +58,11 @@ func emitError(code int) {
 		doc["complete"] = false
 		doc["webhooksWithoutService"] = blockedBy
 	}
+	// And one refused for GitOps sources brought not held.
+	if sourcesBlocked != nil && command == "restore" {
+		doc["complete"] = false
+		doc["sourcesNotHeld"] = sourcesBlocked
+	}
 	emit(doc)
 }
 

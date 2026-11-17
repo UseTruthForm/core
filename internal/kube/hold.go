@@ -79,6 +79,7 @@ func held(o snapshot.Object) (out snapshot.Object, said, why string, unknown boo
 		pausedAtZero
 		paused
 		manual
+		setManual
 		nothing
 	)
 	how := 0
@@ -108,6 +109,16 @@ func held(o snapshot.Object) (out snapshot.Object, said, why string, unknown boo
 		how, said = suspend, "suspended"
 	case group == "argoproj.io" && o.Kind() == "Application":
 		how, said = manual, "automated sync off"
+	case group == "argoproj.io" && o.Kind() == "ApplicationSet":
+		// What it makes is not in the snapshot, so it is held by its
+		// template: the Applications it makes then do not sync by
+		// themselves. A templatePatch or a generator's own template can
+		// give them a sync policy all the same, and a RollingSync
+		// strategy syncs them from the ApplicationSet controller.
+		if at, why := setSyncs(spec); at != "" {
+			return o, "", "its " + at + " " + why, false
+		}
+		how, said = setManual, "automated sync off in its template"
 	case group == "argoproj.io" && o.Kind() == "CronWorkflow":
 		how, said = suspend, "suspended"
 	case inert(group, o.Kind()):
@@ -178,6 +189,12 @@ func held(o snapshot.Object) (out snapshot.Object, said, why string, unknown boo
 		annotate(kedaPaused, "true")
 	case manual:
 		if policy, _ := spec["syncPolicy"].(map[string]any); policy != nil {
+			delete(policy, "automated")
+		}
+	case setManual:
+		tmpl, _ := spec["template"].(map[string]any)
+		ts, _ := tmpl["spec"].(map[string]any)
+		if policy, _ := ts["syncPolicy"].(map[string]any); policy != nil {
 			delete(policy, "automated")
 		}
 	}

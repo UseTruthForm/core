@@ -1,6 +1,7 @@
 package azarm
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/usetruthform/core/internal/snapshot"
@@ -22,10 +23,12 @@ var unsetDefaults = map[string]map[string]any{
 	"microsoft.keyvault/vaults":       {"properties.enabledForDiskEncryption": false, "properties.enabledForTemplateDeployment": false},
 }
 
-// ForCompare makes want and got comparable: what Azure set and the snapshot
-// does not (unsetDefaults), a pool's node count when its autoscaler sets it,
-// and an auditing setting's details when it is off on both. Each is drift no
-// one made. Copies; neither snapshot is changed.
+// ForCompare makes want and got comparable: the same object in another case
+// (Azure's names, groups and types ignore case, and it returns one in either
+// from one read to the next), what Azure set and the snapshot does not
+// (unsetDefaults), a pool's node count when its autoscaler sets it, and an
+// auditing setting's details when it is off on both. Each is drift no one
+// made. Copies; neither snapshot is changed.
 func ForCompare(want, got snapshot.Snapshot) (snapshot.Snapshot, snapshot.Snapshot) {
 	byKey := map[string]int{}
 	w := want
@@ -40,6 +43,10 @@ func ForCompare(want, got snapshot.Snapshot) (snapshot.Snapshot, snapshot.Snapsh
 		if !ok {
 			continue
 		}
+		if o.Key() != w.Objects[j].Key() {
+			o = sameCase(o, w.Objects[j])
+			g.Objects[i] = o
+		}
 		ws0, _ := w.Objects[j].Body["spec"].(map[string]any)
 		gs0, _ := o.Body["spec"].(map[string]any)
 		if ws0 == nil || gs0 == nil {
@@ -52,6 +59,34 @@ func ForCompare(want, got snapshot.Snapshot) (snapshot.Snapshot, snapshot.Snapsh
 		w.Objects[j], g.Objects[i] = snapshot.Object{Body: wb}, snapshot.Object{Body: gb}
 	}
 	return w, g
+}
+
+// sameCase is o with its kind, resource group, name and ID spelled as want
+// spells them, where they differ only in case: in Azure that is one object,
+// and a compare would read it as one missing and another extra.
+func sameCase(o, want snapshot.Object) snapshot.Object {
+	b := deepCopy(o.Body)
+	if strings.EqualFold(o.Kind(), want.Kind()) {
+		b["kind"] = want.Kind()
+	}
+	m, _ := b["metadata"].(map[string]any)
+	wm, _ := want.Body["metadata"].(map[string]any)
+	if m == nil || wm == nil {
+		return snapshot.Object{Body: b}
+	}
+	for _, k := range []string{"name", "namespace"} {
+		if v, _ := m[k].(string); v != "" && strings.EqualFold(v, fmt.Sprint(wm[k])) {
+			m[k] = wm[k]
+		}
+	}
+	ann, _ := m["annotations"].(map[string]any)
+	wann, _ := wm["annotations"].(map[string]any)
+	if id, _ := ann[annID].(string); id != "" {
+		if wid, _ := wann[annID].(string); strings.EqualFold(id, wid) {
+			ann[annID] = wid
+		}
+	}
+	return snapshot.Object{Body: b}
 }
 
 // comparable applies ForCompare's rules to one object's two specs, in place.

@@ -107,6 +107,17 @@ type PlanStoreItem struct {
 // under the names a skip reason may give it.
 func heldSources(s snapshot.Snapshot) map[source]bool {
 	held := map[source]bool{}
+	for src := range sourceObjects(s) {
+		held[src] = true
+	}
+	return held
+}
+
+// sourceObjects are, for the sources whose own object is in the
+// snapshot, each under the names a skip reason may give it, the object
+// (Kind namespace/name).
+func sourceObjects(s snapshot.Snapshot) map[source]string {
+	held := map[source]string{}
 	// An Argo CD application is named bare in a reason when it is in
 	// Argo CD's own namespace, which the snapshot does not say: a bare
 	// name that applications in several namespaces share is not taken as
@@ -123,15 +134,16 @@ func heldSources(s snapshot.Snapshot) map[source]bool {
 			if obj.group != group || obj.kind != o.Kind() {
 				continue
 			}
+			who := o.Kind() + " " + o.Namespace() + "/" + o.Name()
 			if kind == "Argo CD application" {
 				// By name, as a reason names it; namespace_name outside
 				// Argo CD's own namespace.
 				if len(argoNamed[o.Name()]) == 1 {
-					held[source{kind, o.Name()}] = true
+					held[source{kind, o.Name()}] = who
 				}
-				held[source{kind, o.Namespace() + "_" + o.Name()}] = true
+				held[source{kind, o.Namespace() + "_" + o.Name()}] = who
 			} else {
-				held[source{kind, o.Namespace() + "/" + o.Name()}] = true
+				held[source{kind, o.Namespace() + "/" + o.Name()}] = who
 			}
 		}
 	}

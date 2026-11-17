@@ -172,8 +172,10 @@ func TestWebhooksOfARealCapture(t *testing.T) {
 			// Held, an application syncs nothing by itself: what it
 			// would have made, two steps down, is not there.
 			// The application of the same name in another namespace
-			// is not held, and a bare name may mean it.
-			want: with(map[string]string{"byargo": kube.WhyNotBrought})},
+			// is not held, and a bare name may mean it. The
+			// ApplicationSet held, what it generates syncs nothing by
+			// itself either.
+			want: with(map[string]string{"byargo": kube.WhyNotBrought, "byset": kube.WhyNotBrought})},
 		{name: "the HelmRelease taken out", whole: snap, taken: []string{"HelmRelease/flux/gadgets"},
 			want: with(map[string]string{"byflux": kube.WhyNotBrought})},
 		{name: "the HelmRelease held", whole: snap, scope: ptr(kube.Scope{Narrow: []kube.ScopeEntry{{Namespaces: []string{"flux"}, Objects: []string{"HelmRelease/*"}, Hold: true}}}),

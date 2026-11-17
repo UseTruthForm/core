@@ -386,7 +386,9 @@ func ensureEnvDir(dir string) error {
 }
 
 // writeEnvironment records each target's result and one digest over them,
-// so two captures of an unchanged environment compare in one line. Nothing
+// so two captures of an unchanged environment compare in one line (unless
+// Azure returned a name in another case: the files keep the case it
+// returned, and compare, not the digest, says nothing changed). Nothing
 // time- or machine-dependent goes in.
 func writeEnvironment(dir, name string, results []TargetResult) error {
 	h := sha256.New()

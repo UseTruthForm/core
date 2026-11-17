@@ -32,6 +32,12 @@ type Scope struct {
 	// refuses the restore: while nothing answers, the API server refuses
 	// every write such a webhook is asked about.
 	WithoutService []string `json:"withoutService,omitempty"`
+	// SourcesRunning accepts GitOps sources that a scope which holds
+	// anything brings, not held, and that apply into a namespace it
+	// narrows, as Kind/namespace/name of the source's own object, with no
+	// pattern. One not named here refuses the restore: restored as it is,
+	// a source syncs its Git path, and starts what the scope held back.
+	SourcesRunning []string `json:"sourcesRunning,omitempty"`
 }
 
 // ScopeEntry narrows the namespaces its patterns fit to the releases and
@@ -103,6 +109,32 @@ type ScopeReport struct {
 	// call a Service that will not answer: until it does, the API server
 	// refuses what such a webhook is asked about.
 	Webhooks []ScopeWebhook `json:"webhooksWithoutService"`
+	// Sources are the GitOps sources that a scope which holds anything
+	// brings and does not hold, and that apply into a namespace it
+	// narrows: once one runs, it applies its Git path there again, and
+	// what the scope held back starts.
+	Sources []ScopeSource `json:"sourcesNotHeld"`
+}
+
+// ScopeSource is a GitOps source that is brought not held, in a scope that
+// holds something, and the narrowed namespaces it applies into; or an
+// object brought not held there that acts outside the cluster.
+type ScopeSource struct {
+	Source     string   `json:"source"` // as a skip reason names it: Flux Kustomization flux-system/root
+	Object     string   `json:"object"` // Kind namespace/name
+	Namespaces []string `json:"namespaces"`
+	// Reaches is what an object that acts outside the cluster does there
+	// (a Flux image automation, a notification provider): it is refused
+	// wherever it is, and has no namespaces.
+	Reaches string `json:"reaches,omitempty"`
+	// Outside is what acts outside the cluster that a source applies (the
+	// capture left it to the source), as Kind namespace/name (what it
+	// does): the source is refused for it, wherever it is.
+	Outside []string `json:"appliesOutside,omitempty"`
+	// Accepted: the scope file names it under sourcesRunning.
+	Accepted bool `json:"accepted"`
+	// Blocks: not accepted. A restore is not begun with one.
+	Blocks bool `json:"blocks"`
 }
 
 // ScopeWebhook is a webhook that is brought, and the Service it calls,
@@ -304,12 +336,15 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 // What answers behind a webhook's Service is looked for there, so that a
 // workload taken out is known not to answer.
 func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, error) {
-	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}, NotHeld: []string{}, AsTheyAre: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}, Webhooks: []ScopeWebhook{}}
+	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}, NotHeld: []string{}, AsTheyAre: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}, Webhooks: []ScopeWebhook{}, Sources: []ScopeSource{}}
 	// A file that does no more than accept webhooks leaves the snapshot
 	// as it is, its Jobs with it.
 	acceptOnly := sc.Narrow == nil && !sc.Jobs && len(sc.WithoutService) > 0
 	if acceptOnly {
 		sc.Jobs = true
+	}
+	if sc.Narrow == nil && !sc.Jobs && len(sc.SourcesRunning) > 0 {
+		return s, rep, fmt.Errorf("it has sourcesRunning and narrows nothing: sourcesRunning accepts a GitOps source that a scope which holds something (hold: true) brings not held, and this file holds nothing")
 	}
 	if sc.Narrow == nil && !sc.Jobs {
 		return s, rep, fmt.Errorf("it narrows nothing: give at least one entry under narrow")
@@ -757,6 +792,19 @@ func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeR
 	}
 	rep.Webhooks = webhooksWithoutService(whole, s, out, heldNow)
 	if err := acceptWebhooks(rep.Webhooks, sc.WithoutService); err != nil {
+		return s, rep, err
+	}
+	holds := false
+	for _, e := range sc.Narrow {
+		holds = holds || e.Hold
+	}
+	if holds {
+		rep.Sources = sourcesNotHeld(s, out, narrowed)
+	}
+	if len(sc.SourcesRunning) > 0 && !holds {
+		return s, rep, fmt.Errorf("sourcesRunning names %s, and the scope holds nothing (hold: true), so no source is refused and none is accepted", strings.Join(sc.SourcesRunning, ", "))
+	}
+	if err := acceptSources(rep.Sources, sc.SourcesRunning); err != nil {
 		return s, rep, err
 	}
 	sort.Strings(rep.ObjectsBrought)

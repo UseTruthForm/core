@@ -69,6 +69,23 @@ func (o Object) Key() string {
 	return strings.Join([]string{o.APIVersion(), o.Kind(), o.Namespace(), o.Name()}, "|")
 }
 
+// FoldsCase reports whether a platform's names, groups and types ignore case,
+// so that one object can be returned in a different case from one read to the
+// next. Azure's do: Log Analytics returned one table as
+// ACSCallAutomationStreamingUsage on one day and AcsCallAutomationStreamingUsage
+// on the next, and each capture wrote it to a file of its own. Kubernetes and
+// GCP names are case-sensitive; AWS differs by service and is left as it is.
+func FoldsCase(platform string) bool { return platform == "azure" }
+
+// IdentityKey is Key as the platform matches objects: folded where its names
+// ignore case.
+func (o Object) IdentityKey(platform string) string {
+	if FoldsCase(platform) {
+		return strings.ToLower(o.Key())
+	}
+	return o.Key()
+}
+
 // Skip records one object the capture saw and deliberately did not take.
 type Skip struct {
 	Resource  string `json:"resource"`
@@ -165,18 +182,23 @@ func (s Snapshot) Write(dir string) error {
 		}
 	}
 
+	fold := FoldsCase(s.Platform)
 	files := map[string][]byte{}
-	seen := map[string]bool{}
+	seen := map[string]string{}
 	for _, o := range s.Objects {
-		if seen[o.Key()] {
+		// Where names ignore case, two spellings are one object.
+		if prev, ok := seen[o.IdentityKey(s.Platform)]; ok {
+			if prev != o.Key() {
+				return fmt.Errorf("duplicate object %s (also as %s; %s names ignore case)", o.Key(), prev, s.Platform)
+			}
 			return fmt.Errorf("duplicate object %s", o.Key())
 		}
-		seen[o.Key()] = true
+		seen[o.IdentityKey(s.Platform)] = o.Key()
 		b, err := encodeYAML(o.Body)
 		if err != nil {
 			return fmt.Errorf("encode %s: %w", o.Key(), err)
 		}
-		files[objectPath(o)] = b
+		files[objectPath(o, fold)] = b
 	}
 
 	for _, ts := range s.Schemas {
@@ -184,7 +206,7 @@ func (s Snapshot) Write(dir string) error {
 		if err != nil {
 			return fmt.Errorf("encode schema %s %s: %w", ts.APIVersion, ts.Kind, err)
 		}
-		files[schemaPath(ts)] = b
+		files[schemaPath(ts, fold)] = b
 	}
 
 	cov := coverageDoc{Types: append([]Coverage(nil), s.Coverage...), Skips: append([]Skip(nil), s.Skips...)}
@@ -239,6 +261,9 @@ func Read(dir string) (Snapshot, error) {
 	}
 
 	files := map[string][]byte{}
+	// Each file's path as Write names it, where the platform's names ignore
+	// case: a check of the digest that does not depend on the case of a path.
+	canonical := map[string]string{}
 	s := Snapshot{Platform: m.Platform, ServerVersion: m.ServerVersion, Policy: m.Policy, Rules: m.Rules}
 	objDir := filepath.Join(dir, "objects")
 	err = filepath.WalkDir(objDir, func(p string, d fs.DirEntry, err error) error {
@@ -256,6 +281,7 @@ func Read(dir string) (Snapshot, error) {
 			return fmt.Errorf("parse %s: %w", rel, err)
 		}
 		s.Objects = append(s.Objects, Object{Body: body})
+		canonical[filepath.ToSlash(rel)] = objectPath(Object{Body: body}, true)
 		return nil
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -277,6 +303,7 @@ func Read(dir string) (Snapshot, error) {
 			return fmt.Errorf("parse %s: %w", rel, err)
 		}
 		s.Schemas = append(s.Schemas, ts)
+		canonical[filepath.ToSlash(rel)] = schemaPath(ts, true)
 		return nil
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -293,7 +320,7 @@ func Read(dir string) (Snapshot, error) {
 	}
 	s.Coverage, s.Skips = cov.Types, cov.Skips
 
-	if got := digest(files); got != m.Digest {
+	if got := digest(files); got != m.Digest && !(FoldsCase(m.Platform) && digestFolded(files, canonical) == m.Digest) {
 		return Snapshot{}, fmt.Errorf("snapshot %s does not match its manifest digest (have %s, manifest says %s): files were changed, added or removed after capture", dir, got, m.Digest)
 	}
 	if len(s.Objects) != m.Objects {
@@ -428,6 +455,23 @@ func setStyles(n *yaml3.Node) {
 	}
 }
 
+// digestFolded is the digest of files under the paths Write gives them where
+// names ignore case, for each file whose path differs from that one only in
+// case. On a filesystem that ignores case (Windows, macOS), git keeps the case
+// a path was first committed in: Azure snapshots from before paths were
+// written in lower case came back from a clone under the old paths, with this
+// build's contents, and were refused as changed after capture.
+func digestFolded(files map[string][]byte, canonical map[string]string) string {
+	out := make(map[string][]byte, len(files))
+	for rel, b := range files {
+		if c, ok := canonical[rel]; ok && strings.EqualFold(c, rel) {
+			rel = c
+		}
+		out[rel] = b
+	}
+	return digest(out)
+}
+
 func digest(files map[string][]byte) string {
 	names := make([]string, 0, len(files))
 	for n := range files {
@@ -442,8 +486,12 @@ func digest(files map[string][]byte) string {
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
-// objectPath is objects/<group>/<version>/<kind>/<namespace|_cluster>/<name>.yaml.
-func objectPath(o Object) string {
+// objectPath is objects/<group>/<version>/<kind>/<namespace|_cluster>/<name>.yaml,
+// in lower case where the platform's names ignore case (fold): the file an
+// object is in must not change when the API returns its name in another
+// case, or the snapshot holds it twice and its digest moves each time. The
+// file itself keeps the case the API returned.
+func objectPath(o Object, fold bool) string {
 	group, version := "core", o.APIVersion()
 	if i := strings.LastIndex(version, "/"); i >= 0 {
 		group, version = version[:i], version[i+1:]
@@ -452,15 +500,27 @@ func objectPath(o Object) string {
 	if ns == "" {
 		ns = "_cluster"
 	}
-	return strings.Join([]string{"objects", seg(group), seg(version), seg(o.Kind()), seg(ns), seg(o.Name()) + ".yaml"}, "/")
+	return pathOf(fold, "objects", group, version, o.Kind(), ns, o.Name())
 }
 
-func schemaPath(ts TypeSchema) string {
+func schemaPath(ts TypeSchema, fold bool) string {
 	group, version := "core", ts.APIVersion
 	if i := strings.LastIndex(version, "/"); i >= 0 {
 		group, version = version[:i], version[i+1:]
 	}
-	return strings.Join([]string{"schemas", seg(group), seg(version), seg(ts.Kind) + ".yaml"}, "/")
+	return pathOf(fold, "schemas", group, version, ts.Kind)
+}
+
+// pathOf joins dir and the segments, made safe, and names a YAML file.
+func pathOf(fold bool, dir string, segs ...string) string {
+	out := []string{dir}
+	for _, s := range segs {
+		if fold {
+			s = strings.ToLower(s)
+		}
+		out = append(out, seg(s))
+	}
+	return strings.Join(out, "/") + ".yaml"
 }
 
 // seg makes a path segment safe on every OS. Kubernetes names can contain ':'

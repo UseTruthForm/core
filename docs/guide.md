@@ -1106,7 +1106,9 @@ An operator's custom resource that owns an `ImageUpdateAutomation`,
 `Provider`, `Alert` or `Receiver` (a tenant resource whose operator
 makes one for it) is brought as it is under a hold, its operator makes
 the object again, and **the restore is not refused for it**: leave the
-resource out, or hold it.
+resource out. A hold does not stop it: one with no `spec.replicas` or
+`spec.suspend` is brought as it is and only named, and setting either
+says nothing of what its operator makes for it.
 
 Not refused:
 

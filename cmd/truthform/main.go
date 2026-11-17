@@ -316,6 +316,9 @@ func restore(ctx context.Context, args []string) int {
 		if err := refusedForWebhooks(whole, snap, *scope); err != nil {
 			return fail(err)
 		}
+		if err := refusedForSources(*scope); err != nil {
+			return fail(err)
+		}
 	}
 	if *keepStores && (*rename == "" || *platform != "kubernetes") {
 		return fail(fmt.Errorf("--keep-source-stores is for a kubernetes restore with --rename; nothing was restored"))

@@ -1,0 +1,216 @@
+# GitOps sources and what they apply, in the shapes a capture writes: a
+# Flux Kustomization that applies itself (as "flux bootstrap" makes one)
+# and the GitRepository it reads, a HelmRelease it applies that renders
+# into another namespace, a Kustomization applied by hand that applies
+# only into a namespace of its own, and an Argo CD application that
+# manages itself and a workload elsewhere. Read by
+# TestUnheldSourcesOfARealCapture, which says what each scope should give.
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: kustomizations.kustomize.toolkit.fluxcd.io}
+spec:
+  group: kustomize.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: Kustomization, plural: kustomizations, singular: kustomization, listKind: KustomizationList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: gitrepositories.source.toolkit.fluxcd.io}
+spec:
+  group: source.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: GitRepository, plural: gitrepositories, singular: gitrepository, listKind: GitRepositoryList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: helmreleases.helm.toolkit.fluxcd.io}
+spec:
+  group: helm.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: HelmRelease, plural: helmreleases, singular: helmrelease, listKind: HelmReleaseList}
+  versions:
+    - name: v2
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: applications.argoproj.io}
+spec:
+  group: argoproj.io
+  scope: Namespaced
+  names: {kind: Application, plural: applications, singular: application, listKind: ApplicationList}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: gitops}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: argocd}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: shop}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: store}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: edge}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: fleet}
+---
+# The root: it applies itself, and reads the GitRepository below.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: root
+  namespace: gitops
+  labels: {kustomize.toolkit.fluxcd.io/name: root, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  interval: 10m
+  path: ./clusters/one
+  prune: true
+  sourceRef: {kind: GitRepository, name: root}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: root
+  namespace: gitops
+  labels: {kustomize.toolkit.fluxcd.io/name: root, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  interval: 1m
+  url: https://git.example.invalid/one.git
+  ref: {branch: main}
+---
+# Applied by the root, in a namespace of its own, and renders into store:
+# the root reaches store through it.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: payments
+  namespace: gitops
+  labels: {kustomize.toolkit.fluxcd.io/name: root, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  interval: 5m
+  chart: {spec: {chart: payments, sourceRef: {kind: HelmRepository, name: charts}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments
+  namespace: store
+  labels: {app: payments, helm.toolkit.fluxcd.io/name: payments, helm.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: payments}}
+  template:
+    metadata: {labels: {app: payments}}
+    spec: {containers: [{name: app, image: registry.example.invalid/payments:1}]}
+---
+# Applied by the root directly, in shop.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart
+  namespace: shop
+  labels: {app: cart, kustomize.toolkit.fluxcd.io/name: root, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: cart}}
+  template:
+    metadata: {labels: {app: cart}}
+    spec: {containers: [{name: app, image: registry.example.invalid/cart:1}]}
+---
+# A release installed by hand in shop: what a drill holds.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop
+  labels: {app: web, app.kubernetes.io/managed-by: Helm}
+  annotations: {meta.helm.sh/release-name: web, meta.helm.sh/release-namespace: shop}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: app, image: registry.example.invalid/web:1}]}
+---
+# Applied by hand, and applies only into edge.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: edge, namespace: gitops}
+spec:
+  interval: 10m
+  path: ./edge
+  prune: true
+  sourceRef: {kind: GitRepository, name: root}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxy
+  namespace: edge
+  labels: {app: proxy, kustomize.toolkit.fluxcd.io/name: edge, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: proxy}}
+  template:
+    metadata: {labels: {app: proxy}}
+    spec: {containers: [{name: app, image: registry.example.invalid/proxy:1}]}
+---
+# An Argo CD application that manages itself, and a workload in fleet.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: apps
+  namespace: argocd
+  labels: {argocd.argoproj.io/instance: apps}
+spec:
+  project: default
+  source: {repoURL: https://git.example.invalid/apps.git, path: apps, targetRevision: main}
+  destination: {server: https://kubernetes.default.svc}
+  syncPolicy: {automated: {prune: true, selfHeal: true}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: fleet
+  labels: {app: worker, argocd.argoproj.io/instance: apps}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: worker}}
+  template:
+    metadata: {labels: {app: worker}}
+    spec: {containers: [{name: app, image: registry.example.invalid/worker:1}]}
+---
+# Made by hand in fleet: what a drill there chooses.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: settings, namespace: fleet}
+data: {mode: drill}

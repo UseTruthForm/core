@@ -140,15 +140,74 @@ func scopeNotes(rep kube.ScopeReport) []string {
 		}
 		out = append(out, webhookNote(w, what))
 	}
+	for _, src := range rep.Sources {
+		out = append(out, sourceNote(src))
+	}
 	return out
 }
+
+// sourceWhy is why a source brought not held, in a scope that holds
+// something, refuses a restore.
+const sourceWhy = "a drill target that syncs the source's Git path starts what the scope held back, and anything in it that reaches outside (image automation, notifications) acts for real"
+
+// sourceNote is one GitOps source brought not held, for a person.
+func sourceNote(src kube.ScopeSource) string {
+	how := "A restore is refused while it is so: hold the source (an entry with hold: true that brings its object), leave it out (--leave-out), or, having read what its Git path applies, accept it by naming it under sourcesRunning in the scope file (" + sourceRef(src) + ")."
+	if src.Accepted {
+		how = "Accepted in the scope file (sourcesRunning)."
+	}
+	return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses; once it runs it applies into %s, which the scope narrows: %s. %s", src.Source, strings.Join(src.Namespaces, ", "), sourceWhy, how)
+}
+
+// sourceRef is a source as sourcesRunning names it.
+func sourceRef(src kube.ScopeSource) string {
+	kind, nsName, _ := strings.Cut(src.Object, " ")
+	return kind + "/" + nsName
+}
+
+// blockingSources are the sources a restore is refused for: brought not
+// held, in a scope that holds something, applying into a namespace it
+// narrows, and not accepted in the scope file.
+func blockingSources(srcs []kube.ScopeSource) []string {
+	var out []string
+	for _, src := range srcs {
+		if src.Blocks {
+			out = append(out, fmt.Sprintf("%s applies into %s", src.Source, strings.Join(src.Namespaces, ", ")))
+		}
+	}
+	return out
+}
+
+// refusedForSources refuses a restore whose scope holds something and
+// brings, not held, a GitOps source that applies into a namespace the
+// scope narrows. Asked before anything is connected to or written.
+func refusedForSources(scopeFile string) error {
+	sourcesBlocked = nil
+	if scopeDone == nil {
+		return nil
+	}
+	b := blockingSources(scopeDone.Sources)
+	if len(b) == 0 {
+		return nil
+	}
+	sourcesBlocked = scopeDone.Sources
+	n := "GitOps sources are brought, not held, by a scope that holds what it chooses, and apply into namespaces it narrows"
+	if len(b) == 1 {
+		n = "GitOps source is brought, not held, by a scope that holds what it chooses, and applies into a namespace it narrows"
+	}
+	return fmt.Errorf("%d %s: %s. Once a source runs, %s. Hold each (an entry with hold: true that brings its object), leave it out (--leave-out), or accept it by naming it as Kind/namespace/name under sourcesRunning in %s; nothing was restored", len(b), n, strings.Join(b, "; "), sourceWhy, scopeFile)
+}
+
+// sourcesBlocked are the sources a restore was refused for, for the
+// document.
+var sourcesBlocked []kube.ScopeSource
 
 // notHeldCode is how a run ends when a hold brought what it does not know
 // how to hold, and the scope file does not say a person looked at it: not
 // 0, or a pipeline could not tell a hold that holds from one that passed
 // an operator's database through. With none it is 0.
 func notHeldCode(rep kube.ScopeReport, code int) int {
-	if len(rep.NotHeld) > 0 || len(blocking(rep.Webhooks)) > 0 {
+	if len(rep.NotHeld) > 0 || len(blocking(rep.Webhooks)) > 0 || len(blockingSources(rep.Sources)) > 0 {
 		return code
 	}
 	return 0

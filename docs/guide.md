@@ -457,7 +457,7 @@ empty or denied: capture again later.
 |---|---|
 | 0 | Success: the capture is complete, the restore fully applied, or no differences |
 | 1 | Error: bad flags, cannot connect, cannot read a snapshot |
-| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer (plan scope --check) |
+| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer, or that holds something and brings, not held, a GitOps source that applies into a namespace it narrows (plan scope --check) |
 | 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, or a restore under a hold brought objects not held |
 
 ## Machine-readable output
@@ -771,7 +771,9 @@ namespace:
   HelmRelease in a namespace the scope narrows, left out whole or not,
   the release is installed once the source runs. The run says so by name
   (`scope.stillMade` with `--json`), and the plan goes on listing it:
-  leave the source out with `--leave-out`, or have it apply less;
+  leave the source out with `--leave-out`, or have it apply less. Where
+  the scope holds anything, such a source refuses the restore unless it
+  is held or accepted (see the hold, below);
 - **a webhook that is brought and calls a Service that will not answer**
   is named (`scope.webhooksWithoutService` with `--json`): an admission
   webhook with no namespace of its own is brought with everything else,
@@ -1004,6 +1006,56 @@ the same file expects it held. **Restoring again with the hold taken out
 of the file starts it**, and that is how one is released: there is no
 other command.
 
+**A GitOps source brought without a hold refuses the restore**, with
+nothing written and before anything is connected to, when the scope holds
+anything and the source applies into a namespace the scope narrows. A
+drill target that syncs the source's Git path starts what the scope held
+back, and anything in it that reaches outside the cluster (image
+automation, notifications) acts for real. A root Kustomization that
+`flux bootstrap` made, or an Argo CD application that manages itself, is
+in the snapshot, in a namespace a drill's scope seldom names, and so is
+brought as it is unless something says otherwise.
+
+What a source applies into is what the capture left to it: what it
+applied or rendered, and what the sources it applies apply or render, as
+far down as that goes (a Kustomization that applies a HelmRelease that
+renders into `store` applies into `store`). Every source of that chain
+that is brought and not held counts, not only the nearest: an unheld
+Kustomization applies a held HelmRelease again from Git, unsuspended.
+A source that applies only into namespaces the scope does not narrow is
+not refused, and a scope that holds nothing is not affected (both are
+still named in the NOTE above, `scope.stillMade`).
+
+`plan scope --check` names each in a NOTE, with the namespaces it
+applies into (`scope.sourcesNotHeld` with `--json`, each with `blocks`),
+and exits 2 while one is left; a refused restore exits 1 and its
+document lists them as `sourcesNotHeld`, with `complete: false`. Either
+hold the source, with an entry that brings its object under a hold (a
+Flux object is suspended, an Argo CD application's automated sync taken
+out):
+
+```yaml
+  - namespaces: [flux-system]
+    hold: true
+    objects: [Kustomization/flux-system, GitRepository/flux-system]
+```
+
+or leave it out with `--leave-out`, or, having read what its Git path
+applies, accept it by name:
+
+```yaml
+sourcesRunning:
+  - Kustomization/flux-system/flux-system
+```
+
+Each is `Kind/namespace/name` of the source's own object, with no
+pattern: a source is let run by someone who has read what it applies,
+and a pattern would let one run that came later. One that is accepted is
+still listed (`accepted: true`), and the run ends 0 when nothing else is
+left. A name that accepts nothing is an error: one that is held, left
+out, applies nowhere the scope narrows, or is in a scope that holds
+nothing.
+
 What to know before relying on a hold:
 
 - it is of the objects in the snapshot. What a GitOps source or an
@@ -1011,8 +1063,11 @@ What to know before relying on a hold:
   Flux or Argo CD source makes nothing until it is released, and then
   makes all of it;
 - a GitOps source that is brought without a hold and applies a held
-  object puts it back as the source has it: hold the source too, or
-  leave it out;
+  object puts it back as the source has it. Where it applies into a
+  namespace the scope narrows, the restore is refused for it (below);
+  where it applies only into namespaces the scope does not narrow, it
+  is not, and a held object it applies there is put back all the same:
+  hold the source too, or leave it out;
 - a `CronJob` released may run at once what it missed while suspended,
   unless it sets `startingDeadlineSeconds`;
 - KEDA before 2.13 does not read `autoscaling.keda.sh/paused` on a

@@ -32,6 +32,12 @@ type Scope struct {
 	// refuses the restore: while nothing answers, the API server refuses
 	// every write such a webhook is asked about.
 	WithoutService []string `json:"withoutService,omitempty"`
+	// SourcesRunning accepts GitOps sources that a scope which holds
+	// anything brings, not held, and that apply into a namespace it
+	// narrows, as Kind/namespace/name of the source's own object, with no
+	// pattern. One not named here refuses the restore: restored as it is,
+	// a source syncs its Git path, and starts what the scope held back.
+	SourcesRunning []string `json:"sourcesRunning,omitempty"`
 }
 
 // ScopeEntry narrows the namespaces its patterns fit to the releases and
@@ -103,6 +109,23 @@ type ScopeReport struct {
 	// call a Service that will not answer: until it does, the API server
 	// refuses what such a webhook is asked about.
 	Webhooks []ScopeWebhook `json:"webhooksWithoutService"`
+	// Sources are the GitOps sources that a scope which holds anything
+	// brings and does not hold, and that apply into a namespace it
+	// narrows: once one runs, it applies its Git path there again, and
+	// what the scope held back starts.
+	Sources []ScopeSource `json:"sourcesNotHeld"`
+}
+
+// ScopeSource is a GitOps source that is brought not held, in a scope that
+// holds something, and the narrowed namespaces it applies into.
+type ScopeSource struct {
+	Source     string   `json:"source"` // as a skip reason names it: Flux Kustomization flux-system/root
+	Object     string   `json:"object"` // Kind namespace/name
+	Namespaces []string `json:"namespaces"`
+	// Accepted: the scope file names it under sourcesRunning.
+	Accepted bool `json:"accepted"`
+	// Blocks: not accepted. A restore is not begun with one.
+	Blocks bool `json:"blocks"`
 }
 
 // ScopeWebhook is a webhook that is brought, and the Service it calls,
@@ -304,7 +327,7 @@ func Narrow(s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, erro
 // What answers behind a webhook's Service is looked for there, so that a
 // workload taken out is known not to answer.
 func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeReport, error) {
-	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}, NotHeld: []string{}, AsTheyAre: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}, Webhooks: []ScopeWebhook{}}
+	rep := ScopeReport{Narrowed: []string{}, Brought: []ScopedRelease{}, LeftOut: []ScopedRelease{}, Jobs: []string{}, Held: []ScopeHeld{}, NotHeld: []string{}, AsTheyAre: []string{}, SharedName: []string{}, ObjectsBrought: []string{}, ObjectsLeftOut: []string{}, StillMade: []ScopeMade{}, Webhooks: []ScopeWebhook{}, Sources: []ScopeSource{}}
 	// A file that does no more than accept webhooks leaves the snapshot
 	// as it is, its Jobs with it.
 	acceptOnly := sc.Narrow == nil && !sc.Jobs && len(sc.WithoutService) > 0
@@ -759,6 +782,16 @@ func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeR
 	if err := acceptWebhooks(rep.Webhooks, sc.WithoutService); err != nil {
 		return s, rep, err
 	}
+	holds := false
+	for _, e := range sc.Narrow {
+		holds = holds || e.Hold
+	}
+	if holds {
+		rep.Sources = sourcesNotHeld(s, out, narrowed, heldNow)
+	}
+	if err := acceptSources(rep.Sources, sc.SourcesRunning, holds); err != nil {
+		return s, rep, err
+	}
 	sort.Strings(rep.ObjectsBrought)
 	sort.Strings(rep.ObjectsLeftOut)
 	for k, n := range relObjects {
@@ -803,6 +836,85 @@ func stillApplied(s, out snapshot.Snapshot) []string {
 		}
 	}
 	return res
+}
+
+// sourcesNotHeld are the sources brought in out and not held that apply,
+// directly or through sources they make, what the capture left to a
+// source in a namespace the scope narrows. Every source of the chain that
+// is brought counts, not only the nearest: a held HelmRelease that an
+// unheld Kustomization applies is applied again from Git, unsuspended.
+func sourcesNotHeld(s, out snapshot.Snapshot, narrowed map[string][]int, heldNow map[string]bool) []ScopeSource {
+	objects := sourceObjects(out)
+	parent := map[source]source{}
+	for _, sk := range s.Skips {
+		if pk, pn, ok := SourceOf(sk.Reason); ok {
+			for _, child := range skippedSource(sk) {
+				parent[child] = source{pk, pn}
+			}
+		}
+	}
+	into := map[string]map[string]bool{} // object -> namespaces
+	named := map[string]string{}         // object -> the source as a reason names it
+	for _, sk := range s.Skips {
+		if narrowed[sk.Namespace] == nil {
+			continue
+		}
+		k, n, ok := SourceOf(sk.Reason)
+		at, seen := source{k, n}, map[source]bool{}
+		for ok && !seen[at] {
+			seen[at] = true
+			if who := objects[at]; who != "" && !heldNow[who] {
+				if into[who] == nil {
+					into[who] = map[string]bool{}
+				}
+				into[who][sk.Namespace] = true
+				named[who] = at.kind + " " + at.name
+			}
+			at, ok = parent[at]
+		}
+	}
+	out2 := []ScopeSource{}
+	for who, nss := range into {
+		src := ScopeSource{Source: named[who], Object: who, Namespaces: []string{}, Blocks: true}
+		for ns := range nss {
+			src.Namespaces = append(src.Namespaces, ns)
+		}
+		sort.Strings(src.Namespaces)
+		out2 = append(out2, src)
+	}
+	sort.Slice(out2, func(i, j int) bool { return out2[i].Object < out2[j].Object })
+	return out2
+}
+
+// acceptSources marks the sources a scope file accepts under
+// sourcesRunning, each by Kind/namespace/name of its object. A pattern is
+// refused: a source is let run by a person who has read what its Git path
+// applies, and a pattern would let one run that came later. A name that
+// accepts nothing is an error: mistyped, it would leave the restore
+// refused, or left in after the source was held, it would say a source
+// runs that does not.
+func acceptSources(found []ScopeSource, accept []string, holds bool) error {
+	for _, p := range accept {
+		parts := strings.Split(p, "/")
+		if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" || strings.ContainsAny(p, `*?[\`) {
+			return fmt.Errorf("sourcesRunning: %q is not Kind/namespace/name of a GitOps source's object (Kustomization/flux-system/root), with no pattern", p)
+		}
+		who := parts[0] + " " + parts[1] + "/" + parts[2]
+		used := false
+		for i, f := range found {
+			if f.Object == who {
+				found[i].Accepted, found[i].Blocks, used = true, false, true
+			}
+		}
+		if !used {
+			why := "and no such source is brought not held that applies into a namespace the scope narrows"
+			if !holds {
+				why = "and the scope holds nothing (hold: true), so no source is refused and none is accepted"
+			}
+			return fmt.Errorf("sourcesRunning names %q, %s", p, why)
+		}
+	}
+	return nil
 }
 
 // ScopeDraft is a scope file that brings everything a snapshot holds but

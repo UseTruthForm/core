@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -244,34 +245,59 @@ func TestSkippedOtherSideAzure(t *testing.T) {
 	}
 }
 
-// Helm history is listed once per release, under the prefix and the
-// release's name: that stands for the release's history Secrets, never for
-// a Secret of the bare name (review of #24).
+// Helm history is listed once per release, as a family: that stands for
+// the release's .v<N> Secrets, never for a Secret of the bare name. A
+// Secret of Helm's type Helm did not name as its own is listed by its own
+// name, and that notes only itself (reviews of #24). Before Kubernetes
+// rules 2 the two were written alike, so such a snapshot gives no note.
 func TestSkippedOtherSideHelmHistory(t *testing.T) {
-	skip := []Skip{{Resource: "core/v1/secrets", Namespace: "shop", Name: HelmHistoryPrefix + "foo", Reason: HelmHistoryReason}}
+	family := Skip{Resource: "core/v1/secrets", Namespace: "shop", Name: HelmHistoryPrefix + "foo" + HelmHistoryFamily, Reason: HelmHistoryReason}
+	exact := func(name string) Skip {
+		return Skip{Resource: "core/v1/secrets", Namespace: "shop", Name: HelmHistoryPrefix + name, Reason: HelmHistoryReason}
+	}
 	for _, c := range []struct {
-		name string
-		note bool
+		object string
+		skip   Skip
+		note   bool
 	}{
-		{HelmHistoryPrefix + "foo.v1", true},
-		{HelmHistoryPrefix + "foo.v12", true},
-		{HelmHistoryPrefix + "foo", false},
-		{HelmHistoryPrefix + "foo.vx", false},
-		{HelmHistoryPrefix + "foobar.v1", false},
-		{HelmHistoryPrefix + "fo.v1", false},
+		{"foo.v1", family, true},
+		{"foo.v12", family, true},
+		{"foo", family, false},
+		{"foo.v", family, false},
+		{"foo.vx", family, false},
+		{"foo.v1x", family, false},
+		{"foobar.v1", family, false},
+		{"fo.v1", family, false},
+		// Listed by its own name: a Helm-typed Secret with no revision, and
+		// one whose name label says another release.
+		{"zed", exact("zed"), true},
+		{"zed.v1", exact("zed"), false},
+		{"q.v1", exact("q.v1"), true},
+		{"q.v1.v2", exact("q.v1"), false},
 	} {
-		want := kube(1, []Object{kobj("v1", "Secret", "shop", c.name)}, nil)
-		if n := noted(t, want, kube(1, nil, skip), "missing"); (n != nil) != c.note || (n != nil && n.Reason != HelmHistoryReason) {
-			t.Errorf("%s: %+v, want a note %v", c.name, n, c.note)
+		obj := kobj("v1", "Secret", "shop", HelmHistoryPrefix+c.object)
+		n := noted(t, kube(KubernetesCaptureRules, []Object{obj}, nil), kube(KubernetesCaptureRules, nil, []Skip{c.skip}), "missing")
+		if (n != nil) != c.note || (n != nil && n.Reason != HelmHistoryReason) {
+			t.Errorf("%s by %s: %+v, want a note %v", c.object, c.skip.Name, n, c.note)
+		}
+		// Before rules 2 a family read as a bare name and the other way
+		// round: no Helm history note at all.
+		old := c.skip
+		old.Name = strings.TrimSuffix(old.Name, HelmHistoryFamily)
+		for _, rules := range []int{0, 1} {
+			if n := noted(t, kube(rules, []Object{obj}, nil), kube(rules, nil, []Skip{old}), "missing"); n != nil {
+				t.Errorf("%s by %s, rules %d: %+v", c.object, old.Name, rules, n)
+			}
 		}
 	}
 	// In another namespace it is another release.
-	if n := noted(t, kube(1, []Object{kobj("v1", "Secret", "other", HelmHistoryPrefix+"foo.v1")}, nil), kube(1, nil, skip), "missing"); n != nil {
+	if n := noted(t, kube(KubernetesCaptureRules, []Object{kobj("v1", "Secret", "other", HelmHistoryPrefix+"foo.v1")}, nil), kube(KubernetesCaptureRules, nil, []Skip{family}), "missing"); n != nil {
 		t.Errorf("another namespace: %+v", n)
 	}
-	// A Secret of that name skipped for another reason is named by it.
-	other := []Skip{{Resource: "core/v1/secrets", Namespace: "shop", Name: HelmHistoryPrefix + "foo", Reason: "identical to the distribution baseline; a new cluster provides it"}}
-	if n := noted(t, kube(1, []Object{kobj("v1", "Secret", "shop", HelmHistoryPrefix+"foo")}, nil), kube(1, nil, other), "missing"); n == nil {
+	// A Secret of a Helm-like name skipped for another reason is named by
+	// it, whatever the rules.
+	other := Skip{Resource: "core/v1/secrets", Namespace: "shop", Name: HelmHistoryPrefix + "foo", Reason: "identical to the distribution baseline; a new cluster provides it"}
+	if n := noted(t, kube(0, []Object{kobj("v1", "Secret", "shop", HelmHistoryPrefix+"foo")}, nil), kube(0, nil, []Skip{other}), "missing"); n == nil {
 		t.Error("an exact name skipped for another reason has no note")
 	}
 }

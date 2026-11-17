@@ -227,7 +227,7 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 						continue
 					}
 					releases[key] = true
-					name = helmReleasePrefix + rel
+					name = helmReleasePrefix + rel + snapshot.HelmHistoryFamily
 				}
 				snap.Skips = append(snap.Skips, snapshot.Skip{
 					Resource: resourceID(gvr), Namespace: strOf(md["namespace"]), Name: name, Reason: reason,
@@ -369,8 +369,9 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 }
 
 // helmReleasePrefix starts each Helm history Secret's name. A capture lists
-// a release's history once, under the prefix and the release's name, with
-// snapshot.HelmHistoryReason: a family, not one Secret's name.
+// a release's history once, as the prefix, the release's name and
+// snapshot.HelmHistoryFamily, with snapshot.HelmHistoryReason: a family, not
+// one Secret's name.
 const helmReleasePrefix = snapshot.HelmHistoryPrefix
 
 var helmHistoryRE = regexp.MustCompile(`^sh\.helm\.release\.v1\.(.+)\.v\d+$`)

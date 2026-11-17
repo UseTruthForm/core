@@ -402,52 +402,112 @@ func TestCompareNotesARootAnOlderBuildLeftOut(t *testing.T) {
 	}
 }
 
-// Review of #24, on a real API server: an Opaque Secret named like a Helm
-// release's history stem is deleted, and that release's history is added.
-// The capture lists the history once, under the stem: that stands for the
-// release's history Secrets, not for a Secret of the stem's name, so the
-// deleted Secret is missing with no note, in either order, from a
-// baseline main wrote and one this build wrote.
-func TestHelmHistoryIsNoNoteOnItsStem(t *testing.T) {
-	for _, asMain := range []bool{true, false} {
-		t.Run(map[bool]string{true: "baseline written by main", false: "baseline under this build's rules"}[asMain], func(t *testing.T) {
-			w := newSkipWorld(t, "helm-stem", "shop")
-			secrets := schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
-			stem := snapshot.HelmHistoryPrefix + "foo"
-			w.create(secrets, map[string]any{"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
-				"metadata": map[string]any{"name": stem, "namespace": "shop"}, "data": map[string]any{"a": "MQ=="}})
-			w.captureBefore(asMain)
-			wantSkip(t, w.before, "v1|Secret|shop|"+stem, false)
-			if err := w.dyn.Resource(secrets).Namespace("shop").Delete(context.Background(), stem, metav1.DeleteOptions{}); err != nil {
-				t.Fatal(err)
+// Reviews of #24, on a real API server. The first capture has Opaque
+// Secrets named like Helm's: a release's history stem (foo), revisions of
+// releases that the second capture lists by name (zed.v1, q.v1.v2), and
+// two that the second capture really does hold as Helm's (zed, foo.v1).
+// Then each is deleted, and the second capture has Helm-typed Secrets: zed
+// with no revision and q.v1 whose name label says another release, each
+// listed by its own name, and foo.v1, listed as foo's history.
+//
+// A note goes on zed and foo.v1, which the second capture left out under
+// those names, and on nothing else, in either order and through diff. From
+// the second capture as main wrote it (no rules, a family written as a
+// bare name) no Helm history skip is a note on anything: there a family
+// and a Secret's own name cannot be told apart.
+func TestHelmHistoryNotesOnlyWhatItNames(t *testing.T) {
+	w := newSkipWorld(t, "helm-names", "shop")
+	secrets := schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
+	p := snapshot.HelmHistoryPrefix
+	secret := func(name, typ string, labels map[string]any) {
+		md := map[string]any{"name": p + name, "namespace": "shop"}
+		if labels != nil {
+			md["labels"] = labels
+		}
+		w.create(secrets, map[string]any{"apiVersion": "v1", "kind": "Secret", "type": typ, "metadata": md, "data": map[string]any{"a": "MQ=="}})
+	}
+	opaque := []string{"foo", "zed.v1", "q.v1.v2", "zed", "foo.v1"}
+	for _, n := range opaque {
+		secret(n, "Opaque", nil)
+	}
+	w.captureBefore(false)
+	for _, n := range opaque {
+		if err := w.dyn.Resource(secrets).Namespace("shop").Delete(context.Background(), p+n, metav1.DeleteOptions{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	secret("zed", "helm.sh/release.v1", map[string]any{"owner": "helm"})
+	secret("q.v1", "helm.sh/release.v1", map[string]any{"owner": "helm", "name": "other"})
+	secret("foo.v1", "helm.sh/release.v1", map[string]any{"owner": "helm", "name": "foo"})
+	now := w.captureNow()
+	s, err := snapshot.Read(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := map[string]bool{}
+	for _, sk := range s.Skips {
+		if sk.Reason == snapshot.HelmHistoryReason {
+			listed[sk.Name] = true
+		}
+	}
+	for _, n := range []string{p + "zed", p + "q.v1", p + "foo" + snapshot.HelmHistoryFamily} {
+		if !listed[n] {
+			t.Fatalf("%s is not listed: %v", n, listed)
+		}
+	}
+	note := leftOutNote + snapshot.HelmHistoryReason + ")"
+	lines := func(kind string, notes bool) []string {
+		var out []string
+		for _, n := range opaque {
+			l := kind + " v1|Secret|shop|" + p + n
+			if notes && (n == "zed" || n == "foo.v1") {
+				l += note
 			}
-			w.create(secrets, map[string]any{"apiVersion": "v1", "kind": "Secret", "type": "helm.sh/release.v1",
-				"metadata": map[string]any{"name": stem + ".v1", "namespace": "shop", "labels": map[string]any{"owner": "helm", "name": "foo"}},
-				"data":     map[string]any{"release": "eA=="}})
-			now := w.captureNow()
-			s, err := snapshot.Read(now)
-			if err != nil {
-				t.Fatal(err)
+			out = append(out, l+"\n")
+		}
+		return out
+	}
+	check := func(what string, code int, stdout string, want []string) {
+		t.Helper()
+		for _, l := range want {
+			if !strings.Contains(stdout, l) {
+				t.Errorf("%s: no %q in\n%s", what, l, stdout)
 			}
-			listed := false
-			for _, sk := range s.Skips {
-				listed = listed || (sk.Name == stem && sk.Reason == snapshot.HelmHistoryReason)
-			}
-			if !listed {
-				t.Fatalf("the history is not listed under its stem: %+v", s.Skips)
-			}
-			for _, o := range []struct {
-				args []string
-				line string
-			}{
-				{[]string{w.before, now}, "missing  v1|Secret|shop|" + stem + "\n"},
-				{[]string{now, w.before}, "extra    v1|Secret|shop|" + stem + "\n"},
-			} {
-				code, stdout, _ := output(t, func() int { return compare(o.args) })
-				if code != 2 || !strings.Contains(stdout, o.line) {
-					t.Errorf("compare %v: exit %d, want 2 and %q\n%s", o.args, code, o.line, stdout)
-				}
-			}
-		})
+		}
+		if code != 2 {
+			t.Errorf("%s: exit %d", what, code)
+		}
+	}
+	for _, o := range []struct {
+		args []string
+		kind string
+	}{{[]string{w.before, now}, "missing "}, {[]string{now, w.before}, "extra   "}} {
+		code, stdout, _ := output(t, func() int { return compare(o.args) })
+		check("compare "+o.kind, code, stdout, lines(o.kind, true))
+	}
+	diffArgs := []string{"--kubeconfig", w.srv.Kubeconfig, "--context", w.srv.Context, "--from", w.before}
+	code, stdout, _ := output(t, func() int { return diff(ctx(), diffArgs) })
+	check("diff", code, stdout, lines("missing ", true))
+
+	// The second capture as main wrote it.
+	old := s
+	old.Rules = 0
+	old.Skips = nil
+	for _, sk := range s.Skips {
+		sk.Name = strings.TrimSuffix(sk.Name, snapshot.HelmHistoryFamily)
+		old.Skips = append(old.Skips, sk)
+	}
+	oldDir := filepath.Join(t.TempDir(), "old")
+	if err := old.Write(oldDir); err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range []struct {
+		args []string
+		kind string
+	}{{[]string{w.before, oldDir}, "missing "}, {[]string{oldDir, w.before}, "extra   "}} {
+		code, stdout, _ := output(t, func() int { return compare(o.args) })
+		check("compare with main's "+o.kind, code, stdout, lines(o.kind, false))
 	}
 }
+
+func ctx() context.Context { return context.Background() }

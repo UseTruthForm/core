@@ -252,9 +252,12 @@ missing  v1|ConfigMap|shop|cfg (left out on the other side: identical to the dis
 ```
 
 A note is given only where a skip names that object and no other: on
-Kubernetes by type, namespace and name (Helm history, listed once per
-release, stands for that release's `.v<N>` Secrets, never for a Secret of
-the bare name); on GCP by the name the snapshot keys; on Azure from
+Kubernetes by type, namespace and name; Helm history, listed once per
+release as `sh.helm.release.v1.<release>.v*`, stands for that release's
+`.v<N>` Secrets only, and a Secret of Helm's type that Helm did not name as
+its own is listed by its own name and stands for itself (a snapshot under
+Kubernetes capture rules before 2 wrote the two alike, so its Helm history
+skips give no note); on GCP by the name the snapshot keys; on Azure from
 snapshots that record Azure capture rules 1, which name a skip by its group
 and the name the snapshot keys (an extension by its path below the group).
 An Azure snapshot without rules named an extension by its group and last
@@ -270,8 +273,9 @@ changed to or from a baseline. Look at the object itself.
 Every Kubernetes and Azure snapshot records the version of the capture
 rules it was taken under (`rules` in `snapshot.yaml`, outside the digest). A snapshot
 without one counts as 0: every build up to and including beta.23 wrote it so.
-Version 1 captures a self-applying GitOps root, and the source a
-self-applying Kustomization reads from, which builds before beta.23 left out.
+Kubernetes version 1 captures a self-applying GitOps root, and the source a
+self-applying Kustomization reads from, which builds before beta.23 left
+out; version 2 lists Helm history families apart from Secrets listed by name.
 Where the side that left an object out has no rules and gave a GitOps
 source's reason, the line adds that this may be why:
 

@@ -23,7 +23,9 @@ type SkippedOtherSide struct {
 // namesObjects says whether s's skips name objects as s keys them, so that
 // a skip can be read as naming one object and no other:
 //
-//   - Kubernetes: by resource, namespace and name; Helm history by family.
+//   - Kubernetes: by resource, namespace and name; Helm history by family,
+//     from rules 2 (before, a family was written as a Secret's bare name,
+//     so a Helm history skip from such a snapshot is no note).
 //   - Azure from rules 1 (AzureCaptureRules): by group and name as keyed.
 //     Under 0 an extension was named by its group and last name alone, the
 //     same as one of that name on the group or another resource, so a skip
@@ -51,7 +53,7 @@ type skipIndex struct {
 	// under each of its Names.
 	reasons map[string][]string
 	// Helm history, by resource|namespace|prefix and release: what stands
-	// for the family, never for a Secret of that name.
+	// for the family's .v<N> Secrets, never for a Secret of that name.
 	families map[string][]string
 	// kind -> the resources the snapshot's coverage gives for it
 	resources map[string][]string
@@ -69,8 +71,11 @@ func indexSkips(s Snapshot) *skipIndex {
 	for _, sk := range s.Skips {
 		k := ix.key(sk.Resource, sk.Namespace, sk.Name)
 		switch {
-		case s.Platform == "kubernetes" && sk.Reason == HelmHistoryReason:
-			ix.families[k] = append(ix.families[k], sk.Reason)
+		case s.Platform == "kubernetes" && sk.Reason == HelmHistoryReason && s.Rules < 2:
+			// A family and a Secret's own name were written alike.
+		case s.Platform == "kubernetes" && sk.Reason == HelmHistoryReason && strings.HasSuffix(sk.Name, HelmHistoryFamily):
+			fk := ix.key(sk.Resource, sk.Namespace, strings.TrimSuffix(sk.Name, HelmHistoryFamily))
+			ix.families[fk] = append(ix.families[fk], sk.Reason)
 		case sk.Name == "*":
 			// What a skip of "*" stands for, where the capture lists it.
 			for _, n := range sk.Names {

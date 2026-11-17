@@ -38,7 +38,9 @@ import (
 // version was written by a newer build, and this one refuses it rather
 // than read it under rules it does not know. 1: a self-applying GitOps root,
 // and the source a self-applying Kustomization reads from, are captured.
-const KubernetesCaptureRules = 1
+// 2: a release's Helm history is listed as a family, apart from a Secret
+// listed by its own name (HelmHistoryFamily).
+const KubernetesCaptureRules = 2
 
 // AzureCaptureRules is the version of the rules for how an Azure capture
 // names what it leaves out. 1: a skip names a resource by its group and its

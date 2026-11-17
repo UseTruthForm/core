@@ -19,11 +19,16 @@ const (
 )
 
 // Helm release history: a capture lists a release's history Secrets once,
-// as HelmHistoryPrefix and the release's name, with HelmHistoryReason. That
-// names the family sh.helm.release.v1.<release>.v<N>, never a Secret of the
-// bare name.
+// as HelmHistoryPrefix, the release's name and HelmHistoryFamily, with
+// HelmHistoryReason: the family sh.helm.release.v1.<release>.v<N>. A Secret
+// of Helm's type that Helm did not name as its own is listed by its own
+// name, with the same reason. "*" is in no Kubernetes name, so the two
+// cannot be taken for each other. Before Kubernetes capture rules 2 the
+// family was written without HelmHistoryFamily, the same as a Secret of the
+// release's bare name.
 const (
 	HelmHistoryPrefix = "sh.helm.release.v1."
+	HelmHistoryFamily = ".v*"
 	HelmHistoryReason = "Helm release history; recreated when the release is installed again"
 )
 

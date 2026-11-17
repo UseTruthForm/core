@@ -2,6 +2,7 @@ package azarm
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -135,4 +136,108 @@ func TestGraphReadsSkipNames(t *testing.T) {
 	if _, ok := have[group+"/providers/Microsoft.Authorization/roleAssignments/ra2"]; ok {
 		t.Error("the extension drawn as one on the group")
 	}
+	if managed := len(g.Nodes) - external(g); managed != 3 {
+		t.Errorf("%d managed nodes: %v", managed, g.Nodes)
+	}
+}
+
+// external counts the nodes a graph draws for what the snapshot does not
+// hold (here, the manager the skips name).
+func external(g Graph) int {
+	n := 0
+	for _, x := range g.Nodes {
+		if x.External {
+			n++
+		}
+	}
+	return n
+}
+
+// A resource merely named "providers" is drawn as it always was: a subnet
+// "default" of a network "providers", skipped as "g/providers/default".
+func TestGraphReadsAResourceNamedProviders(t *testing.T) {
+	p, _, err := LoadProjection("security", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := "/subscriptions/" + tokSub + "/resourceGroups/rg/providers/Microsoft.ContainerService/managedClusters/aks, which recreates it"
+	subnets := "Microsoft.Network/virtualNetworks/subnets"
+	s := snapshot.Snapshot{Platform: "azure", Rules: snapshot.AzureCaptureRules, Skips: []snapshot.Skip{
+		{Resource: subnets, Name: "MC_aks/providers/default", Reason: reasonManagedGroup + by},
+	}}
+	want := ResourceID{Subscription: tokSub, ResourceGroup: "MC_aks", Type: subnets, Name: "providers/default"}.String()
+	g := BuildGraph(s, p, "security", "", "")
+	drawn := false
+	for _, n := range g.Nodes {
+		drawn = drawn || (n.ID == want && n.Name == "providers/default" && !n.External)
+	}
+	if !drawn || len(g.Nodes)-external(g) != 1 {
+		t.Errorf("nodes %+v, want %s", g.Nodes, want)
+	}
+	// A name below the group that parses to another type, or to a resource
+	// that is no extension, is not taken for a path: main drew neither, as
+	// neither name fits its type, and nor does this.
+	for _, sk := range []snapshot.Skip{
+		{Resource: subnets, Name: "MC_aks/providers/Microsoft.Authorization/locks/x", Reason: reasonManagedGroup + by},
+		{Resource: subnets, Name: "MC_aks/providers/Microsoft.Network/publicIPAddresses/ip9/providers/Microsoft.Authorization/locks/x", Reason: reasonManagedGroup + by},
+		{Resource: "Microsoft.Network/publicIPAddresses", Name: "MC_aks/providers/Microsoft.Network/publicIPAddresses/ip9", Reason: reasonManagedGroup + by},
+	} {
+		g := BuildGraph(snapshot.Snapshot{Platform: "azure", Rules: snapshot.AzureCaptureRules, Skips: []snapshot.Skip{sk}}, p, "security", "", "")
+		if n := len(g.Nodes) - external(g); n != 0 {
+			t.Errorf("%s drawn: %+v", sk.Name, g.Nodes)
+		}
+	}
+}
+
+// getFails answers every GET but one, as ARM does to a caller denied one
+// resource.
+type getFails struct {
+	*Fake
+	id string
+}
+
+func (f getFails) Get(ctx context.Context, id, version string) (map[string]any, error) {
+	if strings.EqualFold(id, f.id) {
+		return nil, errors.New("AuthorizationFailed: " + id)
+	}
+	return f.Fake.Get(ctx, id, version)
+}
+
+// The sites that skip what the resource list returns name it as skipName
+// does too: something managed, and something that could not be read. ARM's
+// list returns no extension, so there the name is the same either way; a
+// fake that lists one (AlsoTracked) keeps the two sites to skipName.
+func TestListedSkipsNameAnExtensionByItsPath(t *testing.T) {
+	reg, src, _ := worlds(t)
+	put(t, src, "", groupType, "rg", map[string]any{"location": "eastus"})
+	sa := put(t, src, "rg", "Microsoft.Storage/storageAccounts", "sa01", map[string]any{
+		"location": "eastus", "kind": "StorageV2", "sku": map[string]any{"name": "Standard_LRS"},
+		"properties": map[string]any{"minimumTlsVersion": "TLS1_2"},
+	})
+	lockID := sa + "/providers/Microsoft.Authorization/locks/l1"
+	rawPut(t, src, lockID, "Microsoft.Authorization/locks", map[string]any{"properties": map[string]any{"level": "CanNotDelete"}})
+	src.AlsoTracked = map[string]bool{"Microsoft.Authorization/locks": true}
+	want := "rg/providers/Microsoft.Storage/storageAccounts/sa01/providers/Microsoft.Authorization/locks/l1"
+	named := func(what string, s snapshot.Snapshot, reason string) {
+		t.Helper()
+		for _, sk := range s.Skips {
+			if strings.EqualFold(sk.Resource, "Microsoft.Authorization/locks") && strings.HasPrefix(sk.Reason, reason) {
+				if sk.Name != want {
+					t.Errorf("%s: named %q, want %q", what, sk.Name, want)
+				}
+				return
+			}
+		}
+		t.Errorf("%s: no skip of the lock: %+v", what, s.Skips)
+	}
+
+	src.ManagedBy[strings.ToLower(lockID)] = "/subscriptions/" + src.sub + "/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/sa01"
+	named("managed", capture(t, src, reg), reasonManagedBy)
+	delete(src.ManagedBy, strings.ToLower(lockID))
+
+	s, err := Capture(context.Background(), getFails{src, lockID}, reg, Policy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	named("unreadable", s, Unreadable)
 }

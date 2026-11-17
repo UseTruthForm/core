@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -286,5 +287,48 @@ func TestSkipNamesRoundTrip(t *testing.T) {
 	}
 	if strings.Contains(string(cov), "selectors:") {
 		t.Errorf("a skip with no selectors is written with the key:\n%s", cov)
+	}
+}
+
+// Where a platform's names ignore case, an object's file does not depend on
+// the case its name was returned in, and two spellings of one name are one
+// object. Elsewhere they are two.
+func TestAzureFilesDoNotDependOnCase(t *testing.T) {
+	obj := func(name string) Object {
+		return Object{Body: map[string]any{"apiVersion": "azure.truthform.org/v1", "kind": "Microsoft.OperationalInsights/workspaces/tables",
+			"metadata": map[string]any{"namespace": "Logs", "name": name}}}
+	}
+	files := func(s Snapshot) []string {
+		dir := filepath.Join(t.TempDir(), "s")
+		if err := s.Write(dir); err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		_ = filepath.WalkDir(filepath.Join(dir, "objects"), func(p string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() {
+				rel, _ := filepath.Rel(dir, p)
+				out = append(out, filepath.ToSlash(rel))
+			}
+			return err
+		})
+		return out
+	}
+	a := files(Snapshot{Platform: "azure", Objects: []Object{obj("law/ACSUsage")}})
+	b := files(Snapshot{Platform: "azure", Objects: []Object{obj("law/AcsUsage")}})
+	if len(a) != 1 || len(b) != 1 || a[0] != b[0] {
+		t.Errorf("one table in two cases is in two files: %v %v", a, b)
+	}
+	if want := "objects/azure.truthform.org/v1/microsoft.operationalinsights%2Fworkspaces%2Ftables/logs/law%2Facsusage.yaml"; len(a) == 1 && a[0] != want {
+		t.Errorf("file %s, want %s", a[0], want)
+	}
+	err := Snapshot{Platform: "azure", Objects: []Object{obj("law/ACSUsage"), obj("law/AcsUsage")}}.Write(filepath.Join(t.TempDir(), "s"))
+	if err == nil || !strings.Contains(err.Error(), "ignore case") {
+		t.Errorf("two spellings of one Azure object were written: %v", err)
+	}
+	k := func(name string) Object {
+		return Object{Body: map[string]any{"apiVersion": "v1", "kind": "ConfigMap", "metadata": map[string]any{"namespace": "Shop", "name": name}}}
+	}
+	if got := files(Snapshot{Platform: "kubernetes", Objects: []Object{k("cfg"), k("Cfg")}}); len(got) != 2 || got[0] == got[1] || !strings.Contains(strings.Join(got, " "), "/Shop/Cfg.yaml") {
+		t.Errorf("Kubernetes names are case-sensitive: %v", got)
 	}
 }

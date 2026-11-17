@@ -237,6 +237,30 @@ truthform diff --platform aws --region us-east-2 --from snap/aws
 It lists what was added, removed or changed, field by field, and exits 2
 when there are differences, so it can gate a pipeline or raise an alert.
 
+### Names in another case (Azure)
+
+Azure's resource types, resource groups and names ignore case, and Azure
+does not always return one in the same case: a Log Analytics table has come
+back as `ACSCallAutomationStreamingUsage` on one day and
+`AcsCallAutomationStreamingUsage` on the next. For Azure, TruthForm takes
+them as one object:
+
+- **A snapshot** stores the object in the same file whatever the case (its
+  path is in lower case), and the file keeps the case Azure returned. Two
+  spellings of one object in a capture are an error.
+- **`diff`, `compare` and an environment's diff** match it in any case, and
+  a type, group, name or ID that differs only in case is not a difference.
+- **`restore`** finds it in the target in any case (Azure's own reads ignore
+  case), and does not create it beside the one there.
+- **`--values`** keys match it in any case. Two keys for one object are
+  refused.
+
+The digest is of the files as written, so on a day Azure returns a name in
+another case it differs although `compare` finds nothing: compare by
+content, not by digest. Kubernetes and Google Cloud names are case-sensitive
+and are matched as they are; so are AWS's, where some services ignore case
+and others do not.
+
 ## Restore
 
 ```sh
@@ -1288,6 +1312,14 @@ is format 1 (`format: 1` in its `snapshot.yaml`); this build writes format 2.
 - **Kubernetes:** restore applies as the field manager `truthform`. A field
   an earlier build applied, and the snapshot no longer has, stays on the
   object under the old manager.
+
+## Azure snapshots from an earlier build
+
+An Azure snapshot written by this build stores its objects under paths in
+lower case (see [Names in another case](#names-in-another-case-azure)). An
+earlier one is read as it is. Captured again, its files move to the new
+paths with the same contents, so its digest changes once, and a snapshot
+kept in git shows every Azure object file renamed.
 
 ## Known limits
 

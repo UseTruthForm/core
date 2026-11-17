@@ -95,35 +95,30 @@ type changeJSON struct {
 	Key    string   `json:"key"`
 	Kind   string   `json:"kind"` // missing, extra, changed, not working
 	Fields []string `json:"fields,omitempty"`
+	// SkippedOtherSide says why the other side left a missing or extra
+	// object out. It is still a difference.
+	SkippedOtherSide *skippedJSON `json:"skippedOtherSide,omitempty"`
+}
+
+type skippedJSON struct {
+	Reason string `json:"reason"`
 }
 
 func changesJSON(cs []snapshot.Change) []changeJSON {
 	out := make([]changeJSON, 0, len(cs))
 	for _, c := range cs {
-		out = append(out, changeJSON{Key: c.Key, Kind: c.Kind, Fields: c.Fields})
+		cj := changeJSON{Key: c.Key, Kind: c.Kind, Fields: c.Fields}
+		if c.Skipped != nil {
+			cj.SkippedOtherSide = &skippedJSON{Reason: c.Skipped.Reason}
+		}
+		out = append(out, cj)
 	}
 	return out
 }
 
-// movedJSON is one object that moved between captured and left out: not in
-// "changes", and not counted in "differences".
-type movedJSON struct {
-	Key    string `json:"key"`
-	Kind   string `json:"kind"` // no longer captured, no longer skipped
-	Reason string `json:"reason"`
-}
-
-func movedListJSON(ms []snapshot.Moved) []movedJSON {
-	out := make([]movedJSON, 0, len(ms))
-	for _, m := range ms {
-		out = append(out, movedJSON{Key: m.Key, Kind: m.Kind, Reason: m.Reason})
-	}
-	return out
-}
-
-func emitDiff(changes []snapshot.Change, moved []snapshot.Moved, from, target string) {
+func emitDiff(changes []snapshot.Change, from, target string) {
 	doc := map[string]any{"schema": jsonSchema, "command": command, "from": from, "target": target,
-		"differences": len(changes), "changes": changesJSON(changes), "moved": movedListJSON(moved), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
+		"differences": len(changes), "changes": changesJSON(changes), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
 	if scopeDone != nil {
 		doc["scope"] = scopeDone
 	}

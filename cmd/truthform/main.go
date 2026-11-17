@@ -539,7 +539,7 @@ func diff(ctx context.Context, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	return report(differences(want, got, snapshot.Compare(want, got)), *from, *kctx)
+	return report(snapshot.Compare(want, got), *from, *kctx)
 }
 
 func compare(args []string) int {
@@ -563,7 +563,7 @@ func compare(args []string) int {
 	if a.Platform == "azure" && b.Platform == "azure" {
 		b = azarm.AsCapturedNow(b)
 	}
-	return report(differences(a, b, compareTarget(a.Platform, a, b)), args[0], args[1])
+	return report(compareTarget(a.Platform, a, b), args[0], args[1])
 }
 
 // schemaDiff shows what each API added or removed between two captures,
@@ -598,29 +598,18 @@ func schemaDiff(args []string) int {
 	return 2
 }
 
-// movedObjects is what the last comparison took out of its differences: the
-// objects one side captured and the other left out to the GitOps source that
-// applies them, where the captured copy says so too (a version of the capture
-// stopped leaving out a self-applying root). report says them, once.
-var movedObjects []snapshot.Moved
-
-// differences is changes without what moved between captured and left out
-// to a GitOps source, which it keeps in movedObjects for
-// report to say apart. Only a Kubernetes capture gives such a reason
-// (snapshot.MadeElsewhere), so a diff of another platform does not call it;
-// compare does, for any. A real add or remove is still a difference.
-func differences(want, got snapshot.Snapshot, changes []snapshot.Change) []snapshot.Change {
-	real, m := snapshot.SplitMoved(want, got, changes, kube.Moves)
-	movedObjects = m
-	return real
-}
-
-// movedLines says each moved object, as report and an environment's diff
-// print it.
-func movedLines(indent string, moved []snapshot.Moved) {
-	for _, m := range moved {
-		fmt.Printf("%smoved    %s: %s\n", indent, m.Key, m.Describe())
+// skippedNote is what a missing or extra line says of why the other side
+// left the object out, where it did. It explains the difference, which is
+// still one.
+func skippedNote(ch snapshot.Change) string {
+	if ch.Skipped == nil {
+		return ""
 	}
+	note := " (left out on the other side: " + ch.Skipped.Reason
+	if ch.Skipped.OlderRules {
+		note += "; a snapshot from a build before beta.23 left out a self-applying GitOps root and the source it reads from, so this may be one"
+	}
+	return note + ")"
 }
 
 // count is n things, in the singular for one.
@@ -631,23 +620,9 @@ func count(n int, thing string) string {
 	return fmt.Sprintf("%d %ss", n, thing)
 }
 
-// movedNote is the end of a summary line when objects moved.
-func movedNote(moved []snapshot.Moved) string {
-	if len(moved) == 0 {
-		return ""
-	}
-	if len(moved) == 1 {
-		return "; 1 object moved between captured and left out, which is not a difference"
-	}
-	return fmt.Sprintf("; %d objects moved between captured and left out, which are not differences", len(moved))
-}
-
 func report(changes []snapshot.Change, want, got string) int {
-	moved := movedObjects
-	// Said by this report only: a later one in the same run did not find them.
-	defer func() { movedObjects = nil }()
 	if jsonOut {
-		emitDiff(changes, moved, want, got)
+		emitDiff(changes, want, got)
 	}
 	held := ""
 	if len(heldBack) > 0 {
@@ -656,9 +631,7 @@ func report(changes []snapshot.Change, want, got string) int {
 	if l := scopeLine(); l != "" {
 		held += "; " + l
 	}
-	held += movedNote(moved)
 	if len(changes) == 0 {
-		movedLines("", moved)
 		fmt.Printf("no differences: %s matches %s%s\n", got, want, held)
 		return 0
 	}
@@ -667,10 +640,9 @@ func report(changes []snapshot.Change, want, got string) int {
 		case "changed":
 			fmt.Printf("changed  %s: %s\n", ch.Key, strings.Join(ch.Fields, ", "))
 		default:
-			fmt.Printf("%-8s %s\n", ch.Kind, ch.Key)
+			fmt.Printf("%-8s %s%s\n", ch.Kind, ch.Key, skippedNote(ch))
 		}
 	}
-	movedLines("", moved)
 	fmt.Printf("%s between %s and %s%s\n", count(len(changes), "difference"), want, got, held)
 	return 2
 }

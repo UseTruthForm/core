@@ -33,6 +33,28 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// KubernetesCaptureRules is the version of the rules for what a Kubernetes
+// capture leaves out and why (kube.CaptureRules). A snapshot under a later
+// version was written by a newer build, and this one refuses it rather
+// than read it under rules it does not know. 1: a self-applying GitOps root,
+// and the source a self-applying Kustomization reads from, are captured.
+const KubernetesCaptureRules = 1
+
+// maxRules is the highest capture rules version this build knows, per
+// platform; a platform not named has none.
+var maxRules = map[string]int{"kubernetes": KubernetesCaptureRules}
+
+// checkRules refuses a capture rules version this build cannot read.
+func checkRules(platform string, rules int) error {
+	if rules < 0 {
+		return fmt.Errorf("capture rules %d is not a version", rules)
+	}
+	if max := maxRules[platform]; rules > max {
+		return fmt.Errorf("captured under %s capture rules %d, and this build knows up to %d: read it with a newer TruthForm", platform, rules, max)
+	}
+	return nil
+}
+
 // FormatVersion is bumped on any change a reader of older snapshots must know about.
 //
 // 2: the tool was renamed. Annotations moved to truthform.org, placeholders
@@ -135,10 +157,10 @@ type Snapshot struct {
 	// policy difference as drift, so diff refuses to.
 	Policy string
 	// Rules is the version of the platform's rules for what a capture leaves
-	// out and why (kube.CaptureRules), 0 where the capture did not say
-	// (every snapshot written before it was recorded). Compare reads a move
-	// only from lower rules to higher, for what a change between them keeps
-	// (SplitMoved). It is written to the manifest, outside the digest: it
+	// out and why (KubernetesCaptureRules), 0 where the capture did not say:
+	// every snapshot written before it was recorded, beta.23's among them.
+	// Compare uses it only to say where a difference may come from an older
+	// build's rules. It is written to the manifest, outside the digest: it
 	// says which rules made the files, not what the system holds.
 	Rules    int
 	Objects  []Object
@@ -254,6 +276,10 @@ func Read(dir string) (Snapshot, error) {
 	}
 	if m.Format != FormatVersion && m.Format != legacyFormat {
 		return Snapshot{}, fmt.Errorf("snapshot format %d, this build reads %d and %d", m.Format, legacyFormat, FormatVersion)
+	}
+
+	if err := checkRules(m.Platform, m.Rules); err != nil {
+		return Snapshot{}, fmt.Errorf("snapshot %s: %w", dir, err)
 	}
 
 	if m.Format == legacyFormat && legacyNamesDiffer[m.Platform] {

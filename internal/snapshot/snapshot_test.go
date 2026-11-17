@@ -300,7 +300,7 @@ func TestRulesAreOutsideTheDigest(t *testing.T) {
 	if err := s.Write(none); err != nil {
 		t.Fatal(err)
 	}
-	s.Rules = 7
+	s.Rules = KubernetesCaptureRules
 	if err := s.Write(with); err != nil {
 		t.Fatal(err)
 	}
@@ -313,10 +313,41 @@ func TestRulesAreOutsideTheDigest(t *testing.T) {
 	if strings.Contains(string(m), "rules") {
 		t.Errorf("a manifest without rules says some:\n%s", m)
 	}
-	for dir, want := range map[string]int{none: 0, with: 7} {
+	for dir, want := range map[string]int{none: 0, with: KubernetesCaptureRules} {
 		got, err := Read(dir)
 		if err != nil || got.Rules != want {
 			t.Errorf("%s: rules %d, want %d (%v)", dir, got.Rules, want, err)
+		}
+	}
+}
+
+// A snapshot's capture rules are checked on read: a negative version is
+// refused, and so is one above what this build knows for the platform,
+// naming what reads it; up to that, and none, are read.
+func TestRulesAreChecked(t *testing.T) {
+	for _, c := range []struct {
+		platform string
+		rules    int
+		err      string
+	}{
+		{"kubernetes", 0, ""},
+		{"kubernetes", KubernetesCaptureRules, ""},
+		{"kubernetes", KubernetesCaptureRules + 1, "captured under kubernetes capture rules 2, and this build knows up to 1: read it with a newer TruthForm"},
+		{"kubernetes", -1, "capture rules -1 is not a version"},
+		{"azure", 0, ""},
+		{"azure", 1, "captured under azure capture rules 1, and this build knows up to 0: read it with a newer TruthForm"},
+		{"aws", -3, "capture rules -3 is not a version"},
+	} {
+		dir := filepath.Join(t.TempDir(), "s")
+		if err := (Snapshot{Platform: c.platform, Policy: "default", Rules: c.rules}).Write(dir); err != nil {
+			t.Fatal(err)
+		}
+		s, err := Read(dir)
+		switch {
+		case c.err == "" && (err != nil || s.Rules != c.rules):
+			t.Errorf("%s %d: %v, rules %d", c.platform, c.rules, err, s.Rules)
+		case c.err != "" && (err == nil || !strings.Contains(err.Error(), c.err) || !strings.Contains(err.Error(), dir)):
+			t.Errorf("%s %d: %v, want %q naming the snapshot", c.platform, c.rules, err, c.err)
 		}
 	}
 }

@@ -22,12 +22,11 @@ import (
 )
 
 // On a real API server, through capture and diff: an object left out as
-// identical to the baseline and then edited is a difference, not a move,
-// and so is one captured edited and then put back to the baseline. The
-// baseline skip is decided by the object's content, so a move across it
-// is always a change (review of #24: a ConfigMap edited and a subject
-// added to a ClusterRoleBinding read as moved, and the diff exited 0).
-func TestBaselineSkipIsNeverAMove(t *testing.T) {
+// identical to the baseline and then edited is a difference, and so is one
+// captured edited and then put back to the baseline, each with why the
+// other side left it out beside it, and no hint about an older build: the
+// baseline skip is decided by the object's content.
+func TestBaselineSkipIsADifference(t *testing.T) {
 	srv := kubetest.Start(t, "baseline-skip")
 	settle(t, srv)
 	ctx := context.Background()
@@ -76,21 +75,27 @@ func TestBaselineSkipIsNeverAMove(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	const baseline = "identical to the distribution baseline; a new cluster provides it"
 	wantDifferences := func(what, from, kind string) {
 		t.Helper()
 		args := append(append([]string{}, conn...), "--from", from, "--baseline", base)
 		code, stdout, _ := output(t, func() int { return diff(ctx, args) })
-		for _, l := range []string{kind + " v1|ConfigMap|shop|cfg", kind + " rbac.authorization.k8s.io/v1|ClusterRoleBinding||ops", "2 differences between"} {
+		for _, l := range []string{kind + " v1|ConfigMap|shop|cfg" + leftOutNote + baseline + ")\n", kind + " rbac.authorization.k8s.io/v1|ClusterRoleBinding||ops" + leftOutNote + baseline + ")\n", "2 differences between"} {
 			if !strings.Contains(stdout, l) {
 				t.Errorf("%s: no %q\n%s", what, l, stdout)
 			}
 		}
-		if code != 2 || strings.Contains(stdout, "\nmoved ") {
-			t.Errorf("%s: exit %d, want 2 and nothing moved\n%s", what, code, stdout)
+		if code != 2 {
+			t.Errorf("%s: exit %d, want 2\n%s", what, code, stdout)
 		}
 		d := asJSON(t, func() { code = diff(ctx, args) })
-		if code != 2 || d["differences"] != float64(2) || len(d["moved"].([]any)) != 0 {
+		if code != 2 || d["differences"] != float64(2) {
 			t.Errorf("%s --json: exit %d, %v", what, code, d)
+		}
+		for _, c := range d["changes"].([]any) {
+			if s, _ := c.(map[string]any)["skippedOtherSide"].(map[string]any); s["reason"] != baseline {
+				t.Errorf("%s --json: %v", what, c)
+			}
 		}
 	}
 	// Edited after a capture that left it out as the baseline's.
@@ -103,12 +108,10 @@ func TestBaselineSkipIsNeverAMove(t *testing.T) {
 	wantDifferences("put back to the baseline", c, "missing ")
 }
 
-// What the target could not be read is never a move: an object the
-// snapshot has and a diff could not read on the target is missing, and the
-// diff exits 2 (review of #24: Azure's and AWS's "listed but could not be
-// read" read as moved, and nothing said the read had failed). Through diff
-// against a fake Azure target whose GET fails for one zone.
-func TestUnreadableOnTheTargetIsNotAMove(t *testing.T) {
+// What the target could not be read is missing, the diff exits 2, and the
+// line says the target could not read it. Through diff against a fake
+// Azure target whose GET fails for one zone.
+func TestUnreadableOnTheTargetIsNoted(t *testing.T) {
 	reg, err := azarm.LoadDefinitions(leaveDefs)
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +153,7 @@ func TestUnreadableOnTheTargetIsNotAMove(t *testing.T) {
 	t.Cleanup(func() { azureAPI = old })
 	target := []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--from", dir}
 	code, stdout, stderr := output(t, func() int { return diff(ctx, target) })
-	if code != 2 || !strings.Contains(stdout, "missing  azure.truthform.org/v1|Microsoft.Network/privateDnsZones|rg|corp.example\n") || strings.Contains(stdout, "\nmoved ") {
+	if code != 2 || !strings.Contains(stdout, "missing  azure.truthform.org/v1|Microsoft.Network/privateDnsZones|rg|corp.example"+leftOutNote+azarm.Unreadable+"AuthorizationFailed: ") {
 		t.Errorf("diff of a target that could not be read: exit %d, want 2 and the record missing\n%s%s", code, stdout, stderr)
 	}
 }
@@ -170,8 +173,9 @@ func (f failingGet) Get(ctx context.Context, id, version string) (map[string]any
 }
 
 // Through compare, for each platform's own words for what it left out for
-// its content or could not read: never a move, in either direction.
-func TestCompareRefusesContentAndReadSkips(t *testing.T) {
+// its content or could not read: a difference in either direction, noted,
+// without the hint.
+func TestCompareNotesContentAndReadSkips(t *testing.T) {
 	for _, c := range []struct {
 		platform, resource, kind, apiVersion, ns, name, skipName, reason string
 	}{
@@ -203,9 +207,64 @@ func TestCompareRefusesContentAndReadSkips(t *testing.T) {
 		}
 		for _, dirs := range [][2]string{{a, b}, {b, a}} {
 			code, stdout, stderr := output(t, func() int { return compare([]string{dirs[0], dirs[1]}) })
-			if code != 2 || strings.HasPrefix(stdout, "moved ") || strings.Contains(stdout, "\nmoved ") {
-				t.Errorf("%s %q: exit %d, want 2 and nothing moved\n%s%s", c.platform, c.reason, code, stdout, stderr)
+			if code != 2 || !strings.Contains(stdout, leftOutNote+c.reason+")\n") || strings.Contains(stdout, olderHint) {
+				t.Errorf("%s %q: exit %d, want 2 and the note\n%s%s", c.platform, c.reason, code, stdout, stderr)
 			}
 		}
+	}
+}
+
+// wantSkip checks that a snapshot captured an object or skipped it.
+func wantSkip(t *testing.T, dir, key string, skipped bool) {
+	t.Helper()
+	s, err := snapshot.Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captured := false
+	for _, o := range s.Objects {
+		if o.Key() == key {
+			captured = true
+		}
+	}
+	if captured == skipped {
+		t.Fatalf("%s: captured %v, want skipped %v", key, captured, skipped)
+	}
+}
+
+// A report says the note beside the line it explains, and in --json only on
+// that change, as {reason}; a change with no note has no field; the count
+// and the exit code are those of every change.
+func TestReportNotesOnlyWhatWasLeftOut(t *testing.T) {
+	changes := []snapshot.Change{
+		{Key: "v1|ConfigMap|shop|cfg", Kind: "missing", Skipped: &snapshot.SkippedOtherSide{Reason: "why", OlderRules: true}},
+		{Key: "v1|ConfigMap|shop|gone", Kind: "missing"},
+	}
+	code, stdout, _ := output(t, func() int { return report(changes, "a", "b") })
+	for _, l := range []string{
+		"missing  v1|ConfigMap|shop|cfg" + leftOutNote + "why" + olderHint + "\n",
+		"missing  v1|ConfigMap|shop|gone\n",
+		"2 differences between a and b\n",
+	} {
+		if !strings.Contains(stdout, l) {
+			t.Errorf("no %q in\n%s", l, stdout)
+		}
+	}
+	if code != 2 {
+		t.Errorf("exit %d", code)
+	}
+	if _, one, _ := output(t, func() int { return report(changes[1:], "a", "b") }); !strings.Contains(one, "1 difference between a and b\n") {
+		t.Errorf("one difference:\n%s", one)
+	}
+	d := asJSON(t, func() { code = report(changes, "a", "b") })
+	cs := d["changes"].([]any)
+	if code != 2 || d["differences"] != float64(2) || len(cs) != 2 {
+		t.Fatalf("exit %d, %v", code, d)
+	}
+	if s, _ := cs[0].(map[string]any)["skippedOtherSide"].(map[string]any); len(s) != 1 || s["reason"] != "why" {
+		t.Errorf("noted change: %v", cs[0])
+	}
+	if _, has := cs[1].(map[string]any)["skippedOtherSide"]; has {
+		t.Errorf("a change with no note: %v", cs[1])
 	}
 }

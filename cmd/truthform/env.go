@@ -436,7 +436,6 @@ func diffEnvironment(ctx context.Context, configPath, from string) int {
 		Error       string       `json:"error,omitempty"`
 		Differences int          `json:"differences"`
 		Changes     []changeJSON `json:"changes"`
-		Moved       []movedJSON  `json:"moved"`
 	}
 	var diffs []targetDiff
 	if jsonOut {
@@ -446,7 +445,7 @@ func diffEnvironment(ctx context.Context, configPath, from string) int {
 	}
 	failTarget := func(t Target, msg string) {
 		fmt.Printf("%s: %s\n", t.Name, msg)
-		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Error: msg, Changes: []changeJSON{}, Moved: []movedJSON{}})
+		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Error: msg, Changes: []changeJSON{}})
 		code = 1
 	}
 	for _, t := range env.Targets {
@@ -472,15 +471,14 @@ func diffEnvironment(ctx context.Context, configPath, from string) int {
 			failTarget(t, fmt.Sprintf("captured with policy %q but the config now gives %q", want.Policy, got.Policy))
 			continue
 		}
-		ch, moved := snapshot.SplitMoved(want, got, compareTarget(t.Platform, want, got), kube.Moves)
-		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Differences: len(ch), Changes: changesJSON(ch), Moved: movedListJSON(moved)})
-		fmt.Printf("== %s (%s): %s%s\n", t.Name, t.Platform, count(len(ch), "difference"), movedNote(moved))
-		movedLines("  ", moved)
+		ch := compareTarget(t.Platform, want, got)
+		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Differences: len(ch), Changes: changesJSON(ch)})
+		fmt.Printf("== %s (%s): %s\n", t.Name, t.Platform, count(len(ch), "difference"))
 		for _, c := range ch {
 			if c.Kind == "changed" {
 				fmt.Printf("  changed  %s: %s\n", c.Key, strings.Join(c.Fields, ", "))
 			} else {
-				fmt.Printf("  %-8s %s\n", c.Kind, c.Key)
+				fmt.Printf("  %-8s %s%s\n", c.Kind, c.Key, skippedNote(c))
 			}
 		}
 		if len(ch) > 0 && code == 0 {

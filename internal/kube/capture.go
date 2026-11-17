@@ -162,8 +162,15 @@ func fluxRoots(ctx context.Context, c *Clients, lists []*metav1.APIResourceList)
 					if !selfApplied(obj) {
 						continue
 					}
-					if ref, ok := sourceRef(obj); ok {
-						roots[ref] = true
+					md, _ := obj["metadata"].(map[string]any)
+					spec, _ := obj["spec"].(map[string]any)
+					ref, _ := spec["sourceRef"].(map[string]any)
+					ns := strOf(ref["namespace"])
+					if ns == "" {
+						ns = strOf(md["namespace"])
+					}
+					if strOf(ref["kind"]) != "" && strOf(ref["name"]) != "" {
+						roots[strOf(ref["kind"])+"|"+ns+"|"+strOf(ref["name"])] = true
 					}
 				}
 				if cont = ul.GetContinue(); cont == "" {
@@ -173,21 +180,6 @@ func fluxRoots(ctx context.Context, c *Clients, lists []*metav1.APIResourceList)
 		}
 	}
 	return roots
-}
-
-// sourceRef is what a Flux Kustomization reads from, as kind|namespace|name.
-func sourceRef(obj map[string]any) (string, bool) {
-	md, _ := obj["metadata"].(map[string]any)
-	spec, _ := obj["spec"].(map[string]any)
-	ref, _ := spec["sourceRef"].(map[string]any)
-	ns := strOf(ref["namespace"])
-	if ns == "" {
-		ns = strOf(md["namespace"])
-	}
-	if strOf(ref["kind"]) == "" || strOf(ref["name"]) == "" {
-		return "", false
-	}
-	return strOf(ref["kind"]) + "|" + ns + "|" + strOf(ref["name"]), true
 }
 
 func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVersionResource, kind string, cov *snapshot.Coverage, snap *snapshot.Snapshot, own *ownership) error {
@@ -251,7 +243,7 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 			// (review of #41).
 			if !hasWithheld(obj) && p.matchesBaseline(obj) {
 				md, _ := obj["metadata"].(map[string]any)
-				reason := baselineReason
+				reason := "identical to the distribution baseline; a new cluster provides it"
 				snap.Skips = append(snap.Skips, snapshot.Skip{
 					Resource: resourceID(gvr), Namespace: strOf(md["namespace"]), Name: strOf(md["name"]), Reason: reason,
 				})
@@ -377,12 +369,6 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 }
 
 const helmReleasePrefix = "sh.helm.release.v1."
-
-// baselineReason is the reason for an object identical to the baseline. It
-// is decided by the object's content, so it is never read as a move: an
-// object captured on one side and left out as this on the other may have
-// been edited to or from the baseline.
-const baselineReason = "identical to the distribution baseline; a new cluster provides it"
 
 var helmHistoryRE = regexp.MustCompile(`^sh\.helm\.release\.v1\.(.+)\.v\d+$`)
 

@@ -240,64 +240,40 @@ when there are differences, so it can gate a pipeline or raise an alert.
 `compare` does the same between two snapshots, and a diff of an environment
 (`--config`) for each target.
 
-**A root a change of capture rules keeps is not a difference (Kubernetes).**
-Every Kubernetes snapshot records the version of the rules it was captured
-under (`rules` in `snapshot.yaml`, outside the digest; one from before they
-were recorded counts as 0). Version 1 captures what earlier builds left out: a
-self-applying root Kustomization or Argo CD application, and the source such a
-Kustomization reads from. Between a snapshot under older rules that left one
-out and a snapshot under newer rules that captured it, in either order, the
-object is listed as `moved`, with the reason the older capture gave, and does
-not change the exit code:
+### An object one side left out
+
+An object one side has and the other left out on purpose is still `missing`
+or `extra`, and still counts: nothing here changes what a diff reports or
+the exit code. Its line says why the other side left it out, from that
+side's own record:
 
 ```text
-moved    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root: no longer skipped (was: applied by Flux Kustomization gitops/root; restoring it recreates this), so now captured
+missing  v1|ConfigMap|shop|cfg (left out on the other side: identical to the distribution baseline; a new cluster provides it)
 ```
 
-That is the only move. Each part is checked, and anything else is a
-difference:
+The reason explains the difference; it never makes it safe. Something left
+out on one side was not compared, and may have been edited: given a GitOps
+tool's labels, an owner reference, or a root status it did not have, or
+changed to or from a baseline. Look at the object itself.
 
-- **Only from older rules to newer.** Under one version (two snapshots from
-  before rules were recorded among them) nothing moves: an object captured or
-  left out by what it holds and what is around it, which crossed, was changed.
-  Two old snapshots compared with each other therefore show a root one kept and
-  the other left out as a difference. And what the older rules captured and the
-  newer left out is a difference too, since no change of rules leaves out what
-  was kept: an edit that also takes away an object's root status reads that way,
-  against any baseline, however old.
-- **Only what the change keeps.** The newer snapshot must hold the object as a
-  root: one that applies itself, or what a self-applying Kustomization in it
-  reads from.
-- **Only where the captured copy agrees.** The reason the capture would give
-  the captured copy must be exactly the older side's. Otherwise, and for each
-  of these, the object is `missing` or `extra` as before, and exits 2:
+Every Kubernetes snapshot records the version of the capture rules it was
+taken under (`rules` in `snapshot.yaml`, outside the digest). A snapshot
+without one counts as 0: every build up to and including beta.23 wrote it so.
+Version 1 captures a self-applying GitOps root, and the source a
+self-applying Kustomization reads from, which builds before beta.23 left out.
+Where the side that left an object out has no rules and gave a GitOps
+source's reason, the line adds that this may be why:
 
-  - **Marks added or taken off in the cluster.** A namespace or a ConfigMap that
-    a GitOps tool really began to apply, its labels added since the last capture,
-    is a difference: the copy in the snapshot does not carry them, and labels
-    anyone with write access can add would otherwise hide an edit made with them.
-    The same goes for labels taken off. Merge the change once it is expected.
-  - **Owned by a controller.** A capture keeps no owner references, so a move
-    across one cannot be checked.
-  - **Identical to a baseline.** That skip is decided by content: an object
-    edited away from the baseline, or put back to it, crosses it.
-  - **Could not be read.** Nothing was seen of it: on the target, a diff says it
-    is missing.
-  - **Any other reason, on any platform**, including one added later, until it is
-    added to the list.
+```text
+extra    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root (left out on the other side: applied by Flux Kustomization gitops/root; restoring it recreates this; a snapshot from a build before beta.23 left out a self-applying GitOps root and the source it reads from, so this may be one)
+```
 
-A move checks the marks on the copy, not that the source they name exists. An
-object counts as moved only when the older capture's left-out list names it by
-its own type, namespace and name, and every entry that names it gives the
-reason its copy does. A moved object's content is not compared, since one side
-does not hold it. So an object an older capture left out, edited and made a
-root of its own (an Argo CD application given a tracking-id naming itself),
-reads as moved. That hides nothing a snapshot shows: the older snapshot never
-held the object, and an edit to it left out, with no flip, shows in no build.
+A snapshot under rules newer than the build reading it is refused, naming
+the version: read it with a newer TruthForm.
 
-**The digest detects accidents, not tampering.** It is a plain SHA-256 of the
-files: anyone who can write a snapshot can write its digest. Keep snapshots
-where only the pipeline that captures them can write.
+The digest detects accidents, not tampering: it is a plain SHA-256 of the
+files, and anyone who can write a snapshot can write its digest. Keep
+snapshots where only the pipeline that captures them can write.
 
 ### Names in another case (Azure)
 
@@ -555,11 +531,8 @@ to stderr. The exit code is the same as without it. A capture's document
 says whether it is `complete` and lists its `gaps`, and under `throttled`
 the gaps a later capture can close as it is; a diff's lists each
 change with its `kind` (missing, extra, changed, not working) and `fields`,
-and under `moved` each object that moved between captured and left out, with
-its `kind` (`no longer captured`, `no longer skipped`) and `reason`; those are
-not in `changes` and not counted in `differences`. A reader of `changes`
-alone no longer sees a moved object at all, where it used to see it added or
-removed; read `moved` to show it. A
+and, on a missing or extra object the other side left out,
+`skippedOtherSide` with its `reason`; a
 restore's lists each resource with `ok` and `detail`. A diff against one
 target and a restore list under `left_out` the objects `--leave-out` held
 back, so a clean diff says what it did not compare (`compare` has no

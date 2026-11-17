@@ -281,7 +281,7 @@ func diffAWS(ctx context.Context, a *awsFlags, want snapshot.Snapshot, from stri
 	if err != nil {
 		return fail(err)
 	}
-	return report(snapshot.Compare(want, got), from, "aws "+a.region)
+	return report(differences(want, got, snapshot.Compare(want, got)), from, "aws "+a.region)
 }
 
 // awsCoverage reports, offline, what the registry lets TruthForm capture and

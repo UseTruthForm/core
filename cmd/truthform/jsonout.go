@@ -100,9 +100,25 @@ func changesJSON(cs []snapshot.Change) []changeJSON {
 	return out
 }
 
+// movedJSON is one object that moved between captured and left out: not in
+// "changes", and not counted in "differences".
+type movedJSON struct {
+	Key    string `json:"key"`
+	Kind   string `json:"kind"` // no longer captured, no longer skipped
+	Reason string `json:"reason"`
+}
+
+func movedListJSON(ms []snapshot.Moved) []movedJSON {
+	out := make([]movedJSON, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, movedJSON{Key: m.Key, Kind: m.Kind, Reason: m.Reason})
+	}
+	return out
+}
+
 func emitDiff(changes []snapshot.Change, from, target string) {
 	doc := map[string]any{"schema": jsonSchema, "command": command, "from": from, "target": target,
-		"differences": len(changes), "changes": changesJSON(changes), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
+		"differences": len(changes), "changes": changesJSON(changes), "moved": movedListJSON(movedObjects), "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
 	if scopeDone != nil {
 		doc["scope"] = scopeDone
 	}

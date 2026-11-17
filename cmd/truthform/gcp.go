@@ -151,5 +151,5 @@ func diffGCP(ctx context.Context, g *gcpFlags, want snapshot.Snapshot, from stri
 	if err != nil {
 		return fail(err)
 	}
-	return report(snapshot.Compare(want, got), from, "gcp "+g.project)
+	return report(differences(want, got, snapshot.Compare(want, got)), from, "gcp "+g.project)
 }

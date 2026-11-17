@@ -531,7 +531,7 @@ func diff(ctx context.Context, args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	return report(snapshot.Compare(want, got), *from, *kctx)
+	return report(differences(want, got, snapshot.Compare(want, got)), *from, *kctx)
 }
 
 func compare(args []string) int {
@@ -555,7 +555,7 @@ func compare(args []string) int {
 	if a.Platform == "azure" && b.Platform == "azure" {
 		b = azarm.AsCapturedNow(b)
 	}
-	return report(compareTarget(a.Platform, a, b), args[0], args[1])
+	return report(differences(a, b, compareTarget(a.Platform, a, b)), args[0], args[1])
 }
 
 // schemaDiff shows what each API added or removed between two captures,
@@ -590,6 +590,36 @@ func schemaDiff(args []string) int {
 	return 2
 }
 
+// movedObjects is what the last comparison took out of its differences: the
+// objects one side captured and the other left out on purpose (a GitOps tool
+// began to apply it; a version of the capture stopped leaving it out).
+var movedObjects []snapshot.Moved
+
+// differences is changes without what moved between captured and skipped,
+// which it keeps in movedObjects for report to say apart. Nothing in the
+// system changed for one; a real add or remove is still a difference.
+func differences(want, got snapshot.Snapshot, changes []snapshot.Change) []snapshot.Change {
+	real, m := snapshot.SplitMoved(want, got, changes)
+	movedObjects = m
+	return real
+}
+
+// movedLines says each moved object, as report and an environment's diff
+// print it.
+func movedLines(indent string, moved []snapshot.Moved) {
+	for _, m := range moved {
+		fmt.Printf("%smoved    %s: %s\n", indent, m.Key, m.Describe())
+	}
+}
+
+// movedNote is the end of a summary line when objects moved.
+func movedNote(moved []snapshot.Moved) string {
+	if len(moved) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("; %d objects moved between captured and left out, which is not a difference", len(moved))
+}
+
 func report(changes []snapshot.Change, want, got string) int {
 	if jsonOut {
 		emitDiff(changes, want, got)
@@ -601,7 +631,9 @@ func report(changes []snapshot.Change, want, got string) int {
 	if l := scopeLine(); l != "" {
 		held += "; " + l
 	}
+	held += movedNote(movedObjects)
 	if len(changes) == 0 {
+		movedLines("", movedObjects)
 		fmt.Printf("no differences: %s matches %s%s\n", got, want, held)
 		return 0
 	}
@@ -613,6 +645,7 @@ func report(changes []snapshot.Change, want, got string) int {
 			fmt.Printf("%-8s %s\n", ch.Kind, ch.Key)
 		}
 	}
+	movedLines("", movedObjects)
 	fmt.Printf("%d differences between %s and %s%s\n", len(changes), want, got, held)
 	return 2
 }

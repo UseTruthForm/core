@@ -262,5 +262,5 @@ func diffSaaS(ctx context.Context, platform string, s *saasFlags, want snapshot.
 	if d != nil {
 		got = d.Scope(got)
 	}
-	return report(snapshot.Compare(want, got), from, platform+" "+s.account)
+	return report(differences(want, got, snapshot.Compare(want, got)), from, platform+" "+s.account)
 }

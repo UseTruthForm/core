@@ -472,7 +472,7 @@ func diffEnvironment(ctx context.Context, configPath, from string) int {
 		}
 		ch, moved := snapshot.SplitMoved(want, got, compareTarget(t.Platform, want, got), kube.MadeBy)
 		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Differences: len(ch), Changes: changesJSON(ch), Moved: movedListJSON(moved)})
-		fmt.Printf("== %s (%s): %d differences%s\n", t.Name, t.Platform, len(ch), movedNote(moved))
+		fmt.Printf("== %s (%s): %s%s\n", t.Name, t.Platform, count(len(ch), "difference"), movedNote(moved))
 		movedLines("  ", moved)
 		for _, c := range ch {
 			if c.Kind == "changed" {

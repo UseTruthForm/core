@@ -238,3 +238,20 @@ func TestMovedLeavesOtherChanges(t *testing.T) {
 		t.Errorf("real %+v moved %+v", real, moved)
 	}
 }
+
+// Under one set of capture rules there is no move, whatever the copies
+// say: an object that crossed was changed. Across two, or where either side
+// does not say its rules, there can be.
+func TestMovedOnlyAcrossRules(t *testing.T) {
+	for _, c := range []struct {
+		want, got int
+		moves     bool
+	}{{0, 0, true}, {0, 2, true}, {2, 0, true}, {1, 2, true}, {2, 1, true}, {2, 2, false}} {
+		want := kube([]Object{made(kobj("v1", "ConfigMap", "shop", "cfg"), byFlux)}, nil)
+		got := kube(nil, []Skip{{Resource: "core/v1/configmaps", Namespace: "shop", Name: "cfg", Reason: byFlux}})
+		want.Rules, got.Rules = c.want, c.got
+		if real, moved := split(want, got); (len(moved) == 1) != c.moves || len(real)+len(moved) != 1 {
+			t.Errorf("rules %d and %d: real %+v moved %+v, want a move %v", c.want, c.got, real, moved, c.moves)
+		}
+	}
+}

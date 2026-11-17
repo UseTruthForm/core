@@ -615,6 +615,14 @@ func movedLines(indent string, moved []snapshot.Moved) {
 	}
 }
 
+// count is n things, in the singular for one.
+func count(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
+}
+
 // movedNote is the end of a summary line when objects moved.
 func movedNote(moved []snapshot.Moved) string {
 	if len(moved) == 0 {
@@ -655,7 +663,7 @@ func report(changes []snapshot.Change, want, got string) int {
 		}
 	}
 	movedLines("", moved)
-	fmt.Printf("%d differences between %s and %s%s\n", len(changes), want, got, held)
+	fmt.Printf("%s between %s and %s%s\n", count(len(changes), "difference"), want, got, held)
 	return 2
 }
 

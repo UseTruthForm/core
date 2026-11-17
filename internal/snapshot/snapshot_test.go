@@ -288,3 +288,34 @@ func TestSkipNamesRoundTrip(t *testing.T) {
 		t.Errorf("a skip with no selectors is written with the key:\n%s", cov)
 	}
 }
+
+// The capture rules are in the manifest, outside the digest: the same
+// files under another version have the same digest, a snapshot from before
+// they were recorded reads as 0, and one with them reads them back.
+func TestRulesAreOutsideTheDigest(t *testing.T) {
+	s := Snapshot{Platform: "kubernetes", Policy: "default", Coverage: []Coverage{{Resource: "core/v1/configmaps", Kind: "ConfigMap", Captured: 1}},
+		Objects: []Object{{Body: map[string]any{"apiVersion": "v1", "kind": "ConfigMap", "metadata": map[string]any{"name": "cfg", "namespace": "shop"}}}}}
+	none, with := t.TempDir(), t.TempDir()
+	if err := s.Write(none); err != nil {
+		t.Fatal(err)
+	}
+	s.Rules = 7
+	if err := s.Write(with); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := Digest(none)
+	b, _ := Digest(with)
+	if a != b || a == "" {
+		t.Errorf("digest %s without rules, %s with", a, b)
+	}
+	m, _ := os.ReadFile(filepath.Join(none, "snapshot.yaml"))
+	if strings.Contains(string(m), "rules") {
+		t.Errorf("a manifest without rules says some:\n%s", m)
+	}
+	for dir, want := range map[string]int{none: 0, with: 7} {
+		got, err := Read(dir)
+		if err != nil || got.Rules != want {
+			t.Errorf("%s: rules %d, want %d (%v)", dir, got.Rules, want, err)
+		}
+	}
+}

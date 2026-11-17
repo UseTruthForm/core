@@ -189,6 +189,7 @@ func TestMovedWhereTheCapturedCopySaysSo(t *testing.T) {
 		}
 	}
 	old.Skips = skips
+	old.Rules = 0 // that build did not record its rules
 	old.Objects = append(old.Objects, snapshot.Object{Body: map[string]any{"apiVersion": "v1", "kind": "ConfigMap",
 		"metadata": map[string]any{"name": "synced", "namespace": "shop", "labels": map[string]any{"kustomize.toolkit.fluxcd.io/name": "root", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}},
 		"data":     map[string]any{"a": "1"}}})
@@ -221,7 +222,7 @@ func TestMovedWhereTheCapturedCopySaysSo(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, stdout, _ = output(t, func() int { return diff(ctx, diffArgs) })
-	if code != 2 || !strings.Contains(stdout, "missing  v1|ConfigMap|shop|plain") || !strings.Contains(stdout, line) || !strings.Contains(stdout, "1 differences between") {
+	if code != 2 || !strings.Contains(stdout, "missing  v1|ConfigMap|shop|plain") || !strings.Contains(stdout, line) || !strings.Contains(stdout, "1 difference between") {
 		t.Errorf("diff after a deletion: exit %d, want 2\n%s", code, stdout)
 	}
 	d := asJSON(t, func() { code = diff(ctx, diffArgs) })
@@ -230,6 +231,10 @@ func TestMovedWhereTheCapturedCopySaysSo(t *testing.T) {
 	}
 	if m := d["moved"].([]any)[0].(map[string]any); m["kind"] != snapshot.NoLongerCaptured || m["key"] != "v1|ConfigMap|shop|synced" || m["reason"] != snapshot.FluxKustomizationReason("gitops", "root") {
 		t.Errorf("--json moved: %v", m)
+	}
+	code, stdout, _ = output(t, func() int { return diffEnvironment(ctx, cfg, env) })
+	if code != 2 || !strings.Contains(stdout, "== cluster (kubernetes): 1 difference; 1 object moved") {
+		t.Errorf("environment diff after a deletion: exit %d\n%s", code, stdout)
 	}
 	if code, tgt := envDiff(); code != 2 || tgt["differences"] != float64(1) || len(tgt["changes"].([]any)) != 1 || len(tgt["moved"].([]any)) != 1 {
 		t.Errorf("environment diff --json after a deletion: exit %d, %v", code, tgt)

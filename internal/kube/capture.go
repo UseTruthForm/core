@@ -64,7 +64,7 @@ func Connect(kubeconfig, kubeContext string, readOnly bool) (*Clients, error) {
 
 // Capture reads every capturable object in the cluster.
 func Capture(ctx context.Context, c *Clients, p Policy) (snapshot.Snapshot, error) {
-	snap := snapshot.Snapshot{Platform: "kubernetes", Policy: p.Name()}
+	snap := snapshot.Snapshot{Platform: "kubernetes", Policy: p.Name(), Rules: CaptureRules}
 	if v, err := c.Discovery.ServerVersion(); err == nil {
 		snap.ServerVersion = v.GitVersion
 	}

@@ -190,7 +190,8 @@ func (p Policy) typeExcluded(group, resource string) string {
 	return excludedTypes[group+"/"+resource]
 }
 
-// skipReason reports why one object is left out, or "" to capture it.
+// skipReason reports why one object is left out, or "" to capture it. A
+// change to what it decides is a change of rules: bump CaptureRules.
 func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 	md, _ := obj["metadata"].(map[string]any)
 	ns, _ := md["namespace"].(string)
@@ -318,6 +319,15 @@ func aksOwn(md map[string]any) bool {
 	return strOf(labels["kubernetes.azure.com/managedby"]) == "aks"
 }
 
+// CaptureRules is the version of the rules for what a Kubernetes capture
+// leaves out and why, written to every snapshot (snapshot.Snapshot.Rules).
+// Bump it with any change to what skipReason, renderedBy, root or
+// selfApplied decide: compare reads a move between captured and left out
+// only across two versions, since under one an unchanged object stays on
+// its side. Forgetting to bump it is safe: what the change moved is then
+// shown as differences, not hidden as moves.
+const CaptureRules = 1
+
 // root reports whether a rendered object is where GitOps starts: a source
 // that applies itself (the Kustomization "flux bootstrap" makes, an Argo
 // CD application that manages itself), or what such a Kustomization reads
@@ -357,7 +367,8 @@ func selfApplied(obj map[string]any) bool {
 }
 
 // renderedBy reports which higher-level source applied an object, from the
-// labels those tools stamp on everything they create, or "".
+// labels those tools stamp on everything they create, or "". A change here
+// changes what a capture leaves out: bump CaptureRules.
 func renderedBy(md map[string]any) string {
 	labels, _ := md["labels"].(map[string]any)
 	l := func(k string) string { return strOf(labels[k]) }

@@ -252,9 +252,23 @@ capture that left it out gave, and does not change the exit code:
 moved    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root: no longer skipped (was: applied by Flux Kustomization gitops/root; restoring it recreates this), so now captured
 ```
 
-The check is the capture's own: the reason it would give the captured copy
-must be exactly the other side's. Anything else is `missing` or `extra` as
-before, and exits 2:
+**Only across a change of capture rules.** Every Kubernetes snapshot records
+the version of the rules it was captured under (`rules` in `snapshot.yaml`,
+outside the digest). Under one version an object is captured or left out by
+what it holds and what is around it, so one that crossed was changed: two
+snapshots under the same rules never have a move, and nor does a diff of a
+snapshot this build wrote, since a diff captures with this build's rules. A
+move is read only between snapshots of different rules, or where one is from
+before rules were recorded.
+
+**Review the first drift after an upgrade by hand.** In that one comparison,
+an object edited while it also became, or stopped being, a GitOps root (a
+self-applying Kustomization or Argo CD application, or what such a
+Kustomization reads from) shows as moved and is not compared.
+
+The check on top is the capture's own: the reason it would give the captured
+copy must be exactly the other side's. Anything else is `missing` or `extra`
+as before, and exits 2:
 
 - **Marks added or taken off in the cluster.** A namespace or a ConfigMap that
   a GitOps tool really began to apply, its labels added since the last capture,

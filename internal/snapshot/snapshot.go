@@ -116,7 +116,15 @@ type Snapshot struct {
 	// Policy names the capture rules used ("default", "include-system").
 	// Comparing snapshots taken under different policies would report the
 	// policy difference as drift, so diff refuses to.
-	Policy   string
+	Policy string
+	// Rules is the version of the platform's rules for what a capture leaves
+	// out and why (kube.CaptureRules), 0 where the capture did not say
+	// (every snapshot written before it was recorded). Under one version an
+	// unchanged object is not captured on one side and left out on the
+	// other, so compare reads a move only across two versions
+	// (SplitMoved). It is written to the manifest, outside the digest: it
+	// says which rules made the files, not what the system holds.
+	Rules    int
 	Objects  []Object
 	Coverage []Coverage
 	Skips    []Skip
@@ -133,6 +141,7 @@ type manifest struct {
 	Platform      string `json:"platform"`
 	ServerVersion string `json:"serverVersion,omitempty"`
 	Policy        string `json:"policy"`
+	Rules         int    `json:"rules,omitempty"`
 	Objects       int    `json:"objects"`
 	// Digest covers every object file and the coverage report, so two
 	// snapshots can be compared for equality without reading them.
@@ -202,7 +211,7 @@ func (s Snapshot) Write(dir string) error {
 		}
 	}
 
-	m := manifest{Format: FormatVersion, Platform: s.Platform, ServerVersion: s.ServerVersion, Policy: s.Policy, Objects: len(s.Objects), Digest: digest(files)}
+	m := manifest{Format: FormatVersion, Platform: s.Platform, ServerVersion: s.ServerVersion, Policy: s.Policy, Rules: s.Rules, Objects: len(s.Objects), Digest: digest(files)}
 	mb, err := yaml.Marshal(m)
 	if err != nil {
 		return err
@@ -231,7 +240,7 @@ func Read(dir string) (Snapshot, error) {
 	}
 
 	files := map[string][]byte{}
-	s := Snapshot{Platform: m.Platform, ServerVersion: m.ServerVersion, Policy: m.Policy}
+	s := Snapshot{Platform: m.Platform, ServerVersion: m.ServerVersion, Policy: m.Policy, Rules: m.Rules}
 	objDir := filepath.Join(dir, "objects")
 	err = filepath.WalkDir(objDir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".yaml") {

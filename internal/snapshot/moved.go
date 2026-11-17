@@ -38,8 +38,18 @@ const (
 // baseline was left out for its content, one left out as unreadable was not
 // seen, and one left out as owned by a controller cannot be checked, since a
 // capture keeps no owner references. A nil madeBy finds no moves.
+//
+// Nor are there moves between two snapshots made under the same capture
+// rules (Snapshot.Rules): under one set of rules, an object is captured or
+// left out by what it holds and what is around it, so one that crossed was
+// changed, by its marks or its root status. A move is how a change of rules
+// shows, and is read only across one, or where a side does not say its
+// rules (a snapshot from before they were recorded). Across that one
+// comparison, an object that also became or stopped being a GitOps root
+// while being edited shows as moved: the guide says to review the first
+// drift after an upgrade by hand.
 func SplitMoved(want, got Snapshot, changes []Change, madeBy func(Object) string) ([]Change, []Moved) {
-	if madeBy == nil {
+	if madeBy == nil || !rulesDiffer(want, got) {
 		return changes, nil
 	}
 	var gotSkips, wantSkips *skipIndex
@@ -80,6 +90,13 @@ func (m Moved) Describe() string {
 		return "no longer skipped (was: " + m.Reason + "), so now captured"
 	}
 	return "no longer captured: " + m.Reason
+}
+
+// rulesDiffer says whether a move can be read between want and got: their
+// capture rules differ, or neither says which it was made under (where one
+// does not, they differ already).
+func rulesDiffer(want, got Snapshot) bool {
+	return want.Rules != got.Rules || want.Rules == 0
 }
 
 func findObject(s Snapshot, key string) (Object, bool) {

@@ -397,7 +397,11 @@ func TestAzurePathsInAnotherCaseAreRead(t *testing.T) {
 		t.Error("an Azure file moved to another path was read")
 	}
 	// Only where names ignore case. A path all in lower case, moved to
-	// another case.
+	// another case: on a filesystem that ignores case (NTFS, APFS) the file
+	// is still found at its own path, and nothing was moved to test.
+	if !caseSensitiveFS(t) {
+		return
+	}
 	o.Body["apiVersion"], o.Body["kind"] = "example.com/v1", "widget"
 	o.Body["metadata"] = map[string]any{"namespace": "shop", "name": "w"}
 	sch = TypeSchema{APIVersion: "example.com/v1", Kind: "widget"}
@@ -420,4 +424,16 @@ func objectPathOrSchema(f string, o Object, sch TypeSchema) string {
 		return schemaPath(sch, false)
 	}
 	return objectPath(o, false)
+}
+
+// caseSensitiveFS reports whether the temporary directory's filesystem tells
+// two names apart by case.
+func caseSensitiveFS(t *testing.T) bool {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := os.Stat(filepath.Join(dir, "A"))
+	return err != nil
 }

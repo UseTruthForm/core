@@ -103,6 +103,14 @@ func (ix *skipIndex) key(resource, ns, name string) string {
 	return ix.norm(resource + "|" + ns + "|" + name)
 }
 
+// HelmFamilyNote is what a Helm history family says of a Secret of one of
+// its revision names. The family records the release, not its revisions: the
+// other side may never have had this one (re-review of #24), so the note
+// says only what is recorded.
+func HelmFamilyNote(release string) string {
+	return "Helm release " + release + " history in this namespace, which revisions not recorded; recreated when the release is installed again"
+}
+
 var helmHistory = regexp.MustCompile(`^` + regexp.QuoteMeta(HelmHistoryPrefix) + `(.+)\.v\d+$`)
 
 const azureGroupType = "microsoft.resources/resourcegroups"
@@ -137,7 +145,9 @@ func (ix *skipIndex) note(o Object) *SkippedOtherSide {
 		default:
 			reasons = append(reasons, ix.reasons[ix.key(r, ns, name)]...)
 			if m := helmHistory.FindStringSubmatch(name); m != nil && ix.platform == "kubernetes" {
-				reasons = append(reasons, ix.families[ix.key(r, ns, HelmHistoryPrefix+m[1])]...)
+				if len(ix.families[ix.key(r, ns, HelmHistoryPrefix+m[1])]) > 0 {
+					reasons = append(reasons, HelmFamilyNote(m[1]))
+				}
 			}
 		}
 	}

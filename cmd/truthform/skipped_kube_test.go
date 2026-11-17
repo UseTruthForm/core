@@ -455,13 +455,18 @@ func TestHelmHistoryNotesOnlyWhatItNames(t *testing.T) {
 			t.Fatalf("%s is not listed: %v", n, listed)
 		}
 	}
-	note := leftOutNote + snapshot.HelmHistoryReason + ")"
-	lines := func(kind string, notes bool) []string {
+	// Listed by its own name, the note is the skip's reason; a family's
+	// says it does not record which revisions.
+	notes := map[string]string{
+		"zed":    leftOutNote + snapshot.HelmHistoryReason + ")",
+		"foo.v1": leftOutNote + snapshot.HelmFamilyNote("foo") + ")",
+	}
+	lines := func(kind string, noted bool) []string {
 		var out []string
 		for _, n := range opaque {
 			l := kind + " v1|Secret|shop|" + p + n
-			if notes && (n == "zed" || n == "foo.v1") {
-				l += note
+			if noted && notes[n] != "" {
+				l += notes[n]
 			}
 			out = append(out, l+"\n")
 		}

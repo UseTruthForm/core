@@ -261,6 +261,7 @@ func TestSkippedOtherSideHelmHistory(t *testing.T) {
 		note   bool
 	}{
 		{"foo.v1", family, true},
+		// The family does not record its revisions: the note says so.
 		{"foo.v12", family, true},
 		{"foo", family, false},
 		{"foo.v", family, false},
@@ -277,8 +278,12 @@ func TestSkippedOtherSideHelmHistory(t *testing.T) {
 	} {
 		obj := kobj("v1", "Secret", "shop", HelmHistoryPrefix+c.object)
 		n := noted(t, kube(KubernetesCaptureRules, []Object{obj}, nil), kube(KubernetesCaptureRules, nil, []Skip{c.skip}), "missing")
-		if (n != nil) != c.note || (n != nil && n.Reason != HelmHistoryReason) {
-			t.Errorf("%s by %s: %+v, want a note %v", c.object, c.skip.Name, n, c.note)
+		want := HelmHistoryReason
+		if c.skip.Name == family.Name {
+			want = HelmFamilyNote("foo")
+		}
+		if (n != nil) != c.note || (n != nil && n.Reason != want) {
+			t.Errorf("%s by %s: %+v, want a note %v (%s)", c.object, c.skip.Name, n, c.note, want)
 		}
 		// Before rules 2 a family read as a bare name and the other way
 		// round: no Helm history note at all.
@@ -288,6 +293,18 @@ func TestSkippedOtherSideHelmHistory(t *testing.T) {
 			if n := noted(t, kube(rules, []Object{obj}, nil), kube(rules, nil, []Skip{old}), "missing"); n != nil {
 				t.Errorf("%s by %s, rules %d: %+v", c.object, old.Name, rules, n)
 			}
+		}
+	}
+	// The family note names the release it records, and no revision; the
+	// release is all the name has before .v<N>.
+	if got := HelmFamilyNote("foo"); !strings.Contains(got, "Helm release foo history") || !strings.Contains(got, "which revisions not recorded") || strings.Contains(got, ".v") {
+		t.Errorf("the family note: %q", got)
+	}
+	for _, c := range []struct{ object, release string }{{"my.app.v2", "my.app"}, {"x.v1.v10", "x.v1"}, {"web.v1", "web"}} {
+		fam := Skip{Resource: "core/v1/secrets", Namespace: "shop", Name: HelmHistoryPrefix + c.release + HelmHistoryFamily, Reason: HelmHistoryReason}
+		n := noted(t, kube(KubernetesCaptureRules, []Object{kobj("v1", "Secret", "shop", HelmHistoryPrefix+c.object)}, nil), kube(KubernetesCaptureRules, nil, []Skip{fam}), "missing")
+		if n == nil || n.Reason != HelmFamilyNote(c.release) {
+			t.Errorf("%s by the family of %s: %+v", c.object, c.release, n)
 		}
 	}
 	// In another namespace it is another release.

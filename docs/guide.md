@@ -254,7 +254,8 @@ missing  v1|ConfigMap|shop|cfg (left out on the other side: identical to the dis
 A note is given only where a skip names that object and no other: on
 Kubernetes by type, namespace and name; Helm history, listed once per
 release as `sh.helm.release.v1.<release>.v*`, stands for that release's
-`.v<N>` Secrets only, and a Secret of Helm's type that Helm did not name as
+`.v<N>` Secrets only (it records the release, not which revisions, and its
+note says so), and a Secret of Helm's type that Helm did not name as
 its own is listed by its own name and stands for itself (a snapshot under
 Kubernetes capture rules before 2 wrote the two alike, so its Helm history
 skips give no note); on GCP by the name the snapshot keys; on Azure from

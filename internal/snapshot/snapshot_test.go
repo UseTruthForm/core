@@ -335,7 +335,9 @@ func TestRulesAreChecked(t *testing.T) {
 		{"kubernetes", KubernetesCaptureRules + 1, "captured under kubernetes capture rules 2, and this build knows up to 1: read it with a newer TruthForm"},
 		{"kubernetes", -1, "capture rules -1 is not a version"},
 		{"azure", 0, ""},
-		{"azure", 1, "captured under azure capture rules 1, and this build knows up to 0: read it with a newer TruthForm"},
+		{"azure", AzureCaptureRules, ""},
+		{"azure", AzureCaptureRules + 1, "captured under azure capture rules 2, and this build knows up to 1: read it with a newer TruthForm"},
+		{"gcp", 1, "captured under gcp capture rules 1, and this build knows up to 0: read it with a newer TruthForm"},
 		{"aws", -3, "capture rules -3 is not a version"},
 	} {
 		dir := filepath.Join(t.TempDir(), "s")

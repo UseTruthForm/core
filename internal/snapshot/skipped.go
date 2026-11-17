@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -12,11 +13,33 @@ type SkippedOtherSide struct {
 	// Reason is the skip's reason, as the snapshot that left it out gives it.
 	Reason string
 	// OlderRules: the snapshot that left it out does not say its capture
-	// rules (a build up to beta.23 wrote it), and the reason is one a GitOps
-	// source gives. A build before beta.23 left out a self-applying root and
-	// the source it reads from, which later ones capture: the difference may
-	// be that, and not a change in the system.
+	// rules (a build up to beta.23 wrote it), and every reason it gives is
+	// one a GitOps source gives. A build before beta.23 left out a
+	// self-applying root and the source it reads from, which later ones
+	// capture: the difference may be that, and not a change in the system.
 	OlderRules bool
+}
+
+// namesObjects says whether s's skips name objects as s keys them, so that
+// a skip can be read as naming one object and no other:
+//
+//   - Kubernetes: by resource, namespace and name; Helm history by family.
+//   - Azure from rules 1 (AzureCaptureRules): by group and name as keyed.
+//     Under 0 an extension was named by its group and last name alone, the
+//     same as one of that name on the group or another resource, so a skip
+//     from such a snapshot is no note on any object.
+//   - GCP: by the name the snapshot keys it by.
+//   - AWS and the SaaS platforms: no. A skip there names a resource by its
+//     identifier, and a snapshot by a logical name that may be another's
+//     identifier.
+func namesObjects(s Snapshot) bool {
+	switch s.Platform {
+	case "kubernetes", "gcp":
+		return true
+	case "azure":
+		return s.Rules >= AzureCaptureRules
+	}
+	return false
 }
 
 // skipIndex finds the skip, if any, that names an object.
@@ -27,23 +50,34 @@ type skipIndex struct {
 	// by resource|namespace|name, every reason given; a skip of "*" is
 	// under each of its Names.
 	reasons map[string][]string
+	// Helm history, by resource|namespace|prefix and release: what stands
+	// for the family, never for a Secret of that name.
+	families map[string][]string
 	// kind -> the resources the snapshot's coverage gives for it
 	resources map[string][]string
 }
 
-// indexSkips indexes s's skips. Its coverage, which lists every type it
-// left anything out of, says which resource an object's kind is
-// ("group/version/plural" on Kubernetes, the type itself elsewhere).
+// indexSkips indexes s's skips, where they name objects (namesObjects). Its
+// coverage, which lists every type it left anything out of, says which
+// resource an object's kind is ("group/version/plural" on Kubernetes, the
+// type itself elsewhere).
 func indexSkips(s Snapshot) *skipIndex {
-	ix := &skipIndex{platform: s.Platform, rules: s.Rules, fold: FoldsCase(s.Platform), reasons: map[string][]string{}, resources: map[string][]string{}}
+	ix := &skipIndex{platform: s.Platform, rules: s.Rules, fold: FoldsCase(s.Platform), reasons: map[string][]string{}, families: map[string][]string{}, resources: map[string][]string{}}
+	if !namesObjects(s) {
+		return ix
+	}
 	for _, sk := range s.Skips {
-		names := []string{sk.Name}
-		if sk.Name == "*" {
+		k := ix.key(sk.Resource, sk.Namespace, sk.Name)
+		switch {
+		case s.Platform == "kubernetes" && sk.Reason == HelmHistoryReason:
+			ix.families[k] = append(ix.families[k], sk.Reason)
+		case sk.Name == "*":
 			// What a skip of "*" stands for, where the capture lists it.
-			names = sk.Names
-		}
-		for _, n := range names {
-			k := ix.key(sk.Resource, sk.Namespace, n)
+			for _, n := range sk.Names {
+				nk := ix.key(sk.Resource, sk.Namespace, n)
+				ix.reasons[nk] = append(ix.reasons[nk], sk.Reason)
+			}
+		default:
 			ix.reasons[k] = append(ix.reasons[k], sk.Reason)
 		}
 	}
@@ -64,6 +98,10 @@ func (ix *skipIndex) key(resource, ns, name string) string {
 	return ix.norm(resource + "|" + ns + "|" + name)
 }
 
+var helmHistory = regexp.MustCompile(`^` + regexp.QuoteMeta(HelmHistoryPrefix) + `(.+)\.v\d+$`)
+
+const azureGroupType = "microsoft.resources/resourcegroups"
+
 // note is why the snapshot indexed left o out, or nil where nothing says.
 func (ix *skipIndex) note(o Object) *SkippedOtherSide {
 	gv := o.APIVersion()
@@ -75,31 +113,41 @@ func (ix *skipIndex) note(o Object) *SkippedOtherSide {
 	for _, r := range ix.resources[ix.norm(o.Kind())] {
 		// A Kubernetes resource is the kind only in its own group and
 		// version; elsewhere the resource is the kind.
-		if !strings.HasPrefix(ix.norm(r), ix.norm(gv+"/")) && ix.norm(r) != ix.norm(o.Kind()) {
+		if ix.platform == "kubernetes" {
+			if !strings.HasPrefix(r, gv+"/") {
+				continue
+			}
+		} else if ix.norm(r) != ix.norm(o.Kind()) {
 			continue
 		}
-		// As a capture records a skip: in its namespace, or (where the
-		// platform has none for it, as Azure's resource groups) with the
-		// group in its name. Never by name alone for an object in a
-		// namespace: one of that name elsewhere is another object.
-		keys := []string{ix.key(r, "", name)}
-		if ns != "" {
-			keys = []string{ix.key(r, ns, name), ix.key(r, "", ns+"/"+name)}
-		}
-		for _, k := range keys {
-			reasons = append(reasons, ix.reasons[k]...)
+		switch ix.platform {
+		case "azure":
+			// As skipName writes it: the group, and the name as keyed; a
+			// group as itself twice.
+			n := ns + "/" + name
+			if strings.EqualFold(o.Kind(), azureGroupType) {
+				n = name + "/" + name
+			}
+			reasons = append(reasons, ix.reasons[ix.key(r, "", n)]...)
+		default:
+			reasons = append(reasons, ix.reasons[ix.key(r, ns, name)]...)
+			if m := helmHistory.FindStringSubmatch(name); m != nil && ix.platform == "kubernetes" {
+				reasons = append(reasons, ix.families[ix.key(r, ns, HelmHistoryPrefix+m[1])]...)
+			}
 		}
 	}
 	if len(reasons) == 0 {
 		return nil
 	}
 	sort.Strings(reasons)
-	why := strings.Join(compactStrings(reasons), "; ")
+	reasons = compactStrings(reasons)
 	older := ix.rules == 0
 	for _, r := range reasons {
-		older = older && appliedByGitOps(ix.platform, r)
+		if !appliedByGitOps(ix.platform, r) {
+			older = false
+		}
 	}
-	return &SkippedOtherSide{Reason: why, OlderRules: older}
+	return &SkippedOtherSide{Reason: strings.Join(reasons, "; "), OlderRules: older}
 }
 
 func compactStrings(s []string) []string {

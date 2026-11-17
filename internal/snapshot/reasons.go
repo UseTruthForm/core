@@ -18,6 +18,15 @@ const (
 	ArgoCDFormat            = "managed by Argo CD application %s; restoring the application recreates it"
 )
 
+// Helm release history: a capture lists a release's history Secrets once,
+// as HelmHistoryPrefix and the release's name, with HelmHistoryReason. That
+// names the family sh.helm.release.v1.<release>.v<N>, never a Secret of the
+// bare name.
+const (
+	HelmHistoryPrefix = "sh.helm.release.v1."
+	HelmHistoryReason = "Helm release history; recreated when the release is installed again"
+)
+
 // OwnedReason is the reason for an object a controller makes.
 func OwnedReason(kind, name string) string { return fmt.Sprintf(OwnedFormat, kind, name) }
 

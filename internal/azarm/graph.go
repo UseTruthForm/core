@@ -218,6 +218,19 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 		}
 		group, name, _ := strings.Cut(sk.Name, "/")
 		rid := ResourceID{Subscription: tokSub, ResourceGroup: group, Type: sk.Resource, Name: name}
+		if strings.HasPrefix(strings.ToLower(name), "providers/") {
+			// An extension, named below its group or the subscription
+			// (skipName): its ID is that path.
+			scope := "/subscriptions/" + tokSub
+			if group != "" {
+				scope += "/resourceGroups/" + group
+			}
+			ext, err := ParseID(scope + "/" + name)
+			if err != nil {
+				continue
+			}
+			rid, name = ext, ext.Name
+		}
 		if name == "" || !wellFormed(rid) {
 			continue
 		}

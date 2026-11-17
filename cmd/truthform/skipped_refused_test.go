@@ -173,19 +173,24 @@ func (f failingGet) Get(ctx context.Context, id, version string) (map[string]any
 }
 
 // Through compare, for each platform's own words for what it left out for
-// its content or could not read: a difference in either direction, noted,
-// without the hint.
+// its content or could not read: a difference in either direction, noted
+// without the hint where the platform's skips name objects (Azure only
+// under its rules 1), and with no note where they do not (AWS; Azure
+// before rules 1).
 func TestCompareNotesContentAndReadSkips(t *testing.T) {
 	for _, c := range []struct {
 		platform, resource, kind, apiVersion, ns, name, skipName, reason string
+		rules                                                            int
+		note                                                             bool
 	}{
-		{"aws", "AWS::S3::Bucket", "AWS::S3::Bucket", "aws.truthform.org/v1", "", "assets", "assets", awscc.Unreadable + "AccessDenied"},
-		{"aws", "AWS::EC2::VPC", "AWS::EC2::VPC", "aws.truthform.org/v1", "", "main", "main", "identical to the baseline snapshot (already there, or created by AWS)"},
-		{"azure", "Microsoft.Network/privateDnsZones", "Microsoft.Network/privateDnsZones", "azure.truthform.org/v1", "rg", "corp.example", "rg/corp.example", azarm.Unreadable + "AuthorizationFailed"},
-		{"azure", "Microsoft.Network/privateDnsZones", "Microsoft.Network/privateDnsZones", "azure.truthform.org/v1", "rg", "corp.example", "rg/corp.example", "identical to the baseline snapshot (already there, or created by Azure)"},
-		{"gcp", "storage.googleapis.com/Bucket", "storage.googleapis.com/Bucket", "gcp.truthform.org/v1", "", "assets", "assets", gcp.Unreadable + "403"},
-		{"gcp", "storage.googleapis.com/Bucket", "storage.googleapis.com/Bucket", "gcp.truthform.org/v1", "", "assets", "assets", "identical to the baseline snapshot (already there, or created by Google)"},
-		{"kubernetes", "core/v1/configmaps", "ConfigMap", "v1", "shop", "cfg", "cfg", "identical to the distribution baseline; a new cluster provides it"},
+		{"aws", "AWS::S3::Bucket", "AWS::S3::Bucket", "aws.truthform.org/v1", "", "assets", "assets", awscc.Unreadable + "AccessDenied", 0, false},
+		{"aws", "AWS::EC2::VPC", "AWS::EC2::VPC", "aws.truthform.org/v1", "", "main", "main", "identical to the baseline snapshot (already there, or created by AWS)", 0, false},
+		{"azure", "Microsoft.Network/privateDnsZones", "Microsoft.Network/privateDnsZones", "azure.truthform.org/v1", "rg", "corp.example", "rg/corp.example", azarm.Unreadable + "AuthorizationFailed", snapshot.AzureCaptureRules, true},
+		{"azure", "Microsoft.Network/privateDnsZones", "Microsoft.Network/privateDnsZones", "azure.truthform.org/v1", "rg", "corp.example", "rg/corp.example", "identical to the baseline snapshot (already there, or created by Azure)", snapshot.AzureCaptureRules, true},
+		{"azure", "Microsoft.Network/privateDnsZones", "Microsoft.Network/privateDnsZones", "azure.truthform.org/v1", "rg", "corp.example", "rg/corp.example", "identical to the baseline snapshot (already there, or created by Azure)", 0, false},
+		{"gcp", "storage.googleapis.com/Bucket", "storage.googleapis.com/Bucket", "gcp.truthform.org/v1", "", "assets", "assets", gcp.Unreadable + "403", 0, true},
+		{"gcp", "storage.googleapis.com/Bucket", "storage.googleapis.com/Bucket", "gcp.truthform.org/v1", "", "assets", "assets", "identical to the baseline snapshot (already there, or created by Google)", 0, true},
+		{"kubernetes", "core/v1/configmaps", "ConfigMap", "v1", "shop", "cfg", "cfg", "identical to the distribution baseline; a new cluster provides it", 0, true},
 	} {
 		obj := snapshot.Object{Body: map[string]any{"apiVersion": c.apiVersion, "kind": c.kind, "metadata": map[string]any{"name": c.name}, "spec": map[string]any{"a": "1"}}}
 		if c.ns != "" {
@@ -196,8 +201,8 @@ func TestCompareNotesContentAndReadSkips(t *testing.T) {
 		if c.platform == "kubernetes" {
 			skipNs = c.ns
 		}
-		took := snapshot.Snapshot{Platform: c.platform, Policy: "default", Coverage: cov, Objects: []snapshot.Object{obj}}
-		left := snapshot.Snapshot{Platform: c.platform, Policy: "default", Coverage: cov, Skips: []snapshot.Skip{{Resource: c.resource, Namespace: skipNs, Name: c.skipName, Reason: c.reason}}}
+		took := snapshot.Snapshot{Platform: c.platform, Policy: "default", Rules: c.rules, Coverage: cov, Objects: []snapshot.Object{obj}}
+		left := snapshot.Snapshot{Platform: c.platform, Policy: "default", Rules: c.rules, Coverage: cov, Skips: []snapshot.Skip{{Resource: c.resource, Namespace: skipNs, Name: c.skipName, Reason: c.reason}}}
 		a, b := filepath.Join(t.TempDir(), "a"), filepath.Join(t.TempDir(), "b")
 		if err := took.Write(a); err != nil {
 			t.Fatal(err)
@@ -207,8 +212,9 @@ func TestCompareNotesContentAndReadSkips(t *testing.T) {
 		}
 		for _, dirs := range [][2]string{{a, b}, {b, a}} {
 			code, stdout, stderr := output(t, func() int { return compare([]string{dirs[0], dirs[1]}) })
-			if code != 2 || !strings.Contains(stdout, leftOutNote+c.reason+")\n") || strings.Contains(stdout, olderHint) {
-				t.Errorf("%s %q: exit %d, want 2 and the note\n%s%s", c.platform, c.reason, code, stdout, stderr)
+			noted := strings.Contains(stdout, leftOutNote+c.reason+")\n")
+			if code != 2 || noted != c.note || strings.Contains(stdout, leftOutNote) != c.note || strings.Contains(stdout, olderHint) {
+				t.Errorf("%s rules %d %q: exit %d, want 2 and a note %v\n%s%s", c.platform, c.rules, c.reason, code, c.note, stdout, stderr)
 			}
 		}
 	}

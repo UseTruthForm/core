@@ -401,3 +401,53 @@ func TestCompareNotesARootAnOlderBuildLeftOut(t *testing.T) {
 		}
 	}
 }
+
+// Review of #24, on a real API server: an Opaque Secret named like a Helm
+// release's history stem is deleted, and that release's history is added.
+// The capture lists the history once, under the stem: that stands for the
+// release's history Secrets, not for a Secret of the stem's name, so the
+// deleted Secret is missing with no note, in either order, from a
+// baseline main wrote and one this build wrote.
+func TestHelmHistoryIsNoNoteOnItsStem(t *testing.T) {
+	for _, asMain := range []bool{true, false} {
+		t.Run(map[bool]string{true: "baseline written by main", false: "baseline under this build's rules"}[asMain], func(t *testing.T) {
+			w := newSkipWorld(t, "helm-stem", "shop")
+			secrets := schema.GroupVersionResource{Version: "v1", Resource: "secrets"}
+			stem := snapshot.HelmHistoryPrefix + "foo"
+			w.create(secrets, map[string]any{"apiVersion": "v1", "kind": "Secret", "type": "Opaque",
+				"metadata": map[string]any{"name": stem, "namespace": "shop"}, "data": map[string]any{"a": "MQ=="}})
+			w.captureBefore(asMain)
+			wantSkip(t, w.before, "v1|Secret|shop|"+stem, false)
+			if err := w.dyn.Resource(secrets).Namespace("shop").Delete(context.Background(), stem, metav1.DeleteOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			w.create(secrets, map[string]any{"apiVersion": "v1", "kind": "Secret", "type": "helm.sh/release.v1",
+				"metadata": map[string]any{"name": stem + ".v1", "namespace": "shop", "labels": map[string]any{"owner": "helm", "name": "foo"}},
+				"data":     map[string]any{"release": "eA=="}})
+			now := w.captureNow()
+			s, err := snapshot.Read(now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			listed := false
+			for _, sk := range s.Skips {
+				listed = listed || (sk.Name == stem && sk.Reason == snapshot.HelmHistoryReason)
+			}
+			if !listed {
+				t.Fatalf("the history is not listed under its stem: %+v", s.Skips)
+			}
+			for _, o := range []struct {
+				args []string
+				line string
+			}{
+				{[]string{w.before, now}, "missing  v1|Secret|shop|" + stem + "\n"},
+				{[]string{now, w.before}, "extra    v1|Secret|shop|" + stem + "\n"},
+			} {
+				code, stdout, _ := output(t, func() int { return compare(o.args) })
+				if code != 2 || !strings.Contains(stdout, o.line) {
+					t.Errorf("compare %v: exit %d, want 2 and %q\n%s", o.args, code, o.line, stdout)
+				}
+			}
+		})
+	}
+}

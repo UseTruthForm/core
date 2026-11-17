@@ -368,7 +368,10 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 	}
 }
 
-const helmReleasePrefix = "sh.helm.release.v1."
+// helmReleasePrefix starts each Helm history Secret's name. A capture lists
+// a release's history once, under the prefix and the release's name, with
+// snapshot.HelmHistoryReason: a family, not one Secret's name.
+const helmReleasePrefix = snapshot.HelmHistoryPrefix
 
 var helmHistoryRE = regexp.MustCompile(`^sh\.helm\.release\.v1\.(.+)\.v\d+$`)
 

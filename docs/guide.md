@@ -251,13 +251,24 @@ side's own record:
 missing  v1|ConfigMap|shop|cfg (left out on the other side: identical to the distribution baseline; a new cluster provides it)
 ```
 
+A note is given only where a skip names that object and no other: on
+Kubernetes by type, namespace and name (Helm history, listed once per
+release, stands for that release's `.v<N>` Secrets, never for a Secret of
+the bare name); on GCP by the name the snapshot keys; on Azure from
+snapshots that record Azure capture rules 1, which name a skip by its group
+and the name the snapshot keys (an extension by its path below the group).
+An Azure snapshot without rules named an extension by its group and last
+name alone, the same as another of that name, so it gives no notes. AWS and
+the SaaS platforms give none: their skips name a resource by its identifier,
+which another's name in the snapshot may be.
+
 The reason explains the difference; it never makes it safe. Something left
 out on one side was not compared, and may have been edited: given a GitOps
 tool's labels, an owner reference, or a root status it did not have, or
 changed to or from a baseline. Look at the object itself.
 
-Every Kubernetes snapshot records the version of the capture rules it was
-taken under (`rules` in `snapshot.yaml`, outside the digest). A snapshot
+Every Kubernetes and Azure snapshot records the version of the capture
+rules it was taken under (`rules` in `snapshot.yaml`, outside the digest). A snapshot
 without one counts as 0: every build up to and including beta.23 wrote it so.
 Version 1 captures a self-applying GitOps root, and the source a
 self-applying Kustomization reads from, which builds before beta.23 left out.

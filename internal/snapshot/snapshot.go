@@ -40,9 +40,16 @@ import (
 // and the source a self-applying Kustomization reads from, are captured.
 const KubernetesCaptureRules = 1
 
+// AzureCaptureRules is the version of the rules for how an Azure capture
+// names what it leaves out. 1: a skip names a resource by its group and its
+// name as the snapshot keys it ("g/name", "g/providers/…" for an extension,
+// "g/g" for a group). Under 0 an extension was named by its group and last
+// name alone, the same as one of that name on the group or another resource.
+const AzureCaptureRules = 1
+
 // maxRules is the highest capture rules version this build knows, per
 // platform; a platform not named has none.
-var maxRules = map[string]int{"kubernetes": KubernetesCaptureRules}
+var maxRules = map[string]int{"kubernetes": KubernetesCaptureRules, "azure": AzureCaptureRules}
 
 // checkRules refuses a capture rules version this build cannot read.
 func checkRules(platform string, rules int) error {

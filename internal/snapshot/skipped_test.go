@@ -22,6 +22,9 @@ var kubeCoverage = []Coverage{
 	{Resource: "kustomize.toolkit.fluxcd.io/v1/kustomizations", Kind: "Kustomization"},
 	{Resource: "argoproj.io/v1alpha1/applications", Kind: "Application"},
 	{Resource: "app.example.com/v1/applications", Kind: "Application"},
+	{Resource: "apps/v1beta1/deployments", Kind: "Deployment"},
+	{Resource: "Widget", Kind: "Widget"},
+	{Resource: "core/v1/secrets", Kind: "Secret"},
 }
 
 func kube(rules int, objects []Object, skips []Skip) Snapshot {
@@ -74,9 +77,15 @@ func TestSkippedOtherSideOlderRules(t *testing.T) {
 		{"owned by a controller", 0, []string{OwnedReason("Deployment", "web")}, false},
 		{"baseline", 0, []string{"identical to the distribution baseline; a new cluster provides it"}, false},
 		{"GitOps and baseline", 0, []string{byFlux, "identical to the distribution baseline; a new cluster provides it"}, false},
+		// Sorted, the GitOps reason is last: every reason must be one.
+		{"Crossplane and GitOps", 0, []string{"composed by Crossplane composite db; restoring the composite recreates it", ArgoCDReason("shop")}, false},
+		{"GitOps and owned", 0, []string{byFlux, OwnedReason("Deployment", "web")}, false},
 		{"near miss after", 0, []string{byFlux + " (edited)"}, false},
 		{"near miss before", 0, []string{"x" + byFlux}, false},
 		{"no namespace in the label", 0, []string{FluxKustomizationReason("", "root")}, false},
+		{"a space in a name", 0, []string{FluxKustomizationReason("git ops", "root")}, false},
+		{"a slash in a name", 0, []string{FluxKustomizationReason("git/ops", "root")}, false},
+		{"a semicolon in a name", 0, []string{ArgoCDReason("shop;x")}, false},
 	} {
 		var skips []Skip
 		for _, r := range c.reasons {
@@ -94,11 +103,35 @@ func TestSkippedOtherSideOlderRules(t *testing.T) {
 		}
 	}
 	// Only a Kubernetes capture gives a GitOps source's reason.
-	cov := []Coverage{{Resource: "core/v1/configmaps", Kind: "ConfigMap"}}
-	want := Snapshot{Platform: "aws", Coverage: cov, Objects: []Object{cfg}}
-	got := Snapshot{Platform: "aws", Coverage: cov, Skips: []Skip{{Resource: "core/v1/configmaps", Namespace: "shop", Name: "cfg", Reason: byFlux}}}
+	gcp := Object{Body: map[string]any{"apiVersion": "gcp.truthform.org/v1", "kind": "storage.googleapis.com/Bucket", "metadata": map[string]any{"name": "assets"}}}
+	cov := []Coverage{{Resource: "storage.googleapis.com/Bucket", Kind: "storage.googleapis.com/Bucket"}}
+	want := Snapshot{Platform: "gcp", Coverage: cov, Objects: []Object{gcp}}
+	got := Snapshot{Platform: "gcp", Coverage: cov, Skips: []Skip{{Resource: "storage.googleapis.com/Bucket", Name: "assets", Reason: byFlux}}}
 	if n := noted(t, want, got, "missing"); n == nil || n.OlderRules {
-		t.Errorf("aws: %+v", n)
+		t.Errorf("gcp: %+v", n)
+	}
+	// Off Kubernetes the resource is the kind itself: another resource the
+	// coverage gives the same kind is another type.
+	cov = append(cov, Coverage{Resource: "other.googleapis.com/Bucket", Kind: "storage.googleapis.com/Bucket"})
+	want.Coverage = cov
+	got = Snapshot{Platform: "gcp", Coverage: cov, Skips: []Skip{{Resource: "other.googleapis.com/Bucket", Name: "assets", Reason: "r"}}}
+	if n := noted(t, want, got, "missing"); n != nil {
+		t.Errorf("gcp, another type: %+v", n)
+	}
+}
+
+// A skip names an object only where the platform's skips name objects as
+// its snapshots key them: AWS and SaaS skips name a resource by its
+// identifier, which another's logical name may be, so they give no note.
+func TestSkippedOtherSideOnlyWhereNamesMatch(t *testing.T) {
+	for _, p := range []string{"aws", "github", "cloudflare", ""} {
+		o := Object{Body: map[string]any{"apiVersion": p + ".truthform.org/v1", "kind": "Thing", "metadata": map[string]any{"name": "web"}}}
+		cov := []Coverage{{Resource: "Thing", Kind: "Thing"}}
+		want := Snapshot{Platform: p, Coverage: cov, Objects: []Object{o}}
+		got := Snapshot{Platform: p, Coverage: cov, Skips: []Skip{{Resource: "Thing", Name: "web", Reason: "listed but could not be read: AccessDenied"}}}
+		if n := noted(t, want, got, "missing"); n != nil {
+			t.Errorf("%q: %+v", p, n)
+		}
 	}
 }
 
@@ -129,6 +162,10 @@ func TestSkippedOtherSideMatchesOnlyTheSameObject(t *testing.T) {
 		{kobj("v1", "ConfigMap", "other", "x"), Skip{Resource: "core/v1/configmaps", Namespace: "elsewhere", Name: "x", Reason: byFlux}},
 		{kobj("v1", "ConfigMap", "shop", "plain"), Skip{Resource: "core/v1/configmaps", Name: "plain", Reason: byFlux}},
 		{kobj("v1", "ConfigMap", "shop", "Cfg"), Skip{Resource: "core/v1/configmaps", Namespace: "shop", Name: "cfg", Reason: byFlux}},
+		// apps/v1 is not apps/v1beta1.
+		{kobj("apps/v1", "Deployment", "shop", "web"), Skip{Resource: "apps/v1beta1/deployments", Namespace: "shop", Name: "web", Reason: byFlux}},
+		// On Kubernetes a resource is group/version/plural, never the kind.
+		{kobj("v1", "Widget", "shop", "w"), Skip{Resource: "Widget", Namespace: "shop", Name: "w", Reason: byFlux}},
 	} {
 		if n := noted(t, kube(1, []Object{c.o}, nil), kube(1, nil, []Skip{c.skip}), "missing"); n != nil {
 			t.Errorf("%v / %v: %+v", c.o.Body, c.skip, n)
@@ -167,24 +204,75 @@ func TestSkippedOtherSideThroughOwnerSkip(t *testing.T) {
 	}
 }
 
-// Azure records a skip by type and a name that holds the resource group,
-// and names match without regard to case.
+// Azure from rules 1 names a skip by group and name as the snapshot keys
+// it, without regard to case: an extension by its path below the group, a
+// group as itself twice, one with no group by its path below the
+// subscription.
 func TestSkippedOtherSideAzure(t *testing.T) {
-	cov := []Coverage{{Resource: "Microsoft.Network/networkInterfaces", Kind: "Microsoft.Network/networkInterfaces"}}
-	nic := kobj("azure.truthform.org/v1", "Microsoft.Network/networkInterfaces", "app-rg", "nic-1")
-	want := Snapshot{Platform: "azure", Coverage: cov, Objects: []Object{nic}}
-	for _, sk := range []Skip{
-		{Resource: "microsoft.network/networkInterfaces", Name: "APP-RG/nic-1", Reason: "listed but could not be read: AuthorizationFailed"},
-		{Resource: "Microsoft.Network/networkInterfaces", Name: "app-rg/nic-1", Reason: "listed but could not be read: AuthorizationFailed"},
+	const lock = "Microsoft.Authorization/locks"
+	cov := []Coverage{{Resource: "Microsoft.Network/networkInterfaces", Kind: "Microsoft.Network/networkInterfaces"}, {Resource: lock, Kind: lock}, {Resource: "Microsoft.Resources/resourceGroups", Kind: "Microsoft.Resources/resourceGroups"}}
+	az := func(kind, ns, name string) Object { return kobj("azure.truthform.org/v1", kind, ns, name) }
+	saLock := "providers/Microsoft.Storage/storageAccounts/sa/providers/Microsoft.Authorization/locks/l1"
+	for _, c := range []struct {
+		what string
+		o    Object
+		skip Skip
+		note bool
+	}{
+		{"resource", az("Microsoft.Network/networkInterfaces", "app-rg", "nic-1"), Skip{Resource: "microsoft.network/networkInterfaces", Name: "APP-RG/nic-1", Reason: "r"}, true},
+		{"group", az("Microsoft.Resources/resourceGroups", "", "app-rg"), Skip{Resource: "Microsoft.Resources/resourceGroups", Name: "app-rg/app-rg", Reason: "r"}, true},
+		{"extension", az(lock, "app-rg", saLock), Skip{Resource: lock, Name: "app-rg/" + saLock, Reason: "r"}, true},
+		{"no group", az(lock, "", "providers/Microsoft.Authorization/locks/l1"), Skip{Resource: lock, Name: "/providers/Microsoft.Authorization/locks/l1", Reason: "r"}, true},
+		// Review of #24: a lock on the group is not one of its name on a
+		// resource in it, nor the other way.
+		{"group's lock, resource's skipped", az(lock, "app-rg", "l1"), Skip{Resource: lock, Name: "app-rg/" + saLock, Reason: "r"}, false},
+		{"resource's lock, group's skipped", az(lock, "app-rg", saLock), Skip{Resource: lock, Name: "app-rg/l1", Reason: "r"}, false},
+		{"name without its group", az("Microsoft.Network/networkInterfaces", "app-rg", "nic-1"), Skip{Resource: "Microsoft.Network/networkInterfaces", Name: "nic-1", Reason: "r"}, false},
+		{"group without its own name", az("Microsoft.Resources/resourceGroups", "", "app-rg"), Skip{Resource: "Microsoft.Resources/resourceGroups", Name: "app-rg", Reason: "r"}, false},
 	} {
-		got := Snapshot{Platform: "azure", Coverage: cov, Skips: []Skip{sk}}
-		if n := noted(t, want, got, "missing"); n == nil || n.Reason != sk.Reason || n.OlderRules {
-			t.Errorf("%v: %+v", sk, n)
+		want := Snapshot{Platform: "azure", Rules: AzureCaptureRules, Coverage: cov, Objects: []Object{c.o}}
+		got := Snapshot{Platform: "azure", Rules: AzureCaptureRules, Coverage: cov, Skips: []Skip{c.skip}}
+		if n := noted(t, want, got, "missing"); (n != nil) != c.note || (n != nil && (n.Reason != "r" || n.OlderRules)) {
+			t.Errorf("%s: %+v, want a note %v", c.what, n, c.note)
+		}
+		// A snapshot under Azure rules 0 named an extension by its group and
+		// last name: no skip from one is a note on any object.
+		got.Rules = 0
+		if n := noted(t, want, got, "missing"); n != nil {
+			t.Errorf("%s, rules 0: %+v", c.what, n)
 		}
 	}
-	got := Snapshot{Platform: "azure", Coverage: cov, Skips: []Skip{{Resource: "Microsoft.Network/networkInterfaces", Name: "nic-1", Reason: "x"}}}
-	if n := noted(t, want, got, "missing"); n != nil {
-		t.Errorf("no group in the name: %+v", n)
+}
+
+// Helm history is listed once per release, under the prefix and the
+// release's name: that stands for the release's history Secrets, never for
+// a Secret of the bare name (review of #24).
+func TestSkippedOtherSideHelmHistory(t *testing.T) {
+	skip := []Skip{{Resource: "core/v1/secrets", Namespace: "shop", Name: HelmHistoryPrefix + "foo", Reason: HelmHistoryReason}}
+	for _, c := range []struct {
+		name string
+		note bool
+	}{
+		{HelmHistoryPrefix + "foo.v1", true},
+		{HelmHistoryPrefix + "foo.v12", true},
+		{HelmHistoryPrefix + "foo", false},
+		{HelmHistoryPrefix + "foo.vx", false},
+		{HelmHistoryPrefix + "foobar.v1", false},
+		{HelmHistoryPrefix + "fo.v1", false},
+	} {
+		want := kube(1, []Object{kobj("v1", "Secret", "shop", c.name)}, nil)
+		if n := noted(t, want, kube(1, nil, skip), "missing"); (n != nil) != c.note || (n != nil && n.Reason != HelmHistoryReason) {
+			t.Errorf("%s: %+v, want a note %v", c.name, n, c.note)
+		}
+	}
+	// In another namespace it is another release.
+	if n := noted(t, kube(1, []Object{kobj("v1", "Secret", "other", HelmHistoryPrefix+"foo.v1")}, nil), kube(1, nil, skip), "missing"); n != nil {
+		t.Errorf("another namespace: %+v", n)
+	}
+	// A Secret of that name skipped for another reason is named by it.
+	other := []Skip{{Resource: "core/v1/secrets", Namespace: "shop", Name: HelmHistoryPrefix + "foo", Reason: "identical to the distribution baseline; a new cluster provides it"}}
+	if n := noted(t, kube(1, []Object{kobj("v1", "Secret", "shop", HelmHistoryPrefix+"foo")}, nil), kube(1, nil, other), "missing"); n == nil {
+		t.Error("an exact name skipped for another reason has no note")
 	}
 }
 

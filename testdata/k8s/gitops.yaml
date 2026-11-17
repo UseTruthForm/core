@@ -1,0 +1,725 @@
+# GitOps sources and what they apply, in the shapes a capture writes: a
+# Flux Kustomization that applies itself (as "flux bootstrap" makes one)
+# and the GitRepository it reads, a HelmRelease it applies that renders
+# into another namespace, a Kustomization applied by hand that applies
+# only into a namespace of its own, and an Argo CD application that
+# manages itself and a workload elsewhere, an ApplicationSet and the
+# Application it generates, an application Argo CD 2 tracks by
+# app.kubernetes.io/instance and a Helm release that carries the same
+# label, sources already stopped, and Flux's objects that act outside
+# the cluster. Read by
+# TestUnheldSourcesOfARealCapture, which says what each scope should give.
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: kustomizations.kustomize.toolkit.fluxcd.io}
+spec:
+  group: kustomize.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: Kustomization, plural: kustomizations, singular: kustomization, listKind: KustomizationList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: gitrepositories.source.toolkit.fluxcd.io}
+spec:
+  group: source.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: GitRepository, plural: gitrepositories, singular: gitrepository, listKind: GitRepositoryList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: helmreleases.helm.toolkit.fluxcd.io}
+spec:
+  group: helm.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: HelmRelease, plural: helmreleases, singular: helmrelease, listKind: HelmReleaseList}
+  versions:
+    - name: v2
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: applications.argoproj.io}
+spec:
+  group: argoproj.io
+  scope: Namespaced
+  names: {kind: Application, plural: applications, singular: application, listKind: ApplicationList}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: applicationsets.argoproj.io}
+spec:
+  group: argoproj.io
+  scope: Namespaced
+  names: {kind: ApplicationSet, plural: applicationsets, singular: applicationset, listKind: ApplicationSetList}
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: imageupdateautomations.image.toolkit.fluxcd.io}
+spec:
+  group: image.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: ImageUpdateAutomation, plural: imageupdateautomations, singular: imageupdateautomation, listKind: ImageUpdateAutomationList}
+  versions:
+    - name: v1beta2
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: imagerepositories.image.toolkit.fluxcd.io}
+spec:
+  group: image.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: ImageRepository, plural: imagerepositories, singular: imagerepository, listKind: ImageRepositoryList}
+  versions:
+    - name: v1beta2
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: providers.notification.toolkit.fluxcd.io}
+spec:
+  group: notification.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: Provider, plural: providers, singular: provider, listKind: ProviderList}
+  versions:
+    - name: v1beta3
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: alerts.notification.toolkit.fluxcd.io}
+spec:
+  group: notification.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: Alert, plural: alerts, singular: alert, listKind: AlertList}
+  versions:
+    - name: v1beta3
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: setns}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: legacyns}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: helmns}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: quietns}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: manualns}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: imaging}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: receivers.notification.toolkit.fluxcd.io}
+spec:
+  group: notification.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: Receiver, plural: receivers, singular: receiver, listKind: ReceiverList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: imagepolicies.image.toolkit.fluxcd.io}
+spec:
+  group: image.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: ImagePolicy, plural: imagepolicies, singular: imagepolicy, listKind: ImagePolicyList}
+  versions:
+    - name: v1beta2
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: flux2}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: botns}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: argo2}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: setns2}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: apps2}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: legacy2ns}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: gitops}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: argocd}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: shop}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: store}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: edge}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: fleet}
+---
+# The root: it applies itself, and reads the GitRepository below.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: root
+  namespace: gitops
+  labels: {kustomize.toolkit.fluxcd.io/name: root, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  interval: 10m
+  path: ./clusters/one
+  prune: true
+  sourceRef: {kind: GitRepository, name: root}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: root
+  namespace: gitops
+  labels: {kustomize.toolkit.fluxcd.io/name: root, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  interval: 1m
+  url: https://git.example.invalid/one.git
+  ref: {branch: main}
+---
+# Applied by the root, in a namespace of its own, and renders into store:
+# the root reaches store through it.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: payments
+  namespace: gitops
+  labels: {kustomize.toolkit.fluxcd.io/name: root, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  interval: 5m
+  chart: {spec: {chart: payments, sourceRef: {kind: HelmRepository, name: charts}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments
+  namespace: store
+  labels: {app: payments, helm.toolkit.fluxcd.io/name: payments, helm.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: payments}}
+  template:
+    metadata: {labels: {app: payments}}
+    spec: {containers: [{name: app, image: registry.example.invalid/payments:1}]}
+---
+# Applied by the root directly, in shop.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart
+  namespace: shop
+  labels: {app: cart, kustomize.toolkit.fluxcd.io/name: root, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: cart}}
+  template:
+    metadata: {labels: {app: cart}}
+    spec: {containers: [{name: app, image: registry.example.invalid/cart:1}]}
+---
+# A release installed by hand in shop: what a drill holds.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop
+  labels: {app: web, app.kubernetes.io/managed-by: Helm}
+  annotations: {meta.helm.sh/release-name: web, meta.helm.sh/release-namespace: shop}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec: {containers: [{name: app, image: registry.example.invalid/web:1}]}
+---
+# Applied by hand, and applies only into edge.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: edge, namespace: gitops}
+spec:
+  interval: 10m
+  path: ./edge
+  prune: true
+  sourceRef: {kind: GitRepository, name: root}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxy
+  namespace: edge
+  labels: {app: proxy, kustomize.toolkit.fluxcd.io/name: edge, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: proxy}}
+  template:
+    metadata: {labels: {app: proxy}}
+    spec: {containers: [{name: app, image: registry.example.invalid/proxy:1}]}
+---
+# An Argo CD application that manages itself, and a workload in fleet.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: apps
+  namespace: argocd
+  labels: {argocd.argoproj.io/instance: apps}
+spec:
+  project: default
+  source: {repoURL: https://git.example.invalid/apps.git, path: apps, targetRevision: main}
+  destination: {server: https://kubernetes.default.svc}
+  syncPolicy: {automated: {prune: true, selfHeal: true}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: fleet
+  labels: {app: worker, argocd.argoproj.io/instance: apps}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: worker}}
+  template:
+    metadata: {labels: {app: worker}}
+    spec: {containers: [{name: app, image: registry.example.invalid/worker:1}]}
+---
+# Made by hand in fleet: what a drill there chooses.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: settings, namespace: fleet}
+data: {mode: drill}
+---
+# An ApplicationSet whose template syncs by itself, the Application it
+# generates (owned by it), and what that one manages in setns.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata: {name: set, namespace: argocd}
+spec:
+  generators: [{list: {elements: [{name: gen}]}}]
+  template:
+    metadata: {name: gen}
+    spec:
+      project: default
+      source: {repoURL: https://git.example.invalid/set.git, path: gen, targetRevision: main}
+      destination: {server: https://kubernetes.default.svc, namespace: setns}
+      syncPolicy: {automated: {selfHeal: true}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gen
+  namespace: argocd
+  ownerReferences:
+    - {apiVersion: argoproj.io/v1alpha1, kind: ApplicationSet, name: set, uid: 00000000-0000-0000-0000-000000007001, controller: true}
+spec:
+  project: default
+  source: {repoURL: https://git.example.invalid/set.git, path: gen, targetRevision: main}
+  destination: {server: https://kubernetes.default.svc, namespace: setns}
+  syncPolicy: {automated: {selfHeal: true}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: genapp
+  namespace: setns
+  labels: {app: genapp, argocd.argoproj.io/instance: gen}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: genapp}}
+  template:
+    metadata: {labels: {app: genapp}}
+    spec: {containers: [{name: app, image: registry.example.invalid/genapp:1}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: setplain
+  namespace: setns
+  labels: {app: setplain}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: setplain}}
+  template:
+    metadata: {labels: {app: setplain}}
+    spec: {containers: [{name: app, image: registry.example.invalid/setplain:1}]}
+---
+# An ApplicationSet whose template a patch can change: a hold cannot be
+# sure of it.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata: {name: patched, namespace: argocd}
+spec:
+  generators: [{list: {elements: [{name: other}]}}]
+  template:
+    metadata: {name: other}
+    spec: {project: default, destination: {server: https://kubernetes.default.svc}}
+  templatePatch: |
+    spec:
+      syncPolicy:
+        automated: {}
+---
+# Argo CD 2 tracks by app.kubernetes.io/instance: what legacy manages
+# carries it, and the capture takes it as an object of its own.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: legacy, namespace: argocd}
+spec:
+  project: default
+  source: {repoURL: https://git.example.invalid/legacy.git, path: app, targetRevision: main}
+  destination: {server: https://kubernetes.default.svc, namespace: legacyns}
+  syncPolicy: {automated: {}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacyapp
+  namespace: legacyns
+  labels: {app: legacyapp, app.kubernetes.io/instance: legacy}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: legacyapp}}
+  template:
+    metadata: {labels: {app: legacyapp}}
+    spec: {containers: [{name: app, image: registry.example.invalid/legacyapp:1}]}
+---
+# A Helm release of the same name carries the same label, as charts do:
+# it is Helm's, not the application's.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy
+  namespace: helmns
+  labels: {app: legacy, app.kubernetes.io/instance: legacy, app.kubernetes.io/managed-by: Helm}
+  annotations: {meta.helm.sh/release-name: legacy, meta.helm.sh/release-namespace: helmns}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: legacy}}
+  template:
+    metadata: {labels: {app: legacy}}
+    spec: {containers: [{name: app, image: registry.example.invalid/legacy:1}]}
+---
+# Already stopped: a root suspended, and an application with no
+# automated sync. Each makes nothing as it is.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: quiet
+  namespace: gitops
+  labels: {kustomize.toolkit.fluxcd.io/name: quiet, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  interval: 10m
+  path: ./quiet
+  prune: true
+  suspend: true
+  sourceRef: {kind: GitRepository, name: root}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: q
+  namespace: quietns
+  labels: {app: q, kustomize.toolkit.fluxcd.io/name: quiet, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: q}}
+  template:
+    metadata: {labels: {app: q}}
+    spec: {containers: [{name: app, image: registry.example.invalid/q:1}]}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: manual
+  namespace: argocd
+  labels: {argocd.argoproj.io/instance: manual}
+spec:
+  project: default
+  source: {repoURL: https://git.example.invalid/manual.git, path: app, targetRevision: main}
+  destination: {server: https://kubernetes.default.svc, namespace: manualns}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: m
+  namespace: manualns
+  labels: {app: m, argocd.argoproj.io/instance: manual}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: m}}
+  template:
+    metadata: {labels: {app: m}}
+    spec: {containers: [{name: app, image: registry.example.invalid/m:1}]}
+---
+# Flux's objects that act outside the cluster, made by hand.
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageUpdateAutomation
+metadata: {name: bump, namespace: imaging}
+spec:
+  interval: 30m
+  sourceRef: {kind: GitRepository, name: root, namespace: gitops}
+  git: {commit: {author: {name: bot, email: bot@example.invalid}}, push: {branch: main}}
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata: {name: images, namespace: imaging}
+spec:
+  image: registry.example.invalid/web
+  interval: 5m
+  suspend: true
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata: {name: chat, namespace: imaging}
+spec:
+  type: generic
+  address: https://hooks.example.invalid/notify
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata: {name: alerts, namespace: imaging}
+spec:
+  providerRef: {name: chat}
+  eventSources: [{kind: Kustomization, name: "*", namespace: gitops}]
+---
+# A second bootstrap root, whose Git path applies image automation and a
+# notification Provider: the capture leaves them to it, and they are not
+# objects of the snapshot. One is in a namespace of its own.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux2
+  namespace: flux2
+  labels: {kustomize.toolkit.fluxcd.io/name: flux2, kustomize.toolkit.fluxcd.io/namespace: flux2}
+spec:
+  interval: 10m
+  path: ./clusters/two
+  prune: true
+  sourceRef: {kind: GitRepository, name: root, namespace: gitops}
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageUpdateAutomation
+metadata:
+  name: autobump
+  namespace: flux2
+  labels: {kustomize.toolkit.fluxcd.io/name: flux2, kustomize.toolkit.fluxcd.io/namespace: flux2}
+spec:
+  interval: 30m
+  sourceRef: {kind: GitRepository, name: root, namespace: gitops}
+  git: {commit: {author: {name: bot, email: bot@example.invalid}}, push: {branch: main}}
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: f2chat
+  namespace: flux2
+  labels: {kustomize.toolkit.fluxcd.io/name: flux2, kustomize.toolkit.fluxcd.io/namespace: flux2}
+spec: {type: generic, address: https://hooks.example.invalid/two}
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageUpdateAutomation
+metadata:
+  name: gitbump
+  namespace: botns
+  labels: {kustomize.toolkit.fluxcd.io/name: flux2, kustomize.toolkit.fluxcd.io/namespace: flux2}
+spec:
+  interval: 30m
+  sourceRef: {kind: GitRepository, name: root, namespace: gitops}
+  git: {commit: {author: {name: bot, email: bot@example.invalid}}, push: {branch: main}}
+---
+# Not suspended: it scans its registry.
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata: {name: scan, namespace: imaging}
+spec: {image: registry.example.invalid/api, interval: 5m}
+---
+# It takes webhooks from outside.
+apiVersion: notification.toolkit.fluxcd.io/v1
+kind: Receiver
+metadata: {name: hook, namespace: imaging}
+spec:
+  type: generic
+  resources: [{kind: GitRepository, name: root, namespace: gitops}]
+  secretRef: {name: hook-token}
+---
+# It only chooses a tag from what an ImageRepository found.
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImagePolicy
+metadata: {name: pick, namespace: imaging}
+spec:
+  imageRepositoryRef: {name: scan}
+  policy: {semver: {range: ">=1.0.0"}}
+---
+# A HelmRelease of the name another is not: applied by edge, in the
+# namespace of the root's payments.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: other
+  namespace: gitops
+  labels: {kustomize.toolkit.fluxcd.io/name: edge, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  interval: 5m
+  chart: {spec: {chart: other, sourceRef: {kind: HelmRepository, name: charts}}}
+---
+# An ApplicationSet with RollingSync: its controller syncs what it makes.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata: {name: rolling, namespace: argocd}
+spec:
+  generators: [{list: {elements: [{name: r}]}}]
+  strategy: {type: RollingSync, rollingSync: {steps: [{matchExpressions: []}]}}
+  template:
+    metadata: {name: r}
+    spec: {project: default, destination: {server: https://kubernetes.default.svc}}
+---
+# In argo2: an ApplicationSet, the Application it generates and what that
+# manages; and an ApplicationSet of another name applied by decoy.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata: {name: set2, namespace: argo2}
+spec:
+  generators: [{list: {elements: [{name: gen2}]}}]
+  template:
+    metadata: {name: gen2}
+    spec:
+      project: default
+      destination: {server: https://kubernetes.default.svc, namespace: setns2}
+      syncPolicy: {automated: {}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gen2
+  namespace: argo2
+  ownerReferences:
+    - {apiVersion: argoproj.io/v1alpha1, kind: ApplicationSet, name: set2, uid: 00000000-0000-0000-0000-000000007002, controller: true}
+spec:
+  project: default
+  destination: {server: https://kubernetes.default.svc, namespace: setns2}
+  syncPolicy: {automated: {}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: genapp2
+  namespace: setns2
+  labels: {app: genapp2, argocd.argoproj.io/instance: gen2}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: genapp2}}
+  template:
+    metadata: {labels: {app: genapp2}}
+    spec: {containers: [{name: app, image: registry.example.invalid/genapp2:1}]}
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata: {name: decoy, namespace: gitops}
+spec:
+  interval: 10m
+  path: ./decoy
+  prune: true
+  sourceRef: {kind: GitRepository, name: root}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: decoy
+  namespace: argo2
+  labels: {kustomize.toolkit.fluxcd.io/name: decoy, kustomize.toolkit.fluxcd.io/namespace: gitops}
+spec:
+  generators: []
+  template:
+    metadata: {name: d}
+    spec: {project: default, destination: {server: https://kubernetes.default.svc}}
+---
+# Argo CD 2, an application outside Argo CD's own namespace: the label is
+# namespace_name.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: {name: svc, namespace: apps2}
+spec:
+  project: default
+  destination: {server: https://kubernetes.default.svc, namespace: legacy2ns}
+  syncPolicy: {automated: {}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: svcapp
+  namespace: legacy2ns
+  labels: {app: svcapp, app.kubernetes.io/instance: apps2_svc}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: svcapp}}
+  template:
+    metadata: {labels: {app: svcapp}}
+    spec: {containers: [{name: app, image: registry.example.invalid/svcapp:1}]}

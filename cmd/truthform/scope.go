@@ -150,11 +150,24 @@ func scopeNotes(rep kube.ScopeReport) []string {
 // something, refuses a restore.
 const sourceWhy = "a drill target that syncs the source's Git path starts what the scope held back, and anything in it that reaches outside (image automation, notifications) acts for real"
 
-// sourceNote is one GitOps source brought not held, for a person.
+// sourceOut is why an object that acts outside the cluster, brought not
+// held in a scope that holds something, refuses a restore.
+const sourceOut = "in a drill target it acts for real, with the source's settings"
+
+// trackingNote is what the refusal cannot see: an Argo CD that tracks
+// what it manages by an annotation alone, or by a label renamed in its
+// settings, leaves nothing the capture reads.
+const trackingNote = "What an Argo CD application manages is known by its tracking label or annotation (argocd.argoproj.io/instance, argocd.argoproj.io/tracking-id, or Argo CD 2's app.kubernetes.io/instance where no Helm release installed the object); one set to track by another label is not seen, and a restore is not refused for it"
+
+// sourceNote is one object brought not held that the scope refuses, for
+// a person.
 func sourceNote(src kube.ScopeSource) string {
-	how := "A restore is refused while it is so: hold the source (an entry with hold: true that brings its object), leave it out (--leave-out), or, having read what its Git path applies, accept it by naming it under sourcesRunning in the scope file (" + sourceRef(src) + ")."
+	how := "A restore is refused while it is so: hold it (an entry with hold: true that brings its object), leave it out (--leave-out), or, having read what it does, accept it by naming it under sourcesRunning in the scope file (" + sourceRef(src) + ")."
 	if src.Accepted {
 		how = "Accepted in the scope file (sourcesRunning)."
+	}
+	if src.Reaches != "" {
+		return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses: %s, and %s. %s", src.Source, src.Reaches, sourceOut, how)
 	}
 	return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses; once it runs it applies into %s, which the scope narrows: %s. %s", src.Source, strings.Join(src.Namespaces, ", "), sourceWhy, how)
 }
@@ -165,13 +178,17 @@ func sourceRef(src kube.ScopeSource) string {
 	return kind + "/" + nsName
 }
 
-// blockingSources are the sources a restore is refused for: brought not
+// blockingSources are the objects a restore is refused for: brought not
 // held, in a scope that holds something, applying into a namespace it
-// narrows, and not accepted in the scope file.
+// narrows or acting outside, and not accepted in the scope file.
 func blockingSources(srcs []kube.ScopeSource) []string {
 	var out []string
 	for _, src := range srcs {
-		if src.Blocks {
+		switch {
+		case !src.Blocks:
+		case src.Reaches != "":
+			out = append(out, fmt.Sprintf("%s (%s)", src.Source, src.Reaches))
+		default:
 			out = append(out, fmt.Sprintf("%s applies into %s", src.Source, strings.Join(src.Namespaces, ", ")))
 		}
 	}
@@ -180,7 +197,8 @@ func blockingSources(srcs []kube.ScopeSource) []string {
 
 // refusedForSources refuses a restore whose scope holds something and
 // brings, not held, a GitOps source that applies into a namespace the
-// scope narrows. Asked before anything is connected to or written.
+// scope narrows, or an object that acts outside the cluster. Asked
+// before anything is connected to or written.
 func refusedForSources(scopeFile string) error {
 	sourcesBlocked = nil
 	if scopeDone == nil {
@@ -191,11 +209,11 @@ func refusedForSources(scopeFile string) error {
 		return nil
 	}
 	sourcesBlocked = scopeDone.Sources
-	n := "GitOps sources are brought, not held, by a scope that holds what it chooses, and apply into namespaces it narrows"
+	n := "objects are brought, not held, by a scope that holds what it chooses, and would run"
 	if len(b) == 1 {
-		n = "GitOps source is brought, not held, by a scope that holds what it chooses, and applies into a namespace it narrows"
+		n = "object is brought, not held, by a scope that holds what it chooses, and would run"
 	}
-	return fmt.Errorf("%d %s: %s. Once a source runs, %s. Hold each (an entry with hold: true that brings its object), leave it out (--leave-out), or accept it by naming it as Kind/namespace/name under sourcesRunning in %s; nothing was restored", len(b), n, strings.Join(b, "; "), sourceWhy, scopeFile)
+	return fmt.Errorf("%d %s: %s. Once a GitOps source runs, %s; what acts outside, %s. Hold each (an entry with hold: true that brings its object), leave it out (--leave-out), or accept it by naming it as Kind/namespace/name under sourcesRunning in %s. %s", len(b), n, strings.Join(b, "; "), sourceWhy, sourceOut, scopeFile, trackingNote)
 }
 
 // sourcesBlocked are the sources a restore was refused for, for the

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/usetruthform/core/internal/kube"
 	"github.com/usetruthform/core/internal/snapshot"
 )
 
@@ -56,7 +57,7 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 		if code == 0 {
 			t.Errorf("%v: a restore to nowhere ended 0", args)
 		}
-		return lastErr != nil && strings.Contains(lastErr.Error(), "GitOps source is brought, not held")
+		return lastErr != nil && strings.Contains(lastErr.Error(), "object is brought, not held")
 	}
 
 	code, stdout, _ := output(t, func() int { return planScope([]string{"--from", dir, "--check", scope}) })
@@ -75,7 +76,7 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 	if !refused("--scope", scope) {
 		t.Fatalf("restore: %v", lastErr)
 	}
-	for _, want := range []string{"Flux Kustomization gitops/root applies into shop", "starts what the scope held back", "acts for real", "sourcesRunning in " + scope, "nothing was restored"} {
+	for _, want := range []string{"Flux Kustomization gitops/root applies into shop", "starts what the scope held back", "acts for real", "sourcesRunning in " + scope, "app.kubernetes.io/instance", "nothing was restored"} {
 		if !strings.Contains(lastErr.Error(), want) {
 			t.Errorf("the refusal does not say %q: %v", want, lastErr)
 		}
@@ -117,5 +118,91 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 	// With no scope, nothing is held, and nothing is refused for it.
 	if refused() {
 		t.Errorf("restore with no scope: %v", lastErr)
+	}
+	// A file that only accepts a source says why it cannot.
+	only := writeFile(t, files, "only.yaml", "sourcesRunning:\n  - Kustomization/gitops/root\n")
+	if code, _, _ := output(t, func() int { return planScope([]string{"--from", dir, "--check", only}) }); code != 1 || lastErr == nil || !strings.Contains(lastErr.Error(), "has sourcesRunning and narrows nothing") {
+		t.Errorf("a file with only sourcesRunning: exit %d, %v", code, lastErr)
+	}
+	// A refusal is not carried into the document of the next run that
+	// fails before the question is asked.
+	command = "restore"
+	_ = asJSON(t, func() {
+		emitError(restore(context.Background(), append(append([]string{}, nowhere...), "--scope", scope)))
+	})
+	d = asJSON(t, func() {
+		emitError(restore(context.Background(), append(append([]string{}, nowhere...), "--scope", filepath.Join(files, "no-such-scope.yaml"))))
+	})
+	command = was
+	if _, there := d["sourcesNotHeld"]; there {
+		t.Errorf("the document of a later failure lists the sources of an earlier refusal: %v", d)
+	}
+}
+
+// A restore refused for a webhook and for a source says both, and its
+// document lists both: one fixed at a time would be found one run at a
+// time.
+func TestRestoreRefusesForEveryCauseAtOnce(t *testing.T) {
+	if captureOnly {
+		t.Skip("a restore, which the capture-only build refuses")
+	}
+	obj := elsewhereObject
+	byRoot := map[string]any{"kustomize.toolkit.fluxcd.io/name": "root", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}
+	root := obj("kustomize.toolkit.fluxcd.io/v1", "Kustomization", "gitops", "root", map[string]any{"spec": map[string]any{"path": "./one"}})
+	root.Body["metadata"].(map[string]any)["labels"] = byRoot
+	web := obj("v1", "ConfigMap", "shop", "web", nil)
+	web.Body["metadata"].(map[string]any)["annotations"] = map[string]any{"meta.helm.sh/release-name": "web", "meta.helm.sh/release-namespace": "shop"}
+	hook := map[string]any{"webhooks": []any{map[string]any{"name": "check.policy", "failurePolicy": "Fail",
+		"clientConfig": map[string]any{"service": map[string]any{"namespace": "shop", "name": "policy"}}}}}
+	s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Objects: []snapshot.Object{
+		obj("v1", "Namespace", "", "gitops", nil), obj("v1", "Namespace", "", "shop", nil), root, web,
+		obj("admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration", "", "policy", hook),
+	}, Skips: []snapshot.Skip{
+		{Resource: "apps/v1/deployments", Namespace: "shop", Name: "cart", Reason: "applied by Flux Kustomization gitops/root; restoring it recreates this"},
+	}}
+	dir := filepath.Join(t.TempDir(), "cluster")
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	files := t.TempDir()
+	scope := writeFile(t, files, "scope.yaml", "narrow:\n  - namespaces: [shop]\n    releases: [web]\n    hold: true\n")
+	nowhere := []string{"--kubeconfig", filepath.Join(files, "no-such-kubeconfig"), "--context", "none", "--from", dir, "--scope", scope}
+	lastErr = nil
+	if code := restore(context.Background(), nowhere); code == 0 || lastErr == nil {
+		t.Fatalf("restore: exit %d", code)
+	}
+	for _, want := range []string{"calls shop/policy", "Flux Kustomization gitops/root applies into shop"} {
+		if !strings.Contains(lastErr.Error(), want) {
+			t.Errorf("the refusal does not say %q: %v", want, lastErr)
+		}
+	}
+	if n := strings.Count(lastErr.Error(), "nothing was restored"); n != 1 {
+		t.Errorf("the refusal says nothing was restored %d times: %v", n, lastErr)
+	}
+	was := command
+	command = "restore"
+	d := asJSON(t, func() { emitError(restore(context.Background(), nowhere)) })
+	command = was
+	hooks, _ := d["webhooksWithoutService"].([]any)
+	srcs, _ := d["sourcesNotHeld"].([]any)
+	if d["complete"] != false || len(hooks) != 1 || len(srcs) != 1 {
+		t.Errorf("the document of a refusal for both: %v", d)
+	}
+}
+
+// What acts outside is said as what it does, not as where it applies.
+func TestSourceNoteOfWhatActsOutside(t *testing.T) {
+	n := sourceNote(kube.ScopeSource{Source: "Flux ImageUpdateAutomation imaging/bump", Object: "ImageUpdateAutomation imaging/bump", Namespaces: []string{},
+		Reaches: "it commits and pushes image updates to its Git repository", Blocks: true})
+	for _, want := range []string{"it commits and pushes image updates to its Git repository", "acts for real", "(ImageUpdateAutomation/imaging/bump)"} {
+		if !strings.Contains(n, want) {
+			t.Errorf("the note does not say %q: %s", want, n)
+		}
+	}
+	if strings.Contains(n, "applies into") {
+		t.Errorf("the note says where it applies: %s", n)
+	}
+	if b := blockingSources([]kube.ScopeSource{{Source: "Flux notification Provider imaging/chat", Reaches: "it sends", Blocks: true}}); len(b) != 1 || b[0] != "Flux notification Provider imaging/chat (it sends)" {
+		t.Errorf("as the refusal lists it: %q", b)
 	}
 }

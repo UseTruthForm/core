@@ -254,7 +254,7 @@ func capture(ctx context.Context, args []string) int {
 }
 
 func restore(ctx context.Context, args []string) int {
-	sizeCheck, namesHeld, blockedBy, unscopedHooks = nil, nil, nil, nil
+	sizeCheck, namesHeld, blockedBy, unscopedHooks, sourcesBlocked = nil, nil, nil, nil, nil
 	fs := flag.NewFlagSet("restore", flag.ContinueOnError)
 	kubeconfig := fs.String("kubeconfig", "", "path to kubeconfig")
 	kctx := fs.String("context", "", "kubeconfig context to restore into")
@@ -313,11 +313,16 @@ func restore(ctx context.Context, args []string) int {
 		return fail(err)
 	}
 	if *platform == "kubernetes" {
-		if err := refusedForWebhooks(whole, snap, *scope); err != nil {
-			return fail(err)
+		// Every cause at once: one fixed at a time would be found one
+		// run at a time.
+		var why []string
+		for _, err := range []error{refusedForWebhooks(whole, snap, *scope), refusedForSources(*scope)} {
+			if err != nil {
+				why = append(why, strings.TrimSuffix(err.Error(), "; nothing was restored"))
+			}
 		}
-		if err := refusedForSources(*scope); err != nil {
-			return fail(err)
+		if len(why) > 0 {
+			return fail(fmt.Errorf("%s; nothing was restored", strings.Join(why, ". And ")))
 		}
 	}
 	if *keepStores && (*rename == "" || *platform != "kubernetes") {

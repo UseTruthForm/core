@@ -99,9 +99,7 @@ func (a *after) once(key string, ask func() there) there {
 // in its namespace, or with none.
 func (a *after) object(kind, ns, name string) there {
 	return a.once("object\x00"+kind+"\x00"+ns+"\x00"+name, func() there {
-		is := func(o snapshot.Object) bool {
-			return o.Kind() == kind && o.Name() == name && (o.Namespace() == ns || o.Namespace() == "")
-		}
+		is := ownerIs(kind, ns, name)
 		for _, o := range a.out.Objects {
 			if is(o) {
 				// Held, it makes nothing: what it would have made is
@@ -117,10 +115,28 @@ func (a *after) object(kind, ns, name string) there {
 		if slices.ContainsFunc(a.whole.Objects, is) {
 			return thereNo
 		}
-		return a.skipped(name, func(sk snapshot.Skip) bool {
-			return a.kindOf(sk.Resource) == strings.ToLower(kind) && (sk.Namespace == ns || sk.Namespace == "")
-		})
+		return a.skipped(name, func(sk snapshot.Skip) bool { return a.ofKind(sk, kind, ns) })
 	})
+}
+
+// ownerIs says whether an object is the one a reason names as an owner:
+// of that kind and name, in the namespace of what it owns, or with none.
+func ownerIs(kind, ns, name string) func(snapshot.Object) bool {
+	return func(o snapshot.Object) bool {
+		return o.Kind() == kind && o.Name() == name && (o.Namespace() == ns || o.Namespace() == "")
+	}
+}
+
+// ofKind says whether a skip is of things of the kind an owner is, in
+// the namespace of what it owns, or with none.
+func (a *after) ofKind(sk snapshot.Skip, kind, ns string) bool {
+	return a.kindOf(sk.Resource) == strings.ToLower(kind) && (sk.Namespace == ns || sk.Namespace == "")
+}
+
+// covers says whether a skip stands for the object of a name: by its own
+// name, or as one of the names a skip for "*" lists.
+func covers(sk snapshot.Skip, name string) bool {
+	return sk.Name == name || (sk.Name == "*" && slices.Contains(sk.Names, name))
 }
 
 // skipped asks it of something the capture did not take, by the skips
@@ -184,9 +200,7 @@ func (a *after) provider(sk snapshot.Skip) there {
 // snapshot as it was read.
 func (a *after) ownerInSnapshot(sk snapshot.Skip) bool {
 	m := ownedBy.FindStringSubmatch(sk.Reason)
-	return m != nil && slices.ContainsFunc(a.whole.Objects, func(o snapshot.Object) bool {
-		return o.Kind() == m[1] && o.Name() == m[2] && (o.Namespace() == sk.Namespace || o.Namespace() == "")
-	})
+	return m != nil && slices.ContainsFunc(a.whole.Objects, ownerIs(m[1], sk.Namespace, m[2]))
 }
 
 // source asks it of a GitOps source, which is an object like any other:
@@ -195,23 +209,7 @@ func (a *after) ownerInSnapshot(sk snapshot.Skip) bool {
 // generates it).
 func (a *after) source(src source) there {
 	return a.once("source\x00"+src.kind+"\x00"+src.name, func() there {
-		obj := sourceObject[src.kind]
-		// As a reason names it: namespace/name for Flux; for Argo CD
-		// the name alone in Argo CD's own namespace, which the
-		// snapshot does not say, and namespace_name outside it.
-		ns, name, anyNS := "", src.name, false
-		switch {
-		case src.kind != "Argo CD application":
-			ns, name, _ = strings.Cut(src.name, "/")
-		case strings.Contains(src.name, "_"):
-			ns, name, _ = strings.Cut(src.name, "_")
-		default:
-			anyNS = true
-		}
-		is := func(o snapshot.Object) bool {
-			group, _, _ := strings.Cut(o.APIVersion(), "/")
-			return group == obj.group && o.Kind() == obj.kind && o.Name() == name && (anyNS || o.Namespace() == ns)
-		}
+		is, ofSource, name := sourceIs(src)
 		// Of several of one name, one that runs is enough: which of
 		// them a bare name means is not said.
 		found := false
@@ -228,10 +226,34 @@ func (a *after) source(src source) there {
 		if found {
 			return thereNo
 		}
-		return a.skipped(name, func(sk snapshot.Skip) bool {
-			return strings.HasPrefix(sk.Resource, obj.group+"/") && strings.HasSuffix(sk.Resource, "/"+obj.resource) && (anyNS || sk.Namespace == ns)
-		})
+		return a.skipped(name, ofSource)
 	})
+}
+
+// sourceIs says, of a GitOps source as a reason names it, which objects
+// are it, which skips are of its kind where it would be, and its name
+// alone. As a reason names it: namespace/name for Flux; for Argo CD the
+// name alone in Argo CD's own namespace, which the snapshot does not
+// say, and namespace_name outside it.
+func sourceIs(src source) (is func(snapshot.Object) bool, ofSource func(snapshot.Skip) bool, name string) {
+	obj := sourceObject[src.kind]
+	ns, name, anyNS := "", src.name, false
+	switch {
+	case src.kind != "Argo CD application":
+		ns, name, _ = strings.Cut(src.name, "/")
+	case strings.Contains(src.name, "_"):
+		ns, name, _ = strings.Cut(src.name, "_")
+	default:
+		anyNS = true
+	}
+	is = func(o snapshot.Object) bool {
+		group, _, _ := strings.Cut(o.APIVersion(), "/")
+		return group == obj.group && o.Kind() == obj.kind && o.Name() == name && (anyNS || o.Namespace() == ns)
+	}
+	ofSource = func(sk snapshot.Skip) bool {
+		return strings.HasPrefix(sk.Resource, obj.group+"/") && strings.HasSuffix(sk.Resource, "/"+obj.resource) && (anyNS || sk.Namespace == ns)
+	}
+	return is, ofSource, name
 }
 
 // named asks it of a Crossplane composite, which a reason gives by name

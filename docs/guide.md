@@ -457,7 +457,7 @@ empty or denied: capture again later.
 |---|---|
 | 0 | Success: the capture is complete, the restore fully applied, or no differences |
 | 1 | Error: bad flags, cannot connect, cannot read a snapshot |
-| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer, or that holds something and brings, not held, a GitOps source that applies into a namespace it narrows (plan scope --check) |
+| 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer, or that holds something and brings, not held, a GitOps source that applies into a namespace it narrows or a Flux object that acts outside the cluster (plan scope --check) |
 | 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, or a restore under a hold brought objects not held |
 
 ## Machine-readable output
@@ -936,6 +936,7 @@ narrow:
 | `CronJob`, and a `Job` brought with `jobs: true` | suspended |
 | a Flux object (`HelmRelease`, `Kustomization`, a source), an Argo `CronWorkflow`, and another API's object with `spec.suspend` (a `ScheduledSparkApplication`) | `spec.suspend: true` |
 | Argo CD `Application` | `spec.syncPolicy.automated` taken out |
+| Argo CD `ApplicationSet` | `spec.template.spec.syncPolicy.automated` taken out, so what it makes does not sync by itself; refused, by name, where a `templatePatch` or a generator's own template could put it back |
 | KEDA `ScaledObject` | `autoscaling.keda.sh/paused-replicas: "0"` |
 | KEDA `ScaledJob` | `autoscaling.keda.sh/paused: "true"` |
 | `HorizontalPodAutoscaler` | as it is: it stops while what it scales is at zero |
@@ -1016,23 +1017,53 @@ automation, notifications) acts for real. A root Kustomization that
 in the snapshot, in a namespace a drill's scope seldom names, and so is
 brought as it is unless something says otherwise.
 
-What a source applies into is what the capture left to it: what it
-applied or rendered, and what the sources it applies apply or render, as
-far down as that goes (a Kustomization that applies a HelmRelease that
-renders into `store` applies into `store`). Every source of that chain
-that is brought and not held counts, not only the nearest: an unheld
-Kustomization applies a held HelmRelease again from Git, unsuspended.
-A source that applies only into namespaces the scope does not narrow is
-not refused, and a scope that holds nothing is not affected (both are
-still named in the NOTE above, `scope.stillMade`).
+What a source applies into is what the capture left to it, followed as
+the webhook check follows it: from what is in a narrowed namespace to the
+source or owner the capture left it to, and on through what that one was
+left to, until it reaches an object the restore brings. A Kustomization
+that applies a HelmRelease that renders into `store` applies into
+`store`; an Application that an ApplicationSet generates is not in the
+snapshot (the capture leaves it to the ApplicationSet), so the
+ApplicationSet is what applies, and what is refused or held. Argo CD 2
+tracks what it manages by `app.kubernetes.io/instance` unless told
+otherwise, and the capture takes such an object as one of its own: in a
+narrowed namespace, that label naming an Application that is brought
+counts as that Application applying there. Helm charts carry the same
+label, with the release's name, so an object Helm installed
+(`meta.helm.sh/release-name`) is not read this way; one that carries the
+label for another reason, beside an Application of that name, is, and
+can be accepted. An Argo CD set to track by an annotation alone, or by
+another label, leaves nothing of this to read, and a restore is not
+refused for it: the refusal says so.
+
+**Flux's objects that act outside** are refused under a hold wherever
+they are, as a source is: an `ImageUpdateAutomation` (it commits and
+pushes to Git), an `ImageRepository` (it scans a registry with its
+credentials), a notification `Provider` and an `Alert`. Taking the root
+out with `--leave-out` does not take these out, and they are not
+sources. A `GitRepository`, `OCIRepository` or `HelmRepository` only
+reads, and is not refused.
+
+Not refused:
+
+- a source that applies only into namespaces the scope does not narrow;
+- one already stopped: a Flux object with `spec.suspend: true`, an Argo
+  CD application with no automated sync (or `automated.enabled:
+  false`), an ApplicationSet whose template has none and that has no
+  `templatePatch` and no generator template;
+- anything, in a scope that holds nothing (the NOTE above,
+  `scope.stillMade`, still names what a source makes).
 
 `plan scope --check` names each in a NOTE, with the namespaces it
-applies into (`scope.sourcesNotHeld` with `--json`, each with `blocks`),
-and exits 2 while one is left; a refused restore exits 1 and its
-document lists them as `sourcesNotHeld`, with `complete: false`. Either
-hold the source, with an entry that brings its object under a hold (a
-Flux object is suspended, an Argo CD application's automated sync taken
-out):
+applies into or what it does outside (`scope.sourcesNotHeld` with
+`--json`, each with `blocks`, `accepted`, and `reaches` for one that acts
+outside), and exits 2 while one is left. A refused restore exits 1, says
+every cause at once (webhooks and these together), and its document
+lists them as `sourcesNotHeld` (and `webhooksWithoutService`), with
+`complete: false`. Either hold it, with an entry that brings its object
+under a hold (a Flux object is suspended, an Argo CD application's
+automated sync taken out, an ApplicationSet's taken out of its
+template):
 
 ```yaml
   - namespaces: [flux-system]
@@ -1040,21 +1071,27 @@ out):
     objects: [Kustomization/flux-system, GitRepository/flux-system]
 ```
 
-or leave it out with `--leave-out`, or, having read what its Git path
-applies, accept it by name:
+or leave it out with `--leave-out`, or, having read what it does, accept
+it by name:
 
 ```yaml
 sourcesRunning:
   - Kustomization/flux-system/flux-system
 ```
 
-Each is `Kind/namespace/name` of the source's own object, with no
-pattern: a source is let run by someone who has read what it applies,
-and a pattern would let one run that came later. One that is accepted is
-still listed (`accepted: true`), and the run ends 0 when nothing else is
-left. A name that accepts nothing is an error: one that is held, left
-out, applies nowhere the scope narrows, or is in a scope that holds
-nothing.
+An ApplicationSet with a `templatePatch` or a generator's own template
+cannot be held by its template, since either can give what it makes a
+sync policy back: a hold refuses it, by name, as it refuses a `Pod`.
+Leave it out, or accept it.
+
+Each is `Kind/namespace/name` of the object, with no pattern: it is let
+run by someone who has read what it does, and a pattern would let one
+run that came later. One that is accepted is still listed (`accepted:
+true`), and the run ends 0 when nothing else is left. A name that
+accepts nothing is an error: one that is held, stopped, left out, or
+applies nowhere the scope narrows, and any in a scope that holds
+nothing (a file with `sourcesRunning` and nothing to narrow says that
+too).
 
 What to know before relying on a hold:
 

@@ -1034,9 +1034,10 @@ shared with ordinary Helm charts**, which set it to their release's
 name. An object Helm installed (`meta.helm.sh/release-name`) is not read
 this way; one a chart made that was applied some other way, beside an
 Application of the release's name, is, and the restore is then refused
-wrongly. The refusal says so; hold the Application or accept it. An Argo CD set to track by an annotation alone, or by
-another label, leaves nothing of this to read, and a restore is not
-refused for it: the refusal says so.
+wrongly. The refusal says so; hold the Application or accept it. An
+Argo CD set to track by an annotation alone, or by another label, leaves
+nothing of this to read, and a restore is not refused for it: the
+refusal says so.
 
 **Flux's objects that act outside** are refused under a hold wherever
 they are, as a source is: an `ImageUpdateAutomation` (it commits and
@@ -1049,19 +1050,30 @@ and is not refused; nor is a `GitRepository`, `OCIRepository` or
 `HelmRepository`, which reads and does not write.
 
 Where such an object is in the snapshot (made by hand), it is refused
-itself. Where a source's Git path applies it, the capture leaves it to
-that source and it is not in the snapshot: the source makes it again
-once it runs, so **the source is refused for it, wherever either is**,
-in a namespace the scope narrows or not, and the refusal names the
+itself. Where a GitOps source's Git path applies it, the capture leaves
+it to that source and it is not in the snapshot: the source makes it
+again once it runs, so **the source is refused for it, wherever either
+is**, in a namespace the scope narrows or not, and the refusal names the
 object and what it does (`appliesOutside` with `--json`). That is the
 usual `flux bootstrap` with image automation: the root applies the
 `ImageUpdateAutomation` from Git. Taking the root out with
 `--leave-out`, or holding it, takes what it applies with it; what is in
-the snapshot by hand stays, and is refused.
+the snapshot by hand stays, and is refused. Naming such an object under
+`sourcesRunning` is an error that names the source that applies it:
+accept or hold that.
+
+**What an operator's resource makes is not followed.** Flux, Argo CD
+and Helm set no owner on what they apply; a third-party operator does.
+An operator's custom resource that owns an `ImageUpdateAutomation`,
+`Provider`, `Alert` or `Receiver` (a tenant resource whose operator
+makes one for it) is brought as it is under a hold, its operator makes
+the object again, and **the restore is not refused for it**: leave the
+resource out, or hold it.
 
 Not refused:
 
-- a source that applies only into namespaces the scope does not narrow;
+- a source that applies only into namespaces the scope does not narrow,
+  and applies nothing that acts outside;
 - one already stopped: a Flux object with `spec.suspend: true`, an Argo
   CD application with no automated sync (or `automated.enabled:
   false`), an ApplicationSet whose template has none and that has no
@@ -1071,8 +1083,8 @@ Not refused:
 
 `plan scope --check` names each in a NOTE, with the namespaces it
 applies into or what it does outside (`scope.sourcesNotHeld` with
-`--json`, each with `blocks`, `accepted`, and `reaches` for one that acts
-outside), and exits 2 while one is left. A refused restore exits 1, says
+`--json`, each with `blocks`, `accepted`, `reaches` for one that acts
+outside, and `appliesOutside` for a source that applies one), and exits 2 while one is left. A refused restore exits 1, says
 every cause at once (webhooks and these together), and its document
 lists them as `sourcesNotHeld` (and `webhooksWithoutService`), with
 `complete: false`. Either hold it, with an entry that brings its object

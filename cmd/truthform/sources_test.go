@@ -37,6 +37,8 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 		web,
 	}, Skips: []snapshot.Skip{
 		{Resource: "apps/v1/deployments", Namespace: "shop", Name: "cart", Reason: "applied by Flux Kustomization gitops/root; restoring it recreates this"},
+		// And what acts outside, which its Git path applies.
+		{Resource: "image.toolkit.fluxcd.io/v1beta2/imageupdateautomations", Namespace: "gitops", Name: "bump", Reason: "applied by Flux Kustomization gitops/root; restoring it recreates this"},
 	}}
 	dir := filepath.Join(t.TempDir(), "cluster")
 	if err := s.Write(dir); err != nil {
@@ -68,6 +70,9 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 	srcs, _ := d["scope"].(map[string]any)["sourcesNotHeld"].([]any)
 	if code != 2 || len(srcs) != 1 || srcs[0].(map[string]any)["blocks"] != true || srcs[0].(map[string]any)["object"] != "Kustomization gitops/root" {
 		t.Errorf("plan scope --check --json: exit %d, %v", code, d)
+	}
+	if out, _ := srcs[0].(map[string]any)["appliesOutside"].([]any); len(out) != 1 || !strings.HasPrefix(out[0].(string), "ImageUpdateAutomation gitops/bump (") {
+		t.Errorf("plan scope --check --json: what the source applies that acts outside: %v", srcs[0])
 	}
 	// Told apart from the other causes of 2.
 	if sc := d["scope"].(map[string]any); len(sc["broughtNotHeld"].([]any)) != 0 || len(sc["webhooksWithoutService"].([]any)) != 0 {

@@ -345,6 +345,15 @@ func acceptSources(found []ScopeSource, accept []string) error {
 			}
 		}
 		if !used {
+			// What a source applies is not brought: the source is what
+			// runs, and what is accepted.
+			for _, f := range found {
+				for _, o := range f.Outside {
+					if strings.HasPrefix(o, who+" (") {
+						return fmt.Errorf("sourcesRunning names %q, which is not brought: it is applied by %s, which makes it again once it runs. Name that in sourcesRunning (%s), or hold it", p, f.Source, strings.Replace(f.Object, " ", "/", 1))
+					}
+				}
+			}
 			return fmt.Errorf("sourcesRunning names %q, and no such object is brought not held that a scope which holds something refuses (a GitOps source that applies into a namespace it narrows, or what acts outside the cluster)", p)
 		}
 	}

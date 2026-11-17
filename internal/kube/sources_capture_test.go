@@ -239,6 +239,9 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		{kube.Scope{Narrow: append(entries(shopHeld...), holdRoot), SourcesRunning: []string{"Kustomization/gitops/root"}}, "no such object is brought not held"},
 		{kube.Scope{Narrow: []kube.ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"web"}}}, SourcesRunning: []string{"Kustomization/gitops/root"}}, "the scope holds nothing"},
 		{kube.Scope{SourcesRunning: []string{"Kustomization/gitops/root"}}, "has sourcesRunning and narrows nothing"},
+		// What a source applies is not brought: the error names the source.
+		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"ImageUpdateAutomation/flux2/autobump"}}, "is not brought: it is applied by Flux Kustomization flux2/flux2, which makes it again once it runs. Name that in sourcesRunning (Kustomization/flux2/flux2), or hold it"},
+		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"ImageUpdateAutomation/flux2/auto"}}, "no such object is brought not held"},
 	} {
 		if _, _, err := kube.Narrow(snap, bad.sc); err == nil || !strings.Contains(err.Error(), bad.want) {
 			t.Errorf("sourcesRunning %q: %v, want %q", bad.sc.SourcesRunning, err, bad.want)

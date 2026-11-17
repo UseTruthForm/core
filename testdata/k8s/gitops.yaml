@@ -201,6 +201,45 @@ apiVersion: v1
 kind: Namespace
 metadata: {name: legacy2ns}
 ---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: helmrepositories.source.toolkit.fluxcd.io}
+spec:
+  group: source.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: HelmRepository, plural: helmrepositories, singular: helmrepository, listKind: HelmRepositoryList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: ocirepositories.source.toolkit.fluxcd.io}
+spec:
+  group: source.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: OCIRepository, plural: ocirepositories, singular: ocirepository, listKind: OCIRepositoryList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: buckets.source.toolkit.fluxcd.io}
+spec:
+  group: source.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: Bucket, plural: buckets, singular: bucket, listKind: BucketList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
 apiVersion: v1
 kind: Namespace
 metadata: {name: gitops}
@@ -723,3 +762,23 @@ spec:
   template:
     metadata: {labels: {app: svcapp}}
     spec: {containers: [{name: app, image: registry.example.invalid/svcapp:1}]}
+---
+# Flux's sources that fetch: made by hand, and one the second root's Git
+# path applies.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata: {name: charts, namespace: imaging}
+spec: {url: https://charts.example.invalid, interval: 1h}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: Bucket
+metadata: {name: store, namespace: imaging}
+spec: {bucketName: artifacts, endpoint: storage.example.invalid, interval: 1h}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: oci
+  namespace: flux2
+  labels: {kustomize.toolkit.fluxcd.io/name: flux2, kustomize.toolkit.fluxcd.io/namespace: flux2}
+spec: {url: oci://registry.example.invalid/manifests, interval: 1h, ref: {tag: latest}}

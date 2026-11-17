@@ -47,10 +47,13 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 	const hold = "narrow:\n  - namespaces: [shop]\n    releases: [web]\n    hold: true\n"
 	files := t.TempDir()
 	scope := writeFile(t, files, "scope.yaml", hold)
-	accepted := writeFile(t, files, "accepted.yaml", hold+"sourcesRunning:\n  - Kustomization/gitops/root\n")
+	accepted := writeFile(t, files, "accepted.yaml", hold+"sourcesRunning:\n  - Kustomization/gitops/root\n  - GitRepository/gitops/root\n")
+	// The Kustomization accepted, and not the GitRepository it reads,
+	// which fetches.
+	half := writeFile(t, files, "half.yaml", hold+"sourcesRunning:\n  - Kustomization/gitops/root\n")
 	held := writeFile(t, files, "held.yaml", hold+"  - namespaces: [gitops]\n    hold: true\n    objects: [Kustomization/root, GitRepository/root]\n")
 	running := writeFile(t, files, "running.yaml", "narrow:\n  - namespaces: [shop]\n    releases: [web]\n")
-	leave := writeFile(t, files, "leave.yaml", "- Kustomization.kustomize.toolkit.fluxcd.io/gitops/root\n")
+	leave := writeFile(t, files, "leave.yaml", "- Kustomization.kustomize.toolkit.fluxcd.io/gitops/root\n- GitRepository.source.toolkit.fluxcd.io/gitops/root\n")
 	// Nowhere to restore to: what is refused is refused before that.
 	nowhere := []string{"--kubeconfig", filepath.Join(files, "no-such-kubeconfig"), "--context", "none", "--from", dir}
 	refused := func(args ...string) bool {
@@ -59,7 +62,7 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 		if code == 0 {
 			t.Errorf("%v: a restore to nowhere ended 0", args)
 		}
-		return lastErr != nil && strings.Contains(lastErr.Error(), "object is brought, not held")
+		return lastErr != nil && strings.Contains(lastErr.Error(), "brought, not held, by a scope that holds what it chooses")
 	}
 
 	code, stdout, _ := output(t, func() int { return planScope([]string{"--from", dir, "--check", scope}) })
@@ -68,11 +71,15 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 	}
 	d := asJSON(t, func() { code = planScope([]string{"--from", dir, "--check", scope}) })
 	srcs, _ := d["scope"].(map[string]any)["sourcesNotHeld"].([]any)
-	if code != 2 || len(srcs) != 1 || srcs[0].(map[string]any)["blocks"] != true || srcs[0].(map[string]any)["object"] != "Kustomization gitops/root" {
-		t.Errorf("plan scope --check --json: exit %d, %v", code, d)
+	if code != 2 || len(srcs) != 2 || srcs[1].(map[string]any)["blocks"] != true || srcs[1].(map[string]any)["object"] != "Kustomization gitops/root" {
+		t.Fatalf("plan scope --check --json: exit %d, %v", code, d)
 	}
-	if out, _ := srcs[0].(map[string]any)["appliesOutside"].([]any); len(out) != 1 || !strings.HasPrefix(out[0].(string), "ImageUpdateAutomation gitops/bump (") {
-		t.Errorf("plan scope --check --json: what the source applies that acts outside: %v", srcs[0])
+	if out, _ := srcs[1].(map[string]any)["appliesOutside"].([]any); len(out) != 1 || !strings.HasPrefix(out[0].(string), "ImageUpdateAutomation gitops/bump (") {
+		t.Errorf("plan scope --check --json: what the source applies that acts outside: %v", srcs[1])
+	}
+	// The GitRepository the root reads fetches, and is refused itself.
+	if g := srcs[0].(map[string]any); g["object"] != "GitRepository gitops/root" || g["blocks"] != true || g["reaches"] != "it fetches its Git repository with the source's credentials" {
+		t.Errorf("plan scope --check --json: the GitRepository: %v", g)
 	}
 	// Told apart from the other causes of 2.
 	if sc := d["scope"].(map[string]any); len(sc["broughtNotHeld"].([]any)) != 0 || len(sc["webhooksWithoutService"].([]any)) != 0 {
@@ -81,7 +88,7 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 	if !refused("--scope", scope) {
 		t.Fatalf("restore: %v", lastErr)
 	}
-	for _, want := range []string{"Flux Kustomization gitops/root applies into shop", "starts what the scope held back", "acts for real", "sourcesRunning in " + scope, "app.kubernetes.io/instance", "also what ordinary Helm charts set", "nothing was restored"} {
+	for _, want := range []string{"Flux Kustomization gitops/root applies into shop", "Flux GitRepository gitops/root (it fetches its Git repository with the source's credentials)", "starts what the scope held back", "acts for real", "sourcesRunning in " + scope, "app.kubernetes.io/instance", "also what ordinary Helm charts set", "nothing was restored"} {
 		if !strings.Contains(lastErr.Error(), want) {
 			t.Errorf("the refusal does not say %q: %v", want, lastErr)
 		}
@@ -94,7 +101,7 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 	})
 	command = was
 	srcs, _ = d["sourcesNotHeld"].([]any)
-	if d["complete"] != false || d["exit"] != float64(1) || len(srcs) != 1 || srcs[0].(map[string]any)["source"] != "Flux Kustomization gitops/root" {
+	if d["complete"] != false || d["exit"] != float64(1) || len(srcs) != 2 || srcs[0].(map[string]any)["source"] != "Flux GitRepository gitops/root" || srcs[1].(map[string]any)["source"] != "Flux Kustomization gitops/root" {
 		t.Errorf("the document of a refusal: %v", d)
 	}
 
@@ -105,8 +112,15 @@ func TestRestoreRefusesAnUnheldSource(t *testing.T) {
 		t.Errorf("plan scope --check, accepted: exit %d\n%s", code, stdout)
 	}
 	d = asJSON(t, func() { code = planScope([]string{"--from", dir, "--check", accepted}) })
-	if srcs, _ := d["scope"].(map[string]any)["sourcesNotHeld"].([]any); code != 0 || len(srcs) != 1 || srcs[0].(map[string]any)["accepted"] != true || srcs[0].(map[string]any)["blocks"] != false {
+	if srcs, _ := d["scope"].(map[string]any)["sourcesNotHeld"].([]any); code != 0 || len(srcs) != 2 || srcs[0].(map[string]any)["accepted"] != true || srcs[1].(map[string]any)["accepted"] != true || srcs[0].(map[string]any)["blocks"] != false {
 		t.Errorf("plan scope --check --json, accepted: exit %d, %v", code, d)
+	}
+	// One accepted and not the other: refused for the other.
+	if code, stdout, _ := output(t, func() int { return planScope([]string{"--from", dir, "--check", half}) }); code != 2 || !strings.Contains(stdout, "NOTE: Flux GitRepository gitops/root is brought, and not held") {
+		t.Errorf("plan scope --check, the GitRepository not accepted: exit %d\n%s", code, stdout)
+	}
+	if !refused("--scope", half) || !strings.Contains(lastErr.Error(), "1 object is brought") || !strings.Contains(lastErr.Error(), "Flux GitRepository gitops/root") {
+		t.Errorf("restore, the GitRepository not accepted: %v", lastErr)
 	}
 	if refused("--scope", accepted) || lastErr == nil || !strings.Contains(lastErr.Error(), "no-such-kubeconfig") {
 		t.Errorf("restore, accepted: %v", lastErr)

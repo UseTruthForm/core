@@ -48,12 +48,13 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		"Deployment shop/web", "Deployment legacyns/legacyapp", "Deployment helmns/legacy", "ConfigMap fleet/settings",
 		"ImageUpdateAutomation imaging/bump", "ImageRepository imaging/images", "ImageRepository imaging/scan", "Provider imaging/chat", "Alert imaging/alerts",
 		"Receiver imaging/hook", "ImagePolicy imaging/pick", "Kustomization flux2/flux2", "Kustomization gitops/decoy", "ApplicationSet argocd/rolling",
-		"ApplicationSet argo2/set2", "Application apps2/svc", "Deployment legacy2ns/svcapp"} {
+		"ApplicationSet argo2/set2", "Application apps2/svc", "Deployment legacy2ns/svcapp",
+		"HelmRepository imaging/charts", "Bucket imaging/store"} {
 		if !have[k] {
 			t.Errorf("the capture did not take %s", k)
 		}
 	}
-	for _, k := range []string{"Application argocd/gen", "Application argo2/gen2", "ImageUpdateAutomation flux2/autobump", "Provider flux2/f2chat", "ImageUpdateAutomation botns/gitbump", "ApplicationSet argo2/decoy"} {
+	for _, k := range []string{"Application argocd/gen", "Application argo2/gen2", "ImageUpdateAutomation flux2/autobump", "Provider flux2/f2chat", "ImageUpdateAutomation botns/gitbump", "ApplicationSet argo2/decoy", "OCIRepository flux2/oci"} {
 		if have[k] {
 			t.Errorf("the capture took %s, which it leaves to what makes it", k)
 		}
@@ -79,6 +80,7 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		"flux2/autobump imageupdateautomations": "applied by Flux Kustomization flux2/flux2",
 		"flux2/f2chat providers":                "applied by Flux Kustomization flux2/flux2",
 		"botns/gitbump imageupdateautomations":  "applied by Flux Kustomization flux2/flux2",
+		"flux2/oci ocirepositories":             "applied by Flux Kustomization flux2/flux2",
 		"gitops/other helmreleases":             "applied by Flux Kustomization gitops/edge",
 		"argo2/gen2 applications":               "owned by ApplicationSet/set2",
 		"setns2/genapp2 deployments":            "managed by Argo CD application gen2",
@@ -112,19 +114,29 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		{Source: "Flux ImageUpdateAutomation imaging/bump", Object: "ImageUpdateAutomation imaging/bump", Namespaces: []string{}, Reaches: commits, Blocks: true},
 		{Source: "Flux ImageRepository imaging/scan", Object: "ImageRepository imaging/scan", Namespaces: []string{}, Reaches: "it scans its image registry with the registry's credentials", Blocks: true},
 		{Source: "Flux Kustomization flux2/flux2", Object: "Kustomization flux2/flux2", Namespaces: []string{}, Outside: []string{
-			"ImageUpdateAutomation botns/gitbump (" + commits + ")", "ImageUpdateAutomation flux2/autobump (" + commits + ")", "Provider flux2/f2chat (" + sends + ")"}, Blocks: true},
+			"ImageUpdateAutomation botns/gitbump (" + commits + ")", "ImageUpdateAutomation flux2/autobump (" + commits + ")",
+			"OCIRepository flux2/oci (it pulls its artifact from its OCI registry with the source's credentials)", "Provider flux2/f2chat (" + sends + ")"}, Blocks: true},
+		// Flux's sources that fetch, made by hand.
+		{Source: "Flux HelmRepository imaging/charts", Object: "HelmRepository imaging/charts", Namespaces: []string{}, Reaches: "it fetches its chart repository or registry with the source's credentials", Blocks: true},
+		{Source: "Flux Bucket imaging/store", Object: "Bucket imaging/store", Namespaces: []string{}, Reaches: "it fetches from its storage bucket with the source's credentials", Blocks: true},
 		{Source: "Flux notification Provider imaging/chat", Object: "Provider imaging/chat", Namespaces: []string{}, Reaches: sends, Blocks: true},
 		{Source: "Flux notification Receiver imaging/hook", Object: "Receiver imaging/hook", Namespaces: []string{}, Reaches: "it takes webhooks from outside, which have the sources it names reconcile", Blocks: true},
 	}
 	holdOutside := []kube.ScopeEntry{
-		{Namespaces: []string{"imaging"}, Hold: true, Objects: []string{"ImageUpdateAutomation/bump", "ImageRepository/images", "ImageRepository/scan", "Provider/chat", "Alert/alerts", "Receiver/hook"}},
+		{Namespaces: []string{"imaging"}, Hold: true, Objects: []string{"ImageUpdateAutomation/bump", "ImageRepository/images", "ImageRepository/scan", "Provider/chat", "Alert/alerts", "Receiver/hook", "HelmRepository/charts", "Bucket/store"}},
 		{Namespaces: []string{"flux2"}, Hold: true, Objects: []string{"Kustomization/flux2"}},
 	}
-	with := func(l ...kube.ScopeSource) []kube.ScopeSource {
+	// The GitRepository the root reads fetches too: brought not held in
+	// every scope that does not narrow its namespace.
+	gitRoot := kube.ScopeSource{Source: "Flux GitRepository gitops/root", Object: "GitRepository gitops/root", Namespaces: []string{}, Reaches: "it fetches its Git repository with the source's credentials", Blocks: true}
+	withRootHeld := func(l ...kube.ScopeSource) []kube.ScopeSource {
 		out := append(append([]kube.ScopeSource{}, l...), outside...)
 		sort.Slice(out, func(i, j int) bool { return out[i].Object < out[j].Object })
 		return out
 	}
+	with := func(l ...kube.ScopeSource) []kube.ScopeSource { return withRootHeld(append(l, gitRoot)...) }
+	gitRootAccepted := gitRoot
+	gitRootAccepted.Accepted, gitRootAccepted.Blocks = true, false
 	entries := func(es ...kube.ScopeEntry) []kube.ScopeEntry { return es }
 	shopHeld := []kube.ScopeEntry{
 		{Namespaces: []string{"shop"}, Releases: []string{"web"}, Hold: true},
@@ -150,10 +162,10 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		// and is not named.
 		{"root brought unheld beside a hold", kube.Scope{Narrow: shopHeld}, with(root), ""},
 		// Held, it makes nothing: not refused.
-		{"root held", kube.Scope{Narrow: append(entries(shopHeld...), holdRoot)}, with(), "Kustomization gitops/root: suspended"},
+		{"root held", kube.Scope{Narrow: append(entries(shopHeld...), holdRoot)}, withRootHeld(), "Kustomization gitops/root: suspended"},
 		// Left out by the scope (its namespace narrowed, and it not
 		// chosen), it is not brought, and makes nothing.
-		{"root left out by the scope", kube.Scope{Narrow: append(entries(shopHeld...), kube.ScopeEntry{Namespaces: []string{"gitops"}, Hold: true, Objects: []string{"GitRepository/root"}})}, with(), ""},
+		{"root left out by the scope", kube.Scope{Narrow: append(entries(shopHeld...), kube.ScopeEntry{Namespaces: []string{"gitops"}, Hold: true, Objects: []string{"GitRepository/root"}})}, withRootHeld(), "GitRepository gitops/root: suspended"},
 		// Accepted by name: listed, and not refused.
 		{"root accepted", kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"Kustomization/gitops/root"}}, with(accepted), ""},
 		// An Argo CD application that manages itself.
@@ -185,7 +197,9 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		// narrow are not refused: the root and the Kustomization of edge
 		// are brought not held, and apply into shop, store and edge, none
 		// of which this scope narrows.
-		{"sources applying only where the scope does not narrow", kube.Scope{Narrow: append(entries(fleetHeld, holdApps), holdOutside...)}, []kube.ScopeSource{}, ""},
+		// The root's GitRepository is brought too, and fetches: accepted
+		// by name, it is listed and not refused.
+		{"sources applying only where the scope does not narrow", kube.Scope{Narrow: append(entries(fleetHeld, holdApps), holdOutside...), SourcesRunning: []string{"GitRepository/gitops/root"}}, []kube.ScopeSource{gitRootAccepted}, ""},
 		// A scope that holds nothing is not affected, though the root
 		// still makes what it makes there (stillMade says so).
 		{"a scope that holds nothing", kube.Scope{Narrow: []kube.ScopeEntry{{Namespaces: []string{"shop"}, Releases: []string{"web"}}}}, []kube.ScopeSource{}, ""},

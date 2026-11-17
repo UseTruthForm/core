@@ -19,9 +19,10 @@ import (
 // runners are the kinds that run under a hold when brought not held: the
 // GitOps sources that apply (by their kind as a reason names one), and
 // Flux's objects that act outside the cluster, with what they do there.
-// Not Flux's ImagePolicy, which only chooses a tag from what an
-// ImageRepository found, nor the sources that only read (GitRepository,
-// OCIRepository, HelmRepository).
+// Flux's sources that fetch count among them: they reach real Git hosts,
+// registries and buckets with the source's credentials. Not Flux's
+// ImagePolicy, which only chooses a tag from what an ImageRepository
+// found.
 var runners = []struct{ group, kind, resource, name, reaches string }{
 	{"kustomize.toolkit.fluxcd.io", "Kustomization", "kustomizations", "Flux Kustomization", ""},
 	{"helm.toolkit.fluxcd.io", "HelmRelease", "helmreleases", "Flux HelmRelease", ""},
@@ -32,6 +33,10 @@ var runners = []struct{ group, kind, resource, name, reaches string }{
 	{"notification.toolkit.fluxcd.io", "Provider", "providers", "Flux notification Provider", "it sends what it is given to its chat, webhook or Git host"},
 	{"notification.toolkit.fluxcd.io", "Alert", "alerts", "Flux notification Alert", "it sends the cluster's events to its Provider"},
 	{"notification.toolkit.fluxcd.io", "Receiver", "receivers", "Flux notification Receiver", "it takes webhooks from outside, which have the sources it names reconcile"},
+	{"source.toolkit.fluxcd.io", "GitRepository", "gitrepositories", "Flux GitRepository", "it fetches its Git repository with the source's credentials"},
+	{"source.toolkit.fluxcd.io", "HelmRepository", "helmrepositories", "Flux HelmRepository", "it fetches its chart repository or registry with the source's credentials"},
+	{"source.toolkit.fluxcd.io", "OCIRepository", "ocirepositories", "Flux OCIRepository", "it pulls its artifact from its OCI registry with the source's credentials"},
+	{"source.toolkit.fluxcd.io", "Bucket", "buckets", "Flux Bucket", "it fetches from its storage bucket with the source's credentials"},
 }
 
 // runner is what of an object brought not held runs under a hold: a

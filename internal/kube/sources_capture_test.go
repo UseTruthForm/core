@@ -113,7 +113,6 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 	// ImagePolicy, which only chooses a tag.
 	const commits, sends = "it commits and pushes image updates to its Git repository", "it sends what it is given to its chat, webhook or Git host"
 	pulls := "it pulls its chart from the chart source's repository or registry with that source's credentials"
-	ociRepo := kube.ScopeSource{Source: "Flux HelmRepository charts/ocirepo", Object: "HelmRepository charts/ocirepo", Namespaces: []string{}, Reaches: "it fetches its chart repository or registry with the source's credentials", Blocks: true}
 	appRelease := kube.ScopeSource{Source: "Flux HelmRelease apprel/app", Object: "HelmRelease apprel/app", Namespaces: []string{}, Outside: []string{"HelmChart charts/apprel-app (" + pulls + ")"}, Blocks: true}
 	manualChart := kube.ScopeSource{Source: "Flux HelmChart charts/manual", Object: "HelmChart charts/manual", Namespaces: []string{}, Reaches: pulls, Blocks: true}
 	outside := []kube.ScopeSource{
@@ -126,10 +125,12 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		// Flux's sources that fetch, made by hand.
 		{Source: "Flux HelmRepository imaging/charts", Object: "HelmRepository imaging/charts", Namespaces: []string{}, Reaches: "it fetches its chart repository or registry with the source's credentials", Blocks: true},
 		{Source: "Flux Bucket imaging/store", Object: "Bucket imaging/store", Namespaces: []string{}, Reaches: "it fetches from its storage bucket with the source's credentials", Blocks: true},
-		// A HelmRepository of type oci, the HelmRelease made of it, for
-		// the HelmChart helm-controller made for it (skipped, rendered by
-		// it), and a HelmChart made by hand.
-		ociRepo, appRelease, manualChart,
+		// The HelmRelease made of a HelmRepository of type oci, for the
+		// HelmChart helm-controller made for it (skipped, rendered by it),
+		// and a HelmChart made by hand. The HelmRepository of type oci is
+		// brought not held in every row, and is never refused:
+		// source-controller makes it static and never fetches with it.
+		appRelease, manualChart,
 		{Source: "Flux notification Provider imaging/chat", Object: "Provider imaging/chat", Namespaces: []string{}, Reaches: sends, Blocks: true},
 		{Source: "Flux notification Receiver imaging/hook", Object: "Receiver imaging/hook", Namespaces: []string{}, Reaches: "it takes webhooks from outside, which have the sources it names reconcile", Blocks: true},
 	}
@@ -210,9 +211,13 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		// What acts outside, held: nothing is refused.
 		// The HelmRepository of type oci held, and its HelmRelease not:
 		// the release is refused for the HelmChart it makes, which pulls
-		// (and for charts, now narrowed, where that chart is).
+		// (and for charts, now narrowed, where that chart is). The hold of
+		// the repository stops nothing, and the plan says so.
 		{"oci HelmRepository held, its release not", kube.Scope{Narrow: append(entries(shopHeld...), holdCharts)},
-			drop(with(root), []string{"HelmRepository charts/ocirepo", "HelmChart charts/manual", "HelmRelease apprel/app"},
+			drop(with(root), []string{"HelmChart charts/manual", "HelmRelease apprel/app"},
+				kube.ScopeSource{Source: appRelease.Source, Object: appRelease.Object, Namespaces: []string{"charts"}, Outside: appRelease.Outside, Blocks: true}), "HelmRepository charts/ocirepo: suspended (a HelmRepository of type oci fetches nothing; its HelmCharts pull)"},
+		{"oci HelmRepository held, the chart made by hand with it", kube.Scope{Narrow: append(entries(shopHeld...), holdCharts)},
+			drop(with(root), []string{"HelmChart charts/manual", "HelmRelease apprel/app"},
 				kube.ScopeSource{Source: appRelease.Source, Object: appRelease.Object, Namespaces: []string{"charts"}, Outside: appRelease.Outside, Blocks: true}), "HelmChart charts/manual: suspended"},
 		// The release held: helm-controller does not reconcile a
 		// suspended one, so it makes no chart, and it is not refused.
@@ -293,6 +298,11 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		{kube.Scope{SourcesRunning: []string{"Kustomization/gitops/root"}}, "has sourcesRunning and narrows nothing"},
 		// What a source applies is not brought: the error names the source.
 		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"ImageUpdateAutomation/flux2/autobump"}}, "is not brought: it is applied by Flux Kustomization flux2/flux2, which makes it again once it runs. Name that in sourcesRunning (Kustomization/flux2/flux2), or hold it"},
+		// A HelmChart is made by its HelmRelease, not applied.
+		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"HelmChart/charts/apprel-app"}}, "is not brought: it is made by Flux HelmRelease apprel/app, which makes it again once it runs. Name that in sourcesRunning (HelmRelease/apprel/app), or hold it"},
+		// A HelmRepository of type oci is never refused, so there is
+		// nothing to accept.
+		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"HelmRepository/charts/ocirepo"}}, "no such object is brought not held"},
 		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"ImageUpdateAutomation/flux2/auto"}}, "no such object is brought not held"},
 	} {
 		if _, _, err := kube.Narrow(snap, bad.sc); err == nil || !strings.Contains(err.Error(), bad.want) {

@@ -1080,9 +1080,15 @@ a tag from what an `ImageRepository` found, and is not refused.
 **A `HelmChart` is what pulls a chart.** helm-controller makes one for
 each `HelmRelease`, in the chart source's namespace, and source-controller
 pulls with it from the chart source's repository or registry, with that
-source's credentials. A `HelmRepository` of `type: oci` is not reconciled
-at all: refusing one is harmless, but holding it stops nothing, since its
-`HelmChart`s do the pulling. So:
+source's credentials. **A `HelmRepository` of `type: oci` fetches
+nothing**: source-controller makes it static and never reads from it, and
+its `HelmChart`s do the pulling. So one that is brought not held is not
+refused, and there is nothing to accept under `sourcesRunning`. Held, it
+is suspended and listed as held, with a word that this stops nothing:
+hold its `HelmChart`s, or the `HelmRelease`s that make them. One the
+capture left to a source (applied by a Kustomization) is not in the
+snapshot, and its type with it: it counts as one that fetches, and the
+source that applies it is refused for it. So:
 
 - the `HelmChart` helm-controller made is skipped by the capture
   (rendered by its `HelmRelease`), and a restore does not bring it: the

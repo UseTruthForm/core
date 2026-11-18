@@ -150,6 +150,14 @@ func scopeNotes(rep kube.ScopeReport) []string {
 // something, refuses a restore.
 const sourceWhy = "a drill target that syncs the source's Git path starts what the scope held back, and anything in it that reaches outside (image automation, notifications) acts for real"
 
+// helmWhy is why a HelmRelease brought not held, in a scope that holds
+// something, refuses a restore.
+const helmWhy = "it installs its chart, whose HelmChart pulls from the chart source's repository or registry with that source's credentials, and what the chart installs runs, whatever the scope held back"
+
+// isRelease says whether a source is a Flux HelmRelease, which installs
+// and makes its chart rather than applying a Git path.
+func isRelease(src kube.ScopeSource) bool { return strings.HasPrefix(src.Source, "Flux HelmRelease ") }
+
 // sourceOut is why an object that acts outside the cluster, brought not
 // held in a scope that holds something, refuses a restore.
 const sourceOut = "in a drill target it acts for real, with the source's settings"
@@ -169,19 +177,27 @@ func sourceNote(src kube.ScopeSource) string {
 	if src.Reaches != "" {
 		return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses: %s, and %s. %s", src.Source, src.Reaches, sourceOut, how)
 	}
-	return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses; once it runs it %s: %s. %s", src.Source, appliesWhat(src), sourceWhy, how)
+	why := sourceWhy
+	if isRelease(src) {
+		why = helmWhy
+	}
+	return fmt.Sprintf("%s is brought, and not held, though the scope holds what it chooses; once it runs it %s: %s. %s", src.Source, appliesWhat(src), why, how)
 }
 
 // appliesWhat is what a source brought not held applies that a scope
 // which holds something refuses it for: into the namespaces it narrows,
 // and what acts outside, wherever that is.
 func appliesWhat(src kube.ScopeSource) string {
+	into, makes := "applies into ", "applies what acts outside the cluster, "
+	if isRelease(src) {
+		into, makes = "installs into ", "makes what acts outside the cluster, "
+	}
 	var l []string
 	if len(src.Namespaces) > 0 {
-		l = append(l, "applies into "+strings.Join(src.Namespaces, ", ")+", which the scope narrows")
+		l = append(l, into+strings.Join(src.Namespaces, ", ")+", which the scope narrows")
 	}
 	if len(src.Outside) > 0 {
-		l = append(l, "applies what acts outside the cluster, "+strings.Join(src.Outside, ", ")+", which the restore does not bring and the source makes again")
+		l = append(l, makes+strings.Join(src.Outside, ", ")+", which the restore does not bring and the source makes again")
 	}
 	return strings.Join(l, ", and ")
 }
@@ -203,12 +219,16 @@ func blockingSources(srcs []kube.ScopeSource) []string {
 		case src.Reaches != "":
 			out = append(out, fmt.Sprintf("%s (%s)", src.Source, src.Reaches))
 		default:
+			into, makes := "applies into ", "applies "
+			if isRelease(src) {
+				into, makes = "installs into ", "makes "
+			}
 			var l []string
 			if len(src.Namespaces) > 0 {
-				l = append(l, "applies into "+strings.Join(src.Namespaces, ", "))
+				l = append(l, into+strings.Join(src.Namespaces, ", "))
 			}
 			if len(src.Outside) > 0 {
-				l = append(l, "applies "+strings.Join(src.Outside, ", "))
+				l = append(l, makes+strings.Join(src.Outside, ", "))
 			}
 			out = append(out, src.Source+" "+strings.Join(l, " and "))
 		}
@@ -234,7 +254,14 @@ func refusedForSources(scopeFile string) error {
 	if len(b) == 1 {
 		n = "object is brought, not held, by a scope that holds what it chooses, and would run"
 	}
-	return fmt.Errorf("%d %s: %s. Once a GitOps source runs, %s; what acts outside, %s. Hold each (an entry with hold: true that brings its object), leave it out (--leave-out), or accept it by naming it as Kind/namespace/name under sourcesRunning in %s. %s", len(b), n, strings.Join(b, "; "), sourceWhy, sourceOut, scopeFile, trackingNote)
+	why := sourceWhy
+	for _, src := range scopeDone.Sources {
+		if src.Blocks && isRelease(src) {
+			why += "; a HelmRelease, once it runs: " + helmWhy
+			break
+		}
+	}
+	return fmt.Errorf("%d %s: %s. Once a GitOps source runs, %s; what acts outside, %s. Hold each (an entry with hold: true that brings its object), leave it out (--leave-out), or accept it by naming it as Kind/namespace/name under sourcesRunning in %s. %s", len(b), n, strings.Join(b, "; "), why, sourceOut, scopeFile, trackingNote)
 }
 
 // sourcesBlocked are the sources a restore was refused for, for the

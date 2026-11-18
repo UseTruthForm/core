@@ -242,3 +242,84 @@ func TestSourceNoteOfWhatActsOutside(t *testing.T) {
 		t.Errorf("as the refusal lists a source that only applies what acts outside: %q", b)
 	}
 }
+
+// A HelmRepository of type oci fetches nothing (source-controller makes
+// it static), so a scope that holds something and brings one not held is
+// not refused for it: check exits 0, and a restore goes on. One of the
+// default type fetches its index, and is refused. Held, the plan says it
+// was suspended, and that this stops nothing.
+func TestAnOCIHelmRepositoryIsNotRefused(t *testing.T) {
+	if captureOnly {
+		t.Skip("a restore, which the capture-only build refuses")
+	}
+	write := func(spec map[string]any) string {
+		web := elsewhereObject("apps/v1", "Deployment", "shop", "web", map[string]any{"spec": map[string]any{"replicas": float64(1),
+			"template": map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"name": "app", "image": "x"}}}}}})
+		web.Body["metadata"].(map[string]any)["annotations"] = map[string]any{"meta.helm.sh/release-name": "web", "meta.helm.sh/release-namespace": "shop"}
+		s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Objects: []snapshot.Object{
+			elsewhereObject("v1", "Namespace", "", "shop", nil), elsewhereObject("v1", "Namespace", "", "charts", nil), web,
+			elsewhereObject("source.toolkit.fluxcd.io/v1", "HelmRepository", "charts", "ocirepo", map[string]any{"spec": spec}),
+		}}
+		dir := filepath.Join(t.TempDir(), "cluster")
+		if err := s.Write(dir); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	files := t.TempDir()
+	scope := writeFile(t, files, "scope.yaml", "narrow: [{namespaces: [shop], releases: [web], hold: true}]\n")
+	held := writeFile(t, files, "held.yaml", "narrow: [{namespaces: [shop], releases: [web], hold: true}, {namespaces: [charts], hold: true, objects: [HelmRepository/ocirepo]}]\n")
+	restoreOf := func(dir string) error {
+		lastErr = nil
+		restore(context.Background(), []string{"--kubeconfig", filepath.Join(files, "no-such-kubeconfig"), "--context", "none", "--from", dir, "--scope", scope})
+		return lastErr
+	}
+
+	oci := write(map[string]any{"type": "oci", "url": "oci://example.invalid/charts"})
+	if code, stdout, _ := output(t, func() int { return planScope([]string{"--from", oci, "--check", scope}) }); code != 0 || strings.Contains(stdout, "Flux HelmRepository") {
+		t.Errorf("plan scope --check, an oci HelmRepository: exit %d\n%s", code, stdout)
+	}
+	if err := restoreOf(oci); err == nil || strings.Contains(err.Error(), "brought, not held") || !strings.Contains(err.Error(), "no-such-kubeconfig") {
+		t.Errorf("restore, an oci HelmRepository: %v", err)
+	}
+	if code, stdout, _ := output(t, func() int { return planScope([]string{"--from", oci, "--check", held}) }); code != 0 || !strings.Contains(stdout, "HelmRepository charts/ocirepo: suspended (a HelmRepository of type oci fetches nothing; its HelmCharts pull)") {
+		t.Errorf("plan scope --check, an oci HelmRepository held: exit %d\n%s", code, stdout)
+	}
+
+	index := write(map[string]any{"url": "https://example.invalid/charts"})
+	if code, stdout, _ := output(t, func() int { return planScope([]string{"--from", index, "--check", scope}) }); code != 2 || !strings.Contains(stdout, "NOTE: Flux HelmRepository charts/ocirepo is brought, and not held") {
+		t.Errorf("plan scope --check, a HelmRepository of the default type: exit %d\n%s", code, stdout)
+	}
+	if err := restoreOf(index); err == nil || !strings.Contains(err.Error(), "Flux HelmRepository charts/ocirepo (it fetches") {
+		t.Errorf("restore, a HelmRepository of the default type: %v", err)
+	}
+}
+
+// A HelmRelease installs its chart and makes its HelmChart: said so, not
+// as a Git path synced.
+func TestSourceNoteOfAHelmRelease(t *testing.T) {
+	rel := kube.ScopeSource{Source: "Flux HelmRelease apprel/app", Object: "HelmRelease apprel/app", Namespaces: []string{"shop"},
+		Outside: []string{"HelmChart charts/apprel-app (it pulls)"}, Blocks: true}
+	n := sourceNote(rel)
+	for _, want := range []string{"installs into shop, which the scope narrows", "makes what acts outside the cluster, HelmChart charts/apprel-app (it pulls)", "installs its chart, whose HelmChart pulls from the chart source's repository or registry"} {
+		if !strings.Contains(n, want) {
+			t.Errorf("the note of a HelmRelease does not say %q: %s", want, n)
+		}
+	}
+	if strings.Contains(n, "Git path") || strings.Contains(n, "applies") {
+		t.Errorf("the note of a HelmRelease speaks of applying: %s", n)
+	}
+	if b := blockingSources([]kube.ScopeSource{rel}); len(b) != 1 || b[0] != "Flux HelmRelease apprel/app installs into shop and makes HelmChart charts/apprel-app (it pulls)" {
+		t.Errorf("as the refusal lists a HelmRelease: %q", b)
+	}
+	was := scopeDone
+	defer func() { scopeDone = was }()
+	scopeDone = &kube.ScopeReport{Sources: []kube.ScopeSource{rel}}
+	if err := refusedForSources("s.yaml"); err == nil || !strings.Contains(err.Error(), "a HelmRelease, once it runs: it installs its chart") {
+		t.Errorf("the refusal of a HelmRelease: %v", err)
+	}
+	scopeDone = &kube.ScopeReport{Sources: []kube.ScopeSource{{Source: "Flux Kustomization gitops/root", Object: "Kustomization gitops/root", Namespaces: []string{"shop"}, Blocks: true}}}
+	if err := refusedForSources("s.yaml"); err == nil || strings.Contains(err.Error(), "a HelmRelease") {
+		t.Errorf("the refusal of no HelmRelease speaks of one: %v", err)
+	}
+}

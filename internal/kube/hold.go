@@ -104,6 +104,10 @@ func held(o snapshot.Object) (out snapshot.Object, said, why string, unknown boo
 		return o, "", "a Pod runs as soon as it is restored, and nothing holds one", false
 	case group == "argoproj.io" && o.Kind() == "Workflow", group == "tekton.dev" && (o.Kind() == "PipelineRun" || o.Kind() == "TaskRun"):
 		return o, "", "it runs as soon as it is restored, and nothing holds one", false
+	case staticRepo(o):
+		// Suspended as the hold asks, and listed, so that a diff given
+		// the same file expects it: it fetched nothing before either.
+		how, said = suspend, "suspended (a HelmRepository of type oci fetches nothing; its HelmCharts pull)"
 	case strings.HasSuffix(group, ".toolkit.fluxcd.io") && spec != nil:
 		// A Flux source or what applies one: suspended, it makes nothing.
 		how, said = suspend, "suspended"

@@ -51,12 +51,26 @@ var runners = []struct{ group, kind, resource, name, reaches string }{
 // does there.
 func runner(o snapshot.Object) (kind, reaches string, ok bool) {
 	group, _, _ := strings.Cut(o.APIVersion(), "/")
+	if staticRepo(o) {
+		return "", "", false
+	}
 	for _, r := range runners {
 		if r.group == group && r.kind == o.Kind() {
 			return r.name, r.reaches, true
 		}
 	}
 	return "", "", false
+}
+
+// staticRepo reports a HelmRepository of type oci: source-controller
+// makes it static and never fetches with it (migrationToStatic returns
+// before reconcileSource). Its HelmCharts pull, and are what is refused.
+// One the capture left to a source has no spec in the snapshot, so its
+// type is not known there, and it counts as one that fetches.
+func staticRepo(o snapshot.Object) bool {
+	group, _, _ := strings.Cut(o.APIVersion(), "/")
+	spec, _ := o.Body["spec"].(map[string]any)
+	return group == "source.toolkit.fluxcd.io" && o.Kind() == "HelmRepository" && strOf(spec["type"]) == "oci"
 }
 
 // outsideSkip is, for a skip of what acts outside (one a source applies,
@@ -362,7 +376,13 @@ func acceptSources(found []ScopeSource, accept []string) error {
 			for _, f := range found {
 				for _, o := range f.Outside {
 					if strings.HasPrefix(o, who+" (") {
-						return fmt.Errorf("sourcesRunning names %q, which is not brought: it is applied by %s, which makes it again once it runs. Name that in sourcesRunning (%s), or hold it", p, f.Source, strings.Replace(f.Object, " ", "/", 1))
+						// A HelmRelease makes its chart; a Kustomization or
+						// an application applies what it applies.
+						by := "applied"
+						if strings.HasPrefix(f.Source, "Flux HelmRelease ") {
+							by = "made"
+						}
+						return fmt.Errorf("sourcesRunning names %q, which is not brought: it is %s by %s, which makes it again once it runs. Name that in sourcesRunning (%s), or hold it", p, by, f.Source, strings.Replace(f.Object, " ", "/", 1))
 					}
 				}
 			}

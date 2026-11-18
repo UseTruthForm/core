@@ -28,6 +28,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -89,35 +90,65 @@ func Start(t *testing.T, name string) *Server {
 		t.Skip(msg)
 	}
 
-	dir := t.TempDir()
-	etcdClient, etcdPeer, apiPort := freePort(t), freePort(t), freePort(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	var logs bytes.Buffer
-
-	etcd := exec.CommandContext(ctx, etcdBin,
-		"--data-dir", filepath.Join(dir, "etcd"),
-		"--listen-client-urls", "http://127.0.0.1:"+strconv.Itoa(etcdClient),
-		"--advertise-client-urls", "http://127.0.0.1:"+strconv.Itoa(etcdClient),
-		"--listen-peer-urls", "http://127.0.0.1:"+strconv.Itoa(etcdPeer),
-		"--unsafe-no-fsync",
-	)
-	etcd.Stdout, etcd.Stderr = &logs, &logs
-	if err := etcd.Start(); err != nil {
-		cancel()
-		t.Fatalf("start etcd: %v", err)
+	s, err := start(name, etcdBin, apiBin, t.TempDir(), readyTimeout)
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(s.stop)
+	return s
+}
 
+// readyTimeout is how long etcd and kube-apiserver together have to start.
+const readyTimeout = 60 * time.Second
+
+// start launches the two and waits for both to answer. A failure says which
+// stage it reached and what each process was doing: under load (a full
+// parallel run on Windows) a start once failed only with "API server never
+// became ready" and empty logs, which told nothing of why.
+func start(name, etcdBin, apiBin, dir string, timeout time.Duration) (*Server, error) {
+	deadline := time.Now().Add(timeout)
+	etcdClient, err := freePort()
+	if err != nil {
+		return nil, err
+	}
+	etcdPeer, err := freePort()
+	if err != nil {
+		return nil, err
+	}
+	apiPort, err := freePort()
+	if err != nil {
+		return nil, err
+	}
 	saKey := filepath.Join(dir, "sa.key")
-	writeKey(t, saKey)
-	token := randomHex(t)
+	if err := writeKey(saKey); err != nil {
+		return nil, err
+	}
+	token, err := randomHex()
+	if err != nil {
+		return nil, err
+	}
 	tokens := filepath.Join(dir, "tokens.csv")
 	// A static admin token in system:masters: enough authority for a test
 	// cluster, and no client certificates to generate.
 	if err := os.WriteFile(tokens, []byte(token+",truthform-test,truthform-test,system:masters\n"), 0o600); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	api := exec.CommandContext(ctx, apiBin,
-		"--etcd-servers", "http://127.0.0.1:"+strconv.Itoa(etcdClient),
+
+	ctx, cancel := context.WithCancel(context.Background())
+	etcdURL := "http://127.0.0.1:" + strconv.Itoa(etcdClient)
+	etcd, err := launch(ctx, "etcd", etcdBin,
+		"--data-dir", filepath.Join(dir, "etcd"),
+		"--listen-client-urls", etcdURL,
+		"--advertise-client-urls", etcdURL,
+		"--listen-peer-urls", "http://127.0.0.1:"+strconv.Itoa(etcdPeer),
+		"--unsafe-no-fsync",
+	)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	api, err := launch(ctx, "kube-apiserver", apiBin,
+		"--etcd-servers", etcdURL,
 		"--bind-address", "127.0.0.1",
 		"--secure-port", strconv.Itoa(apiPort),
 		"--cert-dir", filepath.Join(dir, "certs"), // self-signed serving cert
@@ -130,30 +161,38 @@ func Start(t *testing.T, name string) *Server {
 		"--disable-admission-plugins", "ServiceAccount",
 		"--allow-privileged",
 	)
-	api.Stdout, api.Stderr = &logs, &logs
-	if err := api.Start(); err != nil {
-		cancel()
-		t.Fatalf("start kube-apiserver: %v", err)
-	}
-	// Should this binary be killed, a watcher stops the two.
-	dismiss, err := watch(api.Process.Pid, etcd.Process.Pid)
 	if err != nil {
 		cancel()
-		t.Fatalf("start the watcher of the API server: %v", err)
+		<-etcd.done
+		return nil, err
+	}
+	// Should this binary be killed, a watcher stops the two.
+	dismiss, err := watch(api.cmd.Process.Pid, etcd.cmd.Process.Pid)
+	if err != nil {
+		cancel()
+		<-api.done
+		<-etcd.done
+		return nil, fmt.Errorf("start the watcher of the API server: %w", err)
 	}
 	stop := func() {
 		cancel()
-		_ = api.Wait()
-		_ = etcd.Wait()
+		<-api.done
+		<-etcd.done
 		dismiss()
 	}
 
 	url := "https://127.0.0.1:" + strconv.Itoa(apiPort)
-	if err := waitReady(url, token, 60*time.Second); err != nil {
-		stop()
-		t.Fatalf("API server %s never became ready: %v\n--- logs ---\n%s", name, err, tail(logs.String(), 4000))
+	err = waitFor(deadline, "answered /health", httpOK(etcdURL+"/health", ""), etcd, api)
+	if err == nil {
+		err = waitFor(deadline, "answered /readyz", httpOK(url+"/readyz", token), api, etcd)
 	}
-	t.Cleanup(stop)
+	if err != nil {
+		// What each was doing is taken before stop, which ends both.
+		state := etcd.state() + "\n" + api.state()
+		stop()
+		return nil, fmt.Errorf("API server %s never became ready: %w\n%s\n--- etcd output ---\n%s\n--- kube-apiserver output ---\n%s",
+			name, err, state, etcd.out.tail(4000), api.out.tail(4000))
+	}
 
 	kc := filepath.Join(dir, "kubeconfig")
 	cfg := fmt.Sprintf(`apiVersion: v1
@@ -170,61 +209,177 @@ contexts:
 current-context: %[1]s
 `, name, url, token)
 	if err := os.WriteFile(kc, []byte(cfg), 0o600); err != nil {
-		t.Fatal(err)
+		stop()
+		return nil, err
 	}
-	return &Server{Kubeconfig: kc, Context: name, stop: stop}
+	return &Server{Kubeconfig: kc, Context: name, stop: stop}, nil
 }
 
-func waitReady(url, token string, timeout time.Duration) error {
-	// The serving certificate is self-signed per run; the test only ever talks
-	// to the process it just started on loopback.
-	client := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} //nolint:gosec
-	deadline := time.Now().Add(timeout)
-	var last error
-	for time.Now().Before(deadline) {
-		req, _ := http.NewRequest(http.MethodGet, url+"/readyz", nil)
-		req.Header.Set("Authorization", "Bearer "+token)
-		resp, err := client.Do(req)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
+// proc is one of the two processes: its output, and how it ended.
+type proc struct {
+	name    string
+	cmd     *exec.Cmd
+	out     output
+	started time.Time
+	done    chan struct{} // closed once it has exited
+	err     error         // how it exited, set before done closes
+	ended   time.Time
+}
+
+func launch(ctx context.Context, name, bin string, args ...string) (*proc, error) {
+	p := &proc{name: name, done: make(chan struct{})}
+	p.cmd = exec.CommandContext(ctx, bin, args...)
+	p.cmd.Stdout, p.cmd.Stderr = &p.out, &p.out
+	if err := p.cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start %s: %w", name, err)
+	}
+	p.started = time.Now()
+	go func() {
+		err := p.cmd.Wait()
+		p.err, p.ended = err, time.Now()
+		close(p.done)
+	}()
+	return p, nil
+}
+
+func (p *proc) exited() bool {
+	select {
+	case <-p.done:
+		return true
+	default:
+		return false
+	}
+}
+
+// how says how it exited: os/exec gives no error for a status of 0.
+func (p *proc) how() string {
+	if p.err == nil {
+		return "exit status 0"
+	}
+	return p.err.Error()
+}
+
+// state is a line on what it was doing: running or exited, and whether it
+// had written anything, and when it first did.
+func (p *proc) state() string {
+	n, first := p.out.written()
+	wrote := "no output"
+	if n > 0 {
+		wrote = fmt.Sprintf("%d bytes of output, the first after %.1fs", n, first.Sub(p.started).Seconds())
+	}
+	if p.exited() {
+		return fmt.Sprintf("%s: exited after %.1fs (%s), %s", p.name, p.ended.Sub(p.started).Seconds(), p.how(), wrote)
+	}
+	return fmt.Sprintf("%s: running for %.1fs, %s", p.name, time.Since(p.started).Seconds(), wrote)
+}
+
+// output is one process's standard output and error. Each process has one
+// of its own, and it is locked: os/exec copies output from a goroutine per
+// process, and two processes once wrote to one buffer at the same time.
+type output struct {
+	mu    sync.Mutex
+	b     bytes.Buffer
+	first time.Time
+}
+
+func (o *output) Write(b []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.first.IsZero() && len(b) > 0 {
+		o.first = time.Now()
+	}
+	return o.b.Write(b)
+}
+
+func (o *output) written() (int, time.Time) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.b.Len(), o.first
+}
+
+func (o *output) tail(n int) string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.b.Len() == 0 {
+		return "(none)"
+	}
+	return tail(o.b.String(), n)
+}
+
+// waitFor polls check until it passes or the deadline passes. A process
+// that exits meanwhile ends the wait at once: what has exited will not
+// start.
+func waitFor(deadline time.Time, stage string, check func() error, procs ...*proc) error {
+	for {
+		for _, p := range procs {
+			if p.exited() {
+				who := procs[0].name
+				if p == procs[0] {
+					who = "it"
+				}
+				return fmt.Errorf("%s exited (%s) before %s %s", p.name, p.how(), who, stage)
 			}
-			last = fmt.Errorf("readyz returned %d", resp.StatusCode)
-		} else {
-			last = err
+		}
+		err := check()
+		if err == nil {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("%s never %s: %w", procs[0].name, stage, err)
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return last
 }
 
-func freePort(t *testing.T) int {
+// httpOK checks that a GET of url answers 200.
+func httpOK(url, token string) func() error {
+	// The serving certificate is self-signed per run; the test only ever talks
+	// to the process it just started on loopback.
+	client := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} //nolint:gosec
+	return func() error {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("%s returned %d", url, resp.StatusCode)
+		}
+		return nil
+	}
+}
+
+func freePort() (int, error) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatal(err)
+		return 0, err
 	}
 	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
-func writeKey(t *testing.T, path string) {
+func writeKey(path string) error {
 	k, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	b := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)})
-	if err := os.WriteFile(path, b, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	return os.WriteFile(path, b, 0o600)
 }
 
-func randomHex(t *testing.T) string {
+func randomHex() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
 func tail(s string, n int) string {

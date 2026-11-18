@@ -64,7 +64,7 @@ func Connect(kubeconfig, kubeContext string, readOnly bool) (*Clients, error) {
 
 // Capture reads every capturable object in the cluster.
 func Capture(ctx context.Context, c *Clients, p Policy) (snapshot.Snapshot, error) {
-	snap := snapshot.Snapshot{Platform: "kubernetes", Policy: p.Name()}
+	snap := snapshot.Snapshot{Platform: "kubernetes", Policy: p.Name(), Rules: CaptureRules}
 	if v, err := c.Discovery.ServerVersion(); err == nil {
 		snap.ServerVersion = v.GitVersion
 	}
@@ -227,7 +227,7 @@ func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVers
 						continue
 					}
 					releases[key] = true
-					name = helmReleasePrefix + rel
+					name = helmReleasePrefix + rel + snapshot.HelmHistoryFamily
 				}
 				snap.Skips = append(snap.Skips, snapshot.Skip{
 					Resource: resourceID(gvr), Namespace: strOf(md["namespace"]), Name: name, Reason: reason,
@@ -368,7 +368,11 @@ func (o *ownership) record(snap *snapshot.Snapshot) {
 	}
 }
 
-const helmReleasePrefix = "sh.helm.release.v1."
+// helmReleasePrefix starts each Helm history Secret's name. A capture lists
+// a release's history once, as the prefix, the release's name and
+// snapshot.HelmHistoryFamily, with snapshot.HelmHistoryReason: a family, not
+// one Secret's name.
+const helmReleasePrefix = snapshot.HelmHistoryPrefix
 
 var helmHistoryRE = regexp.MustCompile(`^sh\.helm\.release\.v1\.(.+)\.v\d+$`)
 

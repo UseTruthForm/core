@@ -232,7 +232,7 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		return "provisioned by " + annotation(md, "pv.kubernetes.io/provisioned-by") + " for claim " +
 			strOf(claim["namespace"]) + "/" + strOf(claim["name"]) + "; recreated when the claim is restored. Volume DATA is not captured"
 	case group == "" && resource == "secrets" && strOf(obj["type"]) == "helm.sh/release.v1":
-		return "Helm release history; recreated when the release is installed again"
+		return snapshot.HelmHistoryReason
 	case annotation(md, "control-plane.alpha.kubernetes.io/leader") != "":
 		// Older controllers (Istio among them) keep leader election in a
 		// ConfigMap or Endpoints annotation that is rewritten every few
@@ -309,7 +309,7 @@ func controllerRef(md map[string]any) (kind, name, group string, ok bool) {
 }
 
 func ownedReason(kind, name string) string {
-	return "owned by " + kind + "/" + name + ", whose controller recreates it"
+	return snapshot.OwnedReason(kind, name)
 }
 
 // aksOwn reports what AKS labels as its own.
@@ -317,6 +317,14 @@ func aksOwn(md map[string]any) bool {
 	labels, _ := md["labels"].(map[string]any)
 	return strOf(labels["kubernetes.azure.com/managedby"]) == "aks"
 }
+
+// CaptureRules is the version of the rules for what a Kubernetes capture
+// leaves out and why, written to every snapshot (snapshot.Snapshot.Rules).
+// Raise snapshot.KubernetesCaptureRules with any change to what skipReason,
+// renderedBy, root or selfApplied decide: a build then refuses a snapshot
+// under rules newer than its own, and compare can say where a difference
+// may come from an older build's.
+const CaptureRules = snapshot.KubernetesCaptureRules
 
 // root reports whether a rendered object is where GitOps starts: a source
 // that applies itself (the Kustomization "flux bootstrap" makes, an Argo
@@ -357,21 +365,22 @@ func selfApplied(obj map[string]any) bool {
 }
 
 // renderedBy reports which higher-level source applied an object, from the
-// labels those tools stamp on everything they create, or "".
+// labels those tools stamp on everything they create, or "". A change to
+// what it decides is a change of capture rules (CaptureRules).
 func renderedBy(md map[string]any) string {
 	labels, _ := md["labels"].(map[string]any)
 	l := func(k string) string { return strOf(labels[k]) }
 	switch {
 	case l("helm.toolkit.fluxcd.io/name") != "":
-		return "rendered by Flux HelmRelease " + l("helm.toolkit.fluxcd.io/namespace") + "/" + l("helm.toolkit.fluxcd.io/name") + "; restoring the HelmRelease recreates it"
+		return snapshot.FluxHelmReleaseReason(l("helm.toolkit.fluxcd.io/namespace"), l("helm.toolkit.fluxcd.io/name"))
 	case l("kustomize.toolkit.fluxcd.io/name") != "":
-		return "applied by Flux Kustomization " + l("kustomize.toolkit.fluxcd.io/namespace") + "/" + l("kustomize.toolkit.fluxcd.io/name") + "; restoring it recreates this"
+		return snapshot.FluxKustomizationReason(l("kustomize.toolkit.fluxcd.io/namespace"), l("kustomize.toolkit.fluxcd.io/name"))
 	case l("argocd.argoproj.io/instance") != "" || annotation(md, "argocd.argoproj.io/tracking-id") != "":
 		app := l("argocd.argoproj.io/instance")
 		if app == "" {
 			app = strings.SplitN(annotation(md, "argocd.argoproj.io/tracking-id"), ":", 2)[0]
 		}
-		return "managed by Argo CD application " + app + "; restoring the application recreates it"
+		return snapshot.ArgoCDReason(app)
 	case l("crossplane.io/composite") != "":
 		return "composed by Crossplane composite " + l("crossplane.io/composite") + "; restoring the composite recreates it"
 	}

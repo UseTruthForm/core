@@ -290,6 +290,70 @@ func TestSkipNamesRoundTrip(t *testing.T) {
 	}
 }
 
+// The capture rules are in the manifest, outside the digest: the same
+// files under another version have the same digest, a snapshot from before
+// they were recorded reads as 0, and one with them reads them back.
+func TestRulesAreOutsideTheDigest(t *testing.T) {
+	s := Snapshot{Platform: "kubernetes", Policy: "default", Coverage: []Coverage{{Resource: "core/v1/configmaps", Kind: "ConfigMap", Captured: 1}},
+		Objects: []Object{{Body: map[string]any{"apiVersion": "v1", "kind": "ConfigMap", "metadata": map[string]any{"name": "cfg", "namespace": "shop"}}}}}
+	none, with := t.TempDir(), t.TempDir()
+	if err := s.Write(none); err != nil {
+		t.Fatal(err)
+	}
+	s.Rules = KubernetesCaptureRules
+	if err := s.Write(with); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := Digest(none)
+	b, _ := Digest(with)
+	if a != b || a == "" {
+		t.Errorf("digest %s without rules, %s with", a, b)
+	}
+	m, _ := os.ReadFile(filepath.Join(none, "snapshot.yaml"))
+	if strings.Contains(string(m), "rules") {
+		t.Errorf("a manifest without rules says some:\n%s", m)
+	}
+	for dir, want := range map[string]int{none: 0, with: KubernetesCaptureRules} {
+		got, err := Read(dir)
+		if err != nil || got.Rules != want {
+			t.Errorf("%s: rules %d, want %d (%v)", dir, got.Rules, want, err)
+		}
+	}
+}
+
+// A snapshot's capture rules are checked on read: a negative version is
+// refused, and so is one above what this build knows for the platform,
+// naming what reads it; up to that, and none, are read.
+func TestRulesAreChecked(t *testing.T) {
+	for _, c := range []struct {
+		platform string
+		rules    int
+		err      string
+	}{
+		{"kubernetes", 0, ""},
+		{"kubernetes", KubernetesCaptureRules, ""},
+		{"kubernetes", KubernetesCaptureRules + 1, "captured under kubernetes capture rules 3, and this build knows up to 2: read it with a newer TruthForm"},
+		{"kubernetes", -1, "capture rules -1 is not a version"},
+		{"azure", 0, ""},
+		{"azure", AzureCaptureRules, ""},
+		{"azure", AzureCaptureRules + 1, "captured under azure capture rules 2, and this build knows up to 1: read it with a newer TruthForm"},
+		{"gcp", 1, "captured under gcp capture rules 1, and this build knows up to 0: read it with a newer TruthForm"},
+		{"aws", -3, "capture rules -3 is not a version"},
+	} {
+		dir := filepath.Join(t.TempDir(), "s")
+		if err := (Snapshot{Platform: c.platform, Policy: "default", Rules: c.rules}).Write(dir); err != nil {
+			t.Fatal(err)
+		}
+		s, err := Read(dir)
+		switch {
+		case c.err == "" && (err != nil || s.Rules != c.rules):
+			t.Errorf("%s %d: %v, rules %d", c.platform, c.rules, err, s.Rules)
+		case c.err != "" && (err == nil || !strings.Contains(err.Error(), c.err) || !strings.Contains(err.Error(), dir)):
+			t.Errorf("%s %d: %v, want %q naming the snapshot", c.platform, c.rules, err, c.err)
+		}
+	}
+}
+
 // Where a platform's names ignore case, an object's file does not depend on
 // the case its name was returned in, and two spellings of one name are one
 // object. Elsewhere they are two.

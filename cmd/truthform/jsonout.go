@@ -95,12 +95,23 @@ type changeJSON struct {
 	Key    string   `json:"key"`
 	Kind   string   `json:"kind"` // missing, extra, changed, not working
 	Fields []string `json:"fields,omitempty"`
+	// SkippedOtherSide says why the other side left a missing or extra
+	// object out. It is still a difference.
+	SkippedOtherSide *skippedJSON `json:"skippedOtherSide,omitempty"`
+}
+
+type skippedJSON struct {
+	Reason string `json:"reason"`
 }
 
 func changesJSON(cs []snapshot.Change) []changeJSON {
 	out := make([]changeJSON, 0, len(cs))
 	for _, c := range cs {
-		out = append(out, changeJSON{Key: c.Key, Kind: c.Kind, Fields: c.Fields})
+		cj := changeJSON{Key: c.Key, Kind: c.Kind, Fields: c.Fields}
+		if c.Skipped != nil {
+			cj.SkippedOtherSide = &skippedJSON{Reason: c.Skipped.Reason}
+		}
+		out = append(out, cj)
 	}
 	return out
 }

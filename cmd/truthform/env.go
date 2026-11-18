@@ -353,7 +353,7 @@ func captureEnvironment(ctx context.Context, configPath, out string) int {
 			code = 3
 		}
 	}
-	fmt.Printf("environment %s: %d targets into %s; see %s\n", env.Name, len(results), out, filepath.Join(out, "REPORT.md"))
+	fmt.Printf("environment %s: %s into %s; see %s\n", env.Name, count(len(results), "target"), out, filepath.Join(out, "REPORT.md"))
 	return code
 }
 
@@ -473,12 +473,12 @@ func diffEnvironment(ctx context.Context, configPath, from string) int {
 		}
 		ch := compareTarget(t.Platform, want, got)
 		diffs = append(diffs, targetDiff{Name: t.Name, Platform: t.Platform, Differences: len(ch), Changes: changesJSON(ch)})
-		fmt.Printf("== %s (%s): %d differences\n", t.Name, t.Platform, len(ch))
+		fmt.Printf("== %s (%s): %s\n", t.Name, t.Platform, count(len(ch), "difference"))
 		for _, c := range ch {
 			if c.Kind == "changed" {
 				fmt.Printf("  changed  %s: %s\n", c.Key, strings.Join(c.Fields, ", "))
 			} else {
-				fmt.Printf("  %-8s %s\n", c.Kind, c.Key)
+				fmt.Printf("  %-8s %s%s\n", c.Kind, c.Key, skippedNote(c))
 			}
 		}
 		if len(ch) > 0 && code == 0 {

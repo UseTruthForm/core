@@ -263,6 +263,11 @@ func (s Snapshot) Write(dir string) error {
 		}
 	}
 
+	// Outside the digest, like REPORT.md: it says how to store the files, not
+	// what was captured.
+	if err := os.WriteFile(filepath.Join(dir, gitattributesFile), []byte(gitattributes), 0o644); err != nil {
+		return err
+	}
 	m := manifest{Format: FormatVersion, Platform: s.Platform, ServerVersion: s.ServerVersion, Policy: s.Policy, Rules: s.Rules, Objects: len(s.Objects), Digest: digest(files)}
 	mb, err := yaml.Marshal(m)
 	if err != nil {
@@ -270,6 +275,16 @@ func (s Snapshot) Write(dir string) error {
 	}
 	return os.WriteFile(filepath.Join(dir, manifestFile), mb, 0o644)
 }
+
+// gitattributes keeps git from changing a snapshot's line endings. Git for
+// Windows converts text files to CRLF on checkout by default
+// (core.autocrlf=true): this build reads them back (asWritten), and an
+// earlier one, or any tool that compares the bytes, does not. -text, not
+// binary: a diff of two captures still shows the lines.
+const (
+	gitattributesFile = ".gitattributes"
+	gitattributes     = "# Written by TruthForm: git keeps these files as they were written.\n* -text\n"
+)
 
 // Read loads a snapshot written by Write. It refuses a directory without a
 // manifest and verifies the digest, so a hand-edited or half-copied snapshot
@@ -309,6 +324,7 @@ func Read(dir string) (Snapshot, error) {
 		if err != nil {
 			return err
 		}
+		b = asWritten(b)
 		rel, _ := filepath.Rel(dir, p)
 		files[filepath.ToSlash(rel)] = b
 		body := map[string]any{}
@@ -331,6 +347,7 @@ func Read(dir string) (Snapshot, error) {
 		if err != nil {
 			return err
 		}
+		b = asWritten(b)
 		rel, _ := filepath.Rel(dir, p)
 		files[filepath.ToSlash(rel)] = b
 		var ts TypeSchema
@@ -348,6 +365,7 @@ func Read(dir string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("read coverage: %w", err)
 	}
+	cb = asWritten(cb)
 	files["coverage.yaml"] = cb
 	var cov coverageDoc
 	if err := yaml.Unmarshal(cb, &cov); err != nil {
@@ -488,6 +506,19 @@ func setStyles(n *yaml3.Node) {
 	for _, c := range n.Content {
 		setStyles(c)
 	}
+}
+
+// asWritten undoes what a checkout that converts line endings did: CRLF back
+// to LF. TruthForm never writes a carriage return (YAML escapes it as \r), so
+// a CRLF in a snapshot file is git's (core.autocrlf, Git for Windows'
+// default) or an editor's, and the bytes back are exactly the bytes written.
+// Without it, a snapshot cloned on Windows matched no digest and every
+// command refused it as changed after capture.
+func asWritten(b []byte) []byte {
+	if !bytes.Contains(b, []byte("\r\n")) {
+		return b
+	}
+	return bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n"))
 }
 
 // digestFolded is the digest of files under the paths Write gives them where

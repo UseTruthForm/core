@@ -1142,9 +1142,14 @@ brings it too, as the example below does. An `ImagePolicy` only chooses
 a tag from what an `ImageRepository` found, and is not refused.
 
 **A `HelmChart` is what pulls a chart.** helm-controller makes one for
-each `HelmRelease`, in the chart source's namespace, and source-controller
-pulls with it from the chart source's repository or registry, with that
-source's credentials. **A `HelmRepository` of `type: oci` fetches
+each `HelmRelease` with a chart source (`spec.chart`), in the chart
+source's namespace, and source-controller pulls with it from the chart
+source's repository or registry, with that source's credentials. A
+`HelmRelease` with `chartRef` makes no `HelmChart`: helm-controller reads
+the artifact of the `OCIRepository` or `HelmChart` it names, which is
+refused or held for itself. Brought not held, such a release is still
+refused, for what it installs, and its refusal speaks of no `HelmChart`.
+**A `HelmRepository` of `type: oci` fetches
 nothing**: source-controller makes it static and never reads from it, and
 its `HelmChart`s do the pulling. So one that is brought not held is not
 refused, and there is nothing to accept under `sourcesRunning`. Held, it

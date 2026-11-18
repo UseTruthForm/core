@@ -301,8 +301,8 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		// A HelmChart is made by its HelmRelease, not applied.
 		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"HelmChart/charts/apprel-app"}}, "is not brought: it is made by Flux HelmRelease apprel/app, which makes it again once it runs. Name that in sourcesRunning (HelmRelease/apprel/app), or hold it"},
 		// A HelmRepository of type oci is never refused, so there is
-		// nothing to accept.
-		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"HelmRepository/charts/ocirepo"}}, "no such object is brought not held"},
+		// nothing to accept, and the error says why.
+		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"HelmRepository/charts/ocirepo"}}, "names \"HelmRepository/charts/ocirepo\", a HelmRepository of type oci: it fetches nothing (source-controller makes it static), so it is never refused and there is nothing to accept"},
 		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"ImageUpdateAutomation/flux2/auto"}}, "no such object is brought not held"},
 	} {
 		if _, _, err := kube.Narrow(snap, bad.sc); err == nil || !strings.Contains(err.Error(), bad.want) {

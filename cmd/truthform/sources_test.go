@@ -286,6 +286,12 @@ func TestAnOCIHelmRepositoryIsNotRefused(t *testing.T) {
 		t.Errorf("plan scope --check, an oci HelmRepository held: exit %d\n%s", code, stdout)
 	}
 
+	// Only "oci" exactly, Flux's own value: anything else fetches.
+	upper := write(map[string]any{"type": "OCI", "url": "oci://example.invalid/charts"})
+	if code, stdout, _ := output(t, func() int { return planScope([]string{"--from", upper, "--check", scope}) }); code != 2 || !strings.Contains(stdout, "NOTE: Flux HelmRepository charts/ocirepo is brought, and not held") {
+		t.Errorf("plan scope --check, a HelmRepository of type OCI: exit %d\n%s", code, stdout)
+	}
+
 	index := write(map[string]any{"url": "https://example.invalid/charts"})
 	if code, stdout, _ := output(t, func() int { return planScope([]string{"--from", index, "--check", scope}) }); code != 2 || !strings.Contains(stdout, "NOTE: Flux HelmRepository charts/ocirepo is brought, and not held") {
 		t.Errorf("plan scope --check, a HelmRepository of the default type: exit %d\n%s", code, stdout)
@@ -318,8 +324,66 @@ func TestSourceNoteOfAHelmRelease(t *testing.T) {
 	if err := refusedForSources("s.yaml"); err == nil || !strings.Contains(err.Error(), "a HelmRelease, once it runs: it installs its chart") {
 		t.Errorf("the refusal of a HelmRelease: %v", err)
 	}
+	// One with chartRef and one with a chart source: each says its own why.
+	ref := kube.ScopeSource{Source: "Flux HelmRelease gitops/rel", Object: "HelmRelease gitops/rel", Namespaces: []string{"shop"}, Blocks: true}
+	scopeDone = &kube.ScopeReport{Sources: []kube.ScopeSource{rel, ref}}
+	if err := refusedForSources("s.yaml"); err == nil || !strings.Contains(err.Error(), "a HelmRelease, once it runs: it installs its chart, whose HelmChart pulls") ||
+		!strings.Contains(err.Error(), "; or it installs its chart, and what the chart installs runs") {
+		t.Errorf("the refusal of two kinds of HelmRelease: %v", err)
+	}
+	// Two of one kind: said once.
+	rel2 := rel
+	rel2.Source, rel2.Object = "Flux HelmRelease apprel/other", "HelmRelease apprel/other"
+	scopeDone = &kube.ScopeReport{Sources: []kube.ScopeSource{rel, rel2}}
+	if err := refusedForSources("s.yaml"); err == nil || strings.Count(err.Error(), "whose HelmChart pulls") != 1 {
+		t.Errorf("the refusal of two HelmReleases of one kind: %v", err)
+	}
+	// One with chartRef that makes something else outside: no HelmChart.
+	refOut := ref
+	refOut.Outside = []string{"ImageUpdateAutomation shop/bump (it commits and pushes image updates to its Git repository)"}
+	if n := sourceNote(refOut); strings.Contains(n, "whose HelmChart") || !strings.Contains(n, "it installs its chart, and what the chart installs runs") {
+		t.Errorf("the note of a chartRef HelmRelease that makes something outside: %s", n)
+	}
 	scopeDone = &kube.ScopeReport{Sources: []kube.ScopeSource{{Source: "Flux Kustomization gitops/root", Object: "Kustomization gitops/root", Namespaces: []string{"shop"}, Blocks: true}}}
 	if err := refusedForSources("s.yaml"); err == nil || strings.Contains(err.Error(), "a HelmRelease") {
 		t.Errorf("the refusal of no HelmRelease speaks of one: %v", err)
+	}
+}
+
+// A HelmRelease with chartRef makes no HelmChart: helm-controller reads the
+// artifact of the source it names. Its note and the refusal say it
+// installs its chart, and not that a HelmChart pulls (re-review of #29).
+func TestAChartRefReleaseIsNotSaidToPull(t *testing.T) {
+	if captureOnly {
+		t.Skip("a restore, which the capture-only build refuses")
+	}
+	web := elsewhereObject("apps/v1", "Deployment", "shop", "web", map[string]any{"spec": map[string]any{"replicas": float64(1),
+		"template": map[string]any{"spec": map[string]any{"containers": []any{map[string]any{"name": "app", "image": "x"}}}}}})
+	web.Body["metadata"].(map[string]any)["annotations"] = map[string]any{"meta.helm.sh/release-name": "web", "meta.helm.sh/release-namespace": "shop"}
+	s := snapshot.Snapshot{Platform: "kubernetes", Policy: "default", Objects: []snapshot.Object{
+		elsewhereObject("v1", "Namespace", "", "shop", nil), elsewhereObject("v1", "Namespace", "", "gitops", nil), web,
+		elsewhereObject("helm.toolkit.fluxcd.io/v2", "HelmRelease", "gitops", "rel", map[string]any{"spec": map[string]any{
+			"targetNamespace": "shop", "chartRef": map[string]any{"kind": "OCIRepository", "name": "chart"}}}),
+	}, Skips: []snapshot.Skip{
+		{Resource: "apps/v1/deployments", Namespace: "shop", Name: "api", Reason: "rendered by Flux HelmRelease gitops/rel; restoring the HelmRelease recreates it"},
+	}}
+	dir := filepath.Join(t.TempDir(), "cluster")
+	if err := s.Write(dir); err != nil {
+		t.Fatal(err)
+	}
+	files := t.TempDir()
+	scope := writeFile(t, files, "scope.yaml", "narrow: [{namespaces: [shop], releases: [web], hold: true}]\n")
+	const installs = "it installs its chart, and what the chart installs runs, whatever the scope held back"
+	code, stdout, _ := output(t, func() int { return planScope([]string{"--from", dir, "--check", scope}) })
+	if code != 2 || !strings.Contains(stdout, "NOTE: Flux HelmRelease gitops/rel is brought, and not held") || !strings.Contains(stdout, installs) {
+		t.Errorf("plan scope --check, a chartRef HelmRelease: exit %d\n%s", code, stdout)
+	}
+	if strings.Contains(stdout, "HelmChart") {
+		t.Errorf("plan scope --check speaks of a HelmChart a chartRef HelmRelease does not make:\n%s", stdout)
+	}
+	lastErr = nil
+	restore(context.Background(), []string{"--kubeconfig", filepath.Join(files, "no-such-kubeconfig"), "--context", "none", "--from", dir, "--scope", scope})
+	if lastErr == nil || !strings.Contains(lastErr.Error(), "a HelmRelease, once it runs: "+installs) || strings.Contains(lastErr.Error(), "HelmChart") {
+		t.Errorf("the refusal of a chartRef HelmRelease: %v", lastErr)
 	}
 }

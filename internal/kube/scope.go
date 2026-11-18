@@ -804,7 +804,13 @@ func NarrowFrom(whole, s snapshot.Snapshot, sc Scope) (snapshot.Snapshot, ScopeR
 	if len(sc.SourcesRunning) > 0 && !holds {
 		return s, rep, fmt.Errorf("sourcesRunning names %s, and the scope holds nothing (hold: true), so no source is refused and none is accepted", strings.Join(sc.SourcesRunning, ", "))
 	}
-	if err := acceptSources(rep.Sources, sc.SourcesRunning); err != nil {
+	static := map[string]bool{}
+	for _, o := range s.Objects {
+		if staticRepo(o) {
+			static[o.Kind()+" "+o.Namespace()+"/"+o.Name()] = true
+		}
+	}
+	if err := acceptSources(rep.Sources, sc.SourcesRunning, static); err != nil {
 		return s, rep, err
 	}
 	sort.Strings(rep.ObjectsBrought)

@@ -357,7 +357,11 @@ func contains(l []string, v string) bool {
 // accepts nothing is an error: mistyped, it would leave the restore
 // refused, or left in after the source was held, it would say a source
 // runs that does not.
-func acceptSources(found []ScopeSource, accept []string) error {
+//
+// static holds, as "HelmRepository namespace/name", each HelmRepository of
+// type oci: never refused, so there is nothing to accept, and naming one
+// says so rather than that it is not brought.
+func acceptSources(found []ScopeSource, accept []string, static map[string]bool) error {
 	for _, p := range accept {
 		parts := strings.Split(p, "/")
 		if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" || strings.ContainsAny(p, `*?[\`) {
@@ -385,6 +389,9 @@ func acceptSources(found []ScopeSource, accept []string) error {
 						return fmt.Errorf("sourcesRunning names %q, which is not brought: it is %s by %s, which makes it again once it runs. Name that in sourcesRunning (%s), or hold it", p, by, f.Source, strings.Replace(f.Object, " ", "/", 1))
 					}
 				}
+			}
+			if static[who] {
+				return fmt.Errorf("sourcesRunning names %q, a HelmRepository of type oci: it fetches nothing (source-controller makes it static), so it is never refused and there is nothing to accept. Leave it out of sourcesRunning; its HelmCharts, or the HelmReleases that make them, are what is refused", p)
 			}
 			return fmt.Errorf("sourcesRunning names %q, and no such object is brought not held that a scope which holds something refuses (a GitOps source that applies into a namespace it narrows, or what acts outside the cluster)", p)
 		}

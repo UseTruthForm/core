@@ -33,6 +33,37 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// KubernetesCaptureRules is the version of the rules for what a Kubernetes
+// capture leaves out and why (kube.CaptureRules). A snapshot under a later
+// version was written by a newer build, and this one refuses it rather
+// than read it under rules it does not know. 1: a self-applying GitOps root,
+// and the source a self-applying Kustomization reads from, are captured.
+// 2: a release's Helm history is listed as a family, apart from a Secret
+// listed by its own name (HelmHistoryFamily).
+const KubernetesCaptureRules = 2
+
+// AzureCaptureRules is the version of the rules for how an Azure capture
+// names what it leaves out. 1: a skip names a resource by its group and its
+// name as the snapshot keys it ("g/name", "g/providers/…" for an extension,
+// "g/g" for a group). Under 0 an extension was named by its group and last
+// name alone, the same as one of that name on the group or another resource.
+const AzureCaptureRules = 1
+
+// maxRules is the highest capture rules version this build knows, per
+// platform; a platform not named has none.
+var maxRules = map[string]int{"kubernetes": KubernetesCaptureRules, "azure": AzureCaptureRules}
+
+// checkRules refuses a capture rules version this build cannot read.
+func checkRules(platform string, rules int) error {
+	if rules < 0 {
+		return fmt.Errorf("capture rules %d is not a version", rules)
+	}
+	if max := maxRules[platform]; rules > max {
+		return fmt.Errorf("captured under %s capture rules %d, and this build knows up to %d: read it with a newer TruthForm", platform, rules, max)
+	}
+	return nil
+}
+
 // FormatVersion is bumped on any change a reader of older snapshots must know about.
 //
 // 2: the tool was renamed. Annotations moved to truthform.org, placeholders
@@ -133,7 +164,14 @@ type Snapshot struct {
 	// Policy names the capture rules used ("default", "include-system").
 	// Comparing snapshots taken under different policies would report the
 	// policy difference as drift, so diff refuses to.
-	Policy   string
+	Policy string
+	// Rules is the version of the platform's rules for what a capture leaves
+	// out and why (KubernetesCaptureRules), 0 where the capture did not say:
+	// every snapshot written before it was recorded, beta.23's among them.
+	// Compare uses it only to say where a difference may come from an older
+	// build's rules. It is written to the manifest, outside the digest: it
+	// says which rules made the files, not what the system holds.
+	Rules    int
 	Objects  []Object
 	Coverage []Coverage
 	Skips    []Skip
@@ -150,6 +188,7 @@ type manifest struct {
 	Platform      string `json:"platform"`
 	ServerVersion string `json:"serverVersion,omitempty"`
 	Policy        string `json:"policy"`
+	Rules         int    `json:"rules,omitempty"`
 	Objects       int    `json:"objects"`
 	// Digest covers every object file and the coverage report, so two
 	// snapshots can be compared for equality without reading them.
@@ -224,13 +263,28 @@ func (s Snapshot) Write(dir string) error {
 		}
 	}
 
-	m := manifest{Format: FormatVersion, Platform: s.Platform, ServerVersion: s.ServerVersion, Policy: s.Policy, Objects: len(s.Objects), Digest: digest(files)}
+	// Outside the digest, like REPORT.md: it says how to store the files, not
+	// what was captured.
+	if err := os.WriteFile(filepath.Join(dir, gitattributesFile), []byte(gitattributes), 0o644); err != nil {
+		return err
+	}
+	m := manifest{Format: FormatVersion, Platform: s.Platform, ServerVersion: s.ServerVersion, Policy: s.Policy, Rules: s.Rules, Objects: len(s.Objects), Digest: digest(files)}
 	mb, err := yaml.Marshal(m)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, manifestFile), mb, 0o644)
 }
+
+// gitattributes keeps git from changing a snapshot's line endings. Git for
+// Windows converts text files to CRLF on checkout by default
+// (core.autocrlf=true): this build reads them back (asWritten), and an
+// earlier one, or any tool that compares the bytes, does not. -text, not
+// binary: a diff of two captures still shows the lines.
+const (
+	gitattributesFile = ".gitattributes"
+	gitattributes     = "# Written by TruthForm: git keeps these files as they were written.\n* -text\n"
+)
 
 // Read loads a snapshot written by Write. It refuses a directory without a
 // manifest and verifies the digest, so a hand-edited or half-copied snapshot
@@ -248,6 +302,10 @@ func Read(dir string) (Snapshot, error) {
 		return Snapshot{}, fmt.Errorf("snapshot format %d, this build reads %d and %d", m.Format, legacyFormat, FormatVersion)
 	}
 
+	if err := checkRules(m.Platform, m.Rules); err != nil {
+		return Snapshot{}, fmt.Errorf("snapshot %s: %w", dir, err)
+	}
+
 	if m.Format == legacyFormat && legacyNamesDiffer[m.Platform] {
 		return Snapshot{}, fmt.Errorf("snapshot %s was captured before the tool was renamed, and on %s that changes the names it generates for resources with none of their own; a diff would report each as missing and extra, and a restore could create it twice. Capture the source again with this build, or use the build that wrote the snapshot", dir, m.Platform)
 	}
@@ -256,7 +314,7 @@ func Read(dir string) (Snapshot, error) {
 	// Each file's path as Write names it, where the platform's names ignore
 	// case: a check of the digest that does not depend on the case of a path.
 	canonical := map[string]string{}
-	s := Snapshot{Platform: m.Platform, ServerVersion: m.ServerVersion, Policy: m.Policy}
+	s := Snapshot{Platform: m.Platform, ServerVersion: m.ServerVersion, Policy: m.Policy, Rules: m.Rules}
 	objDir := filepath.Join(dir, "objects")
 	err = filepath.WalkDir(objDir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".yaml") {
@@ -266,6 +324,7 @@ func Read(dir string) (Snapshot, error) {
 		if err != nil {
 			return err
 		}
+		b = asWritten(b)
 		rel, _ := filepath.Rel(dir, p)
 		files[filepath.ToSlash(rel)] = b
 		body := map[string]any{}
@@ -288,6 +347,7 @@ func Read(dir string) (Snapshot, error) {
 		if err != nil {
 			return err
 		}
+		b = asWritten(b)
 		rel, _ := filepath.Rel(dir, p)
 		files[filepath.ToSlash(rel)] = b
 		var ts TypeSchema
@@ -305,6 +365,7 @@ func Read(dir string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("read coverage: %w", err)
 	}
+	cb = asWritten(cb)
 	files["coverage.yaml"] = cb
 	var cov coverageDoc
 	if err := yaml.Unmarshal(cb, &cov); err != nil {
@@ -445,6 +506,19 @@ func setStyles(n *yaml3.Node) {
 	for _, c := range n.Content {
 		setStyles(c)
 	}
+}
+
+// asWritten undoes what a checkout that converts line endings did: CRLF back
+// to LF. TruthForm never writes a carriage return (YAML escapes it as \r), so
+// a CRLF in a snapshot file is git's (core.autocrlf, Git for Windows'
+// default) or an editor's, and the bytes back are exactly the bytes written.
+// Without it, a snapshot cloned on Windows matched no digest and every
+// command refused it as changed after capture.
+func asWritten(b []byte) []byte {
+	if !bytes.Contains(b, []byte("\r\n")) {
+		return b
+	}
+	return bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n"))
 }
 
 // digestFolded is the digest of files under the paths Write gives them where

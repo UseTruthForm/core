@@ -598,6 +598,28 @@ func schemaDiff(args []string) int {
 	return 2
 }
 
+// skippedNote is what a missing or extra line says of why the other side
+// left the object out, where it did. It explains the difference, which is
+// still one.
+func skippedNote(ch snapshot.Change) string {
+	if ch.Skipped == nil {
+		return ""
+	}
+	note := " (left out on the other side: " + ch.Skipped.Reason
+	if ch.Skipped.OlderRules {
+		note += "; a snapshot from a build before beta.23 left out a self-applying GitOps root and the source it reads from, so this may be one"
+	}
+	return note + ")"
+}
+
+// count is n things, in the singular for one.
+func count(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
+}
+
 func report(changes []snapshot.Change, want, got string) int {
 	if jsonOut {
 		emitDiff(changes, want, got)
@@ -618,10 +640,10 @@ func report(changes []snapshot.Change, want, got string) int {
 		case "changed":
 			fmt.Printf("changed  %s: %s\n", ch.Key, strings.Join(ch.Fields, ", "))
 		default:
-			fmt.Printf("%-8s %s\n", ch.Kind, ch.Key)
+			fmt.Printf("%-8s %s%s\n", ch.Kind, ch.Key, skippedNote(ch))
 		}
 	}
-	fmt.Printf("%d differences between %s and %s%s\n", len(changes), want, got, held)
+	fmt.Printf("%s between %s and %s%s\n", count(len(changes), "difference"), want, got, held)
 	return 2
 }
 

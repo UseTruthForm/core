@@ -85,6 +85,15 @@ the same one, unless Azure returned a name in another case; see
 [Names in another case](#names-in-another-case-azure)). **REPORT.md** beside it says, in plain words, what was
 captured, what was not and why, and what a restore will need.
 
+A snapshot can be kept in git. Its `.gitattributes` (`* -text`) tells git
+to leave its files as they were written: Git for Windows otherwise checks
+text files out with Windows line endings (`core.autocrlf=true`, its
+default). A snapshot whose files have Windows line endings anyway (one
+from an earlier build, cloned on Windows) is still read, because TruthForm
+never writes a carriage return and reads CRLF back as the LF it wrote; a
+build from before this one refuses it as changed after capture. Neither
+file is part of the digest.
+
 What a GitOps source renders (a Flux HelmRelease or Kustomization, an Argo
 CD application, a Crossplane composite) is left to its source: restoring
 the source recreates it, and `--capture-rendered` keeps it anyway. Where
@@ -237,6 +246,59 @@ truthform diff --platform aws --region us-east-2 --from snap/aws
 
 It lists what was added, removed or changed, field by field, and exits 2
 when there are differences, so it can gate a pipeline or raise an alert.
+`compare` does the same between two snapshots, and a diff of an environment
+(`--config`) for each target.
+
+### An object one side left out
+
+An object one side has and the other left out on purpose is still `missing`
+or `extra`, and still counts: nothing here changes what a diff reports or
+the exit code. Its line says why the other side left it out, from that
+side's own record:
+
+```text
+missing  v1|ConfigMap|shop|cfg (left out on the other side: identical to the distribution baseline; a new cluster provides it)
+```
+
+A note is given only where a skip names that object and no other: on
+Kubernetes by type, namespace and name; Helm history, listed once per
+release as `sh.helm.release.v1.<release>.v*`, stands for that release's
+`.v<N>` Secrets only (it records the release, not which revisions, and its
+note says so), and a Secret of Helm's type that Helm did not name as
+its own is listed by its own name and stands for itself (a snapshot under
+Kubernetes capture rules before 2 wrote the two alike, so its Helm history
+skips give no note); on GCP by the name the snapshot keys; on Azure from
+snapshots that record Azure capture rules 1, which name a skip by its group
+and the name the snapshot keys (an extension by its path below the group).
+An Azure snapshot without rules named an extension by its group and last
+name alone, the same as another of that name, so it gives no notes. AWS and
+the SaaS platforms give none: their skips name a resource by its identifier,
+which another's name in the snapshot may be.
+
+The reason explains the difference; it never makes it safe. Something left
+out on one side was not compared, and may have been edited: given a GitOps
+tool's labels, an owner reference, or a root status it did not have, or
+changed to or from a baseline. Look at the object itself.
+
+Every Kubernetes and Azure snapshot records the version of the capture
+rules it was taken under (`rules` in `snapshot.yaml`, outside the digest). A snapshot
+without one counts as 0: every build up to and including beta.23 wrote it so.
+Kubernetes version 1 captures a self-applying GitOps root, and the source a
+self-applying Kustomization reads from, which builds before beta.23 left
+out; version 2 lists Helm history families apart from Secrets listed by name.
+Where the side that left an object out has no rules and gave a GitOps
+source's reason, the line adds that this may be why:
+
+```text
+extra    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root (left out on the other side: applied by Flux Kustomization gitops/root; restoring it recreates this; a snapshot from a build before beta.23 left out a self-applying GitOps root and the source it reads from, so this may be one)
+```
+
+A snapshot under rules newer than the build reading it is refused, naming
+the version: read it with a newer TruthForm.
+
+The digest detects accidents, not tampering: it is a plain SHA-256 of the
+files, and anyone who can write a snapshot can write its digest. Keep
+snapshots where only the pipeline that captures them can write.
 
 ### Names in another case (Azure)
 
@@ -493,7 +555,9 @@ field (`truthform.org/output/v1`), and everything meant for a person goes
 to stderr. The exit code is the same as without it. A capture's document
 says whether it is `complete` and lists its `gaps`, and under `throttled`
 the gaps a later capture can close as it is; a diff's lists each
-change with its `kind` (missing, extra, changed, not working) and `fields`; a
+change with its `kind` (missing, extra, changed, not working) and `fields`,
+and, on a missing or extra object the other side left out,
+`skippedOtherSide` with its `reason`; a
 restore's lists each resource with `ok` and `detail`. A diff against one
 target and a restore list under `left_out` the objects `--leave-out` held
 back, so a clean diff says what it did not compare (`compare` has no

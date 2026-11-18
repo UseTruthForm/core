@@ -157,6 +157,13 @@ func peeringsNote(typ string) string {
 	return ""
 }
 
+// skipName is how a skip names a resource: its group and its name as the
+// snapshot keys it (LocalName), so an extension on one resource is not named
+// as one of the same name on another, or on the group. A group is "g/g".
+// Snapshots under Azure capture rules 0 named an extension by its group and
+// its last name alone (snapshot.AzureCaptureRules).
+func skipName(rid ResourceID) string { return rid.ResourceGroup + "/" + rid.LocalName() }
+
 // PeeringsAcrossManagedGroups lists the peerings that name a network in a managed
 // group, as their own or as the far side. A new cluster's network has a new
 // generated name, so a restore beside a new cluster refuses them, loudly, and
@@ -303,7 +310,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 	if err != nil {
 		return snapshot.Snapshot{}, fmt.Errorf("list resources: %w", err)
 	}
-	snap := snapshot.Snapshot{Platform: "azure", ServerVersion: "arm", Policy: p.Name()}
+	snap := snapshot.Snapshot{Platform: "azure", ServerVersion: "arm", Policy: p.Name(), Rules: snapshot.AzureCaptureRules}
 	cov := map[string]*snapshot.Coverage{}
 	cover := func(typ string) *snapshot.Coverage {
 		k := strings.ToLower(typ)
@@ -376,7 +383,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			if managerRecreates(rid.Type, rid.Name, r.ManagedBy) || (inNodeGroup && aksMade(rid.Type, r.Tags)) {
 				fate = ", which recreates it"
 			}
-			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedBy+managerRef(r.ManagedBy)+fate+peeringsNote(rid.Type))
+			skip(rid.Type, skipName(rid), reasonManagedBy+managerRef(r.ManagedBy)+fate+peeringsNote(rid.Type))
 			leftOut[strings.ToLower(rid.String())] = true
 			forItsPeerings()
 			continue
@@ -387,11 +394,11 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 			// a write to their group, and nothing shows what they made, so it
 			// stays out and is said to need a look.
 			case !managedByAKS(by):
-				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedGroup+managerRef(by)+mayNotRecreate+"; "+notReadNote(rid.Type))
+				skip(rid.Type, skipName(rid), reasonManagedGroup+managerRef(by)+mayNotRecreate+"; "+notReadNote(rid.Type))
 				forItsPeerings()
 				continue
 			case aksMade(rid.Type, r.Tags):
-				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, reasonManagedGroup+managerRef(by)+", which recreates it; "+notReadNote(rid.Type))
+				skip(rid.Type, skipName(rid), reasonManagedGroup+managerRef(by)+", which recreates it; "+notReadNote(rid.Type))
 				forItsPeerings()
 				continue
 			}
@@ -431,7 +438,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		case errors.Is(errs[i], ErrNotFound):
 			continue // deleted between list and read
 		case errs[i] != nil:
-			skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, Unreadable+errs[i].Error())
+			skip(rid.Type, skipName(rid), Unreadable+errs[i].Error())
 			continue
 		}
 		caps = append(caps, out[i])
@@ -444,7 +451,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 	for _, c := range caps {
 		ps, why := peeringsOf(api, reg, tenant, c)
 		if why != "" {
-			skip(vnetType+"/virtualNetworkPeerings", c.rid.ResourceGroup+"/"+c.rid.Name, Unreadable+why)
+			skip(vnetType+"/virtualNetworkPeerings", skipName(c.rid), Unreadable+why)
 		}
 		if !forPeerings[strings.ToLower(c.rid.String())] {
 			withPeerings = append(withPeerings, c)
@@ -465,7 +472,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		by := managedGroups[strings.ToLower(c.rid.ResourceGroup)]
 		id, _ := c.status["id"].(string)
 		if by != "" && !p.CaptureManaged && strings.Contains(specs[strings.ToLower(managerRef(by))], strings.ToLower(id)+`"`) {
-			skip(c.rid.Type, c.rid.ResourceGroup+"/"+c.rid.Name, reasonManagedGroup+managerRef(by)+mayNotRecreate+"; the manager names it, so it would have to exist first")
+			skip(c.rid.Type, skipName(c.rid), reasonManagedGroup+managerRef(by)+mayNotRecreate+"; the manager names it, so it would have to exist first")
 			continue
 		}
 		inManagedGroup = append(inManagedGroup, c)
@@ -546,7 +553,7 @@ func Capture(ctx context.Context, api ARM, reg *Registry, p Policy) (snapshot.Sn
 		if p.Baseline != nil {
 			o := snapshot.Object{Body: obj}
 			if b, ok := p.Baseline[strings.ToLower(o.Key())]; ok && sameSpec(sameCase(o, snapshot.Object{Body: b}).Body, b) {
-				skip(rid.Type, rid.ResourceGroup+"/"+rid.Name, "identical to the baseline snapshot (already there, or created by Azure)")
+				skip(rid.Type, skipName(rid), "identical to the baseline snapshot (already there, or created by Azure)")
 				continue
 			}
 		}

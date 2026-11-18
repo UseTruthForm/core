@@ -71,13 +71,16 @@ func TestHelmHistoryIsListedPerRelease(t *testing.T) {
 	for _, s := range first.Skips {
 		names = append(names, s.Namespace+"/"+s.Name)
 	}
+	// A release's history as its family (.v*); a Secret of Helm's type Helm
+	// did not name as its own (no revision, or labelled for another
+	// release) by its own name.
 	want := []string{
-		"kube-system/sh.helm.release.v1.overlay-upgrade",
-		"other/sh.helm.release.v1.web",
+		"kube-system/sh.helm.release.v1.overlay-upgrade.v*",
+		"other/sh.helm.release.v1.web.v*",
 		"shop/db-creds",
 		"shop/sh.helm.release.v1.app",
 		"shop/sh.helm.release.v1.db.v1",
-		"shop/sh.helm.release.v1.web",
+		"shop/sh.helm.release.v1.web.v*",
 	}
 	if !reflect.DeepEqual(names, want) {
 		t.Errorf("skips\n%v\nwant\n%v", names, want)

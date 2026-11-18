@@ -21,6 +21,10 @@ type Change struct {
 	// "changed", or "not working" (got.Unwell: Key says what and why).
 	Kind   string
 	Fields []string // for "changed": the paths that differ
+	// Skipped is, for "missing" or "extra", why the other side left the
+	// object out, where it did. It explains the difference and never
+	// removes it: an object left out on one side may have been edited.
+	Skipped *SkippedOtherSide
 }
 
 // Compare reports how got differs from want. Both must have been normalised
@@ -29,6 +33,7 @@ type Change struct {
 func Compare(want, got Snapshot) []Change {
 	w, g := index(want), index(got)
 	var out []Change
+	var wantSkips, gotSkips *skipIndex
 	// Here, so a diff, an environment's diff and --json all say it, and exit 0
 	// means the target can be relied on.
 	for _, u := range got.Unwell {
@@ -37,7 +42,10 @@ func Compare(want, got Snapshot) []Change {
 	for k, wo := range w {
 		gobj, ok := g[k]
 		if !ok {
-			out = append(out, Change{Key: k, Kind: "missing"})
+			if gotSkips == nil {
+				gotSkips = indexSkips(got)
+			}
+			out = append(out, Change{Key: k, Kind: "missing", Skipped: gotSkips.note(wo)})
 			continue
 		}
 		var fields []string
@@ -47,9 +55,12 @@ func Compare(want, got Snapshot) []Change {
 			out = append(out, Change{Key: k, Kind: "changed", Fields: fields})
 		}
 	}
-	for k := range g {
+	for k, gobj := range g {
 		if _, ok := w[k]; !ok {
-			out = append(out, Change{Key: k, Kind: "extra"})
+			if wantSkips == nil {
+				wantSkips = indexSkips(want)
+			}
+			out = append(out, Change{Key: k, Kind: "extra", Skipped: wantSkips.note(gobj)})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })

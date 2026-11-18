@@ -218,6 +218,17 @@ func BuildGraph(s snapshot.Snapshot, p Projection, projection, sub, tenant strin
 		}
 		group, name, _ := strings.Cut(sk.Name, "/")
 		rid := ResourceID{Subscription: tokSub, ResourceGroup: group, Type: sk.Resource, Name: name}
+		// An extension is named by its path below its group or the
+		// subscription (skipName). Read as such, the path must give the
+		// skip's own type: a resource that is merely named "providers" (a
+		// network "providers" with a subnet "default") reads as one.
+		scope := "/subscriptions/" + tokSub
+		if group != "" {
+			scope += "/resourceGroups/" + group
+		}
+		if ext, err := ParseID(scope + "/" + name); err == nil && ext.Extension() && strings.EqualFold(ext.Type, sk.Resource) {
+			rid, name = ext, ext.Name
+		}
 		if name == "" || !wellFormed(rid) {
 			continue
 		}

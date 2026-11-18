@@ -379,6 +379,24 @@ func TestAzurePathsInAnotherCaseAreRead(t *testing.T) {
 	if _, err := Read(dir); err != nil {
 		t.Errorf("paths in the case an earlier build wrote: %v", err)
 	}
+	// A Windows clone does both: the old case, and CRLF (core.autocrlf).
+	both := write("azure")
+	asBefore(both)
+	if err := filepath.WalkDir(both, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(p, []byte(strings.ReplaceAll(string(b), "\n", "\r\n")), 0o644)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(both); err != nil {
+		t.Errorf("old-case paths with CRLF line endings: %v", err)
+	}
 	p := filepath.Join(dir, filepath.FromSlash(objectPath(o, false)))
 	b, _ := os.ReadFile(p)
 	if err := os.WriteFile(p, []byte(strings.Replace(string(b), "Analytics", "Basic", 1)), 0o644); err != nil {

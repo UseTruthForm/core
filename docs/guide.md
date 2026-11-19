@@ -1133,10 +1133,56 @@ they are, as a source is: an `ImageUpdateAutomation` (it commits and
 pushes to Git), an `ImageRepository` (it scans a registry with its
 credentials), a notification `Provider` and `Alert` (they send), and a
 `Receiver` (it takes webhooks from outside, and has the sources it names
-reconcile when one comes: the outside then decides when they sync). An
-`ImagePolicy` only chooses a tag from what an `ImageRepository` found,
-and is not refused; nor is a `GitRepository`, `OCIRepository` or
-`HelmRepository`, which reads and does not write.
+reconcile when one comes: the outside then decides when they sync).
+**Flux's sources that fetch count too**: a `GitRepository`,
+`HelmRepository`, `OCIRepository` and `Bucket` reach a real Git host,
+registry or bucket with the source's credentials, every interval. The
+`GitRepository` a held root reads is held with it only if the entry
+brings it too, as the example below does. An `ImagePolicy` only chooses
+a tag from what an `ImageRepository` found, and is not refused.
+
+**A `HelmChart` is what pulls a chart.** helm-controller makes one for
+each `HelmRelease` with a chart source (`spec.chart`), in the chart
+source's namespace, and source-controller pulls with it from the chart
+source's repository or registry, with that source's credentials. A
+`HelmRelease` with `chartRef` makes no `HelmChart`: helm-controller reads
+the artifact of the `OCIRepository` or `HelmChart` it names, which is
+refused or held for itself. Brought not held, such a release is still
+refused, for what it installs, and its refusal speaks of no `HelmChart`.
+**A `HelmRepository` of `type: oci` fetches
+nothing**: source-controller makes it static and never reads from it, and
+its `HelmChart`s do the pulling. So one that is brought not held is not
+refused, and there is nothing to accept under `sourcesRunning`. Held, it
+is suspended and listed as held, with a word that this stops nothing:
+hold its `HelmChart`s, or the `HelmRelease`s that make them. One the
+capture left to a source (applied by a Kustomization) is not in the
+snapshot, and its type with it: it counts as one that fetches, and the
+source that applies it is refused for it. So:
+
+- the `HelmChart` helm-controller made is skipped by the capture
+  (rendered by its `HelmRelease`), and a restore does not bring it: the
+  release makes it again once it runs, so **a `HelmRelease` brought not
+  held is refused for its chart**, wherever either is, and the refusal
+  names both;
+- **a held `HelmRelease` makes no chart in a new cluster**:
+  helm-controller does not reconcile a suspended release, and it makes
+  the chart only when it does. It is not refused;
+- a `HelmChart` in the snapshot (made by hand, or captured for another
+  reason) pulls for itself, and is refused like the sources above unless
+  it is held or accepted;
+- **on a cluster that already has the chart** (a restore in place), a
+  held release leaves it there, and source-controller goes on pulling
+  with it: suspend the chart too.
+
+**Argo CD's repository Secrets are not refused**
+(`argocd.argoproj.io/secret-type: repository` or `repo-creds`). Such a
+Secret fetches nothing: it holds the credentials Argo CD's repo server
+uses, and Argo CD reads the repository of every Application it has, to
+compare it, whether its automated sync is on or off, and reads a public
+repository with no Secret at all. Refusing the Secret would neither stop
+that reading nor find all of it. A hold of the Applications stops what
+they apply, not that Argo CD reads: hold Argo CD's own workloads, or
+leave them out, where it must not.
 
 Where such an object is in the snapshot (made by hand), it is refused
 itself. Where a GitOps source's Git path applies it, the capture leaves
@@ -1157,7 +1203,9 @@ An operator's custom resource that owns an `ImageUpdateAutomation`,
 `Provider`, `Alert` or `Receiver` (a tenant resource whose operator
 makes one for it) is brought as it is under a hold, its operator makes
 the object again, and **the restore is not refused for it**: leave the
-resource out, or hold it.
+resource out. A hold does not stop it: one with no `spec.replicas` or
+`spec.suspend` is brought as it is and only named, and setting either
+says nothing of what its operator makes for it.
 
 Not refused:
 
@@ -1173,8 +1221,8 @@ Not refused:
 `plan scope --check` names each in a NOTE, with the namespaces it
 applies into or what it does outside (`scope.sourcesNotHeld` with
 `--json`, each with `blocks`, `accepted`, `reaches` for one that acts
-outside, and `appliesOutside` for a source that applies one), and exits 2 while one is left. A refused restore exits 1, says
-every cause at once (webhooks and these together), and its document
+outside, and `appliesOutside` for a source that applies one), and exits
+2 while one is left. A refused restore exits 1, says every cause at once (webhooks and these together), and its document
 lists them as `sourcesNotHeld` (and `webhooksWithoutService`), with
 `complete: false`. Either hold it, with an entry that brings its object
 under a hold (a Flux object is suspended, an Argo CD application's
@@ -1193,6 +1241,7 @@ it by name:
 ```yaml
 sourcesRunning:
   - Kustomization/flux-system/flux-system
+  - GitRepository/flux-system/flux-system   # what the root reads
 ```
 
 An ApplicationSet with a `templatePatch` or a generator's own template

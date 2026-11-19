@@ -201,6 +201,66 @@ apiVersion: v1
 kind: Namespace
 metadata: {name: legacy2ns}
 ---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: helmrepositories.source.toolkit.fluxcd.io}
+spec:
+  group: source.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: HelmRepository, plural: helmrepositories, singular: helmrepository, listKind: HelmRepositoryList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: ocirepositories.source.toolkit.fluxcd.io}
+spec:
+  group: source.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: OCIRepository, plural: ocirepositories, singular: ocirepository, listKind: OCIRepositoryList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: buckets.source.toolkit.fluxcd.io}
+spec:
+  group: source.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: Bucket, plural: buckets, singular: bucket, listKind: BucketList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata: {name: helmcharts.source.toolkit.fluxcd.io}
+spec:
+  group: source.toolkit.fluxcd.io
+  scope: Namespaced
+  names: {kind: HelmChart, plural: helmcharts, singular: helmchart, listKind: HelmChartList}
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema: {openAPIV3Schema: {type: object, x-kubernetes-preserve-unknown-fields: true}}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: charts}
+---
+apiVersion: v1
+kind: Namespace
+metadata: {name: apprel}
+---
 apiVersion: v1
 kind: Namespace
 metadata: {name: gitops}
@@ -723,3 +783,52 @@ spec:
   template:
     metadata: {labels: {app: svcapp}}
     spec: {containers: [{name: app, image: registry.example.invalid/svcapp:1}]}
+---
+# Flux's sources that fetch: made by hand, and one the second root's Git
+# path applies.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata: {name: charts, namespace: imaging}
+spec: {url: https://charts.example.invalid, interval: 1h}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: Bucket
+metadata: {name: store, namespace: imaging}
+spec: {bucketName: artifacts, endpoint: storage.example.invalid, interval: 1h}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: oci
+  namespace: flux2
+  labels: {kustomize.toolkit.fluxcd.io/name: flux2, kustomize.toolkit.fluxcd.io/namespace: flux2}
+spec: {url: oci://registry.example.invalid/manifests, interval: 1h, ref: {tag: latest}}
+---
+# A HelmRepository of type oci, which source-controller does not
+# reconcile, a HelmRelease of it made by hand, and the HelmChart
+# helm-controller made for that release, which is what pulls.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata: {name: ocirepo, namespace: charts}
+spec: {type: oci, url: oci://registry.example.invalid/charts, interval: 1h}
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata: {name: app, namespace: apprel}
+spec:
+  interval: 10m
+  chart: {spec: {chart: app, version: 1.x, sourceRef: {kind: HelmRepository, name: ocirepo, namespace: charts}}}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmChart
+metadata:
+  name: apprel-app
+  namespace: charts
+  labels: {helm.toolkit.fluxcd.io/name: app, helm.toolkit.fluxcd.io/namespace: apprel}
+spec: {chart: app, version: 1.x, interval: 10m, sourceRef: {kind: HelmRepository, name: ocirepo}}
+---
+# A HelmChart made by hand: in the snapshot, it pulls for itself.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmChart
+metadata: {name: manual, namespace: charts}
+spec: {chart: tool, version: 2.x, interval: 10m, sourceRef: {kind: HelmRepository, name: ocirepo}}

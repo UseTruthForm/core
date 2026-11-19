@@ -19,9 +19,10 @@ import (
 // runners are the kinds that run under a hold when brought not held: the
 // GitOps sources that apply (by their kind as a reason names one), and
 // Flux's objects that act outside the cluster, with what they do there.
-// Not Flux's ImagePolicy, which only chooses a tag from what an
-// ImageRepository found, nor the sources that only read (GitRepository,
-// OCIRepository, HelmRepository).
+// Flux's sources that fetch count among them: they reach real Git hosts,
+// registries and buckets with the source's credentials. Not Flux's
+// ImagePolicy, which only chooses a tag from what an ImageRepository
+// found.
 var runners = []struct{ group, kind, resource, name, reaches string }{
 	{"kustomize.toolkit.fluxcd.io", "Kustomization", "kustomizations", "Flux Kustomization", ""},
 	{"helm.toolkit.fluxcd.io", "HelmRelease", "helmreleases", "Flux HelmRelease", ""},
@@ -32,6 +33,17 @@ var runners = []struct{ group, kind, resource, name, reaches string }{
 	{"notification.toolkit.fluxcd.io", "Provider", "providers", "Flux notification Provider", "it sends what it is given to its chat, webhook or Git host"},
 	{"notification.toolkit.fluxcd.io", "Alert", "alerts", "Flux notification Alert", "it sends the cluster's events to its Provider"},
 	{"notification.toolkit.fluxcd.io", "Receiver", "receivers", "Flux notification Receiver", "it takes webhooks from outside, which have the sources it names reconcile"},
+	{"source.toolkit.fluxcd.io", "GitRepository", "gitrepositories", "Flux GitRepository", "it fetches its Git repository with the source's credentials"},
+	{"source.toolkit.fluxcd.io", "HelmRepository", "helmrepositories", "Flux HelmRepository", "it fetches its chart repository or registry with the source's credentials"},
+	{"source.toolkit.fluxcd.io", "OCIRepository", "ocirepositories", "Flux OCIRepository", "it pulls its artifact from its OCI registry with the source's credentials"},
+	{"source.toolkit.fluxcd.io", "Bucket", "buckets", "Flux Bucket", "it fetches from its storage bucket with the source's credentials"},
+	// What helm-controller makes for a HelmRelease is skipped, rendered by
+	// it, and the walk refuses the release for it; a held release makes
+	// none (helm-controller does not reconcile a suspended one). A
+	// HelmChart in the snapshot pulls for itself: with a HelmRepository of
+	// type oci, which source-controller does not reconcile, it is what
+	// fetches.
+	{"source.toolkit.fluxcd.io", "HelmChart", "helmcharts", "Flux HelmChart", "it pulls its chart from the chart source's repository or registry with that source's credentials"},
 }
 
 // runner is what of an object brought not held runs under a hold: a
@@ -39,12 +51,26 @@ var runners = []struct{ group, kind, resource, name, reaches string }{
 // does there.
 func runner(o snapshot.Object) (kind, reaches string, ok bool) {
 	group, _, _ := strings.Cut(o.APIVersion(), "/")
+	if staticRepo(o) {
+		return "", "", false
+	}
 	for _, r := range runners {
 		if r.group == group && r.kind == o.Kind() {
 			return r.name, r.reaches, true
 		}
 	}
 	return "", "", false
+}
+
+// staticRepo reports a HelmRepository of type oci: source-controller
+// makes it static and never fetches with it (migrationToStatic returns
+// before reconcileSource). Its HelmCharts pull, and are what is refused.
+// One the capture left to a source has no spec in the snapshot, so its
+// type is not known there, and it counts as one that fetches.
+func staticRepo(o snapshot.Object) bool {
+	group, _, _ := strings.Cut(o.APIVersion(), "/")
+	spec, _ := o.Body["spec"].(map[string]any)
+	return group == "source.toolkit.fluxcd.io" && o.Kind() == "HelmRepository" && strOf(spec["type"]) == "oci"
 }
 
 // outsideSkip is, for a skip of what acts outside (one a source applies,
@@ -331,7 +357,11 @@ func contains(l []string, v string) bool {
 // accepts nothing is an error: mistyped, it would leave the restore
 // refused, or left in after the source was held, it would say a source
 // runs that does not.
-func acceptSources(found []ScopeSource, accept []string) error {
+//
+// static holds, as "HelmRepository namespace/name", each HelmRepository of
+// type oci: never refused, so there is nothing to accept, and naming one
+// says so rather than that it is not brought.
+func acceptSources(found []ScopeSource, accept []string, static map[string]bool) error {
 	for _, p := range accept {
 		parts := strings.Split(p, "/")
 		if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" || strings.ContainsAny(p, `*?[\`) {
@@ -350,9 +380,18 @@ func acceptSources(found []ScopeSource, accept []string) error {
 			for _, f := range found {
 				for _, o := range f.Outside {
 					if strings.HasPrefix(o, who+" (") {
-						return fmt.Errorf("sourcesRunning names %q, which is not brought: it is applied by %s, which makes it again once it runs. Name that in sourcesRunning (%s), or hold it", p, f.Source, strings.Replace(f.Object, " ", "/", 1))
+						// A HelmRelease makes its chart; a Kustomization or
+						// an application applies what it applies.
+						by := "applied"
+						if strings.HasPrefix(f.Source, "Flux HelmRelease ") {
+							by = "made"
+						}
+						return fmt.Errorf("sourcesRunning names %q, which is not brought: it is %s by %s, which makes it again once it runs. Name that in sourcesRunning (%s), or hold it", p, by, f.Source, strings.Replace(f.Object, " ", "/", 1))
 					}
 				}
+			}
+			if static[who] {
+				return fmt.Errorf("sourcesRunning names %q, a HelmRepository of type oci: it fetches nothing (source-controller makes it static), so it is never refused and there is nothing to accept. Leave it out of sourcesRunning; its HelmCharts, or the HelmReleases that make them, are what is refused", p)
 			}
 			return fmt.Errorf("sourcesRunning names %q, and no such object is brought not held that a scope which holds something refuses (a GitOps source that applies into a namespace it narrows, or what acts outside the cluster)", p)
 		}

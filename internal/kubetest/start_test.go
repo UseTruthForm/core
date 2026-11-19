@@ -54,6 +54,32 @@ func TestStartFailsAtOnceWhenEtcdExits(t *testing.T) {
 	}
 }
 
+// kube-apiserver exiting while etcd is still being waited for ends the
+// wait too, and the failure names it, and the stage it came before as
+// etcd's.
+func TestStartFailsAtOnceWhenTheAPIServerExitsFirst(t *testing.T) {
+	took, err := fakeStart(t, "api-exits", time.Minute)
+	if err == nil {
+		t.Fatal("no error")
+	}
+	if took > 20*time.Second {
+		t.Errorf("took %s: an exited kube-apiserver should end the wait at once, not at the deadline", took)
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		"kube-apiserver exited (exit status 1) before etcd answered /health",
+		"fake kube-apiserver: cannot read its service account key",
+		"--- etcd output ---\n(none)",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("missing %q in:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "first after -") {
+		t.Errorf("output is said to come before its process started:\n%s", msg)
+	}
+}
+
 // Started and silent, the two reach the deadline: the failure names the
 // stage (etcd's /health, before kube-apiserver's /readyz) and says both
 // were running and had written nothing.

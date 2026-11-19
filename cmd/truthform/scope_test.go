@@ -73,7 +73,7 @@ func TestPlanScopeCommand(t *testing.T) {
 
 	drill := writeFile(t, t.TempDir(), "drill.yaml", drillScope)
 	code, stdout, _ = output(t, func() int { return planCmd([]string{"scope", "--from", dir, "--check", drill}) })
-	for _, want := range []string{"4 of the 8 objects of 2 narrowed namespaces", "team-a/a-search (2 objects)", "2 releases left out:", "team-a/a-lien (2 objects)", "team-b/b-search (1 objects)"} {
+	for _, want := range []string{"4 of the 8 objects of 2 narrowed namespaces", "team-a/a-search (2 objects)", "2 releases left out:", "team-a/a-lien (2 objects)", "team-b/b-search (1 object)"} {
 		if code != 0 || !strings.Contains(stdout, want) {
 			t.Errorf("--check: exit %d, lacks %q:\n%s", code, want, stdout)
 		}
@@ -132,7 +132,7 @@ func TestKubernetesDiffScope(t *testing.T) {
 		t.Errorf("diff: exit %d\n%s", code, stdout)
 	}
 	if !strings.Contains(stderr, "scope: 4 of the 8 objects of 2 narrowed namespaces") || !strings.Contains(stderr, "team-a/a-lien (2 objects)") ||
-		!strings.Contains(stderr, "1 objects that no release made are brought, named under objects or by label: ConfigMap team-a/shared") {
+		!strings.Contains(stderr, "1 object that no release made is brought, named under objects or by label: ConfigMap team-a/shared") {
 		t.Errorf("the diff does not say what the scope left out:\n%s", stderr)
 	}
 	// The total says it is of a part.
@@ -238,8 +238,8 @@ func TestScopeSaid(t *testing.T) {
 	}
 	said := scopeSaid(rep, "scope.yaml")
 	for _, want := range []string{
-		"1 objects that no release made are left out (name one under objects, as Kind/name, to bring it): Deployment shop/queue-consumer",
-		"1 objects that no release made are brought, named under objects or by label: ConfigMap shop/shared",
+		"1 object that no release made is left out (name one under objects, as Kind/name, to bring it): Deployment shop/queue-consumer",
+		"1 object that no release made is brought, named under objects or by label: ConfigMap shop/shared",
 		"NOTE: Flux Kustomization flux-system/root is brought, and makes 2 objects in shop",
 		"ClusterRole x (it may be of other/x, left out)",
 		"NOTE: ValidatingWebhookConfiguration policy (check.policy) is brought, and calls the Service shop/policy, which is not brought, and nothing that is brought makes it: while nothing answers there, the API server refuses every write",
@@ -260,7 +260,7 @@ func TestScopeSaid(t *testing.T) {
 	// the same notes.
 	plan := planMarkdown(kube.Plan{}, nil, &rep, nil)
 	for _, want := range []string{
-		"**A part only.** A scope narrowed shop: 1 of their 3 objects are brought",
+		"**A part only.** A scope narrowed shop: 1 of their 3 objects is brought",
 		"- **Note.** Flux Kustomization flux-system/root is brought, and makes 2 objects in shop",
 		"- **Note.** ValidatingWebhookConfiguration policy (check.policy) is brought, and calls the Service shop/policy",
 	} {
@@ -281,13 +281,13 @@ func TestScopeSaid(t *testing.T) {
 // nothing is running.
 func TestScopeSaidOfAHold(t *testing.T) {
 	rep := kube.ScopeReport{Narrowed: []string{"shop"}, Kept: 2, Of: 2, Held: []kube.ScopeHeld{{Object: "Deployment shop/worker", How: "zero replicas (it had 3)"}}}
-	if said := scopeSaid(rep, "scope.yaml"); !strings.Contains(said, "1 objects are brought with nothing running (hold: true)") || strings.Contains(said, "NOTE") {
+	if said := scopeSaid(rep, "scope.yaml"); !strings.Contains(said, "1 object is brought with nothing running (hold: true)") || strings.Contains(said, "NOTE") {
 		t.Errorf("a whole hold:\n%s", said)
 	}
 	rep.NotHeld = []string{"Cluster shop/db"}
 	said := scopeSaid(rep, "scope.yaml")
-	if strings.Contains(said, "nothing running") || !strings.Contains(said, "1 objects are brought stopped (hold: true)") ||
-		!strings.Contains(said, "NOTE: 1 objects under hold: true are brought as they are") || !strings.Contains(said, "Cluster shop/db") {
+	if strings.Contains(said, "nothing running") || !strings.Contains(said, "1 object is brought stopped (hold: true)") ||
+		!strings.Contains(said, "NOTE: 1 object under hold: true is brought as it is") || !strings.Contains(said, "Cluster shop/db") {
 		t.Errorf("a hold that passed what it does not know:\n%s", said)
 	}
 	// Looked at, they are still not held: the hold is not said to be whole.

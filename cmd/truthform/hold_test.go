@@ -57,7 +57,7 @@ func TestKubernetesRestoreHoldsAndRenamesImages(t *testing.T) {
 		t.Fatalf("restore: exit %d, %v\n%s\n%s", code, lastErr, stdout, stderr)
 	}
 	for _, want := range []string{
-		"1 objects are brought with nothing running",
+		"1 object is brought with nothing running",
 		"Deployment shop/worker: zero replicas",
 		"2 images are pulled from elsewhere",
 		"Deployment shop/worker spec.template.spec.containers[].image: old.example.io/shop/worker:1 -> new.example.io/drill/worker:1",
@@ -196,7 +196,7 @@ func TestAHoldThatIsNotWholeDoesNotEndZero(t *testing.T) {
 	looked := writeFile(t, t.TempDir(), "looked.yaml", hold+"    asTheyAre: [Gadget/g]\n")
 
 	code, stdout, _ := output(t, func() int { return planScope([]string{"--from", dir, "--check", notWhole}) })
-	if code != 2 || !strings.Contains(stdout, "NOTE: 1 objects under hold: true are brought as they are") || !strings.Contains(stdout, "asTheyAre") {
+	if code != 2 || !strings.Contains(stdout, "NOTE: 1 object under hold: true is brought as it is") || !strings.Contains(stdout, "asTheyAre") {
 		t.Errorf("plan scope --check of a hold that is not whole: exit %d\n%s", code, stdout)
 	}
 	code, stdout, _ = output(t, func() int { return planScope([]string{"--from", dir, "--check", looked}) })
@@ -226,12 +226,12 @@ func TestAHoldThatIsNotWholeDoesNotEndZero(t *testing.T) {
 	code, stdout, _ = output(t, func() int {
 		return restore(ctx, []string{"--kubeconfig", srv.Kubeconfig, "--context", srv.Context, "--from", bareDir, "--scope", notWhole})
 	})
-	if code != 3 || !strings.Contains(stdout, "NOT APPLIED") || !strings.Contains(stdout, "applied 4 of 5 objects") || !strings.Contains(stdout, "1 objects under hold: true were brought not held (see the NOTE above): Gadget shop/g\n") {
+	if code != 3 || !strings.Contains(stdout, "NOT APPLIED") || !strings.Contains(stdout, "applied 4 of 5 objects") || !strings.Contains(stdout, "1 object under hold: true was brought not held (see the NOTE above): Gadget shop/g\n") {
 		t.Errorf("restore with a failure and a hold that is not whole: exit %d\n%s", code, stdout)
 	}
 	base := []string{"--kubeconfig", srv.Kubeconfig, "--context", srv.Context, "--from", dir}
 	code, stdout, stderr := output(t, func() int { return restore(ctx, append(base, "--scope", notWhole)) })
-	if code != 3 || !strings.Contains(stdout, "applied 4 of 4 objects") || !strings.Contains(stdout, "1 objects under hold: true were brought not held (see the NOTE above): Gadget shop/g") {
+	if code != 3 || !strings.Contains(stdout, "applied 4 of 4 objects") || !strings.Contains(stdout, "1 object under hold: true was brought not held (see the NOTE above): Gadget shop/g") {
 		t.Errorf("restore of a hold that is not whole: exit %d, %v\n%s\n%s", code, lastErr, stdout, stderr)
 	}
 	code, stdout, stderr = output(t, func() int { return restore(ctx, append(base, "--scope", looked)) })

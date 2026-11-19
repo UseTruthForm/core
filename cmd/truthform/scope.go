@@ -69,54 +69,74 @@ func scopeSaid(rep kube.ScopeReport, file string) string {
 	if len(rep.Narrowed) == 0 && len(rep.Jobs) == 0 {
 		fmt.Fprintf(&b, "scope: %s narrows nothing: the snapshot is brought as it is", file)
 	} else {
-		fmt.Fprintf(&b, "scope: %d of the %d objects of %d narrowed namespaces are brought, as %s asks (%s)", rep.Kept, rep.Of, len(rep.Narrowed), file, strings.Join(rep.Narrowed, ", "))
+		fmt.Fprintf(&b, "scope: %d of the %s of %s %s brought, as %s asks (%s)", rep.Kept, count(rep.Of, "object"), count(len(rep.Narrowed), "narrowed namespace"), one(rep.Kept, "is", "are"), file, strings.Join(rep.Narrowed, ", "))
 	}
 	list := func(what string, l []kube.ScopedRelease) {
 		if len(l) == 0 {
 			return
 		}
-		fmt.Fprintf(&b, "\nscope: %d releases %s:", len(l), what)
+		fmt.Fprintf(&b, "\nscope: %s %s:", count(len(l), "release"), what)
 		for _, r := range l {
-			fmt.Fprintf(&b, "\n   %s (%d objects)", r.Release, r.Objects)
+			fmt.Fprintf(&b, "\n   %s (%s)", r.Release, count(r.Objects, "object"))
 		}
 	}
 	list("brought", rep.Brought)
 	list("left out", rep.LeftOut)
 	if len(rep.Jobs) > 0 {
-		fmt.Fprintf(&b, "\nscope: %d Jobs left out, those of a release brought among them: restored, a Job runs again (jobs: true brings them): %s", len(rep.Jobs), strings.Join(rep.Jobs, ", "))
+		fmt.Fprintf(&b, "\nscope: %s left out, those of a release brought among them: restored, a Job runs again (jobs: true brings them): %s", count(len(rep.Jobs), "Job"), strings.Join(rep.Jobs, ", "))
 	}
 	if len(rep.Held) > 0 {
 		what := "with nothing running"
 		if len(rep.NotHeld)+len(rep.AsTheyAre) > 0 {
 			what = "stopped"
 		}
-		fmt.Fprintf(&b, "\nscope: %d objects are brought %s (hold: true); restoring without the hold starts them:", len(rep.Held), what)
+		n := len(rep.Held)
+		fmt.Fprintf(&b, "\nscope: %s %s brought %s (hold: true); restoring without the hold starts %s:", count(n, "object"), one(n, "is", "are"), what, one(n, "it", "them"))
 		for _, h := range rep.Held {
 			fmt.Fprintf(&b, "\n   %s: %s", h.Object, h.How)
 		}
 	}
 	if len(rep.NotHeld) > 0 {
-		fmt.Fprintf(&b, "\nscope: NOTE: %d objects under hold: true are brought as they are, and not held. Nothing in one says it runs anything, but each is of an API this does not know to be idle: its controller may run something for it (an operator's database, a Spark application) or act outside the cluster (cert-manager asking for a certificate for the source's host names). Look at each, and leave out (--leave-out) what would, or name under asTheyAre in %s what may be brought as it is; until then the run does not end 0: %s", len(rep.NotHeld), file, strings.Join(rep.NotHeld, ", "))
+		n := len(rep.NotHeld)
+		fmt.Fprintf(&b, "\nscope: NOTE: %s under hold: true %s, and not held. %s of an API this does not know to be idle: its controller may run something for it (an operator's database, a Spark application) or act outside the cluster (cert-manager asking for a certificate for the source's host names). %s; until then the run does not end 0: %s",
+			count(n, "object"), one(n, "is brought as it is", "are brought as they are"),
+			one(n, "Nothing in it says it runs anything, but it is", "Nothing in one says it runs anything, but each is"),
+			one(n, "Look at it, and leave it out (--leave-out) if it would, or name it under asTheyAre in "+file+" if it may be brought as it is",
+				"Look at each, and leave out (--leave-out) what would, or name under asTheyAre in "+file+" what may be brought as it is"),
+			strings.Join(rep.NotHeld, ", "))
 	}
 	if len(rep.AsTheyAre) > 0 {
-		fmt.Fprintf(&b, "\nscope: %d objects under hold: true are brought as they are, and not held, as %s asks (asTheyAre): %s", len(rep.AsTheyAre), file, strings.Join(rep.AsTheyAre, ", "))
+		n := len(rep.AsTheyAre)
+		fmt.Fprintf(&b, "\nscope: %s under hold: true %s, and not held, as %s asks (asTheyAre): %s", count(n, "object"), one(n, "is brought as it is", "are brought as they are"), file, strings.Join(rep.AsTheyAre, ", "))
 	}
 	if len(rep.ObjectsBrought) > 0 {
-		fmt.Fprintf(&b, "\nscope: %d objects that no release made are brought, named under objects or by label: %s", len(rep.ObjectsBrought), strings.Join(rep.ObjectsBrought, ", "))
+		fmt.Fprintf(&b, "\nscope: %s that no release made %s brought, named under objects or by label: %s", count(len(rep.ObjectsBrought), "object"), one(len(rep.ObjectsBrought), "is", "are"), strings.Join(rep.ObjectsBrought, ", "))
 	}
 	if len(rep.ObjectsLeftOut) > 0 {
-		fmt.Fprintf(&b, "\nscope: %d objects that no release made are left out (name one under objects, as Kind/name, to bring it): %s", len(rep.ObjectsLeftOut), strings.Join(rep.ObjectsLeftOut, ", "))
+		fmt.Fprintf(&b, "\nscope: %s that no release made %s left out (name one under objects, as Kind/name, to bring it): %s", count(len(rep.ObjectsLeftOut), "object"), one(len(rep.ObjectsLeftOut), "is", "are"), strings.Join(rep.ObjectsLeftOut, ", "))
 	}
 	for _, n := range scopeNotes(rep) {
 		b.WriteString("\nscope: NOTE: " + n)
 	}
 	if len(rep.SharedName) > 0 {
-		fmt.Fprintf(&b, "\nscope: %d objects with no namespace are brought because a release of their name is, though another of that name is left out, and which made them they do not say (--leave-out holds one back): %s", len(rep.SharedName), strings.Join(rep.SharedName, "; "))
+		n := len(rep.SharedName)
+		fmt.Fprintf(&b, "\nscope: %s with no namespace %s (--leave-out holds one back): %s", count(n, "object"),
+			one(n, "is brought because a release of its name is, though another of that name is left out, and which made it it does not say",
+				"are brought because a release of their name is, though another of that name is left out, and which made them they do not say"),
+			strings.Join(rep.SharedName, "; "))
 	}
 	if rep.Kept < rep.Of {
 		b.WriteString("\nscope: nothing checks that what is brought does not need something left out (a ServiceAccount, a ConfigMap, a CustomResourceDefinition)")
 	}
 	return b.String()
+}
+
+// one is a word or phrase for one thing, or for any other number.
+func one(n int, single, plural string) string {
+	if n == 1 {
+		return single
+	}
+	return plural
 }
 
 // scopeNotes are what a scope cannot do for the person who wrote it, and
@@ -125,7 +145,7 @@ func scopeSaid(rep kube.ScopeReport, file string) string {
 func scopeNotes(rep kube.ScopeReport) []string {
 	var out []string
 	for _, m := range rep.StillMade {
-		out = append(out, fmt.Sprintf("%s is brought, and makes %d objects in %s, which the scope narrows: once it runs they are there, whatever the scope chose. Leave the source out (--leave-out), or change what it applies.", m.Source, m.Objects, m.Namespace))
+		out = append(out, fmt.Sprintf("%s is brought, and makes %s in %s, which the scope narrows: once it runs %s, whatever the scope chose. Leave the source out (--leave-out), or change what it applies.", m.Source, count(m.Objects, "object"), m.Namespace, one(m.Objects, "it is there", "they are there")))
 	}
 	for _, w := range rep.Webhooks {
 		what := "while nothing answers there, the API server goes on without it (failurePolicy Ignore), and what it would have checked or changed is not"
@@ -152,15 +172,38 @@ const sourceWhy = "a drill target that syncs the source's Git path starts what t
 
 // helmWhy is why a HelmRelease brought not held, in a scope that holds
 // something, refuses a restore. One with a chart source makes a HelmChart,
-// which pulls; one with chartRef makes none (helm-controller reads the
-// artifact of the source it names), and is not said to.
+// which pulls the chart, or, of a GitRepository or Bucket, builds it from
+// that source's artifact, and the build can fetch the chart's
+// dependencies: refused for that even while its source is held. One with
+// chartRef makes none (helm-controller reads the artifact of the source
+// it names), and is not said to.
 func helmWhy(src kube.ScopeSource) string {
 	for _, o := range src.Outside {
-		if strings.HasPrefix(o, "HelmChart ") {
+		switch {
+		case !strings.HasPrefix(o, "HelmChart "):
+		case strings.HasSuffix(o, "("+kube.ChartBuilds+")"):
+			return "it installs its chart, whose HelmChart builds it from the source's artifact once there is one (its source held, once that runs), and the build can fetch the chart's dependencies from their repositories; what the chart installs runs, whatever the scope held back"
+		case strings.HasSuffix(o, "("+kube.ChartPulls+")"):
 			return "it installs its chart, whose HelmChart pulls from the chart source's repository or registry with that source's credentials, and what the chart installs runs, whatever the scope held back"
+		default:
+			return "it installs its chart, whose HelmChart pulls it from the chart source's repository or registry, or builds it from the source's artifact, and the build can fetch the chart's dependencies; what the chart installs runs, whatever the scope held back"
 		}
 	}
 	return "it installs its chart, and what the chart installs runs, whatever the scope held back"
+}
+
+// throughReleases splits what a source applies that acts outside the
+// cluster into what it applies itself and what a HelmRelease it applies
+// makes (a HelmChart).
+func throughReleases(outside []string) (itself, through []string) {
+	for _, o := range outside {
+		if _, what, _ := strings.Cut(o, " ("); strings.HasPrefix(what, kube.MadeByRelease) {
+			through = append(through, o)
+		} else {
+			itself = append(itself, o)
+		}
+	}
+	return itself, through
 }
 
 // isRelease says whether a source is a Flux HelmRelease, which installs
@@ -205,8 +248,15 @@ func appliesWhat(src kube.ScopeSource) string {
 	if len(src.Namespaces) > 0 {
 		l = append(l, into+strings.Join(src.Namespaces, ", ")+", which the scope narrows")
 	}
-	if len(src.Outside) > 0 {
-		l = append(l, makes+strings.Join(src.Outside, ", ")+", which the restore does not bring and the source makes again")
+	itself, through := src.Outside, []string(nil)
+	if !isRelease(src) {
+		itself, through = throughReleases(src.Outside)
+	}
+	if len(itself) > 0 {
+		l = append(l, makes+strings.Join(itself, ", ")+", which the restore does not bring and the source makes again")
+	}
+	if len(through) > 0 {
+		l = append(l, "applies, through its HelmReleases, what acts outside the cluster, "+strings.Join(through, ", ")+", which the restore does not bring and the source's HelmReleases make again")
 	}
 	return strings.Join(l, ", and ")
 }
@@ -236,8 +286,15 @@ func blockingSources(srcs []kube.ScopeSource) []string {
 			if len(src.Namespaces) > 0 {
 				l = append(l, into+strings.Join(src.Namespaces, ", "))
 			}
-			if len(src.Outside) > 0 {
-				l = append(l, makes+strings.Join(src.Outside, ", "))
+			itself, through := src.Outside, []string(nil)
+			if !isRelease(src) {
+				itself, through = throughReleases(src.Outside)
+			}
+			if len(itself) > 0 {
+				l = append(l, makes+strings.Join(itself, ", "))
+			}
+			if len(through) > 0 {
+				l = append(l, "applies, through its HelmReleases, "+strings.Join(through, ", "))
 			}
 			out = append(out, src.Source+" "+strings.Join(l, " and "))
 		}

@@ -43,6 +43,23 @@ func TestMain(m *testing.M) {
 		}()
 		time.Sleep(2 * time.Minute)
 		os.Exit(0)
+	case "etcd-exits":
+		// Stands for both binaries of start (see start_test.go): as etcd,
+		// named by its --data-dir, it says why and exits 1; as
+		// kube-apiserver it waits, silent, until it is stopped.
+		for _, a := range os.Args[1:] {
+			if a == "--data-dir" {
+				fmt.Fprintln(os.Stderr, "fake etcd: cannot open its data directory")
+				os.Exit(1)
+			}
+		}
+		time.Sleep(2 * time.Minute)
+		os.Exit(0)
+	case "silent":
+		// Both binaries, started and never answering or writing: what a
+		// start under load looked like.
+		time.Sleep(2 * time.Minute)
+		os.Exit(0)
 	case "starter", "starter-unwatched":
 		self, _ := os.Executable()
 		left := exec.Command(self)

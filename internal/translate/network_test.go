@@ -411,3 +411,43 @@ func canonJSON(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
 }
+
+// A resource group needs no destination, and what #32 puts out of scope is
+// refused with its reason, not left "not looked at".
+func TestDecidedTypes(t *testing.T) {
+	s := snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{
+		az("Microsoft.Resources/resourceGroups", "", "shop-rg", map[string]any{"location": "westeurope", "tags": map[string]any{"team": "shop"}}),
+		az("Microsoft.Authorization/roleAssignments", "shop-rg", "a1", pr(map[string]any{"principalId": "p"})),
+		az("Microsoft.ManagedIdentity/userAssignedIdentities", "shop-rg", "shop-id", map[string]any{"location": "westeurope"}),
+		az("Microsoft.Web/sites", "shop-rg", "shop-web", map[string]any{"location": "westeurope"}),
+		az("Microsoft.Insights/diagnosticSettings", "shop-rg", "to-storage", pr(nil)),
+		az("Microsoft.Authorization/policyAssignments", "shop-rg", "tags", pr(nil)),
+		az("Microsoft.Compute/virtualMachines", "shop-rg", "vm", pr(nil)),
+	}}
+	want := map[string]State{
+		"Microsoft.Resources/resourceGroups shop-rg":                       WithLosses,
+		"Microsoft.Authorization/roleAssignments shop-rg/a1":               Refused,
+		"Microsoft.ManagedIdentity/userAssignedIdentities shop-rg/shop-id": Refused,
+		"Microsoft.Web/sites shop-rg/shop-web":                             Refused,
+		"Microsoft.Insights/diagnosticSettings shop-rg/to-storage":         Refused,
+		"Microsoft.Authorization/policyAssignments shop-rg/tags":           Refused,
+		"Microsoft.Compute/virtualMachines shop-rg/vm":                     NotLooked,
+	}
+	for name, m := range netMaps() {
+		r, err := Translate(s, m, targets(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range r.Report.Entries {
+			if want[e.Source] != e.State {
+				t.Errorf("%s: %s is %s, want %s (%s)", name, e.Source, e.State, want[e.Source], e.Reason)
+			}
+			if e.State == Refused && !strings.Contains(e.Reason, "#32") && !strings.Contains(e.Reason, "not a resource") {
+				t.Errorf("%s: %s refused without its reason: %s", name, e.Source, e.Reason)
+			}
+		}
+		if len(r.Report.Entries) != len(want) {
+			t.Errorf("%s: %d entries for %d sources", name, len(r.Report.Entries), len(want))
+		}
+	}
+}

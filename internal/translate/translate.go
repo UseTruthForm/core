@@ -172,7 +172,7 @@ type family interface {
 	translate(objs []snapshot.Object, o *out)
 }
 
-var families = []family{serviceBus{}, network{}}
+var families = []family{serviceBus{}, network{}, decided{}}
 
 // Translate rewrites an Azure snapshot for the target the map names, with
 // the target's definitions.
@@ -262,5 +262,8 @@ func targetSnapshot(platform string, m Map, objs []snapshot.Object) snapshot.Sna
 // source names an Azure object as the report does: its type, then its
 // resource group and name.
 func source(o snapshot.Object) string {
+	if o.Namespace() == "" {
+		return o.Kind() + " " + o.Name() // a resource group, or something above one
+	}
 	return o.Kind() + " " + o.Namespace() + "/" + o.Name()
 }

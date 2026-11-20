@@ -487,3 +487,27 @@ func FieldsDigest(fields []string) string {
 }
 
 func canon(v any) string { b, _ := json.Marshal(v); return string(b) }
+
+// DocFor loads an API's document by name and version (pubsub, v1).
+func (ds *Docs) DocFor(api, ver string) (*Doc, error) { return ds.Doc(docURL(api, ver), "") }
+
+// CheckSpec refuses a field a request cannot set: one the schema does not
+// declare, or one the server sets, by the document's flag or the prose
+// Google's API guidelines require (outputOnly). A translation checks what it
+// writes with it, so its objects are what capture would keep.
+func (d *Doc) CheckSpec(schema string, spec map[string]any) error {
+	s := d.Schemas[schema]
+	if s == nil {
+		return fmt.Errorf("%s %s declares no schema %s", d.Name, d.Version, schema)
+	}
+	for _, k := range sortedKeys(spec) {
+		p := s.Properties[k]
+		switch {
+		case p == nil:
+			return fmt.Errorf("%s: %s is not a field of %s %s", schema, k, d.Name, d.Version)
+		case outputOnly(p):
+			return fmt.Errorf("%s: %s is set by the server (%s %s)", schema, k, d.Name, d.Version)
+		}
+	}
+	return nil
+}

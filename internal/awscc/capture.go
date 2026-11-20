@@ -387,6 +387,36 @@ func toObject(r *resource) map[string]any {
 	return map[string]any{"apiVersion": APIVersion, "kind": r.t.Name, "metadata": meta, "spec": r.spec, "status": r.stat}
 }
 
+// Object makes a snapshot object of a type as a capture writes one, write-only
+// annotation included, refusing a property the type's schema does not
+// declare, a read-only one, or a missing required one. A translation builds
+// what it writes with it, so a restore and a capture read it as their own.
+func (r *Registry) Object(typeName, name string, spec map[string]any) (snapshot.Object, error) {
+	t := r.Types[typeName]
+	if t == nil {
+		return snapshot.Object{}, fmt.Errorf("%s is not in the schema registry", typeName)
+	}
+	if !t.Handlers["create"] {
+		return snapshot.Object{}, fmt.Errorf("Cloud Control cannot create %s", typeName)
+	}
+	for _, k := range sortedKeys(spec) {
+		if _, ok := t.Properties[k]; !ok {
+			return snapshot.Object{}, fmt.Errorf("%s: %s is not a property in its schema", typeName, k)
+		}
+		if t.IsReadOnly(k) {
+			return snapshot.Object{}, fmt.Errorf("%s: %s is read-only", typeName, k)
+		}
+	}
+	for _, k := range t.Required {
+		if _, ok := spec[k]; !ok {
+			return snapshot.Object{}, fmt.Errorf("%s: required %s is missing", typeName, k)
+		}
+	}
+	body := toObject(&resource{t: t, name: name, spec: spec})
+	delete(body, "status")
+	return snapshot.Object{Body: body}, nil
+}
+
 // writeOnlyFields names each write-only field in the schema's field-path
 // form. Only one field of a security group's ingress rules is write-only
 // (SourceSecurityGroupName); naming just the top-level property said the
@@ -557,7 +587,7 @@ func name(rs []*resource, account string) {
 		for _, r := range ready {
 			base := sanitize(r.base)
 			if base == "" {
-				base = "h-" + specHash(r)[:12]
+				base = SpecName(r.t.Name, r.spec)
 			}
 			n := base
 			for i := 2; used[r.t.Name+"|"+n]; i++ {
@@ -677,6 +707,15 @@ func accountize(r *resource, account string) {
 
 func refToken(kind, name, attr string) string {
 	return refPrefix + kind + "|" + name + "|" + attr + "}}"
+}
+
+// SpecName is the logical name of a resource no one named: a hash of its
+// type and its tokenized spec, the same in every account. A translation
+// names what it writes by it, so a restore of the translation finds what an
+// earlier one created.
+func SpecName(typeName string, spec map[string]any) string {
+	h := sha256.Sum256([]byte(typeName + "\x00" + canon(spec)))
+	return "h-" + hex.EncodeToString(h[:])[:12]
 }
 
 func specHash(r *resource) string {

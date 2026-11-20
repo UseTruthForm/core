@@ -271,8 +271,16 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 	if t == nil {
 		return false, "type " + kind + " is not in the schema registry"
 	}
+	// A type Cloud Control reads and cannot list (an SQS queue's inline
+	// policy, named by its queue) is looked for by the identifier the
+	// snapshot gives, once its references resolve. Any other type that
+	// cannot be listed is refused: a restore must know whether one exists.
+	byID := false
 	if c := in.cov[kind]; c != nil && c.NotCaptured != "" {
-		return false, "cannot check the target for an existing one: " + c.NotCaptured
+		if !t.Handlers["read"] || !t.Handlers["create"] || !identifiedBySpec(t) {
+			return false, "cannot check the target for an existing one: " + c.NotCaptured
+		}
+		byID = true
 	}
 	differs := func(ex *resource) []snapshot.Change {
 		return snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{o}}, snapshot.Snapshot{Objects: []snapshot.Object{{Body: toObject(ex)}}})
@@ -315,6 +323,30 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 			why = "was not restored"
 		}
 		return false, "depends on " + missing[0] + ", which " + why
+	}
+
+	if byID {
+		id, ok := Identifier(t, desired)
+		if !ok {
+			return false, "cannot check the target for an existing one: Cloud Control cannot list this type, and the snapshot does not give its identifier (" + strings.Join(t.PrimaryIdentifier, ", ") + ")"
+		}
+		got, err := api.Get(ctx, kind, id)
+		switch {
+		case err == nil:
+			var fields []string
+			for _, k := range sortedKeys(desired) {
+				if canon(desired[k]) != canon(got[k]) {
+					fields = append(fields, k)
+				}
+			}
+			if len(fields) == 0 {
+				resolved.set(ref, withID(got, id))
+				return true, "already present and identical"
+			}
+			return false, "already exists in the target and differs (" + strings.Join(fields, ", ") + "); not modified: Cloud Control cannot list this type, so --update does not reach it"
+		case !errors.Is(err, ErrNotFound):
+			return false, "cannot check the target for an existing one: " + err.Error()
+		}
 	}
 
 	vals := opt.Values[ref]
@@ -587,4 +619,18 @@ func createOnlyChanges(t *TypeInfo, a, b map[string]any) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// identifiedBySpec reports a type whose primary identifier the user gives
+// (an inline policy's Queue), so a snapshot names it before it exists.
+func identifiedBySpec(t *TypeInfo) bool {
+	if len(t.PrimaryIdentifier) == 0 {
+		return false
+	}
+	for _, p := range t.PrimaryIdentifier {
+		if t.IsReadOnly(p) {
+			return false
+		}
+	}
+	return true
 }

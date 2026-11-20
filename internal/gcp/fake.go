@@ -106,7 +106,12 @@ func (f *Fake) Call(_ context.Context, method, url string, body any) (map[string
 		return nil, fmt.Errorf("%s: %w", url, ErrNotFound)
 	case "POST":
 		return f.create(url, body.(map[string]any))
-	case "PATCH", "PUT":
+	case "PUT":
+		if out, ok, err := f.createAtName(url, body.(map[string]any)); ok {
+			return out, err
+		}
+		return f.update(method, url, body.(map[string]any))
+	case "PATCH":
 		return f.update(method, url, body.(map[string]any))
 	}
 	return nil, fmt.Errorf("fake: unsupported method %s", method)
@@ -162,6 +167,46 @@ func (f *Fake) create(url string, body map[string]any) (map[string]any, error) {
 		}
 	}
 	return nil, fmt.Errorf("fake: no create method matches %s", url)
+}
+
+// createAtName is a PUT create at the resource's own name (Pub/Sub's
+// PUT v1/{+name}), when nothing is there yet and a document declares one
+// whose path matches; ok is false otherwise, and the PUT is an update.
+func (f *Fake) createAtName(url string, body map[string]any) (map[string]any, bool, error) {
+	for r := range f.res {
+		if strings.HasSuffix(url, "/"+r) {
+			return nil, false, nil
+		}
+	}
+	for _, d := range f.w.docs.loaded() {
+		prefix := d.RootURL + d.ServicePath
+		path := strings.TrimPrefix(url, prefix)
+		if path == url {
+			continue
+		}
+		for _, c := range d.collections() {
+			m := c.methods["create"]
+			if m == nil || m.HTTPMethod != "PUT" {
+				continue
+			}
+			lead, _, _ := strings.Cut(m.Path, "{")
+			rel := strings.TrimPrefix(path, lead)
+			if rel == path || !matchesName(m, rel) {
+				continue
+			}
+			coll := c.path[strings.LastIndex(c.path, ".")+1:]
+			parent, id, ok := strings.Cut(rel, "/"+coll+"/")
+			if !ok {
+				continue
+			}
+			if n, _ := body["name"].(string); n != "" && n != rel {
+				return nil, true, fmt.Errorf("INVALID_ARGUMENT: the name in the body, %s, is not %s", n, rel)
+			}
+			out, err := f.createWith(d, d.Name+".googleapis.com/"+c.schema, c.schema, c.path, m, parent, body, id)
+			return out, true, err
+		}
+	}
+	return nil, false, nil
 }
 
 func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, parent string, body map[string]any, queryID string) (map[string]any, error) {

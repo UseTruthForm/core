@@ -2,10 +2,12 @@ package translate
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/usetruthform/core/internal/awscc"
+	"github.com/usetruthform/core/internal/gcp"
 )
 
 // The AWS translation restores, as it is, into the schema-driven fake: it
@@ -49,6 +51,36 @@ func TestTheAWSTranslationRestores(t *testing.T) {
 			if !strings.HasPrefix(v, "arn:") {
 				t.Errorf("subscription %s: %s is %q", id, k, v)
 			}
+		}
+	}
+}
+
+// The Pub/Sub translation restores into the Discovery-driven fake: topics
+// and subscriptions are created with Pub/Sub's own PUT at their names, a
+// subscription after its topic, and a second restore finds them all.
+func TestThePubSubTranslationRestores(t *testing.T) {
+	docs := targets(t).GCP
+	s := run(t, maps()["pubsub"]).Snapshots["gcp"]
+	f := gcp.NewWorld(docs).Project("target-project", "123456789")
+	results := gcp.Restore(context.Background(), f, docs, s, gcp.RestoreOptions{})
+	if len(results) != len(s.Objects) {
+		t.Fatalf("%d results for %d objects", len(results), len(s.Objects))
+	}
+	for _, res := range results {
+		if !res.OK {
+			t.Errorf("%s: %s", res.Key, res.Detail)
+		}
+	}
+	got, err := f.Call(context.Background(), "GET", "https://pubsub.googleapis.com/v1/projects/target-project/subscriptions/events-shipping", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["topic"] != "projects/target-project/topics/events" || !strings.Contains(fmt.Sprint(got["filter"]), "order.shipped") {
+		t.Errorf("events-shipping: %v", got)
+	}
+	for _, res := range gcp.Restore(context.Background(), f, docs, s, gcp.RestoreOptions{}) {
+		if !res.OK || res.Detail != "already present and identical" {
+			t.Errorf("again: %s: %v %s", res.Key, res.OK, res.Detail)
 		}
 	}
 }

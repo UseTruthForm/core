@@ -1502,12 +1502,14 @@ one wrote and this one does not is removed.
 
 Known limits:
 
-- A restore of the translated objects works as any restore does, but a
-  diff of the rebuilt target against them shows differences. A capture
-  holds every default the target fills in, and names an SNS subscription
-  or queue policy by a hash of its settings.
-- GCP restore does not yet create Pub/Sub topics and subscriptions:
-  Pub/Sub creates with PUT, and restore creates only with POST.
+- A restore of the translated objects works as any restore does, and a
+  second one finds what the first made. A diff of the rebuilt target
+  against them still shows differences: a capture holds every default the
+  target fills in that the translation does not set.
+- Each target object is built from, or checked against, the target's own
+  published definition (the CloudFormation registry, Pub/Sub's Discovery
+  document): downloaded and cached like `aws-coverage`, or read from
+  `--schemas` and `--discovery`.
 
 ## As a graph (Azure)
 

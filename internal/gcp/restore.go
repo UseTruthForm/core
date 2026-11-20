@@ -142,15 +142,22 @@ func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, pro
 			id = id[:i]
 		}
 	}
-	body, q, err := wrap(doc, str(annSchema), create, desired, id)
-	if err != nil {
-		return false, err.Error()
+	var got map[string]any
+	if create.HTTPMethod == "PUT" {
+		// A create that names the resource in its path (Pub/Sub's
+		// PUT v1/{+name}) takes the resource as it is, at its own name.
+		got, err = api.Call(ctx, "PUT", doc.URL(create, detok(o.Name(), project, number)), desired)
+	} else {
+		body, q, werr := wrap(doc, str(annSchema), create, desired, id)
+		if werr != nil {
+			return false, werr.Error()
+		}
+		u := doc.URL(create, detok(str(annParent), project, number))
+		if len(q) > 0 {
+			u += "?" + q.Encode()
+		}
+		got, err = api.Call(ctx, "POST", u, body)
 	}
-	u := doc.URL(create, detok(str(annParent), project, number))
-	if len(q) > 0 {
-		u += "?" + q.Encode()
-	}
-	got, err := api.Call(ctx, "POST", u, body)
 	if err != nil {
 		return false, err.Error()
 	}

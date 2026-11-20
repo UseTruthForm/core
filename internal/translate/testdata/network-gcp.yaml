@@ -1,0 +1,464 @@
+report:
+  destinations:
+  - 'network: vpc'
+  entries:
+  - source: Microsoft.Network/networkSecurityGroups net/data
+    state: mapped
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-allow-8443-internet
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-allow-pg-from-app
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-allowvnetinbound
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-deny-app
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-deny-internet-out
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-deny-vnet-8443
+  - reason: no subnet in the snapshot uses it (one on a network interface is not translated
+      yet), so there is no network to put it in
+    source: Microsoft.Network/networkSecurityGroups net/unused
+    state: refused
+  - losses:
+    - field: properties.securityRules[deny-azurecloud]
+      why: inbound deny rule deny-azurecloud (priority 150) names AzureCloud, which
+        has no addresses here; it denies every address instead
+    - field: properties.securityRules[allow-frontdoor]
+      why: inbound allow rule allow-frontdoor (priority 400) allows AzureFrontDoor.Backend,
+        which has no addresses here; it is not carried over
+    - field: properties.securityRules[allow-ephemeral]
+      why: inbound allow rule allow-ephemeral (priority 510) names source ports; a
+        firewall rule cannot, so it is not carried over
+    source: Microsoft.Network/networkSecurityGroups net/web
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-8443
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-dns
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-https
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-mgmt-ssh
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-one-host
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-deny-azurecloud
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-deny-ssh
+  - losses:
+    - field: properties.subnets[app].properties.defaultOutboundAccess
+      why: it reached the internet through Azure's default outbound access; on the
+        target it has no internet egress until a NAT gateway (AWS) or Cloud NAT (GCP)
+        is added
+    - field: properties.subnets[data].properties.routeTable
+      why: 'its traffic follows a route table, which is not translated yet: if it
+        sent traffic through a firewall appliance, the target does not'
+      widens: true
+    - field: tags
+      why: '1 tag(s): a VPC network has no tags or labels to hold them'
+    source: Microsoft.Network/virtualNetworks net/core
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/core
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
+  - reason: no descriptor for Microsoft.Network/virtualNetworks/virtualNetworkPeerings
+      yet
+    source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/core/to-hub
+    state: not looked at
+  from: azure
+  requirements:
+  - 'Google''s load balancers check health from 35.191.0.0/16 and 130.211.0.0/22:
+    where one fronts these instances, allow those ranges (Azure''s load balancer was
+    allowed by every NSG)'
+  - 'Instances (and GKE nodes) in subnetwork(s) core-app carry the network tag web:
+    an NSG applied to a whole subnet, a firewall rule applies to instances by tag'
+  - 'Instances (and GKE nodes) in subnetwork(s) core-data carry the network tag data:
+    an NSG applied to a whole subnet, a firewall rule applies to instances by tag'
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-allow-8443-internet
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "8443"
+      direction: INGRESS
+      name: data-allow-8443-internet
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 130
+      sourceRanges:
+      - 0.0.0.0/5
+      - 8.0.0.0/7
+      - 10.0.0.0/12
+      - 10.16.0.0/14
+      - 10.21.0.0/16
+      - 10.22.0.0/15
+      - 10.24.0.0/13
+      - 10.32.0.0/11
+      - 10.64.0.0/10
+      - 10.128.0.0/9
+      - 11.0.0.0/8
+      - 12.0.0.0/6
+      - 16.0.0.0/4
+      - 32.0.0.0/3
+      - 64.0.0.0/2
+      - 128.0.0.0/1
+      targetTags:
+      - data
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-allow-pg-from-app
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "5432"
+      direction: INGRESS
+      name: data-allow-pg-from-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 100
+      sourceRanges:
+      - 10.20.1.0/24
+      targetTags:
+      - data
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-allowvnetinbound
+    spec:
+      allowed:
+      - IPProtocol: all
+      direction: INGRESS
+      name: data-allowvnetinbound
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 65000
+      sourceRanges:
+      - 10.20.0.0/16
+      targetTags:
+      - data
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-deny-app
+    spec:
+      denied:
+      - IPProtocol: all
+      direction: INGRESS
+      name: data-deny-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 110
+      sourceRanges:
+      - 10.20.1.0/24
+      targetTags:
+      - data
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-deny-internet-out
+    spec:
+      denied:
+      - IPProtocol: all
+      destinationRanges:
+      - 0.0.0.0/5
+      - 8.0.0.0/7
+      - 10.0.0.0/12
+      - 10.16.0.0/14
+      - 10.21.0.0/16
+      - 10.22.0.0/15
+      - 10.24.0.0/13
+      - 10.32.0.0/11
+      - 10.64.0.0/10
+      - 10.128.0.0/9
+      - 11.0.0.0/8
+      - 12.0.0.0/6
+      - 16.0.0.0/4
+      - 32.0.0.0/3
+      - 64.0.0.0/2
+      - 128.0.0.0/1
+      direction: EGRESS
+      name: data-deny-internet-out
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 4000
+      targetTags:
+      - data
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-deny-vnet-8443
+    spec:
+      denied:
+      - IPProtocol: tcp
+        ports:
+        - "8443"
+      direction: INGRESS
+      name: data-deny-vnet-8443
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 140
+      sourceRanges:
+      - 10.20.0.0/16
+      targetTags:
+      - data
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allow-8443
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "8443"
+      direction: INGRESS
+      name: web-allow-8443
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 600
+      sourceRanges:
+      - 0.0.0.0/5
+      - 8.0.0.0/7
+      - 10.0.0.0/12
+      - 10.16.0.0/14
+      - 10.21.0.0/16
+      - 10.22.0.0/15
+      - 10.24.0.0/13
+      - 10.32.0.0/11
+      - 10.64.0.0/10
+      - 10.128.0.0/9
+      - 11.0.0.0/8
+      - 12.0.0.0/6
+      - 16.0.0.0/4
+      - 32.0.0.0/3
+      - 64.0.0.0/2
+      - 128.0.0.0/1
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allow-dns
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "53"
+      - IPProtocol: udp
+        ports:
+        - "53"
+      direction: INGRESS
+      name: web-allow-dns
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 500
+      sourceRanges:
+      - 192.0.2.0/24
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allow-https
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "443"
+      direction: INGRESS
+      name: web-allow-https
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 100
+      sourceRanges:
+      - 0.0.0.0/0
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allow-mgmt-ssh
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "22"
+      direction: INGRESS
+      name: web-allow-mgmt-ssh
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 300
+      sourceRanges:
+      - 10.0.0.0/8
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allow-one-host
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "9000"
+      destinationRanges:
+      - 10.20.1.10/32
+      direction: INGRESS
+      name: web-allow-one-host
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 520
+      sourceRanges:
+      - 203.0.113.0/24
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
+    spec:
+      allowed:
+      - IPProtocol: all
+      direction: INGRESS
+      name: web-allowvnetinbound
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 65000
+      sourceRanges:
+      - 10.20.0.0/16
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-deny-azurecloud
+    spec:
+      denied:
+      - IPProtocol: tcp
+        ports:
+        - "8443"
+      direction: INGRESS
+      name: web-deny-azurecloud
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 150
+      sourceRanges:
+      - 0.0.0.0/0
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-deny-ssh
+    spec:
+      denied:
+      - IPProtocol: tcp
+        ports:
+        - "22"
+      direction: INGRESS
+      name: web-deny-ssh
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 200
+      sourceRanges:
+      - 0.0.0.0/0
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Network
+    metadata:
+      annotations:
+        truthform.org/collection: networks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Network
+      name: projects/{{truthform|project}}/global/networks/core
+    spec:
+      autoCreateSubnetworks: false
+      mtu: 1500
+      name: core
+      routingConfig:
+        routingMode: REGIONAL
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    spec:
+      ipCidrRange: 10.20.1.0/24
+      name: core-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
+    spec:
+      ipCidrRange: 10.20.2.0/24
+      name: core-data
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1

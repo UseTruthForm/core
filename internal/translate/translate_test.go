@@ -88,10 +88,13 @@ func targets(t *testing.T) Targets {
 	t.Helper()
 	dir := t.TempDir()
 	for src, name := range map[string]string{
-		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-sqs-queue.json"): "aws-sqs-queue.json",
-		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-sns-topic.json"): "aws-sns-topic.json",
-		filepath.Join("testdata", "aws", "aws-sns-subscription.json"):                 "aws-sns-subscription.json",
-		filepath.Join("testdata", "aws", "aws-sqs-queueinlinepolicy.json"):            "aws-sqs-queueinlinepolicy.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-sqs-queue.json"):         "aws-sqs-queue.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-sns-topic.json"):         "aws-sns-topic.json",
+		filepath.Join("testdata", "aws", "aws-sns-subscription.json"):                         "aws-sns-subscription.json",
+		filepath.Join("testdata", "aws", "aws-sqs-queueinlinepolicy.json"):                    "aws-sqs-queueinlinepolicy.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-ec2-vpc.json"):           "aws-ec2-vpc.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-ec2-subnet.json"):        "aws-ec2-subnet.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-ec2-securitygroup.json"): "aws-ec2-securitygroup.json",
 	} {
 		b, err := os.ReadFile(src)
 		if err != nil {
@@ -105,7 +108,17 @@ func targets(t *testing.T) Targets {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Targets{AWS: reg, GCP: gcp.LoadDocs(filepath.Join("testdata", "gcp"))}
+	gdir := t.TempDir()
+	for _, src := range []string{filepath.Join("testdata", "gcp", "pubsub_v1.json"), filepath.Join("..", "..", "testdata", "gcp", "discovery", "compute_v1.json")} {
+		b, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(gdir, filepath.Base(src)), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return Targets{AWS: reg, GCP: gcp.LoadDocs(gdir)}
 }
 
 func translateFixture(t *testing.T, s snapshot.Snapshot, m Map) (Result, error) {
@@ -158,35 +171,39 @@ func hasLoss(e Entry, field string) *Loss {
 // any rule shows here, line by line.
 func TestGolden(t *testing.T) {
 	for name, m := range maps() {
-		r := run(t, m)
-		doc := map[string]any{"report": r.Report}
-		objs := map[string]any{}
-		for p, s := range r.Snapshots {
-			var bodies []any
-			for _, o := range s.Objects {
-				bodies = append(bodies, o.Body)
-			}
-			objs[p] = bodies
+		golden(t, name, run(t, m))
+	}
+}
+
+func golden(t *testing.T, name string, r Result) {
+	t.Helper()
+	doc := map[string]any{"report": r.Report}
+	objs := map[string]any{}
+	for p, s := range r.Snapshots {
+		var bodies []any
+		for _, o := range s.Objects {
+			bodies = append(bodies, o.Body)
 		}
-		doc["snapshots"] = objs
-		got, err := yaml.Marshal(doc)
-		if err != nil {
+		objs[p] = bodies
+	}
+	doc["snapshots"] = objs
+	got, err := yaml.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join("testdata", name+".yaml")
+	if *update {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		path := filepath.Join("testdata", name+".yaml")
-		if *update {
-			if err := os.WriteFile(path, got, 0o644); err != nil {
-				t.Fatal(err)
-			}
-			continue
-		}
-		want, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("%v (run with -update to write it)", err)
-		}
-		if string(got) != string(want) {
-			t.Errorf("%s: the translation differs from %s; run with -update and read the diff", name, path)
-		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("%v (run with -update to write it)", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("%s: the translation differs from %s; run with -update and read the diff", name, path)
 	}
 }
 
@@ -405,8 +422,15 @@ func TestMapIsChosenNotDefaulted(t *testing.T) {
 	bad := map[string]Map{
 		"no target":          {},
 		"aws without region": {To: "aws"},
-		"gcp with region":    {To: "gcp", Region: "x"},
 	}
+	m4 := Map{To: "gcp", Network: &NetworkMap{Zone: "a"}}
+	m4.Destinations.Network = "vpc"
+	bad["a zone on gcp"] = m4
+	m5 := Map{To: "aws", Region: "r", Network: &NetworkMap{Zone: "a"}}
+	bad["network settings with no network destination"] = m5
+	m6 := Map{To: "aws", Region: "r"}
+	m6.Destinations.Network = "subnets"
+	bad["an unknown network destination"] = m6
 	m1 := Map{To: "gcp"}
 	m1.Destinations.Messaging = "sqs-sns"
 	bad["sqs-sns on gcp"] = m1

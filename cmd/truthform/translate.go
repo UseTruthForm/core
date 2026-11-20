@@ -30,7 +30,7 @@ func translateCmd(args []string) int {
 	mapFile := fs.String("map", "", "YAML map: the target (to, region), a destination per service class, and names")
 	outDir := fs.String("out", "", "directory to write a snapshot per target platform into (aws/, gcp/, kubernetes/), and "+reportFile)
 	schemas := fs.String("schemas", "", "aws: the CloudFormation registry's schema bundle (.zip) or a directory of schemas, instead of downloading the public bundle")
-	discovery := fs.String("discovery", "", "gcp: a directory of Discovery documents (pubsub_v1.json), instead of downloading them from Google")
+	discovery := fs.String("discovery", "", "gcp: a directory of Discovery documents (pubsub_v1.json, compute_v1.json), instead of downloading them from Google")
 	if err := parseFlags(fs, args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -80,13 +80,13 @@ func translateTargets(m translate.Map, schemas, discovery string) (translate.Tar
 	if err != nil && (schemas == "" || discovery == "") {
 		return tg, err
 	}
-	switch m.Destinations.Messaging {
-	case "sqs-sns":
+	if m.NeedsAWS() {
 		a := awsFlags{region: m.Region, schemas: schemas}
 		if tg.AWS, err = a.registry(); err != nil {
 			return tg, err
 		}
-	case "pubsub":
+	}
+	if m.NeedsGCP() {
 		if discovery != "" {
 			tg.GCP = gcp.LoadDocs(discovery)
 		} else {

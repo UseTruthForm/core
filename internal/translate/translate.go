@@ -172,7 +172,7 @@ type family interface {
 	translate(objs []snapshot.Object, o *out)
 }
 
-var families = []family{serviceBus{}}
+var families = []family{serviceBus{}, network{}}
 
 // Translate rewrites an Azure snapshot for the target the map names, with
 // the target's definitions.
@@ -184,10 +184,10 @@ func Translate(src snapshot.Snapshot, m Map, tg Targets) (Result, error) {
 		return Result{}, err
 	}
 	switch {
-	case m.Destinations.Messaging == "sqs-sns" && tg.AWS == nil:
-		return Result{}, fmt.Errorf("sqs-sns needs the AWS registry's schemas")
-	case m.Destinations.Messaging == "pubsub" && tg.GCP == nil:
-		return Result{}, fmt.Errorf("pubsub needs GCP's Discovery documents")
+	case m.NeedsAWS() && tg.AWS == nil:
+		return Result{}, fmt.Errorf("the map's destinations write AWS objects, which need the AWS registry's schemas")
+	case m.NeedsGCP() && tg.GCP == nil:
+		return Result{}, fmt.Errorf("the map's destinations write GCP objects, which need GCP's Discovery documents")
 	}
 	o := &out{m: m, tg: tg, objects: map[string][]snapshot.Object{}, keys: map[string]string{}, reqs: map[string]bool{}}
 	claimed := make([][]snapshot.Object, len(families))

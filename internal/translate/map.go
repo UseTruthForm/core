@@ -16,7 +16,8 @@ import (
 type Map struct {
 	// To is the target cloud: aws or gcp.
 	To string `json:"to"`
-	// Region is the AWS region the cloud objects are for.
+	// Region is the region the cloud objects are for: required on AWS,
+	// and on GCP wherever something regional (a subnetwork) is written.
 	Region string `json:"region,omitempty"`
 	// Destinations chooses, per service class, where it goes. A class with
 	// objects in the snapshot and no choice is refused.
@@ -24,7 +25,12 @@ type Map struct {
 		// Messaging: sqs-sns (aws), pubsub (gcp) or rabbitmq (in the
 		// cluster, on either).
 		Messaging string `json:"messaging,omitempty"`
+		// Network: vpc (a VPC on AWS, a VPC network on GCP).
+		Network string `json:"network,omitempty"`
 	} `json:"destinations"`
+	// Network is what the network destination needs that Azure cannot
+	// say.
+	Network *NetworkMap `json:"network,omitempty"`
 	// RabbitMQ is needed when messaging goes to rabbitmq.
 	RabbitMQ *RabbitMQ `json:"rabbitmq,omitempty"`
 	// Sessions says how a Service Bus session queue is carried over: fifo
@@ -38,6 +44,16 @@ type Map struct {
 	// names its source ("<group>/<namespace>/<queue>"): for a name the
 	// target does not allow, or two that would collide.
 	Names map[string]string `json:"names,omitempty"`
+}
+
+// NetworkMap is what networks need on the target.
+type NetworkMap struct {
+	// Zone is the AWS availability zone every subnet goes in, and Zones
+	// one per subnet, keyed group/network/subnet. An Azure subnet spans
+	// the region's zones; an AWS one is in a single zone, so which one is
+	// a choice.
+	Zone  string            `json:"zone,omitempty"`
+	Zones map[string]string `json:"zones,omitempty"`
 }
 
 // RabbitMQ is what the in-cluster messaging destination needs.
@@ -78,9 +94,6 @@ func (m Map) validate() error {
 			return fmt.Errorf("map: to: aws needs region")
 		}
 	case "gcp":
-		if m.Region != "" {
-			return fmt.Errorf("map: region is for aws; a GCP project's Pub/Sub is global")
-		}
 	case "":
 		return fmt.Errorf("map: to is required (aws or gcp)")
 	default:
@@ -111,6 +124,19 @@ func (m Map) validate() error {
 	} else if m.RabbitMQ != nil {
 		return fmt.Errorf("map: rabbitmq is set, and messaging does not go to rabbitmq")
 	}
+	switch m.Destinations.Network {
+	case "", "vpc":
+	default:
+		return fmt.Errorf("map: network: %q is not vpc", m.Destinations.Network)
+	}
+	if m.Network != nil {
+		if m.Destinations.Network == "" {
+			return fmt.Errorf("map: network is set, and destinations.network is not")
+		}
+		if m.To != "aws" && (m.Network.Zone != "" || len(m.Network.Zones) > 0) {
+			return fmt.Errorf("map: network zones are for aws: a GCP subnetwork spans its region's zones")
+		}
+	}
 	want := map[string]string{"sqs-sns": "fifo", "pubsub": "ordering", "rabbitmq": "single-active-consumer"}[m.Destinations.Messaging]
 	if m.Sessions != "" && m.Sessions != want {
 		return fmt.Errorf("map: sessions: %q does not go with messaging %s (it takes %q)", m.Sessions, m.Destinations.Messaging, want)
@@ -122,6 +148,9 @@ func (m Map) destinationList() []string {
 	var d []string
 	if m.Destinations.Messaging != "" {
 		d = append(d, "messaging: "+m.Destinations.Messaging)
+	}
+	if m.Destinations.Network != "" {
+		d = append(d, "network: "+m.Destinations.Network)
 	}
 	sort.Strings(d)
 	return d
@@ -138,4 +167,30 @@ func (m Map) name(src, given string) string {
 		}
 	}
 	return given
+}
+
+// zoneFor is the AWS availability zone the map gives a subnet
+// (group/network/subnet), or "".
+func (m Map) zoneFor(key string) string {
+	if m.Network == nil {
+		return ""
+	}
+	for k, z := range m.Network.Zones {
+		if strings.EqualFold(k, key) {
+			return z
+		}
+	}
+	return m.Network.Zone
+}
+
+// NeedsAWS reports whether a destination the map chooses writes AWS
+// objects, which are built from the CloudFormation registry.
+func (m Map) NeedsAWS() bool {
+	return m.Destinations.Messaging == "sqs-sns" || (m.To == "aws" && m.Destinations.Network != "")
+}
+
+// NeedsGCP reports whether a destination the map chooses writes GCP
+// objects, which are checked against Google's Discovery documents.
+func (m Map) NeedsGCP() bool {
+	return m.Destinations.Messaging == "pubsub" || (m.To == "gcp" && m.Destinations.Network != "")
 }

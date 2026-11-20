@@ -412,6 +412,9 @@ func (r *Registry) Object(typeName, name string, spec map[string]any) (snapshot.
 			return snapshot.Object{}, fmt.Errorf("%s: required %s is missing", typeName, k)
 		}
 	}
+	// In the order a capture writes it: sets (rules, tags) sorted, so a
+	// restore of what it builds finds what an earlier one made identical.
+	sortSets(spec, map[string]any{"properties": t.Properties}, t.Definitions)
 	body := toObject(&resource{t: t, name: name, spec: spec})
 	delete(body, "status")
 	return snapshot.Object{Body: body}, nil

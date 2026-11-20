@@ -1433,8 +1433,9 @@ that needs one left out fails, or waits, in the cluster.
 `translate` rewrites an Azure snapshot as snapshots for another cloud, offline.
 It reads one snapshot and a map, and writes a snapshot per target platform,
 which `plan`, `restore` and `diff` take as they are. It makes no request, so
-the capture-only build has it too. So far it translates Service Bus; every
-other type is reported as not looked at (design: issue #32).
+the capture-only build has it too. So far it translates Service Bus,
+virtual networks and network security groups; every other type is reported
+as not looked at (design: issue #32).
 
 ```sh
 truthform translate --from snap/azure --map map.yaml --out moved/
@@ -1448,9 +1449,14 @@ Nothing the map leaves out gets a default.
 
 ```yaml
 to: aws                     # or gcp
-region: eu-west-1           # aws only
+region: eu-west-1           # aws; gcp where something regional is written (a subnetwork)
 destinations:
   messaging: sqs-sns        # sqs-sns (aws), pubsub (gcp), or rabbitmq (in the cluster, on either)
+  network: vpc              # a VPC (aws) or VPC network (gcp)
+network:                    # aws: an Azure subnet spans the region's zones, an AWS one is in one
+  zone: eu-west-1a          # every subnet, or
+  zones:
+    net/core/data: eu-west-1b   # one per subnet, keyed group/network/subnet
 sessions: fifo              # how a session queue is carried: fifo, ordering or single-active-consumer
 rabbitmq:                   # for messaging: rabbitmq
   namespace: messaging
@@ -1470,6 +1476,23 @@ names:
 | SQL rule, rule action | refused | refused | refused |
 | Session queue | FIFO (`sessions: fifo`) | ordered delivery (`sessions: ordering`) | single active consumer |
 | Shared access keys | refused: identity is a change to the app | refused | refused |
+
+| Network | aws | gcp |
+|---|---|---|
+| Virtual network | VPC (one IPv4 range, /16 to /28) | VPC network, custom mode, regional routing, MTU 1500 |
+| Subnet | subnet in the map's zone | subnetwork in the map's region |
+| NSG on a subnet | a security group per network, holding what the NSG allows with its denies taken out | a firewall rule per NSG rule, same priority, allow or deny, applied by a network tag per NSG |
+| Azure's default rules | written as their effect (the network allowed in, all allowed out) | the network's allow at 65000; GCP's own rules match the rest |
+| Peering, route table, NAT gateway | not translated yet (a route table is reported as less protected) | the same |
+
+Azure evaluates an NSG's rules by priority, the first match deciding. A
+security group only allows, so on AWS each allow is written with every deny
+before it taken out, worked out as address ranges, ports and protocols.
+What cannot be written exactly is dropped and named: a rule that names a
+service tag or application security group, a source port, or part of the
+subnet's addresses. A translation may let through less than the source,
+never more. Each security group and network tag has to be attached to the
+instances in its subnets; the report lists them.
 
 Every source object ends in one state, and `<out>/translation.yaml` lists
 each with its reason and target objects:
@@ -1507,9 +1530,11 @@ Known limits:
   against them still shows differences: a capture holds every default the
   target fills in that the translation does not set.
 - Each target object is built from, or checked against, the target's own
-  published definition (the CloudFormation registry, Pub/Sub's Discovery
-  document): downloaded and cached like `aws-coverage`, or read from
-  `--schemas` and `--discovery`.
+  published definition (the CloudFormation registry, the Pub/Sub and
+  Compute Discovery documents): downloaded and cached like `aws-coverage`,
+  or read from `--schemas` and `--discovery`.
+- An NSG on a network interface rather than a subnet, application security
+  groups and network peerings are not translated yet.
 
 ## As a graph (Azure)
 

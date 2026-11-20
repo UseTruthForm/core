@@ -1,5 +1,23 @@
 {
  "resources": {
+  "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/630"
+  },
+  "Microsoft.Network/networkSecurityGroups/securityRules@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/618"
+  },
+  "Microsoft.Network/networkSecurityGroups@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/609"
+  },
+  "Microsoft.Network/virtualNetworks/subnets@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/622"
+  },
+  "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/626"
+  },
+  "Microsoft.Network/virtualNetworks@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/614"
+  },
   "Microsoft.ServiceBus/namespaces/AuthorizationRules@2026-01-01": {
    "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/93"
   },

@@ -8,45 +8,70 @@ import (
 	"github.com/usetruthform/core/internal/snapshot"
 )
 
-// sbVersion is the Service Bus API version whose published definitions the
-// readers are checked against (testdata/azure, from Azure/bicep-types-az).
-const sbVersion = "2026-01-01"
+// The API versions whose published definitions the readers are checked
+// against (testdata/azure, from Azure/bicep-types-az).
+const (
+	sbVersion  = "2026-01-01"
+	netVersion = "2026-03-01"
+)
 
-// Every setting Azure's definition declares writable for a Service Bus
-// type is read by a rule: carried over, named as having no equivalent, or
-// named as carrying nothing. The rules are written by hand, since what a
-// setting means on another cloud is no API's to say; which settings exist
-// is the definition's, so a field Azure adds fails here before a capture
-// ever holds it.
+// reflected is one Azure type a rule reads: its definition's version, a
+// name of the right shape, values the reader needs to read on (one it
+// cannot parse stops it early), and the reader.
+type reflected struct {
+	version string
+	name    string
+	set     map[string]any
+	read    func(snapshot.Object) []Loss
+}
+
+func readers() map[string]reflected {
+	sb := func(name string, read func(snapshot.Object) []Loss) reflected {
+		return reflected{version: sbVersion, name: name, read: read}
+	}
+	return map[string]reflected{
+		"Microsoft.ServiceBus/namespaces": sb("ns", func(o snapshot.Object) []Loss { return readNamespace(o).losses }),
+		"Microsoft.ServiceBus/namespaces/networkRuleSets": sb("ns/default", func(o snapshot.Object) []Loss {
+			ns := &sbNS{network: &o}
+			ns.readNetwork()
+			return ns.losses
+		}),
+		"Microsoft.ServiceBus/namespaces/queues":                     sb("ns/q", func(o snapshot.Object) []Loss { return readEntity(o, sbQueue).losses }),
+		"Microsoft.ServiceBus/namespaces/topics":                     sb("ns/t", func(o snapshot.Object) []Loss { return readEntity(o, sbTopic).losses }),
+		"Microsoft.ServiceBus/namespaces/topics/subscriptions":       sb("ns/t/s", func(o snapshot.Object) []Loss { return readEntity(o, sbSubscription).losses }),
+		"Microsoft.ServiceBus/namespaces/topics/subscriptions/rules": sb("ns/t/s/r", func(o snapshot.Object) []Loss { return readRule(o).losses }),
+		"Microsoft.Network/virtualNetworks":                          {version: netVersion, name: "vn", read: func(o snapshot.Object) []Loss { return readVNet(o).losses }},
+		"Microsoft.Network/virtualNetworks/subnets": {version: netVersion, name: "vn/s", read: func(o snapshot.Object) []Loss {
+			_, ls := readSubnet(&vnet{}, "s", spec(o), "")
+			return ls
+		}},
+		"Microsoft.Network/networkSecurityGroups": {version: netVersion, name: "nsg", read: func(o snapshot.Object) []Loss { return readNSG(o).losses }},
+		"Microsoft.Network/networkSecurityGroups/securityRules": {version: netVersion, name: "nsg/r",
+			set: map[string]any{"access": "Allow", "direction": "Inbound", "protocol": "Tcp", "priority": float64(100),
+				"sourcePortRange": "*", "destinationPortRange": "443"},
+			read: func(o snapshot.Object) []Loss {
+				r, ls := readSecurityRule("r", spec(o), "")
+				if r == nil {
+					return append(ls, Loss{Field: "(the reader)", Why: "stopped early", Unread: true})
+				}
+				return ls
+			}},
+	}
+}
+
+// Every setting Azure's definition declares writable for a type a rule
+// reads is read: carried over, named as having no equivalent, or named as
+// carrying nothing. The rules are written by hand, since what a setting
+// means on another cloud is no API's to say; which settings exist is the
+// definition's, so a field Azure adds fails here before a capture ever
+// holds it.
 func TestReadersCoverTheDefinitions(t *testing.T) {
 	reg, err := azarm.LoadDefinitions("testdata/azure")
 	if err != nil {
 		t.Fatal(err)
 	}
-	read := map[string]func(snapshot.Object) []Loss{
-		"Microsoft.ServiceBus/namespaces": func(o snapshot.Object) []Loss { return readNamespace(o).losses },
-		"Microsoft.ServiceBus/namespaces/networkRuleSets": func(o snapshot.Object) []Loss {
-			ns := &sbNS{network: &o}
-			ns.readNetwork()
-			return ns.losses
-		},
-		"Microsoft.ServiceBus/namespaces/queues": func(o snapshot.Object) []Loss { return readEntity(o, sbQueue).losses },
-		"Microsoft.ServiceBus/namespaces/topics": func(o snapshot.Object) []Loss { return readEntity(o, sbTopic).losses },
-		"Microsoft.ServiceBus/namespaces/topics/subscriptions": func(o snapshot.Object) []Loss {
-			return readEntity(o, sbSubscription).losses
-		},
-		"Microsoft.ServiceBus/namespaces/topics/subscriptions/rules": func(o snapshot.Object) []Loss { return readRule(o).losses },
-	}
-	names := map[string]string{
-		"Microsoft.ServiceBus/namespaces":                            "ns",
-		"Microsoft.ServiceBus/namespaces/networkRuleSets":            "ns/default",
-		"Microsoft.ServiceBus/namespaces/queues":                     "ns/q",
-		"Microsoft.ServiceBus/namespaces/topics":                     "ns/t",
-		"Microsoft.ServiceBus/namespaces/topics/subscriptions":       "ns/t/s",
-		"Microsoft.ServiceBus/namespaces/topics/subscriptions/rules": "ns/t/s/r",
-	}
-	for typ, reader := range read {
-		d, err := reg.Describe(typ, sbVersion, 2)
+	for typ, rd := range readers() {
+		d, err := reg.Describe(typ, rd.version, 3)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -54,8 +79,11 @@ func TestReadersCoverTheDefinitions(t *testing.T) {
 		n := 0
 		parents := map[string]bool{}
 		for _, f := range d.Fields {
-			if top, _, nested := strings.Cut(f.Path, "."); nested {
+			if top, rest, nested := strings.Cut(f.Path, "."); nested {
 				parents[top] = true
+				if sub, _, deeper := strings.Cut(rest, "."); deeper {
+					parents[top+"."+sub] = true
+				}
 			}
 		}
 		for _, f := range d.Fields {
@@ -82,14 +110,24 @@ func TestReadersCoverTheDefinitions(t *testing.T) {
 				continue
 			}
 			m[sub] = sample(f.Type)
+			if parents[top+"."+sub] {
+				m[sub] = map[string]any{}
+			}
 			n++
 		}
 		if n == 0 {
 			t.Fatalf("%s: the definition declares no settings", typ)
 		}
-		for _, l := range reader(az(typ, "rg", names[typ], spec)) {
+		props, _ := spec["properties"].(map[string]any)
+		for k, v := range rd.set {
+			if props == nil {
+				t.Fatalf("%s: no properties to set %s in", typ, k)
+			}
+			props[k] = v
+		}
+		for _, l := range rd.read(az(typ, "rg", rd.name, spec)) {
 			if l.Unread {
-				t.Errorf("%s@%s: %s is declared and no rule reads it", typ, sbVersion, l.Field)
+				t.Errorf("%s@%s: %s is declared and no rule reads it", typ, rd.version, l.Field)
 			}
 		}
 	}
@@ -158,6 +196,41 @@ func TestEveryServiceBusTypeIsDecided(t *testing.T) {
 		}
 		if e := r.Report.Entries[0]; e.State != Refused {
 			t.Errorf("%s: %s", k, e.State)
+		}
+	}
+}
+
+// Every VNet and NSG type Azure defines is read, or named here.
+func TestEveryNetworkTypeIsDecided(t *testing.T) {
+	reg, err := azarm.LoadDefinitions("testdata/azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decided := map[string]State{
+		azVNet: Mapped, azSubnet: Mapped, azNSG: Mapped, azNSGRule: Mapped,
+		azNSG + "/defaultsecurityrules": Mapped,
+		azPeering:                       NotLooked,
+	}
+	for _, n := range reg.Names() {
+		l := strings.ToLower(n)
+		if !network.claims(network{}, l) {
+			continue
+		}
+		if _, ok := decided[l]; !ok {
+			t.Errorf("%s has a definition and no decision", n)
+		}
+	}
+	m := netMaps()["aws"]
+	for k, want := range decided {
+		if k == azVNet || k == azNSG || k == azSubnet || k == azNSGRule {
+			continue // read with what they belong to; see the network tests
+		}
+		r, err := Translate(snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{az(k, "rg", "x/y", nil)}}, m, targets(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e := r.Report.Entries[0]; e.State != want {
+			t.Errorf("%s: %s, want %s", k, e.State, want)
 		}
 	}
 }

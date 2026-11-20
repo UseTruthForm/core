@@ -1,0 +1,411 @@
+report:
+  destinations:
+  - 'network: vpc'
+  entries:
+  - losses:
+    - field: properties.securityRules[AllowVnetInBound]
+      why: inbound allow rule AllowVnetInBound (priority 65000) allows every protocol,
+        and a deny before it takes out tcp; a security group cannot write every protocol
+        but one, so it allows TCP, UDP, ICMP, ESP and AH, and no other protocol (GRE,
+        SCTP and the like)
+    source: Microsoft.Network/networkSecurityGroups net/data
+    state: mapped with losses
+    targets:
+    - AWS::EC2::SecurityGroup data
+  - reason: no subnet in the snapshot uses it (one on a network interface is not translated
+      yet), so there is no network to put it in
+    source: Microsoft.Network/networkSecurityGroups net/unused
+    state: refused
+  - losses:
+    - field: properties.securityRules[deny-azurecloud]
+      why: inbound deny rule deny-azurecloud (priority 150) names AzureCloud, which
+        has no addresses here; it is taken out of what is allowed for every address
+        instead
+    - field: properties.securityRules[allow-frontdoor]
+      why: inbound allow rule allow-frontdoor (priority 400) allows AzureFrontDoor.Backend,
+        which has no addresses here; it is not carried over
+    - field: properties.securityRules[allow-ephemeral]
+      why: inbound allow rule allow-ephemeral (priority 510) names source ports; a
+        security group cannot, so it is not carried over
+    - field: properties.securityRules[allow-one-host]
+      why: 'inbound allow rule allow-one-host (priority 520) applies to part of its
+        subnets'' addresses; a security group applies to whole instances, so it is
+        not carried over: give those instances a security group of their own'
+    - field: properties.securityRules[AllowVnetInBound]
+      why: inbound allow rule AllowVnetInBound (priority 65000) allows every protocol,
+        and a deny before it takes out tcp; a security group cannot write every protocol
+        but one, so it allows TCP, UDP, ICMP, ESP and AH, and no other protocol (GRE,
+        SCTP and the like)
+    source: Microsoft.Network/networkSecurityGroups net/web
+    state: mapped with losses
+    targets:
+    - AWS::EC2::SecurityGroup web
+  - losses:
+    - field: properties.subnets[app].properties.defaultOutboundAccess
+      why: it reached the internet through Azure's default outbound access; on the
+        target it has no internet egress until a NAT gateway (AWS) or Cloud NAT (GCP)
+        is added
+    - field: properties.subnets[data].properties.routeTable
+      why: 'its traffic follows a route table, which is not translated yet: if it
+        sent traffic through a firewall appliance, the target does not'
+      widens: true
+    source: Microsoft.Network/virtualNetworks net/core
+    state: mapped with losses
+    targets:
+    - AWS::EC2::Subnet core-app
+    - AWS::EC2::Subnet core-data
+    - AWS::EC2::VPC core
+  - reason: no descriptor for Microsoft.Network/virtualNetworks/virtualNetworkPeerings
+      yet
+    source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/core/to-hub
+    state: not looked at
+  from: azure
+  requirements:
+  - Security group data has 65 inbound and 1 outbound rules; AWS's default quota is
+    60 per direction, so raise it before a restore
+  - 'Security group data takes the place of an NSG on subnet(s) core-data: an AWS
+    security group applies only to what attaches it, so attach it to the instances
+    (and node groups) in them'
+  - 'Security group web takes the place of an NSG on subnet(s) core-app: an AWS security
+    group applies only to what attaches it, so attach it to the instances (and node
+    groups) in them'
+  to: aws
+snapshots:
+  aws:
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: data
+    spec:
+      GroupDescription: From Azure network security group net/data
+      SecurityGroupEgress:
+      - CidrIp: 10.20.0.0/16
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/5
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.0.0.0/12
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.128.0.0/9
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.16.0.0/14
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.20.0.0/24
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.20.0.0/24
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.20.0.0/24
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.20.0.0/24
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.20.0.0/24
+        IpProtocol: "50"
+      - CidrIp: 10.20.0.0/24
+        IpProtocol: "51"
+      - CidrIp: 10.20.1.0/24
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      - CidrIp: 10.20.128.0/17
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.20.128.0/17
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.20.128.0/17
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.20.128.0/17
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.20.128.0/17
+        IpProtocol: "50"
+      - CidrIp: 10.20.128.0/17
+        IpProtocol: "51"
+      - CidrIp: 10.20.16.0/20
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.20.16.0/20
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.20.16.0/20
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.20.16.0/20
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.20.16.0/20
+        IpProtocol: "50"
+      - CidrIp: 10.20.16.0/20
+        IpProtocol: "51"
+      - CidrIp: 10.20.2.0/23
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.20.2.0/23
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.20.2.0/23
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.20.2.0/23
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.20.2.0/23
+        IpProtocol: "50"
+      - CidrIp: 10.20.2.0/23
+        IpProtocol: "51"
+      - CidrIp: 10.20.32.0/19
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.20.32.0/19
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.20.32.0/19
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.20.32.0/19
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.20.32.0/19
+        IpProtocol: "50"
+      - CidrIp: 10.20.32.0/19
+        IpProtocol: "51"
+      - CidrIp: 10.20.4.0/22
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.20.4.0/22
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.20.4.0/22
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.20.4.0/22
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.20.4.0/22
+        IpProtocol: "50"
+      - CidrIp: 10.20.4.0/22
+        IpProtocol: "51"
+      - CidrIp: 10.20.64.0/18
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.20.64.0/18
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.20.64.0/18
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.20.64.0/18
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.20.64.0/18
+        IpProtocol: "50"
+      - CidrIp: 10.20.64.0/18
+        IpProtocol: "51"
+      - CidrIp: 10.20.8.0/21
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.20.8.0/21
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.20.8.0/21
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.20.8.0/21
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.20.8.0/21
+        IpProtocol: "50"
+      - CidrIp: 10.20.8.0/21
+        IpProtocol: "51"
+      - CidrIp: 10.21.0.0/16
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.22.0.0/15
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.24.0.0/13
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.32.0.0/11
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.64.0.0/10
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 11.0.0.0/8
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 12.0.0.0/6
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 128.0.0.0/1
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 16.0.0.0/4
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 32.0.0.0/3
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 64.0.0.0/2
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 8.0.0.0/7
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      Tags:
+      - Key: Name
+        Value: data
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: web
+    spec:
+      GroupDescription: From Azure network security group net/web
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.20.0.0/16
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.20.0.0/16
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 21
+      - CidrIp: 10.20.0.0/16
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.20.0.0/16
+        FromPort: 23
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.20.0.0/16
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.20.0.0/16
+        IpProtocol: "50"
+      - CidrIp: 10.20.0.0/16
+        IpProtocol: "51"
+      - CidrIp: 192.0.2.0/24
+        FromPort: 53
+        IpProtocol: tcp
+        ToPort: 53
+      - CidrIp: 192.0.2.0/24
+        FromPort: 53
+        IpProtocol: udp
+        ToPort: 53
+      Tags:
+      - Key: Name
+        Value: web
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-app
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.1.0/24
+      Tags:
+      - Key: Name
+        Value: core-app
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-data
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.2.0/24
+      Tags:
+      - Key: Name
+        Value: core-data
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPC
+    metadata:
+      annotations:
+        truthform.org/write-only: Ipv4IpamPoolId,Ipv4NetmaskLength,VpcEncryptionControl.EgressOnlyInternetGatewayExclusion,VpcEncryptionControl.ElasticFileSystemExclusion,VpcEncryptionControl.InternetGatewayExclusion,VpcEncryptionControl.LambdaExclusion,VpcEncryptionControl.NatGatewayExclusion,VpcEncryptionControl.VirtualPrivateGatewayExclusion,VpcEncryptionControl.VpcLatticeExclusion,VpcEncryptionControl.VpcPeeringExclusion
+      name: core
+    spec:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value: core
+      - Key: env
+        Value: dev

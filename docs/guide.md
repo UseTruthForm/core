@@ -545,11 +545,11 @@ empty or denied: capture again later.
 | 0 | Success: the capture is complete, the restore fully applied, or no differences |
 | 1 | Error: bad flags, cannot connect, cannot read a snapshot |
 | 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer, or that holds something and brings, not held, a GitOps source that applies into a namespace it narrows or a Flux object that acts outside the cluster (plan scope --check) |
-| 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, or a restore under a hold brought objects not held |
+| 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, a restore under a hold brought objects not held, or a translation refused something, did not look at a type, left a setting unread or made something less protected |
 
 ## Machine-readable output
 
-Add `--json` to `capture`, `diff`, `restore`, `compare` or `plan` (an
+Add `--json` to `capture`, `diff`, `restore`, `compare`, `plan` or `translate` (an
 environment `--config` too). Stdout is then one JSON document, named by its `schema`
 field (`truthform.org/output/v1`), and everything meant for a person goes
 to stderr. The exit code is the same as without it. A capture's document
@@ -1427,6 +1427,87 @@ a rename file with nothing in it, with nothing restored: a mistyped one would ot
 written to hold back, or leave the new environment reading the old one's
 secrets. Leaving out is not checked against what stays: an object left in
 that needs one left out fails, or waits, in the cluster.
+
+## To another cloud (Azure to AWS or GCP)
+
+`translate` rewrites an Azure snapshot as snapshots for another cloud, offline.
+It reads one snapshot and a map, and writes a snapshot per target platform,
+which `plan`, `restore` and `diff` take as they are. It makes no request, so
+the capture-only build has it too. So far it translates Service Bus; every
+other type is reported as not looked at (design: issue #32).
+
+```sh
+truthform translate --from snap/azure --map map.yaml --out moved/
+truthform restore --platform aws --region eu-west-1 --from moved/aws
+```
+
+The mapping is fixed. Each Azure service has a few destinations, and the map
+is the only per-customer input: which destination each service class goes
+to, the region, and names the target does not allow or that would collide.
+Nothing the map leaves out gets a default.
+
+```yaml
+to: aws                     # or gcp
+region: eu-west-1           # aws only
+destinations:
+  messaging: sqs-sns        # sqs-sns (aws), pubsub (gcp), or rabbitmq (in the cluster, on either)
+sessions: fifo              # how a session queue is carried: fifo, ordering or single-active-consumer
+rabbitmq:                   # for messaging: rabbitmq
+  namespace: messaging
+  replicas: 3
+  tlsSecret: broker-tls     # without it the brokers listen in plain text, reported as less protected
+names:
+  rg/shop/legacy.feed: legacy-feed   # a name SQS does not allow
+```
+
+| Service Bus | sqs-sns | pubsub | rabbitmq |
+|---|---|---|---|
+| Namespace | (none: the account and region) | (none: the project) | `RabbitmqCluster` |
+| Queue | SQS queue + dead-letter queue | topic + subscription of its name, + dead-letter topic | quorum `Queue` + dead-letter queue |
+| Topic | SNS topic | topic | headers `Exchange` |
+| Subscription | SQS queue subscribed with raw delivery, a queue policy for that topic only | subscription | quorum `Queue`, a `Binding` per rule |
+| Correlation rule | filter policy on message attributes (`$or` for several) | filter on attributes (`OR` for several) | headers binding |
+| SQL rule, rule action | refused | refused | refused |
+| Session queue | FIFO (`sessions: fifo`) | ordered delivery (`sessions: ordering`) | single active consumer |
+| Shared access keys | refused: identity is a change to the app | refused | refused |
+
+Every source object ends in one state, and `<out>/translation.yaml` lists
+each with its reason and target objects:
+
+- **mapped**, or **mapped with losses**: each setting with no equivalent is
+  named with why (SQS keeps a message 14 days at most; Pub/Sub has no
+  duplicate detection);
+- **refused**: looked at, and there is no equivalent, or carrying it over
+  would change what it does in a way nobody chose. A SQL filter is refused
+  with its subscription, because without it the subscription would
+  receive every message;
+- **not looked at**: no descriptor for the type yet.
+
+A loss that makes the target less protected than the source is marked
+`widens`. Examples: a namespace that answered only listed networks or
+private endpoints becomes queues on a public endpoint guarded by IAM
+alone; a customer-managed key becomes the platform's.
+
+A setting no rule reads is marked `unread`. Each reader is checked in
+the tests against Azure's published definition of its type, so a setting
+Azure adds fails there first.
+
+Anything refused, not looked at, widened or unread exits 3. The report also
+lists what to do before a restore: the operators to install, the grants
+Pub/Sub's service agent needs for dead-lettering, and the move from the
+Service Bus SDK.
+
+`--out` must be empty or an earlier translation's; a platform the earlier
+one wrote and this one does not is removed.
+
+Known limits:
+
+- A restore of the translated objects works as any restore does, but a
+  diff of the rebuilt target against them shows differences. A capture
+  holds every default the target fills in, and names an SNS subscription
+  or queue policy by a hash of its settings.
+- GCP restore does not yet create Pub/Sub topics and subscriptions:
+  Pub/Sub creates with PUT, and restore creates only with POST.
 
 ## As a graph (Azure)
 

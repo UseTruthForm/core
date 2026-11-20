@@ -1,0 +1,46 @@
+{
+ "resources": {
+  "Microsoft.ServiceBus/namespaces/AuthorizationRules@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/93"
+  },
+  "Microsoft.ServiceBus/namespaces/disasterRecoveryConfigs/authorizationRules@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/208"
+  },
+  "Microsoft.ServiceBus/namespaces/disasterRecoveryConfigs@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/125"
+  },
+  "Microsoft.ServiceBus/namespaces/migrationConfigurations@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/132"
+  },
+  "Microsoft.ServiceBus/namespaces/networkRuleSets@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/112"
+  },
+  "Microsoft.ServiceBus/namespaces/networkSecurityPerimeterConfigurations@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/249"
+  },
+  "Microsoft.ServiceBus/namespaces/privateEndpointConnections@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/136"
+  },
+  "Microsoft.ServiceBus/namespaces/queues/authorizationRules@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/157"
+  },
+  "Microsoft.ServiceBus/namespaces/queues@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/153"
+  },
+  "Microsoft.ServiceBus/namespaces/topics/authorizationRules@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/176"
+  },
+  "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/204"
+  },
+  "Microsoft.ServiceBus/namespaces/topics/subscriptions@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/192"
+  },
+  "Microsoft.ServiceBus/namespaces/topics@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/172"
+  },
+  "Microsoft.ServiceBus/namespaces@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/82"
+  }
+ }
+}

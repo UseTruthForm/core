@@ -76,6 +76,10 @@ As a graph (resources and their relationships, for an asset inventory or a secur
   truthform graph --from <dir> [--types security|none|<file>] [--subscription <id>] [--tenant <id>] [--out <file>]
       Azure; JSON nodes and edges from the snapshot alone, no request made
 
+To another cloud (offline: a snapshot and a map in, snapshots and a report out; exit 3 when anything is refused or less protected):
+  truthform translate --from <azure-snapshot> --map <file> --out <dir> [--schemas <bundle.zip|dir>] [--discovery <dir>]
+      writes <dir>/aws/, <dir>/gcp/ or <dir>/kubernetes/ for restore, and <dir>/translation.yaml, every object's losses
+
 Before a rebuild (what the snapshot does not hold: what to install first, the secrets, the names):
   truthform plan rebuild --from <dir> [--scope <file>] [--leave-out <file>] [--out <file>] [--json]
   truthform plan scope --from <dir> [--out <file> | --check <file> [--json]]
@@ -111,7 +115,7 @@ func main() {
 		// run quietly: "mcp --json" served the protocol on stderr and
 		// "version --json" printed nothing (review of #21).
 		if !jsonCommands[command] {
-			code := fail(fmt.Errorf("--json is supported by capture, diff, restore, compare, check, permissions and plan, not %s", command))
+			code := fail(fmt.Errorf("--json is supported by capture, diff, restore, compare, check, permissions, plan and translate, not %s", command))
 			emitError(code)
 			os.Exit(code)
 		}
@@ -137,6 +141,8 @@ func main() {
 		code = schemaDiff(args)
 	case "aws-coverage":
 		code = awsCoverage(args)
+	case "translate":
+		code = translateCmd(args)
 	case "report":
 		code = reportCmd(args)
 	case "graph":

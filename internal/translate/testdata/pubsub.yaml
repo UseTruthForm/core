@@ -1,0 +1,416 @@
+report:
+  destinations:
+  - 'messaging: pubsub'
+  entries:
+  - losses:
+    - field: properties.publicNetworkAccess
+      why: its network rule set denies by default and allows 1 address range(s) and
+        0 virtual network(s); Pub/Sub answers on Google's public endpoint, guarded
+        by IAM alone, until a VPC Service Controls perimeter holds the project (not
+        translated yet)
+      widens: true
+    - field: properties.minimumTlsVersion
+      why: 'TLS 1.2 at least on the source; Pub/Sub''s floor is Google''s and cannot
+        be set per project: confirm it meets this'
+      widens: true
+    reason: 'Pub/Sub has no namespace: the project holds its topics and subscriptions'
+    source: Microsoft.ServiceBus/namespaces rg/shop
+    state: mapped with losses
+  - reason: read with its namespace Microsoft.ServiceBus/namespaces rg/shop
+    source: Microsoft.ServiceBus/namespaces/networkRuleSets rg/shop/default
+    state: mapped
+  - losses:
+    - field: properties.someNewSetting
+      unread: true
+      why: 'no rule reads this setting yet: it is not carried over'
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 7 days at most on Pub/Sub; Service Bus
+        keeps them until they are read
+    source: Microsoft.ServiceBus/namespaces/queues rg/shop/legacy.feed
+    state: mapped with losses
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/legacy.feed
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/legacy.feed-dlq
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/legacy.feed
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/legacy.feed-dlq
+  - losses:
+    - field: properties.defaultMessageTimeToLive
+      why: 14d on the source; a Pub/Sub subscription keeps one 7 days at most
+    - field: properties.deadLetteringOnMessageExpiration
+      why: Pub/Sub drops an expired message; it does not dead-letter it
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 7 days at most on Pub/Sub; Service Bus
+        keeps them until they are read
+    - field: properties.maxSizeInMegabytes
+      why: 1024 MB on the source; Pub/Sub has no size limit, so publishers are never
+        refused for a full queue
+    source: Microsoft.ServiceBus/namespaces/queues rg/shop/orders
+    state: mapped with losses
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/orders
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/orders-dlq
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/orders
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/orders-dlq
+  - losses:
+    - field: properties.defaultMessageTimeToLive
+      why: messages never expire on the source; a Pub/Sub subscription keeps one 7
+        days at most
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 7 days at most on Pub/Sub; Service Bus
+        keeps them until they are read
+    - field: properties.requiresSession
+      why: 'ordered delivery: the publisher sets the ordering key to the session ID;
+        there is no session state or session lock'
+    - field: properties.requiresDuplicateDetection
+      why: Pub/Sub does not drop a message published twice; the subscriber must
+    source: Microsoft.ServiceBus/namespaces/queues rg/shop/payments
+    state: mapped with losses
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/payments
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/payments-dlq
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/payments
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/payments-dlq
+  - reason: 'a shared access key: identity is not translated. Apps that sign in with
+      keys move to the target''s IAM or workload identity, which is a change to the
+      app (#32)'
+    source: Microsoft.ServiceBus/namespaces/queues/authorizationRules rg/shop/orders/sender
+    state: refused
+  - losses:
+    - field: properties.defaultMessageTimeToLive
+      why: the topic's time to live is applied to its subscriptions
+    - field: properties.supportOrdering
+      why: Pub/Sub orders per ordering key, on a subscription that asks for it; the
+        publisher must set one
+    - field: properties.maxSizeInMegabytes
+      why: Pub/Sub has no size limit, so publishers are never refused for a full topic
+    source: Microsoft.ServiceBus/namespaces/topics rg/shop/events
+    state: mapped with losses
+    targets:
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/events
+  - losses:
+    - field: properties.deadLetteringOnFilterEvaluationExceptions
+      why: filters here do not fail on a message, so nothing is dead-lettered for
+        it
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 7 days at most on Pub/Sub; Service Bus
+        keeps them until they are read
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/audit
+    state: mapped with losses
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/events-audit
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/events-audit-dlq
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/events-audit-dlq
+  - reason: rule big is a SQL filter (amount > 1000); it is not translated, and dropping
+      it would deliver more
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/fraud
+    state: refused
+  - losses:
+    - field: properties.maxDeliveryCount
+      why: 3 on the source; Pub/Sub takes 5 to 100 delivery attempts
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 7 days at most on Pub/Sub; Service Bus
+        keeps them until they are read
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/shipping
+    state: mapped with losses
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/events-shipping
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/events-shipping-dlq
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/events-shipping-dlq
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/audit/$Default
+    state: mapped
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/events-audit
+  - reason: 'its subscription is refused: rule big is a SQL filter (amount > 1000);
+      it is not translated, and dropping it would deliver more'
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/fraud/big
+    state: refused
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/shipping/returned
+    state: mapped
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/events-shipping
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/shipping/shipped
+    state: mapped
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/events-shipping
+  - reason: no descriptor for Microsoft.Storage/storageAccounts yet
+    source: Microsoft.Storage/storageAccounts rg/shopfiles
+    state: not looked at
+  from: azure
+  requirements:
+  - 'Apps move from the Service Bus SDK to the Pub/Sub client: a queue is a topic
+    with one subscription of its name, and a subscription''s filter matches message
+    attributes'
+  - Apps that sign in to Service Bus with shared access keys or connection strings
+    must move to the target's identity (IAM, workload identity); no key is carried
+    over
+  - Pub/Sub's service agent (service-<project-number>@gcp-sa-pubsub.iam.gserviceaccount.com)
+    needs roles/pubsub.publisher on each dead-letter topic and roles/pubsub.subscriber
+    on each subscription that dead-letters; no grant is written here
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/events-audit
+    spec:
+      ackDeadlineSeconds: 60
+      deadLetterPolicy:
+        deadLetterTopic: projects/{{truthform|project}}/topics/events-audit-dlq
+        maxDeliveryAttempts: 10
+      expirationPolicy: {}
+      messageRetentionDuration: 604800s
+      name: projects/{{truthform|project}}/subscriptions/events-audit
+      topic: projects/{{truthform|project}}/topics/events
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/events-audit-dlq
+    spec:
+      expirationPolicy: {}
+      messageRetentionDuration: 604800s
+      name: projects/{{truthform|project}}/subscriptions/events-audit-dlq
+      topic: projects/{{truthform|project}}/topics/events-audit-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/events-shipping
+    spec:
+      ackDeadlineSeconds: 120
+      deadLetterPolicy:
+        deadLetterTopic: projects/{{truthform|project}}/topics/events-shipping-dlq
+        maxDeliveryAttempts: 5
+      expirationPolicy: {}
+      filter: (attributes.region = "eu" AND attributes.type = "order.returned") OR
+        (attributes.type = "order.shipped")
+      messageRetentionDuration: 86400s
+      name: projects/{{truthform|project}}/subscriptions/events-shipping
+      topic: projects/{{truthform|project}}/topics/events
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/events-shipping-dlq
+    spec:
+      expirationPolicy: {}
+      messageRetentionDuration: 604800s
+      name: projects/{{truthform|project}}/subscriptions/events-shipping-dlq
+      topic: projects/{{truthform|project}}/topics/events-shipping-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/legacy.feed
+    spec:
+      ackDeadlineSeconds: 60
+      deadLetterPolicy:
+        deadLetterTopic: projects/{{truthform|project}}/topics/legacy.feed-dlq
+        maxDeliveryAttempts: 10
+      expirationPolicy: {}
+      messageRetentionDuration: 86400s
+      name: projects/{{truthform|project}}/subscriptions/legacy.feed
+      topic: projects/{{truthform|project}}/topics/legacy.feed
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/legacy.feed-dlq
+    spec:
+      expirationPolicy: {}
+      messageRetentionDuration: 604800s
+      name: projects/{{truthform|project}}/subscriptions/legacy.feed-dlq
+      topic: projects/{{truthform|project}}/topics/legacy.feed-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/orders
+    spec:
+      ackDeadlineSeconds: 60
+      deadLetterPolicy:
+        deadLetterTopic: projects/{{truthform|project}}/topics/orders-dlq
+        maxDeliveryAttempts: 10
+      expirationPolicy: {}
+      messageRetentionDuration: 604800s
+      name: projects/{{truthform|project}}/subscriptions/orders
+      topic: projects/{{truthform|project}}/topics/orders
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/orders-dlq
+    spec:
+      expirationPolicy: {}
+      messageRetentionDuration: 604800s
+      name: projects/{{truthform|project}}/subscriptions/orders-dlq
+      topic: projects/{{truthform|project}}/topics/orders-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/payments
+    spec:
+      ackDeadlineSeconds: 30
+      deadLetterPolicy:
+        deadLetterTopic: projects/{{truthform|project}}/topics/payments-dlq
+        maxDeliveryAttempts: 5
+      enableMessageOrdering: true
+      expirationPolicy: {}
+      messageRetentionDuration: 604800s
+      name: projects/{{truthform|project}}/subscriptions/payments
+      topic: projects/{{truthform|project}}/topics/payments
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/payments-dlq
+    spec:
+      expirationPolicy: {}
+      messageRetentionDuration: 604800s
+      name: projects/{{truthform|project}}/subscriptions/payments-dlq
+      topic: projects/{{truthform|project}}/topics/payments-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/events
+    spec:
+      name: projects/{{truthform|project}}/topics/events
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/events-audit-dlq
+    spec:
+      name: projects/{{truthform|project}}/topics/events-audit-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/events-shipping-dlq
+    spec:
+      name: projects/{{truthform|project}}/topics/events-shipping-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/legacy.feed
+    spec:
+      name: projects/{{truthform|project}}/topics/legacy.feed
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/legacy.feed-dlq
+    spec:
+      name: projects/{{truthform|project}}/topics/legacy.feed-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/orders
+    spec:
+      name: projects/{{truthform|project}}/topics/orders
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/orders-dlq
+    spec:
+      name: projects/{{truthform|project}}/topics/orders-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/payments
+    spec:
+      name: projects/{{truthform|project}}/topics/payments
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/payments-dlq
+    spec:
+      name: projects/{{truthform|project}}/topics/payments-dlq

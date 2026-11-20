@@ -1,0 +1,303 @@
+report:
+  destinations:
+  - 'messaging: sqs-sns'
+  entries:
+  - losses:
+    - field: properties.publicNetworkAccess
+      why: its network rule set denies by default and allows 1 address range(s) and
+        0 virtual network(s); SQS and SNS answer on their public endpoints, guarded
+        by IAM alone, until a VPC endpoint and a policy on aws:SourceVpce are added
+        (not translated yet)
+      widens: true
+    reason: 'SQS and SNS have no namespace: the account and region hold its queues
+      and topics'
+    source: Microsoft.ServiceBus/namespaces rg/shop
+    state: mapped with losses
+  - reason: read with its namespace Microsoft.ServiceBus/namespaces rg/shop
+    source: Microsoft.ServiceBus/namespaces/networkRuleSets rg/shop/default
+    state: mapped
+  - losses:
+    - field: properties.someNewSetting
+      unread: true
+      why: 'no rule reads this setting yet: it is not carried over'
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    source: Microsoft.ServiceBus/namespaces/queues rg/shop/legacy.feed
+    state: mapped with losses
+    targets:
+    - AWS::SQS::Queue legacy-feed
+    - AWS::SQS::Queue legacy-feed-dlq
+  - losses:
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    - field: properties.deadLetteringOnMessageExpiration
+      why: SQS deletes an expired message; it does not dead-letter it
+    - field: properties.maxSizeInMegabytes
+      why: 1024 MB on the source; an SQS queue has no size limit, so senders are never
+        refused for a full queue
+    source: Microsoft.ServiceBus/namespaces/queues rg/shop/orders
+    state: mapped with losses
+    targets:
+    - AWS::SQS::Queue orders
+    - AWS::SQS::Queue orders-dlq
+  - losses:
+    - field: properties.defaultMessageTimeToLive
+      why: messages never expire on the source; SQS keeps one 14 days at most
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    - field: properties.requiresDuplicateDetection
+      why: the sender sets MessageDeduplicationId (Service Bus used MessageId)
+    - field: properties.requiresSession
+      why: 'a FIFO queue: the sender sets MessageGroupId to the session ID, and SQS
+        keeps order per group; there is no session state or session lock'
+    source: Microsoft.ServiceBus/namespaces/queues rg/shop/payments
+    state: mapped with losses
+    targets:
+    - AWS::SQS::Queue payments-dlq.fifo
+    - AWS::SQS::Queue payments.fifo
+  - reason: 'a shared access key: identity is not translated. Apps that sign in with
+      keys move to the target''s IAM or workload identity, which is a change to the
+      app (#32)'
+    source: Microsoft.ServiceBus/namespaces/queues/authorizationRules rg/shop/orders/sender
+    state: refused
+  - losses:
+    - field: properties.defaultMessageTimeToLive
+      why: SNS holds no messages; the topic's time to live is applied to its subscriptions'
+        queues
+    - field: properties.supportOrdering
+      why: a standard SNS topic does not keep order
+    - field: properties.maxSizeInMegabytes
+      why: SNS holds no messages, so there is no size to limit
+    source: Microsoft.ServiceBus/namespaces/topics rg/shop/events
+    state: mapped with losses
+    targets:
+    - AWS::SNS::Topic events
+  - losses:
+    - field: properties.deadLetteringOnFilterEvaluationExceptions
+      why: filters here do not fail on a message, so nothing is dead-lettered for
+        it
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/audit
+    state: mapped with losses
+    targets:
+    - AWS::SNS::Subscription h-c9fb16ede81e
+    - AWS::SQS::Queue events-audit
+    - AWS::SQS::Queue events-audit-dlq
+    - AWS::SQS::QueueInlinePolicy events-audit
+  - reason: rule big is a SQL filter (amount > 1000); it is not translated, and dropping
+      it would deliver more
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/fraud
+    state: refused
+  - losses:
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/shipping
+    state: mapped with losses
+    targets:
+    - AWS::SNS::Subscription h-2f94f8346827
+    - AWS::SQS::Queue events-shipping
+    - AWS::SQS::Queue events-shipping-dlq
+    - AWS::SQS::QueueInlinePolicy events-shipping
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/audit/$Default
+    state: mapped
+    targets:
+    - AWS::SNS::Subscription h-c9fb16ede81e
+  - reason: 'its subscription is refused: rule big is a SQL filter (amount > 1000);
+      it is not translated, and dropping it would deliver more'
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/fraud/big
+    state: refused
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/shipping/returned
+    state: mapped
+    targets:
+    - AWS::SNS::Subscription h-2f94f8346827
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/shipping/shipped
+    state: mapped
+    targets:
+    - AWS::SNS::Subscription h-2f94f8346827
+  - reason: no descriptor for Microsoft.Storage/storageAccounts yet
+    source: Microsoft.Storage/storageAccounts rg/shopfiles
+    state: not looked at
+  from: azure
+  requirements:
+  - 'Apps move from the Service Bus SDK to the AWS SDK: a queue is an SQS queue, a
+    topic an SNS topic delivering to an SQS queue per subscription, and a subscription''s
+    filter matches SNS message attributes'
+  - Apps that sign in to Service Bus with shared access keys or connection strings
+    must move to the target's identity (IAM, workload identity); no key is carried
+    over
+  to: aws
+snapshots:
+  aws:
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SNS::Subscription
+    metadata:
+      annotations:
+        truthform.org/write-only: Region
+      name: h-2f94f8346827
+    spec:
+      Endpoint: '{{truthform|AWS::SQS::Queue|events-shipping|Arn}}'
+      FilterPolicy:
+        $or:
+        - region:
+          - eu
+          type:
+          - order.returned
+        - type:
+          - order.shipped
+      FilterPolicyScope: MessageAttributes
+      Protocol: sqs
+      RawMessageDelivery: true
+      TopicArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SNS::Subscription
+    metadata:
+      annotations:
+        truthform.org/write-only: Region
+      name: h-c9fb16ede81e
+    spec:
+      Endpoint: '{{truthform|AWS::SQS::Queue|events-audit|Arn}}'
+      Protocol: sqs
+      RawMessageDelivery: true
+      TopicArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SNS::Topic
+    metadata:
+      name: events
+    spec:
+      TopicName: events
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
+      name: events-audit
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action: sqs:SendMessage
+          Condition:
+            ArnEquals:
+              aws:SourceArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+          Effect: Allow
+          Principal:
+            Service: sns.amazonaws.com
+          Resource: '{{truthform|AWS::SQS::Queue|events-audit|Arn}}'
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|events-audit|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
+      name: events-shipping
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action: sqs:SendMessage
+          Condition:
+            ArnEquals:
+              aws:SourceArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+          Effect: Allow
+          Principal:
+            Service: sns.amazonaws.com
+          Resource: '{{truthform|AWS::SQS::Queue|events-shipping|Arn}}'
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|events-shipping|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-audit
+    spec:
+      MessageRetentionPeriod: 604800
+      QueueName: events-audit
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|events-audit-dlq|Arn}}'
+        maxReceiveCount: 10
+      VisibilityTimeout: 60
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-audit-dlq
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: events-audit-dlq
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-shipping
+    spec:
+      MessageRetentionPeriod: 86400
+      QueueName: events-shipping
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|events-shipping-dlq|Arn}}'
+        maxReceiveCount: 3
+      VisibilityTimeout: 120
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-shipping-dlq
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: events-shipping-dlq
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: legacy-feed
+    spec:
+      MessageRetentionPeriod: 86400
+      QueueName: legacy-feed
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|legacy-feed-dlq|Arn}}'
+        maxReceiveCount: 10
+      VisibilityTimeout: 60
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: legacy-feed-dlq
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: legacy-feed-dlq
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: orders
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: orders
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|orders-dlq|Arn}}'
+        maxReceiveCount: 10
+      VisibilityTimeout: 60
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: orders-dlq
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: orders-dlq
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: payments-dlq.fifo
+    spec:
+      FifoQueue: true
+      MessageRetentionPeriod: 1209600
+      QueueName: payments-dlq.fifo
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: payments.fifo
+    spec:
+      DeduplicationScope: queue
+      FifoQueue: true
+      MessageRetentionPeriod: 1209600
+      QueueName: payments.fifo
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|payments-dlq.fifo|Arn}}'
+        maxReceiveCount: 5
+      VisibilityTimeout: 30

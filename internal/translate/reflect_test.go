@@ -22,6 +22,8 @@ const (
 	dnsVersion        = "2018-05-01"
 	dnsPreviewVersion = "2023-07-01-preview"
 	privateDNSVersion = "2024-06-01"
+	pgVersion         = "2026-10-01"
+	sqlVersion        = "2025-01-01"
 )
 
 // reflected is one Azure type a rule reads: its definition's version, a
@@ -96,6 +98,23 @@ func readers() map[string]reflected {
 	for _, t := range []string{"A", "AAAA", "CNAME", "MX", "PTR", "SOA", "SRV", "TXT"} {
 		rd["Microsoft.Network/privateDnsZones/"+t] = record(privateDNSVersion, t)
 	}
+	for _, t := range []struct {
+		parent, version string
+		table           map[string]dbChild
+	}{{typPG, pgVersion, pgChildren}, {typSQL, sqlVersion, sqlChildren}} {
+		for k, c := range t.table {
+			if c.read == nil {
+				continue
+			}
+			read := c.read
+			rd[t.parent+"/"+k] = reflected{version: t.version, name: "s" + strings.Repeat("/x", strings.Count(k, "/")+1), read: func(o snapshot.Object) []Loss {
+				_, ls := read(&dbServer{}, "x", spec(o))
+				return ls
+			}}
+		}
+	}
+	rd[typPG] = reflected{version: pgVersion, name: "pg", read: func(o snapshot.Object) []Loss { return readPGServer(o).losses }}
+	rd[typSQL] = reflected{version: sqlVersion, name: "sql", read: func(o snapshot.Object) []Loss { return readSQLServer(o).losses }}
 	return rd
 }
 
@@ -366,5 +385,157 @@ func TestEveryRegistryTypeIsDecided(t *testing.T) {
 }
 
 // Every storage account type Azure defines is read, or named here: files,
+// queues and tables are not buckets, and local users are identity.
+func TestEveryStorageTypeIsDecided(t *testing.T) {
+	reg, err := azarm.LoadDefinitions("testdata/azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decided := map[string]State{
+		azStorage: Mapped, azBlobSvc: Mapped, azContainer: Mapped, azImmutability: Mapped, azScope: Mapped,
+		azLocalUser:                                           Refused,
+		azStorage + "/fileservices":                           Mapped, // with nothing in it; see the storage tests
+		azStorage + "/queueservices":                          Mapped,
+		azStorage + "/tableservices":                          Mapped,
+		azStorage + "/fileservices/shares":                    NotLooked,
+		azStorage + "/fileservices/usages":                    NotLooked,
+		azStorage + "/queueservices/queues":                   NotLooked,
+		azStorage + "/tableservices/tables":                   NotLooked,
+		azStorage + "/managementpolicies":                     NotLooked,
+		azStorage + "/inventorypolicies":                      NotLooked,
+		azStorage + "/objectreplicationpolicies":              NotLooked,
+		azStorage + "/privateendpointconnections":             NotLooked,
+		azStorage + "/networksecurityperimeterconfigurations": NotLooked,
+		azStorage + "/advancedplatformmetrics":                NotLooked,
+		azStorage + "/blobaccesspointconfigurations":          NotLooked,
+		azStorage + "/connectors":                             NotLooked,
+		azStorage + "/datashares":                             NotLooked,
+		azStorage + "/storagetaskassignments":                 NotLooked,
+		azStorage + "/accountmigrations":                      NotLooked,
+	}
+	for _, n := range reg.Names() {
+		l := strings.ToLower(n)
+		if !storage.claims(storage{}, l) {
+			continue
+		}
+		if _, ok := decided[l]; !ok {
+			t.Errorf("%s has a definition and no decision", n)
+		}
+	}
+	m := stMaps()["aws"]
+	for k, want := range decided {
+		switch k {
+		case azStorage, azBlobSvc, azContainer, azImmutability, azScope:
+			continue // read with what they belong to; see the storage tests
+		}
+		name := strings.Repeat("x/", strings.Count(k, "/")-2) + "x"
+		r, err := Translate(snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{az(k, "rg", name, nil)}}, m, targets(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e := r.Report.Entries[0]; e.State != want {
+			t.Errorf("%s: %s, want %s", k, e.State, want)
+		}
+	}
+}
 
 // Every public and private DNS zone type Azure defines is read, or named
+// here. A child alone is refused: it is read with its zone.
+func TestEveryDNSTypeIsDecided(t *testing.T) {
+	reg, err := azarm.LoadDefinitions("testdata/azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decided := map[string]State{azDNSZone: Mapped, azPrivateZone: Mapped, azZoneLink: Refused, azDNSSEC: Refused}
+	for typ := range dnsRecordKeys {
+		decided[azDNSZone+"/"+strings.ToLower(typ)] = Refused
+	}
+	for _, typ := range []string{"a", "aaaa", "cname", "mx", "ptr", "soa", "srv", "txt"} {
+		decided[azPrivateZone+"/"+typ] = Refused
+	}
+	for _, n := range reg.Names() {
+		l := strings.ToLower(n)
+		if !dnsFamily.claims(dnsFamily{}, l) {
+			continue
+		}
+		if _, ok := decided[l]; !ok {
+			t.Errorf("%s has a definition and no decision", n)
+		}
+		if (network{}).claims(l) {
+			t.Errorf("%s is claimed by the network family too", n)
+		}
+	}
+	m := dnsMaps()["aws"]
+	for k, want := range decided {
+		if k == azDNSZone || k == azPrivateZone {
+			continue // see the DNS tests
+		}
+		r, err := Translate(snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{az(k, "rg", "x/y", nil)}}, m, targets(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e := r.Report.Entries[0]; e.State != want || !strings.Contains(e.Reason, "its zone") {
+			t.Errorf("%s: %s %q, want %s", k, e.State, e.Reason, want)
+		}
+	}
+	// A child Azure has no definition for, met in a capture, is not looked at.
+	r, err := Translate(snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{az(azDNSZone+"/recordsets", "rg", "x/y", nil)}}, m, targets(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := r.Report.Entries[0]; e.State != NotLooked {
+		t.Errorf("recordsets: %s", e.State)
+	}
+}
+
+// Every PostgreSQL flexible server and Azure SQL server type Azure defines
+// is read with its server, or decided in the tables, and the translation
+// does what the table says.
+func TestEveryDatabaseTypeIsDecided(t *testing.T) {
+	reg, err := azarm.LoadDefinitions("testdata/azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, name := range reg.Names() {
+		l := strings.ToLower(name)
+		if !databases.claims(databases{}, l) || l == azPG || l == azSQL {
+			continue
+		}
+		n++
+		if _, ok := childRule(l); !ok {
+			t.Errorf("%s has a definition and no decision", name)
+		}
+	}
+	if n < 80 {
+		t.Errorf("only %d child types have definitions", n)
+	}
+	for name, m := range dbMaps() {
+		for _, parent := range []struct {
+			kind  string
+			table map[string]dbChild
+			srv   snapshot.Object
+		}{{typPG, pgChildren, find(dbFixture(), typPG, "shop-pg")}, {typSQL, sqlChildren, find(dbFixture(), typSQL, "shop-sql")}} {
+			for k, c := range parent.table {
+				kind := parent.kind + "/" + strings.TrimSuffix(k, "/")
+				if strings.HasSuffix(k, "/") {
+					kind += "/child"
+				}
+				child := az(kind, "data", parent.srv.Name()+strings.Repeat("/x", strings.Count(kind, "/")-1), nil)
+				s := snapshot.Snapshot{Platform: "azure", Objects: append(dbFixture().Objects, child)}
+				r, err := Translate(s, m, targets(t))
+				if err != nil {
+					t.Fatal(err)
+				}
+				e := entry(t, r, source(child))
+				want := c.state
+				if c.read != nil {
+					want = Mapped
+				}
+				if e.State != want && !(want == Mapped && e.State == WithLosses) {
+					t.Errorf("%s: %s is %s, want %s (%s)", name, kind, e.State, want, e.Reason)
+				}
+			}
+		}
+	}
+}

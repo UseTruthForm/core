@@ -164,6 +164,7 @@ func (network) translate(objs []snapshot.Object, o *out) {
 	}
 	for _, v := range sortedVNets(vnets) {
 		for _, s := range v.subnets {
+			o.subnets[v.key+"/"+strings.ToLower(s.name)] = s
 			if s.nsg == "" {
 				continue
 			}

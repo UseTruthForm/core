@@ -1,0 +1,478 @@
+report:
+  destinations:
+  - 'databases: cloud-sql'
+  - 'network: vpc'
+  entries:
+  - reason: 'the map gives no tier for it (databases.data/legacy-pg.tier): its Azure
+      SKU, Standard_D4ds_v5 (GeneralPurpose), names Azure''s hardware, not a Cloud
+      SQL tier'
+    source: Microsoft.DBforPostgreSQL/flexibleServers data/legacy-pg
+    state: refused
+  - source: Microsoft.DBforPostgreSQL/flexibleServers data/reports-pg
+    state: mapped
+    targets:
+    - sqladmin.googleapis.com/Instance projects/{{truthform|project}}/instances/reports-pg
+  - losses:
+    - field: identity
+      why: 'the server''s managed identity is not translated (#32): it is how Azure
+        reached its key vault key; on the target, the key''s own policy lets the database
+        service use it'
+    - field: properties.storage.iops
+      why: '500: provisioned storage performance is not carried over; the target''s
+        storage gives its own baseline'
+    - field: properties.backup.geoRedundantBackup
+      why: its backups were copied to the paired region; the target keeps them in
+        its own region until cross-region backup copies (AWS) or a backup location
+        (GCP) are set up (not translated)
+    - field: properties.network.privateDnsZoneArmResourceId
+      why: its name was resolved in a private DNS zone; the target's endpoint has
+        the target's own name, which apps must use
+    - field: backup retention
+      why: it could be restored to any point in the last 14 days; Cloud SQL ENTERPRISE
+        keeps transaction logs 7 days at most, so a point in time goes back 7 (daily
+        backups are kept 14)
+    - field: configurations/ssl_min_protocol_version
+      why: 'TLSv1.2: Cloud SQL has no setting for the oldest TLS version it takes,
+        so it may take older ones than the source did'
+      widens: true
+    - field: tags.Cost Center
+      why: a GCP label takes lowercase letters, digits, _ and - only (a key starts
+        with a letter), so it is not carried over
+    source: Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    state: mapped with losses
+    targets:
+    - sqladmin.googleapis.com/Instance projects/{{truthform|project}}/instances/shop-pg
+  - reason: 'it is a replica (AsyncReplica): read replicas and geo-replication are
+      not translated yet: the target instance has none'
+    source: Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg-replica
+    state: refused
+  - reason: 'identity is not translated (#32): Microsoft Entra ID sign-in becomes
+      the target''s own (IAM database authentication for PostgreSQL, Active Directory
+      for SQL Server), which is a change to the apps and their users'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/administrators data/shop-pg/00000000-0000-0000-0000-000000000001
+    state: refused
+  - losses:
+    - field: properties.state
+      why: 'Enabled: threat protection (Microsoft Defender for open-source databases)
+        is not translated, and the target is not watched as the source was until its
+        own (GuardDuty RDS Protection, Security Command Center) is set up'
+      widens: true
+    reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/advancedThreatProtectionSettings
+      data/shop-pg/Default
+    state: mapped with losses
+  - reason: 'a backup is data, which is not moved: the target starts its own backups
+      (#32)'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/backups data/shop-pg/before-upgrade
+    state: refused
+  - reason: 'read with its server: whether it takes plain-text connections'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/reports-pg/require_secure_transport
+    state: mapped
+  - reason: 'Azure''s allow-list of extensions: the target has none, and the extensions
+      are created in its databases (see the requirements)'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/azure.extensions
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/log_connections
+    state: mapped
+  - losses:
+    - field: properties.value
+      why: 'x: Cloud SQL has no database flag made_up_param this translation knows
+        to mean the same; not carried over'
+    reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/made_up_param
+    state: mapped with losses
+  - reason: 'left at Azure''s default: the target''s default stands'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/max_connections
+    state: mapped
+  - losses:
+    - field: properties.value
+      why: 'scram-sha-256: Cloud SQL has no database flag password_encryption this
+        translation knows to mean the same; not carried over'
+      widens: true
+    reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/password_encryption
+    state: mapped with losses
+  - losses:
+    - field: properties.value
+      why: 'ddl: Cloud SQL has no database flag pgaudit.log this translation knows
+        to mean the same; not carried over'
+      widens: true
+    reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/pgaudit.log
+    state: mapped with losses
+  - reason: 'read with its server: whether it takes plain-text connections'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/require_secure_transport
+    state: mapped
+  - losses:
+    - field: properties.value
+      why: 'pg_stat_statements: Cloud SQL has no database flag shared_preload_libraries
+        this translation knows to mean the same; not carried over'
+    reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/shared_preload_libraries
+    state: mapped with losses
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/work_mem
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/databases data/shop-pg/orders
+    state: mapped
+  - reason: 'one of the databases Azure makes on every server: the target makes its
+      own'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/databases data/shop-pg/postgres
+    state: mapped
+  - losses:
+    - field: properties
+      why: '0.0.0.0 allows every Azure service, anyone''s: it has no addresses on
+        GCP, so it is not carried over (apps in Azure that reached it are allowed
+        by their own addresses)'
+    reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/reports-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/firewallRules data/reports-pg/AllowAllAzureServicesAndResourcesWithinAzureIps
+    state: mapped with losses
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/reports-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/firewallRules data/reports-pg/home
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/reports-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/firewallRules data/reports-pg/office
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/reports-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/firewallRules data/reports-pg/partner
+    state: mapped
+  - losses:
+    - field: properties.subnets[db].properties.delegations
+      why: 'delegated to Microsoft.DBforPostgreSQL/flexibleServers; a subnet on the
+        target is not delegated: the service that used it is translated, if at all,
+        by its own rules'
+    source: Microsoft.Network/virtualNetworks net/core
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/core
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-db
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-db2
+  - losses:
+    - field: backup retention
+      why: it could be restored to any point in the last 14 days; Cloud SQL ENTERPRISE
+        keeps transaction logs 7 days at most, so a point in time goes back 7 (daily
+        backups are kept 14)
+    - field: properties.minimalTlsVersion
+      why: '1.2: Cloud SQL has no setting for the oldest TLS version it takes, so
+        it may take older ones than the source did'
+      widens: true
+    - field: properties.retentionDays
+      why: 'Azure kept the server 7 days after it was deleted; Cloud SQL refuses to
+        delete the instance while deletion protection is on, which is stricter: turn
+        it off to delete it'
+    source: Microsoft.Sql/servers data/shop-sql
+    state: mapped with losses
+    targets:
+    - sqladmin.googleapis.com/Instance projects/{{truthform|project}}/instances/shop-sql
+  - reason: 'identity is not translated (#32): Microsoft Entra ID sign-in becomes
+      the target''s own (IAM database authentication for PostgreSQL, Active Directory
+      for SQL Server), which is a change to the apps and their users'
+    source: Microsoft.Sql/servers/administrators data/shop-sql/ActiveDirectory
+    state: refused
+  - losses:
+    - field: properties.state
+      why: 'Enabled: auditing is not translated, and the target is not watched as
+        the source was until its own (the SQLSERVER_AUDIT option (RDS), Cloud SQL''s
+        SQL Server audit) is set up'
+      widens: true
+    reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/auditingSettings data/shop-sql/default
+    state: mapped with losses
+  - reason: 'how clients pass Azure''s gateway (proxy or redirect): the target has
+      no gateway, and clients connect to the instance'
+    source: Microsoft.Sql/servers/connectionPolicies data/shop-sql/default
+    state: mapped
+  - losses:
+    - field: sku
+      why: 'S0: each Azure SQL database has its own size; on the target the databases
+        share the instance''s, which the map gives'
+    reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/databases data/shop-sql/catalog
+    state: mapped with losses
+  - reason: 'the server''s system database: the target has its own'
+    source: Microsoft.Sql/servers/databases data/shop-sql/master
+    state: mapped
+  - losses:
+    - field: sku
+      why: 'GP_Gen5_2: each Azure SQL database has its own size; on the target the
+        databases share the instance''s, which the map gives'
+    - field: properties.requestedBackupStorageRedundancy
+      why: 'Geo: its backups were copied to the paired region; the target keeps them
+        in its own region (not translated)'
+    reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/databases data/shop-sql/orders
+    state: mapped with losses
+  - reason: no descriptor for Azure's advisors yet
+    source: Microsoft.Sql/servers/databases/advisors data/shop-sql/catalog/CreateIndex
+    state: not looked at
+  - reason: 'read with its server: the instance keeps backups as long as the longest
+      of its databases did'
+    source: Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies data/shop-sql/catalog/default
+    state: mapped
+  - reason: 'read with its server: the instance keeps backups as long as the longest
+      of its databases did'
+    source: Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies data/shop-sql/orders/default
+    state: mapped
+  - reason: read with its server, whose instance is encrypted at rest
+    source: Microsoft.Sql/servers/databases/transparentDataEncryption data/shop-sql/catalog/current
+    state: mapped
+  - reason: 'an elastic pool has no peer: on RDS and Cloud SQL the databases of one
+      instance share its size, which the map gives for the server (databases.<group/server>);
+      the pool''s own limits are not carried'
+    source: Microsoft.Sql/servers/elasticPools data/shop-sql/pool1
+    state: refused
+  - reason: 'read with its server: which key encrypts its databases'
+    source: Microsoft.Sql/servers/encryptionProtector data/shop-sql/current
+    state: mapped
+  - reason: 'a failover group replicates its databases to another server: read replicas
+      and geo-replication are not translated yet: the target instance has none'
+    source: Microsoft.Sql/servers/failoverGroups data/shop-sql/shop-fg
+    state: refused
+  - losses:
+    - field: properties
+      why: '0.0.0.0 allows every Azure service, anyone''s: it has no addresses on
+        GCP, so it is not carried over (apps in Azure that reached it are allowed
+        by their own addresses)'
+    reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/firewallRules data/shop-sql/AllowAllWindowsAzureIps
+    state: mapped with losses
+  - reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/firewallRules data/shop-sql/office
+    state: mapped
+  - reason: 'Elastic Jobs have no peer: SQL Server Agent (RDS, Cloud SQL) runs jobs,
+      rewritten, not translated'
+    source: Microsoft.Sql/servers/jobAgents/jobs data/shop-sql/agent/nightly
+    state: refused
+  - reason: 'off on the source: nothing to carry'
+    source: Microsoft.Sql/servers/securityAlertPolicies data/shop-sql/Default
+    state: mapped
+  - losses:
+    - field: properties.virtualNetworkSubnetId
+      why: 'net/core/app: a Cloud SQL public IP takes public addresses, and these
+        are private, so the subnet is not allowed (less than the source); its clients
+        reach the instance once it has a private IP (not translated)'
+    reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/virtualNetworkRules data/shop-sql/app
+    state: mapped with losses
+  from: azure
+  requirements:
+  - 'Cloud KMS key projects/keys/locations/europe-west1/keyRings/db/cryptoKeys/shop-pg
+    lets Cloud SQL''s service agent use it for shop-pg (roles/cloudkms.cryptoKeyEncrypterDecrypter):
+    Azure reached its key through the server''s managed identity, which is not translated'
+  - 'Cloud SQL for SQL Server takes the sqlserver user''s password when shop-sql is
+    made (rootPassword): supply it from a secret source then; no password is in a
+    snapshot'
+  - 'Cloud SQL instance reports-pg''s public IP also takes the Cloud SQL Auth Proxy
+    and connectors, from any principal with cloudsql.instances.connect, whatever its
+    authorized networks: grant that only to the apps (identity is not translated,
+    #32)'
+  - 'Cloud SQL instance shop-sql''s public IP also takes the Cloud SQL Auth Proxy
+    and connectors, from any principal with cloudsql.instances.connect, whatever its
+    authorized networks: grant that only to the apps (identity is not translated,
+    #32)'
+  - 'Create database catalog (SQL_Latin1_General_CP1_CI_AS) on Cloud SQL instance
+    shop-sql, with its owner, then move its data (a dump and restore, or a database
+    migration service): no database or data is written'
+  - 'Create database orders (SQL_Latin1_General_CP1_CI_AS, WITH LEDGER = ON) on Cloud
+    SQL instance shop-sql, with its owner, then move its data (a dump and restore,
+    or a database migration service): no database or data is written'
+  - 'Create database orders (UTF8, en_US.utf8) on Cloud SQL instance shop-pg, with
+    its owner, then move its data (a dump and restore, or a database migration service):
+    no database or data is written'
+  - 'Create the extensions pgcrypto, uuid-ossp in the databases of Cloud SQL instance
+    shop-pg that used them (CREATE EXTENSION): Azure allow-listed them, and the target
+    has no allow-list'
+  - 'Create user reports on Cloud SQL instance reports-pg, with a password from a
+    secret source: no user or password is written'
+  - 'Create user shopadmin on Cloud SQL instance shop-pg, with a password from a secret
+    source: no user or password is written'
+  - 'Create user sqladmin on Cloud SQL instance shop-sql, with a password from a secret
+    source: no user or password is written'
+  - 'Private services access (an allocated range and a servicenetworking connection)
+    exists on network core before Cloud SQL instance shop-pg is made: its private
+    IP comes from it (not translated)'
+  - 'Users who signed in to Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    with Microsoft Entra ID move to IAM database authentication on Cloud SQL instance
+    shop-pg: identity is not translated (#32)'
+  - 'Users who signed in to Microsoft.Sql/servers data/shop-sql with Microsoft Entra
+    ID move to Windows authentication through Managed Microsoft AD, or Cloud SQL''s
+    own Microsoft Entra ID setting (entraidConfig) on Cloud SQL instance shop-sql:
+    identity is not translated (#32)'
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Network
+    metadata:
+      annotations:
+        truthform.org/collection: networks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Network
+      name: projects/{{truthform|project}}/global/networks/core
+    spec:
+      autoCreateSubnetworks: false
+      mtu: 1500
+      name: core
+      routingConfig:
+        routingMode: REGIONAL
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    spec:
+      ipCidrRange: 10.20.1.0/24
+      name: core-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-db
+    spec:
+      ipCidrRange: 10.20.2.0/24
+      name: core-db
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-db2
+    spec:
+      ipCidrRange: 10.20.3.0/24
+      name: core-db2
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: sqladmin.googleapis.com/Instance
+    metadata:
+      annotations:
+        truthform.org/collection: instances
+        truthform.org/discovery: sqladmin/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: DatabaseInstance
+      name: projects/{{truthform|project}}/instances/reports-pg
+    spec:
+      databaseVersion: POSTGRES_15
+      name: reports-pg
+      region: europe-west1
+      settings:
+        availabilityType: ZONAL
+        backupConfiguration:
+          backupRetentionSettings:
+            retainedBackups: 7
+            retentionUnit: COUNT
+          enabled: true
+          pointInTimeRecoveryEnabled: true
+          transactionLogRetentionDays: 7
+        dataDiskSizeGb: "64"
+        edition: ENTERPRISE
+        ipConfiguration:
+          authorizedNetworks:
+          - name: home
+            value: 198.51.100.7/32
+          - name: office
+            value: 203.0.113.0/24
+          - name: partner-1
+            value: 192.0.2.10/31
+          - name: partner-2
+            value: 192.0.2.12/30
+          - name: partner-3
+            value: 192.0.2.16/30
+          - name: partner-4
+            value: 192.0.2.20/32
+          ipv4Enabled: true
+        storageAutoResize: false
+        tier: db-custom-1-3840
+  - apiVersion: gcp.truthform.org/v1
+    kind: sqladmin.googleapis.com/Instance
+    metadata:
+      annotations:
+        truthform.org/collection: instances
+        truthform.org/discovery: sqladmin/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: DatabaseInstance
+      name: projects/{{truthform|project}}/instances/shop-pg
+    spec:
+      databaseVersion: POSTGRES_16
+      diskEncryptionConfiguration:
+        kmsKeyName: projects/keys/locations/europe-west1/keyRings/db/cryptoKeys/shop-pg
+      name: shop-pg
+      region: europe-west1
+      settings:
+        availabilityType: REGIONAL
+        backupConfiguration:
+          backupRetentionSettings:
+            retainedBackups: 14
+            retentionUnit: COUNT
+          enabled: true
+          pointInTimeRecoveryEnabled: true
+          transactionLogRetentionDays: 7
+        dataDiskSizeGb: "128"
+        databaseFlags:
+        - name: log_connections
+          value: "on"
+        - name: work_mem
+          value: "8192"
+        edition: ENTERPRISE
+        ipConfiguration:
+          ipv4Enabled: false
+          privateNetwork: projects/{{truthform|project}}/global/networks/core
+          sslMode: ENCRYPTED_ONLY
+        storageAutoResize: true
+        tier: db-custom-2-8192
+        userLabels:
+          env: dev
+  - apiVersion: gcp.truthform.org/v1
+    kind: sqladmin.googleapis.com/Instance
+    metadata:
+      annotations:
+        truthform.org/collection: instances
+        truthform.org/discovery: sqladmin/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: DatabaseInstance
+      name: projects/{{truthform|project}}/instances/shop-sql
+    spec:
+      databaseVersion: SQLSERVER_2022_STANDARD
+      name: shop-sql
+      region: europe-west1
+      settings:
+        availabilityType: ZONAL
+        backupConfiguration:
+          backupRetentionSettings:
+            retainedBackups: 14
+            retentionUnit: COUNT
+          enabled: true
+          pointInTimeRecoveryEnabled: true
+          transactionLogRetentionDays: 7
+        dataDiskSizeGb: "282"
+        deletionProtectionEnabled: true
+        edition: ENTERPRISE
+        ipConfiguration:
+          authorizedNetworks:
+          - name: office
+            value: 203.0.113.0/24
+          ipv4Enabled: true
+          sslMode: ENCRYPTED_ONLY
+        storageAutoResize: false
+        tier: db-custom-4-16384
+        userLabels:
+          env: dev

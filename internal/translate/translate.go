@@ -129,6 +129,21 @@ type out struct {
 	entries []Entry
 	reqs    map[string]bool
 	err     error
+	// subnets are the Azure subnets the network family read, by
+	// group/network/subnet in lower case, for a family that places what it
+	// writes in them.
+	subnets map[string]*subnet
+}
+
+// written is the spec of an object already written for a platform, or nil.
+func (o *out) written(platform, kind, name string) map[string]any {
+	for _, x := range o.objects[platform] {
+		if x.Kind() == kind && x.Name() == name {
+			s, _ := x.Body["spec"].(map[string]any)
+			return s
+		}
+	}
+	return nil
 }
 
 func (o *out) add(platform, source string, obj snapshot.Object) string {
@@ -172,9 +187,9 @@ type family interface {
 	translate(objs []snapshot.Object, o *out)
 }
 
-// The network family comes before DNS: a private zone names the networks
-// it is written for.
-var families = []family{serviceBus{}, network{}, storage{}, keyVault{}, registry{}, dnsFamily{}, decided{}}
+// The network family comes before those that use its networks: DNS
+// private zones, and databases placed in its subnets.
+var families = []family{serviceBus{}, network{}, storage{}, keyVault{}, registry{}, dnsFamily{}, databases{}, decided{}}
 
 // Translate rewrites an Azure snapshot for the target the map names, with
 // the target's definitions.
@@ -191,7 +206,7 @@ func Translate(src snapshot.Snapshot, m Map, tg Targets) (Result, error) {
 	case m.NeedsGCP() && tg.GCP == nil:
 		return Result{}, fmt.Errorf("the map's destinations write GCP objects, which need GCP's Discovery documents")
 	}
-	o := &out{m: m, tg: tg, objects: map[string][]snapshot.Object{}, keys: map[string]string{}, reqs: map[string]bool{}}
+	o := &out{m: m, tg: tg, objects: map[string][]snapshot.Object{}, keys: map[string]string{}, reqs: map[string]bool{}, subnets: map[string]*subnet{}}
 	claimed := make([][]snapshot.Object, len(families))
 	for _, obj := range src.Objects {
 		hit := false

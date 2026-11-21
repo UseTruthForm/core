@@ -194,6 +194,7 @@ func (ds *Docs) Doc(uri, version string) (*Doc, error) {
 	h := sha256.Sum256(b)
 	d.Digest = "sha256:" + hex.EncodeToString(h[:])
 	d.flagUndeclaredOutput()
+	d.liftVersion()
 	ds.cache[key] = &d
 	return &d, nil
 }
@@ -238,6 +239,42 @@ func (d *Doc) flagUndeclaredOutput() {
 			}
 		}
 	}
+}
+
+// liftVersion moves a version that begins every method path into the
+// service path. Cloud SQL's document has an empty servicePath and paths
+// like v1/projects/{project}/instances/{instance}: matched against a
+// resource name (projects/p/instances/i), no path matched, and an insert's
+// URL was built as if the version were a parameter's value, so its
+// instances could be neither read nor created. Every URL stays the same.
+func (d *Doc) liftVersion() {
+	if d.ServicePath != "" || d.Version == "" {
+		return
+	}
+	lead := d.Version + "/"
+	var all []*Method
+	var walk func(cs map[string]*Collection)
+	walk = func(cs map[string]*Collection) {
+		for _, c := range cs {
+			for _, m := range c.Methods {
+				all = append(all, m)
+			}
+			walk(c.Resources)
+		}
+	}
+	walk(d.Resources)
+	if len(all) == 0 {
+		return
+	}
+	for _, m := range all {
+		if !strings.HasPrefix(m.Path, lead) {
+			return
+		}
+	}
+	for _, m := range all {
+		m.Path = strings.TrimPrefix(m.Path, lead)
+	}
+	d.ServicePath = lead
 }
 
 // Kind is how a resource is read and created, found in a document.
@@ -478,7 +515,7 @@ func (d *Doc) clean(v any, s *Schema, path string, ro map[string]any) {
 			p, known := s.Properties[k]
 			full := join(path, k)
 			switch {
-			case standardOutput[k]:
+			case standardOutput[k] || (k == "selfLink" && path == ""):
 				if isScalar(c[k]) {
 					ro[full] = c[k]
 				}
@@ -506,7 +543,10 @@ func (d *Doc) clean(v any, s *Schema, path string, ro map[string]any) {
 
 // standardOutput are the fields Google's API guidelines (AIP-148) define
 // as output only on every resource, flagged or not. An unflagged etag would
-// otherwise read as drift on every capture.
+// otherwise read as drift on every capture. A resource's own selfLink is
+// the server's too (Cloud SQL does not flag it): kept, it named the source
+// project's API path, and a translated instance, which has none, read as
+// differing from itself once restored.
 var standardOutput = map[string]bool{"createTime": true, "updateTime": true, "deleteTime": true, "uid": true, "etag": true}
 
 func isScalar(v any) bool {

@@ -168,8 +168,7 @@ func (f *Fake) create(url string, body map[string]any) (map[string]any, error) {
 				return nil, fmt.Errorf("INVALID_ARGUMENT: %s needs project=%s, got %q", m.ID, f.id, query.Get("project"))
 			}
 			schema := c.schema
-			typ := d.Name + ".googleapis.com/" + schema
-			return f.createWith(d, typ, schema, c.path, m, parent, body, queryID)
+			return f.createWith(d, assetType(d, schema), schema, c.path, m, parent, body, queryID)
 		}
 	}
 	return nil, fmt.Errorf("fake: no create method matches %s", url)
@@ -197,7 +196,7 @@ func (f *Fake) createAtName(url string, body map[string]any) (map[string]any, bo
 			}
 			lead, _, _ := strings.Cut(m.Path, "{")
 			rel := strings.TrimPrefix(path, lead)
-			if rel == path || !matchesName(m, rel) {
+			if !strings.HasPrefix(path, lead) || !matchesName(m, rel) {
 				continue
 			}
 			coll := c.path[strings.LastIndex(c.path, ".")+1:]
@@ -208,7 +207,7 @@ func (f *Fake) createAtName(url string, body map[string]any) (map[string]any, bo
 			if n, _ := body["name"].(string); n != "" && n != rel {
 				return nil, true, fmt.Errorf("INVALID_ARGUMENT: the name in the body, %s, is not %s", n, rel)
 			}
-			out, err := f.createWith(d, d.Name+".googleapis.com/"+c.schema, c.schema, c.path, m, parent, body, id)
+			out, err := f.createWith(d, assetType(d, c.schema), c.schema, c.path, m, parent, body, id)
 			return out, true, err
 		}
 	}
@@ -467,6 +466,22 @@ func (f *Fake) creatable(word string) bool {
 	return false
 }
 
+// assetType is the type Cloud Asset Inventory reports a resource of a
+// document's schema as: the API's host and the schema's name, but for
+// those it names otherwise (a Cloud SQL DatabaseInstance is an
+// sqladmin.googleapis.com/Instance).
+func assetType(d *Doc, schema string) string {
+	t := d.Name + ".googleapis.com/" + schema
+	if n, ok := inventoryTypes[t]; ok {
+		return n
+	}
+	return t
+}
+
+var inventoryTypes = map[string]string{
+	"sqladmin.googleapis.com/DatabaseInstance": "sqladmin.googleapis.com/Instance",
+}
+
 // createMethod is a collection's create, or Compute's insert.
 func createMethod(ms map[string]*Method) *Method {
 	if m := ms["create"]; m != nil {
@@ -528,7 +543,8 @@ func (f *Fake) missingRef(body map[string]any) string {
 	}
 	missing := ""
 	refs := deepCopy(body)
-	delete(refs, "name") // its own name, not a reference
+	delete(refs, "name")     // its own name, not a reference
+	delete(refs, "selfLink") // nor its own link (Cloud SQL's is not flagged output only)
 	walkStrings(refs, func(s string) string {
 		i := strings.Index(s, "projects/"+f.id+"/")
 		if i < 0 || missing != "" {

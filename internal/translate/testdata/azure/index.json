@@ -30,6 +30,51 @@
   "Microsoft.ContainerRegistry/registries@2025-11-01": {
    "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/116"
   },
+  "Microsoft.DBforPostgreSQL/flexibleServers/administrators@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/174"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/advancedThreatProtectionSettings@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/184"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/backups@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/193"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/configurations@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/332"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/databases@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/340"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/347"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/ltrBackupOperations@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/372"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/maintenanceEvents@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/386"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/majorVersionUpgradePrecheck@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/403"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/migrations@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/318"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/privateEndpointConnections@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/351"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/privateLinkResources@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/411"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/tuningOptions@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/419"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/virtualendpoints@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/361"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/164"
+  },
   "Microsoft.KeyVault/vaults/accessPolicies@2026-05-15": {
    "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/145"
   },
@@ -182,6 +227,228 @@
   },
   "Microsoft.ServiceBus/namespaces@2026-01-01": {
    "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/82"
+  },
+  "Microsoft.Sql/servers/administrators@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/545"
+  },
+  "Microsoft.Sql/servers/advancedThreatProtectionSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/536"
+  },
+  "Microsoft.Sql/servers/advisors@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1067"
+  },
+  "Microsoft.Sql/servers/auditingSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/32"
+  },
+  "Microsoft.Sql/servers/automaticTuning@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1094"
+  },
+  "Microsoft.Sql/servers/azureADOnlyAuthentications@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/552"
+  },
+  "Microsoft.Sql/servers/connectionPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/563"
+  },
+  "Microsoft.Sql/servers/databases/advancedThreatProtectionSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/73"
+  },
+  "Microsoft.Sql/servers/databases/advisors/recommendedActions@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/893"
+  },
+  "Microsoft.Sql/servers/databases/advisors@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/812"
+  },
+  "Microsoft.Sql/servers/databases/auditingSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/42"
+  },
+  "Microsoft.Sql/servers/databases/automaticTuning@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/845"
+  },
+  "Microsoft.Sql/servers/databases/backupLongTermRetentionPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/451"
+  },
+  "Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/19"
+  },
+  "Microsoft.Sql/servers/databases/dataMaskingPolicies/rules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/252"
+  },
+  "Microsoft.Sql/servers/databases/dataMaskingPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/237"
+  },
+  "Microsoft.Sql/servers/databases/dataWarehouseUserActivities@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/992"
+  },
+  "Microsoft.Sql/servers/databases/extendedAuditingSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/52"
+  },
+  "Microsoft.Sql/servers/databases/extensions@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/87"
+  },
+  "Microsoft.Sql/servers/databases/geoBackupPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/325"
+  },
+  "Microsoft.Sql/servers/databases/ledgerDigestUploads@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/438"
+  },
+  "Microsoft.Sql/servers/databases/replicationLinks@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/523"
+  },
+  "Microsoft.Sql/servers/databases/restorePoints@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1063"
+  },
+  "Microsoft.Sql/servers/databases/schemas/tables/columns/sensitivityLabels@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/530"
+  },
+  "Microsoft.Sql/servers/databases/schemas/tables/columns@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/889"
+  },
+  "Microsoft.Sql/servers/databases/schemas/tables@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/970"
+  },
+  "Microsoft.Sql/servers/databases/schemas@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/897"
+  },
+  "Microsoft.Sql/servers/databases/securityAlertPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/190"
+  },
+  "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments/baselines/rules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/207"
+  },
+  "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments/baselines@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/200"
+  },
+  "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments/scans/scanResults@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/940"
+  },
+  "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments/scans@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/955"
+  },
+  "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/961"
+  },
+  "Microsoft.Sql/servers/databases/syncGroups/syncMembers@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/710"
+  },
+  "Microsoft.Sql/servers/databases/syncGroups@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/679"
+  },
+  "Microsoft.Sql/servers/databases/transparentDataEncryption@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/727"
+  },
+  "Microsoft.Sql/servers/databases/vulnerabilityAssessments/rules/baselines@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/218"
+  },
+  "Microsoft.Sql/servers/databases/vulnerabilityAssessments/scans@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/985"
+  },
+  "Microsoft.Sql/servers/databases/vulnerabilityAssessments@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/227"
+  },
+  "Microsoft.Sql/servers/databases/workloadGroups/workloadClassifiers@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/744"
+  },
+  "Microsoft.Sql/servers/databases/workloadGroups@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/749"
+  },
+  "Microsoft.Sql/servers/databases@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/178"
+  },
+  "Microsoft.Sql/servers/devOpsAuditingSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/573"
+  },
+  "Microsoft.Sql/servers/dnsAliases@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/578"
+  },
+  "Microsoft.Sql/servers/elasticPools@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/274"
+  },
+  "Microsoft.Sql/servers/encryptionProtector@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/284"
+  },
+  "Microsoft.Sql/servers/extendedAuditingSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/62"
+  },
+  "Microsoft.Sql/servers/failoverGroups@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/310"
+  },
+  "Microsoft.Sql/servers/firewallRules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/315"
+  },
+  "Microsoft.Sql/servers/ipv6FirewallRules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/330"
+  },
+  "Microsoft.Sql/servers/jobAgents/credentials@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/355"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/executions/steps/targets@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1004"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/executions/steps@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/996"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/executions@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/384"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/steps@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/412"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/versions/steps@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1000"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/versions@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1008"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/398"
+  },
+  "Microsoft.Sql/servers/jobAgents/privateEndpoints@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/389"
+  },
+  "Microsoft.Sql/servers/jobAgents/targetGroups@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/428"
+  },
+  "Microsoft.Sql/servers/jobAgents@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/350"
+  },
+  "Microsoft.Sql/servers/keys@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/586"
+  },
+  "Microsoft.Sql/servers/networkSecurityPerimeterConfigurations@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1030"
+  },
+  "Microsoft.Sql/servers/outboundFirewallRules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/476"
+  },
+  "Microsoft.Sql/servers/privateEndpointConnections@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/497"
+  },
+  "Microsoft.Sql/servers/privateLinkResources@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1037"
+  },
+  "Microsoft.Sql/servers/recoverableDatabases@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1043"
+  },
+  "Microsoft.Sql/servers/restorableDroppedDatabases@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1055"
+  },
+  "Microsoft.Sql/servers/securityAlertPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/634"
+  },
+  "Microsoft.Sql/servers/sqlVulnerabilityAssessments@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/651"
+  },
+  "Microsoft.Sql/servers/syncAgents@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/660"
+  },
+  "Microsoft.Sql/servers/virtualNetworkRules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/739"
+  },
+  "Microsoft.Sql/servers/vulnerabilityAssessments@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/641"
+  },
+  "Microsoft.Sql/servers@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/628"
   },
   "Microsoft.Storage/storageAccounts/accountMigrations@2026-09-01": {
    "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/673"

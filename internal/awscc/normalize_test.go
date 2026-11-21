@@ -76,3 +76,26 @@ func TestPolicyBaselinesMerge(t *testing.T) {
 		t.Fatalf("baseline %d objects, name %q", len(p.Baseline), p.Name())
 	}
 }
+
+// A set of references is in the order of its tokens, not of the IDs they
+// replaced: sorted by subnet IDs, which differ in every account, a group's
+// subnets came out in another order in each, and a restore found the
+// subnet group it had made differing from the snapshot.
+func TestSetsSortAfterTokens(t *testing.T) {
+	reg := fixtures(t)
+	sn := func(id, name string) *resource {
+		return normalize(reg.Types["AWS::EC2::Subnet"], id, map[string]any{"SubnetId": id, "VpcId": "vpc-1", "CidrBlock": "10.0.0.0/24",
+			"Tags": []any{map[string]any{"Key": "Name", "Value": name}}})
+	}
+	group := &TypeInfo{Name: "Test::RDS::Group", PrimaryIdentifier: []string{"/properties/Name"}, Properties: map[string]any{
+		"Name":    map[string]any{"type": "string"},
+		"Members": map[string]any{"type": "array", "insertionOrder": false, "items": map[string]any{"type": "string"}},
+	}}
+	g := normalize(group, "g", map[string]any{"Name": "g", "Members": []any{"subnet-bbbb2222", "subnet-aaaa1111"}})
+	rs := []*resource{sn("subnet-aaaa1111", "zeta"), sn("subnet-bbbb2222", "alpha"), g}
+	name(rs, "111111111111")
+	got := g.spec["Members"].([]any)
+	if got[0] != refToken("AWS::EC2::Subnet", "alpha", "SubnetId") || got[1] != refToken("AWS::EC2::Subnet", "zeta", "SubnetId") {
+		t.Errorf("members: %v", got)
+	}
+}

@@ -1435,9 +1435,10 @@ It reads one snapshot and a map, and writes a snapshot per target platform,
 which `plan`, `restore` and `diff` take as they are. It makes no request, so
 the capture-only build has it too. So far it translates Service Bus,
 virtual networks and network security groups, public and private DNS
-zones, storage accounts' blob containers, Key Vault secrets and container
-registries; every other type is reported as not looked at (design: issue
-#32).
+zones, storage accounts' blob containers, Key Vault secrets, container
+registries, and the configuration (never the data) of Azure Database for
+PostgreSQL flexible servers and Azure SQL servers; every other type is
+reported as not looked at (design: issue #32).
 
 ```sh
 truthform translate --from snap/azure --map map.yaml --out moved/
@@ -1459,6 +1460,7 @@ destinations:
   registry: ecr             # ecr (aws) or artifact-registry (gcp)
   storage: buckets          # an S3 bucket (aws) or Cloud Storage bucket (gcp) per blob container
   dns: route53              # route53 (aws) or cloud-dns (gcp)
+  databases: rds            # rds (aws) or cloud-sql (gcp)
 secrets:                    # gcp: where Secret Manager keeps each secret; it cannot change later
   replication: user-managed # automatic, or user-managed with
   locations: [europe-west1, europe-west4]
@@ -1474,6 +1476,18 @@ rabbitmq:                   # for messaging: rabbitmq
 names:
   rg/shop/legacy.feed: legacy-feed   # a name SQS does not allow
   rg/shopfiles/$root: shopfiles-root # a bucket name, keyed group/account/container
+databases:                  # per server, keyed group/server: what Azure cannot say
+  data/shop-pg:
+    instanceClass: db.m6g.large      # aws; gcp: tier: db-custom-2-8192. No default, and no SKU translation
+    subnets: [net/core/db2]          # more subnets of a translated network; RDS needs two zones
+    kmsKey: arn:aws:kms:...          # for a server encrypted with its own key; gcp: a Cloud KMS key name
+  data/shop-sql:
+    instanceClass: db.m6i.xlarge
+    edition: sqlserver-se            # aws: sqlserver-ex, -web, -se or -ee
+    licenseModel: license-included   # aws: or bring-your-own-media
+    version: 16.00.4185.3.v1         # aws: an RDS engine version; gcp: SQLSERVER_2022_STANDARD
+    subnets: [net/core/app, net/core/db2]
+    storageGB: 300                   # only when its databases give no maximum size
 ```
 
 | Service Bus | sqs-sns | pubsub | rabbitmq |
@@ -1515,6 +1529,32 @@ names:
 
 Blobs are never copied: each bucket is written empty, and the report says
 so. An account with no blob container writes nothing.
+
+| Databases | rds | cloud-sql |
+|---|---|---|
+| PostgreSQL flexible server | `AWS::RDS::DBInstance` (postgres, its major version; 13 to 17), a DB subnet group, a security group | Cloud SQL instance (`POSTGRES_<n>`) |
+| Azure SQL server | one `AWS::RDS::DBInstance` (the map's edition, license and version) for all its databases | one Cloud SQL instance (the map's `SQLSERVER_<year>_<EDITION>`) |
+| Size (SKU) | the map's `instanceClass`; none: refused | the map's `tier` (its edition follows) |
+| Storage, autogrow | `AllocatedStorage`; autogrow: `MaxAllocatedStorage` 32 TiB, Azure's ceiling | `dataDiskSizeGb`, `storageAutoResize` |
+| SQL database sizes | storage is the sum of their maximum sizes | the same |
+| Backup retention | `BackupRetentionPeriod` | daily backups kept as long; point in time 7 days at most (Enterprise) |
+| Zone-redundant HA | `MultiAZ` | `availabilityType: REGIONAL` |
+| Private (delegated subnet, or the map's subnets) | in the network's subnets, reached from the network on its port, or through the NSG of its subnet | private IP in the VPC network, no public IP; private services access is a requirement |
+| Public, firewall rules | `PubliclyAccessible`, a security group allowing exactly those ranges on its port | public IP, the ranges as authorized networks |
+| Firewall rule 0.0.0.0 (all Azure services) | not carried over (less than the source) | the same |
+| Encrypted connections only | `rds.force_ssl` and the TLS floor in a parameter group | `sslMode: ENCRYPTED_ONLY`; no TLS floor: reported as less protected |
+| Server parameters set by a person | the parameter group, where RDS has the parameter | database flags, where Cloud SQL has the flag |
+| Customer-managed key | the map's `kmsKey`; without it, less protected | the same |
+| Admin login | `MasterUsername`, the password kept by RDS in Secrets Manager | a requirement: create the user, with a password from a secret source |
+| Databases | a requirement: create them, then move the data | the same |
+| Entra ID admins, Entra-only sign-in | refused: identity (#32) | refused |
+| Auditing, threat detection, vulnerability assessment | lost, reported as less protected | the same |
+| Elastic pools, replicas, failover groups, backups | refused | refused |
+
+No password and no row of data is carried over. A server Azure kept after
+deletion (Azure SQL's soft delete) gets deletion protection on the target,
+which is stricter; other servers get none, since Azure's equivalent is a
+lock, which is not translated.
 
 Azure evaluates an NSG's rules by priority, the first match deciding. A
 security group only allows, so on AWS each allow is written with every deny
@@ -1611,9 +1651,9 @@ Known limits:
   target fills in that the translation does not set.
 - Each target object is built from, or checked against, the target's own
   published definition (the CloudFormation registry, the Pub/Sub, Compute,
-  Cloud Storage, Secret Manager, Artifact Registry and Cloud DNS Discovery
-  documents): downloaded and cached like `aws-coverage`, or read from
-  `--schemas` and `--discovery`.
+  Cloud Storage, Secret Manager, Artifact Registry, Cloud DNS and Cloud SQL
+  Discovery documents): downloaded and cached like `aws-coverage`, or read
+  from `--schemas` and `--discovery`.
 - An NSG on a network interface rather than a subnet, application security
   groups and network peerings are not translated yet.
 

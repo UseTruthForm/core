@@ -40,12 +40,18 @@ type Map struct {
 		// DNS: route53 (aws) or cloud-dns (gcp), for Azure's public and
 		// private DNS zones.
 		DNS string `json:"dns,omitempty"`
+		// Databases: rds (aws) or cloud-sql (gcp), for Azure Database for
+		// PostgreSQL flexible servers and Azure SQL servers.
+		Databases string `json:"databases,omitempty"`
 	} `json:"destinations"`
 	// Secrets is what GCP's Secret Manager needs that Key Vault cannot say.
 	Secrets *SecretsMap `json:"secrets,omitempty"`
 	// Network is what the network destination needs that Azure cannot
 	// say.
 	Network *NetworkMap `json:"network,omitempty"`
+	// Databases is what each database server needs on the target that
+	// Azure cannot say, keyed by its group/server.
+	Databases map[string]DatabaseMap `json:"databases,omitempty"`
 	// RabbitMQ is needed when messaging goes to rabbitmq.
 	RabbitMQ *RabbitMQ `json:"rabbitmq,omitempty"`
 	// Sessions says how a Service Bus session queue is carried over: fifo
@@ -80,6 +86,40 @@ type SecretsMap struct {
 	Replication string `json:"replication,omitempty"`
 	// Locations are the regions a user-managed secret is kept in.
 	Locations []string `json:"locations,omitempty"`
+}
+
+// DatabaseMap is what one database server needs on the target. An Azure
+// SKU names Azure's hardware, not a target's, so the size is always the
+// map's: nothing here is worked out from the source.
+type DatabaseMap struct {
+	// InstanceClass is the RDS DB instance class (db.m6g.large). AWS only.
+	InstanceClass string `json:"instanceClass,omitempty"`
+	// Tier is the Cloud SQL machine tier (db-custom-2-8192, or
+	// db-perf-optimized-N-4 for Enterprise Plus). GCP only.
+	Tier string `json:"tier,omitempty"`
+	// Subnets are subnets of a translated network (group/network/subnet)
+	// the instance is placed in, with a PostgreSQL server's delegated
+	// subnet. RDS needs subnets in two availability zones at least, and a
+	// server with no delegated subnet is placed by these alone.
+	Subnets []string `json:"subnets,omitempty"`
+	// Edition is RDS's SQL Server engine: sqlserver-ex, sqlserver-web,
+	// sqlserver-se or sqlserver-ee. AWS, SQL Server only.
+	Edition string `json:"edition,omitempty"`
+	// LicenseModel is RDS's SQL Server license: license-included or
+	// bring-your-own-media. AWS, SQL Server only.
+	LicenseModel string `json:"licenseModel,omitempty"`
+	// Version is the SQL Server version, which Azure SQL Database does not
+	// have: RDS's EngineVersion (16.00.4185.3.v1) on AWS, Cloud SQL's
+	// databaseVersion (SQLSERVER_2022_STANDARD) on GCP. SQL Server only.
+	Version string `json:"version,omitempty"`
+	// StorageGB is a SQL Server instance's storage, when its databases do
+	// not give their maximum sizes. SQL Server only.
+	StorageGB int `json:"storageGB,omitempty"`
+	// KMSKey is the key the target encrypts with, for a server encrypted
+	// with the customer's own key: a KMS key ARN or alias (AWS), a Cloud
+	// KMS key name (GCP). Without it such a server is encrypted with the
+	// target's own key, and that is reported as widening.
+	KMSKey string `json:"kmsKey,omitempty"`
 }
 
 // RabbitMQ is what the in-cluster messaging destination needs.
@@ -213,11 +253,76 @@ func (m Map) validate() error {
 	default:
 		return fmt.Errorf("map: storage: %q is not buckets", m.Destinations.Storage)
 	}
+	if err := m.validateDatabases(); err != nil {
+		return err
+	}
 	want := map[string]string{"sqs-sns": "fifo", "pubsub": "ordering", "rabbitmq": "single-active-consumer"}[m.Destinations.Messaging]
 	if m.Sessions != "" && m.Sessions != want {
 		return fmt.Errorf("map: sessions: %q does not go with messaging %s (it takes %q)", m.Sessions, m.Destinations.Messaging, want)
 	}
 	return nil
+}
+
+var (
+	rdsClass    = regexp.MustCompile(`^db\.[a-z0-9]+\.[a-z0-9]+$`)
+	sqlTier     = regexp.MustCompile(`^db-[a-z0-9-]+$`)
+	rdsEditions = map[string]bool{"sqlserver-ex": true, "sqlserver-web": true, "sqlserver-se": true, "sqlserver-ee": true}
+	sqlLicense  = map[string]bool{"license-included": true, "bring-your-own-media": true}
+)
+
+func (m Map) validateDatabases() error {
+	switch d := m.Destinations.Databases; d {
+	case "":
+		if len(m.Databases) > 0 {
+			return fmt.Errorf("map: databases is set, and destinations.databases is not")
+		}
+		return nil
+	case "rds":
+		if m.To != "aws" {
+			return fmt.Errorf("map: databases rds is an AWS destination, and to is %s", m.To)
+		}
+	case "cloud-sql":
+		if m.To != "gcp" {
+			return fmt.Errorf("map: databases cloud-sql is a GCP destination, and to is %s", m.To)
+		}
+	default:
+		return fmt.Errorf("map: databases: %q is not rds or cloud-sql", d)
+	}
+	for k, d := range m.Databases {
+		f := "map: databases." + k + "."
+		switch {
+		case m.To == "aws" && d.Tier != "":
+			return fmt.Errorf("%stier is Cloud SQL's; on AWS the size is instanceClass", f)
+		case m.To == "gcp" && (d.InstanceClass != "" || d.Edition != "" || d.LicenseModel != ""):
+			return fmt.Errorf("%sinstanceClass, edition and licenseModel are RDS's; on GCP the size is tier and the edition is in version", f)
+		case d.InstanceClass != "" && !rdsClass.MatchString(d.InstanceClass):
+			return fmt.Errorf("%sinstanceClass: %q is not an RDS instance class (db.m6g.large)", f, d.InstanceClass)
+		case d.Tier != "" && !sqlTier.MatchString(d.Tier):
+			return fmt.Errorf("%stier: %q is not a Cloud SQL tier (db-custom-2-8192)", f, d.Tier)
+		case d.Edition != "" && !rdsEditions[d.Edition]:
+			return fmt.Errorf("%sedition: %q is not sqlserver-ex, sqlserver-web, sqlserver-se or sqlserver-ee", f, d.Edition)
+		case d.LicenseModel != "" && !sqlLicense[d.LicenseModel]:
+			return fmt.Errorf("%slicenseModel: %q is not license-included or bring-your-own-media", f, d.LicenseModel)
+		case d.StorageGB < 0:
+			return fmt.Errorf("%sstorageGB must be positive", f)
+		}
+		for _, s := range d.Subnets {
+			if strings.Count(s, "/") != 2 {
+				return fmt.Errorf("%ssubnets: %q is not group/network/subnet", f, s)
+			}
+		}
+	}
+	return nil
+}
+
+// database is the map's entry for a server (group/server), if any.
+func (m Map) database(key string) (DatabaseMap, bool) {
+	for k, d := range m.Databases {
+		if strings.EqualFold(k, key) {
+			return d, true
+		}
+	}
+	return DatabaseMap{}, false
 }
 
 func (m Map) destinationList() []string {
@@ -239,6 +344,9 @@ func (m Map) destinationList() []string {
 	}
 	if m.Destinations.DNS != "" {
 		d = append(d, "dns: "+m.Destinations.DNS)
+	}
+	if m.Destinations.Databases != "" {
+		d = append(d, "databases: "+m.Destinations.Databases)
 	}
 	sort.Strings(d)
 	return d
@@ -274,13 +382,13 @@ func (m Map) zoneFor(key string) string {
 // NeedsAWS reports whether a destination the map chooses writes AWS
 // objects, which are built from the CloudFormation registry.
 func (m Map) NeedsAWS() bool {
-	return m.Destinations.Messaging == "sqs-sns" || m.Destinations.Registry == "ecr" || m.Destinations.DNS == "route53" ||
+	return m.Destinations.Messaging == "sqs-sns" || m.Destinations.Registry == "ecr" || m.Destinations.DNS == "route53" || m.Destinations.Databases == "rds" ||
 		(m.To == "aws" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != ""))
 }
 
 // NeedsGCP reports whether a destination the map chooses writes GCP
 // objects, which are checked against Google's Discovery documents.
 func (m Map) NeedsGCP() bool {
-	return m.Destinations.Messaging == "pubsub" || m.Destinations.Registry == "artifact-registry" || m.Destinations.DNS == "cloud-dns" ||
+	return m.Destinations.Messaging == "pubsub" || m.Destinations.Registry == "artifact-registry" || m.Destinations.DNS == "cloud-dns" || m.Destinations.Databases == "cloud-sql" ||
 		(m.To == "gcp" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != ""))
 }

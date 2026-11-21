@@ -680,6 +680,10 @@ func tokenize(r *resource, values []string, owners map[string]refTarget) {
 			return s
 		})
 	}
+	// Sets are put in order again: sorted by the generated IDs they held,
+	// a DB subnet group's subnets came out in a different order in every
+	// account, and a restore found its own subnet group differing.
+	sortSets(r.spec, map[string]any{"properties": r.t.Properties}, r.t.Definitions)
 }
 
 // accountToken stands for the account a snapshot is restored into. A

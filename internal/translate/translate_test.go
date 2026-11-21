@@ -85,8 +85,9 @@ func maps() map[string]Map {
 // targets are the definitions from testdata: the AWS tests' SQS queue, SNS
 // topic, VPC pieces, S3 bucket and secret, this package's SNS
 // subscription, inline policy, bucket policy, ECR repository creation
-// template and Route 53 types, and the Pub/Sub, Compute, Cloud Storage,
-// Secret Manager, Artifact Registry and Cloud DNS Discovery documents.
+// template, Route 53 and RDS types, and the Pub/Sub, Compute, Cloud
+// Storage, Secret Manager, Artifact Registry, Cloud DNS and Cloud SQL
+// Discovery documents.
 func targets(t *testing.T) Targets {
 	t.Helper()
 	dir := t.TempDir()
@@ -104,6 +105,9 @@ func targets(t *testing.T) Targets {
 		filepath.Join("testdata", "aws", "aws-s3-bucketpolicy.json"):                              "aws-s3-bucketpolicy.json",
 		filepath.Join("testdata", "aws", "aws-route53-hostedzone.json"):                           "aws-route53-hostedzone.json",
 		filepath.Join("testdata", "aws", "aws-route53-recordset.json"):                            "aws-route53-recordset.json",
+		filepath.Join("testdata", "aws", "aws-rds-dbinstance.json"):                               "aws-rds-dbinstance.json",
+		filepath.Join("testdata", "aws", "aws-rds-dbsubnetgroup.json"):                            "aws-rds-dbsubnetgroup.json",
+		filepath.Join("testdata", "aws", "aws-rds-dbparametergroup.json"):                         "aws-rds-dbparametergroup.json",
 	} {
 		b, err := os.ReadFile(src)
 		if err != nil {
@@ -119,7 +123,7 @@ func targets(t *testing.T) Targets {
 	}
 	gdir := t.TempDir()
 	for _, src := range []string{filepath.Join("testdata", "gcp", "pubsub_v1.json"), filepath.Join("..", "..", "testdata", "gcp", "discovery", "compute_v1.json"),
-		filepath.Join("testdata", "gcp", "secretmanager_v1.json"), filepath.Join("testdata", "gcp", "artifactregistry_v1.json"), filepath.Join("testdata", "gcp", "storage_v1.json"), filepath.Join("testdata", "gcp", "dns_v1.json")} {
+		filepath.Join("testdata", "gcp", "secretmanager_v1.json"), filepath.Join("testdata", "gcp", "artifactregistry_v1.json"), filepath.Join("testdata", "gcp", "storage_v1.json"), filepath.Join("testdata", "gcp", "dns_v1.json"), filepath.Join("testdata", "gcp", "sqladmin_v1.json")} {
 		b, err := os.ReadFile(src)
 		if err != nil {
 			t.Fatal(err)

@@ -1,0 +1,532 @@
+report:
+  destinations:
+  - 'databases: rds'
+  - 'network: vpc'
+  entries:
+  - reason: 'the map gives no instance class for it (databases.data/legacy-pg.instanceClass):
+      its Azure SKU, Standard_D4ds_v5 (GeneralPurpose), names Azure''s hardware, not
+      an RDS size'
+    source: Microsoft.DBforPostgreSQL/flexibleServers data/legacy-pg
+    state: refused
+  - source: Microsoft.DBforPostgreSQL/flexibleServers data/reports-pg
+    state: mapped
+    targets:
+    - AWS::EC2::SecurityGroup reports-pg-db
+    - AWS::RDS::DBInstance reports-pg
+    - AWS::RDS::DBSubnetGroup reports-pg-subnets
+  - losses:
+    - field: identity
+      why: 'the server''s managed identity is not translated (#32): it is how Azure
+        reached its key vault key; on the target, the key''s own policy lets the database
+        service use it'
+    - field: properties.storage.iops
+      why: '500: provisioned storage performance is not carried over; the target''s
+        storage gives its own baseline'
+    - field: properties.backup.geoRedundantBackup
+      why: its backups were copied to the paired region; the target keeps them in
+        its own region until cross-region backup copies (AWS) or a backup location
+        (GCP) are set up (not translated)
+    - field: properties.network.privateDnsZoneArmResourceId
+      why: its name was resolved in a private DNS zone; the target's endpoint has
+        the target's own name, which apps must use
+    source: Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    state: mapped with losses
+    targets:
+    - AWS::EC2::SecurityGroup shop-pg-db
+    - AWS::RDS::DBInstance shop-pg
+    - AWS::RDS::DBParameterGroup shop-pg-params
+    - AWS::RDS::DBSubnetGroup shop-pg-subnets
+  - reason: 'it is a replica (AsyncReplica): read replicas and geo-replication are
+      not translated yet: the target instance has none'
+    source: Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg-replica
+    state: refused
+  - reason: 'identity is not translated (#32): Microsoft Entra ID sign-in becomes
+      the target''s own (IAM database authentication for PostgreSQL, Active Directory
+      for SQL Server), which is a change to the apps and their users'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/administrators data/shop-pg/00000000-0000-0000-0000-000000000001
+    state: refused
+  - losses:
+    - field: properties.state
+      why: 'Enabled: threat protection (Microsoft Defender for open-source databases)
+        is not translated, and the target is not watched as the source was until its
+        own (GuardDuty RDS Protection, Security Command Center) is set up'
+      widens: true
+    reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/advancedThreatProtectionSettings
+      data/shop-pg/Default
+    state: mapped with losses
+  - reason: 'a backup is data, which is not moved: the target starts its own backups
+      (#32)'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/backups data/shop-pg/before-upgrade
+    state: refused
+  - reason: 'read with its server: whether it takes plain-text connections'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/reports-pg/require_secure_transport
+    state: mapped
+  - reason: 'Azure''s allow-list of extensions: the target has none, and the extensions
+      are created in its databases (see the requirements)'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/azure.extensions
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/log_connections
+    state: mapped
+  - losses:
+    - field: properties.value
+      why: 'x: RDS for PostgreSQL has no parameter made_up_param this translation
+        knows to mean the same; not carried over'
+    reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/made_up_param
+    state: mapped with losses
+  - reason: 'left at Azure''s default: the target''s default stands'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/max_connections
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/password_encryption
+    state: mapped
+  - losses:
+    - field: properties.value
+      why: 'ddl: RDS for PostgreSQL has no parameter pgaudit.log this translation
+        knows to mean the same; not carried over'
+      widens: true
+    reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/pgaudit.log
+    state: mapped with losses
+  - reason: 'read with its server: whether it takes plain-text connections'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/require_secure_transport
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/shared_preload_libraries
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/configurations data/shop-pg/work_mem
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/databases data/shop-pg/orders
+    state: mapped
+  - reason: 'one of the databases Azure makes on every server: the target makes its
+      own'
+    source: Microsoft.DBforPostgreSQL/flexibleServers/databases data/shop-pg/postgres
+    state: mapped
+  - losses:
+    - field: properties
+      why: '0.0.0.0 allows every Azure service, anyone''s: it has no addresses on
+        AWS, so it is not carried over (apps in Azure that reached it are allowed
+        by their own addresses)'
+    reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/reports-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/firewallRules data/reports-pg/AllowAllAzureServicesAndResourcesWithinAzureIps
+    state: mapped with losses
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/reports-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/firewallRules data/reports-pg/home
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/reports-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/firewallRules data/reports-pg/office
+    state: mapped
+  - reason: read with its server Microsoft.DBforPostgreSQL/flexibleServers data/reports-pg
+    source: Microsoft.DBforPostgreSQL/flexibleServers/firewallRules data/reports-pg/partner
+    state: mapped
+  - losses:
+    - field: properties.subnets[db].properties.delegations
+      why: 'delegated to Microsoft.DBforPostgreSQL/flexibleServers; a subnet on the
+        target is not delegated: the service that used it is translated, if at all,
+        by its own rules'
+    source: Microsoft.Network/virtualNetworks net/core
+    state: mapped with losses
+    targets:
+    - AWS::EC2::Subnet core-app
+    - AWS::EC2::Subnet core-db
+    - AWS::EC2::Subnet core-db2
+    - AWS::EC2::VPC core
+  - losses:
+    - field: properties.retentionDays
+      why: 'Azure kept the server 7 days after it was deleted; RDS refuses to delete
+        the instance while deletion protection is on, which is stricter: turn it off
+        to delete it'
+    source: Microsoft.Sql/servers data/shop-sql
+    state: mapped with losses
+    targets:
+    - AWS::EC2::SecurityGroup shop-sql-db
+    - AWS::RDS::DBInstance shop-sql
+    - AWS::RDS::DBParameterGroup shop-sql-params
+    - AWS::RDS::DBSubnetGroup shop-sql-subnets
+  - reason: 'identity is not translated (#32): Microsoft Entra ID sign-in becomes
+      the target''s own (IAM database authentication for PostgreSQL, Active Directory
+      for SQL Server), which is a change to the apps and their users'
+    source: Microsoft.Sql/servers/administrators data/shop-sql/ActiveDirectory
+    state: refused
+  - losses:
+    - field: properties.state
+      why: 'Enabled: auditing is not translated, and the target is not watched as
+        the source was until its own (the SQLSERVER_AUDIT option (RDS), Cloud SQL''s
+        SQL Server audit) is set up'
+      widens: true
+    reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/auditingSettings data/shop-sql/default
+    state: mapped with losses
+  - reason: 'how clients pass Azure''s gateway (proxy or redirect): the target has
+      no gateway, and clients connect to the instance'
+    source: Microsoft.Sql/servers/connectionPolicies data/shop-sql/default
+    state: mapped
+  - losses:
+    - field: sku
+      why: 'S0: each Azure SQL database has its own size; on the target the databases
+        share the instance''s, which the map gives'
+    reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/databases data/shop-sql/catalog
+    state: mapped with losses
+  - reason: 'the server''s system database: the target has its own'
+    source: Microsoft.Sql/servers/databases data/shop-sql/master
+    state: mapped
+  - losses:
+    - field: sku
+      why: 'GP_Gen5_2: each Azure SQL database has its own size; on the target the
+        databases share the instance''s, which the map gives'
+    - field: properties.requestedBackupStorageRedundancy
+      why: 'Geo: its backups were copied to the paired region; the target keeps them
+        in its own region (not translated)'
+    reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/databases data/shop-sql/orders
+    state: mapped with losses
+  - reason: no descriptor for Azure's advisors yet
+    source: Microsoft.Sql/servers/databases/advisors data/shop-sql/catalog/CreateIndex
+    state: not looked at
+  - reason: 'read with its server: the instance keeps backups as long as the longest
+      of its databases did'
+    source: Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies data/shop-sql/catalog/default
+    state: mapped
+  - reason: 'read with its server: the instance keeps backups as long as the longest
+      of its databases did'
+    source: Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies data/shop-sql/orders/default
+    state: mapped
+  - reason: read with its server, whose instance is encrypted at rest
+    source: Microsoft.Sql/servers/databases/transparentDataEncryption data/shop-sql/catalog/current
+    state: mapped
+  - reason: 'an elastic pool has no peer: on RDS and Cloud SQL the databases of one
+      instance share its size, which the map gives for the server (databases.<group/server>);
+      the pool''s own limits are not carried'
+    source: Microsoft.Sql/servers/elasticPools data/shop-sql/pool1
+    state: refused
+  - reason: 'read with its server: which key encrypts its databases'
+    source: Microsoft.Sql/servers/encryptionProtector data/shop-sql/current
+    state: mapped
+  - reason: 'a failover group replicates its databases to another server: read replicas
+      and geo-replication are not translated yet: the target instance has none'
+    source: Microsoft.Sql/servers/failoverGroups data/shop-sql/shop-fg
+    state: refused
+  - losses:
+    - field: properties
+      why: '0.0.0.0 allows every Azure service, anyone''s: it has no addresses on
+        AWS, so it is not carried over (apps in Azure that reached it are allowed
+        by their own addresses)'
+    reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/firewallRules data/shop-sql/AllowAllWindowsAzureIps
+    state: mapped with losses
+  - reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/firewallRules data/shop-sql/office
+    state: mapped
+  - reason: 'Elastic Jobs have no peer: SQL Server Agent (RDS, Cloud SQL) runs jobs,
+      rewritten, not translated'
+    source: Microsoft.Sql/servers/jobAgents/jobs data/shop-sql/agent/nightly
+    state: refused
+  - reason: 'off on the source: nothing to carry'
+    source: Microsoft.Sql/servers/securityAlertPolicies data/shop-sql/Default
+    state: mapped
+  - reason: read with its server Microsoft.Sql/servers data/shop-sql
+    source: Microsoft.Sql/servers/virtualNetworkRules data/shop-sql/app
+    state: mapped
+  from: azure
+  requirements:
+  - 'Create database catalog (SQL_Latin1_General_CP1_CI_AS) on RDS instance shop-sql,
+    with its owner, then move its data (a dump and restore, or a database migration
+    service): no database or data is written'
+  - 'Create database orders (SQL_Latin1_General_CP1_CI_AS, WITH LEDGER = ON) on RDS
+    instance shop-sql, with its owner, then move its data (a dump and restore, or
+    a database migration service): no database or data is written'
+  - 'Create database orders (UTF8, en_US.utf8) on RDS instance shop-pg, with its owner,
+    then move its data (a dump and restore, or a database migration service): no database
+    or data is written'
+  - 'Create the extensions pgcrypto, uuid-ossp in the databases of RDS instance shop-pg
+    that used them (CREATE EXTENSION): Azure allow-listed them, and the target has
+    no allow-list'
+  - 'KMS key arn:aws:kms:eu-west-1:222222222222:key/0f1e2d3c-made-up lets RDS use
+    it for shop-pg (its key policy): Azure reached its key through the server''s managed
+    identity, which is not translated'
+  - 'RDS keeps the master user password of reports-pg in Secrets Manager (ManageMasterUserPassword):
+    apps read it from there; no password is carried over'
+  - 'RDS keeps the master user password of shop-pg in Secrets Manager (ManageMasterUserPassword):
+    apps read it from there; no password is carried over'
+  - 'RDS keeps the master user password of shop-sql in Secrets Manager (ManageMasterUserPassword):
+    apps read it from there; no password is carried over'
+  - Subnets app, db2 of VPC core need a route to an internet gateway for reports-pg
+    to be reached from the internet (not translated)
+  - Subnets app, db2 of VPC core need a route to an internet gateway for shop-sql
+    to be reached from the internet (not translated)
+  - 'Users who signed in to Microsoft.DBforPostgreSQL/flexibleServers data/shop-pg
+    with Microsoft Entra ID move to IAM database authentication on RDS instance shop-pg:
+    identity is not translated (#32)'
+  - 'Users who signed in to Microsoft.Sql/servers data/shop-sql with Microsoft Entra
+    ID move to Windows authentication through AWS Managed Microsoft AD (RDS for SQL
+    Server has no IAM database authentication) on RDS instance shop-sql: identity
+    is not translated (#32)'
+  to: aws
+snapshots:
+  aws:
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: reports-pg-db
+    spec:
+      GroupDescription: Who reaches Azure database server data/reports-pg
+      SecurityGroupIngress:
+      - CidrIp: 192.0.2.10/31
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      - CidrIp: 192.0.2.12/30
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      - CidrIp: 192.0.2.16/30
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      - CidrIp: 192.0.2.20/32
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      - CidrIp: 198.51.100.7/32
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      - CidrIp: 203.0.113.0/24
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      Tags:
+      - Key: Name
+        Value: reports-pg-db
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: shop-pg-db
+    spec:
+      GroupDescription: Who reaches Azure database server data/shop-pg
+      SecurityGroupIngress:
+      - CidrIp: 10.20.0.0/16
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      Tags:
+      - Key: Name
+        Value: shop-pg-db
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: shop-sql-db
+    spec:
+      GroupDescription: Who reaches Azure database server data/shop-sql
+      SecurityGroupIngress:
+      - CidrIp: 10.20.1.0/24
+        FromPort: 1433
+        IpProtocol: tcp
+        ToPort: 1433
+      - CidrIp: 203.0.113.0/24
+        FromPort: 1433
+        IpProtocol: tcp
+        ToPort: 1433
+      Tags:
+      - Key: Name
+        Value: shop-sql-db
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-app
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.1.0/24
+      Tags:
+      - Key: Name
+        Value: core-app
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-db
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.2.0/24
+      Tags:
+      - Key: Name
+        Value: core-db
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-db2
+    spec:
+      AvailabilityZone: eu-west-1b
+      CidrBlock: 10.20.3.0/24
+      Tags:
+      - Key: Name
+        Value: core-db2
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPC
+    metadata:
+      annotations:
+        truthform.org/write-only: Ipv4IpamPoolId,Ipv4NetmaskLength,VpcEncryptionControl.EgressOnlyInternetGatewayExclusion,VpcEncryptionControl.ElasticFileSystemExclusion,VpcEncryptionControl.InternetGatewayExclusion,VpcEncryptionControl.LambdaExclusion,VpcEncryptionControl.NatGatewayExclusion,VpcEncryptionControl.VirtualPrivateGatewayExclusion,VpcEncryptionControl.VpcLatticeExclusion,VpcEncryptionControl.VpcPeeringExclusion
+      name: core
+    spec:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value: core
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::RDS::DBInstance
+    metadata:
+      annotations:
+        truthform.org/write-only: AllowMajorVersionUpgrade,ApplyImmediately,AutomaticBackupReplicationKmsKeyId,CertificateRotationRestart,DBSnapshotIdentifier,DeleteAutomatedBackups,MasterUserAuthenticationType,MasterUserPassword,RestoreTime,SourceDBInstanceAutomatedBackupsArn,SourceDBInstanceIdentifier,SourceDbiResourceId,SourceRegion,TdeCredentialPassword,UseDefaultProcessorFeatures,UseLatestRestorableTime
+      name: reports-pg
+    spec:
+      AllocatedStorage: "64"
+      BackupRetentionPeriod: 7
+      DBInstanceClass: db.t4g.medium
+      DBInstanceIdentifier: reports-pg
+      DBSubnetGroupName: '{{truthform|AWS::RDS::DBSubnetGroup|reports-pg-subnets|identifier}}'
+      Engine: postgres
+      EngineVersion: "15"
+      ManageMasterUserPassword: true
+      MasterUsername: reports
+      MultiAZ: false
+      PubliclyAccessible: true
+      StorageEncrypted: true
+      VPCSecurityGroups:
+      - '{{truthform|AWS::EC2::SecurityGroup|reports-pg-db|GroupId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::RDS::DBInstance
+    metadata:
+      annotations:
+        truthform.org/write-only: AllowMajorVersionUpgrade,ApplyImmediately,AutomaticBackupReplicationKmsKeyId,CertificateRotationRestart,DBSnapshotIdentifier,DeleteAutomatedBackups,MasterUserAuthenticationType,MasterUserPassword,RestoreTime,SourceDBInstanceAutomatedBackupsArn,SourceDBInstanceIdentifier,SourceDbiResourceId,SourceRegion,TdeCredentialPassword,UseDefaultProcessorFeatures,UseLatestRestorableTime
+      name: shop-pg
+    spec:
+      AllocatedStorage: "128"
+      BackupRetentionPeriod: 14
+      DBInstanceClass: db.m6g.large
+      DBInstanceIdentifier: shop-pg
+      DBParameterGroupName: '{{truthform|AWS::RDS::DBParameterGroup|shop-pg-params|identifier}}'
+      DBSubnetGroupName: '{{truthform|AWS::RDS::DBSubnetGroup|shop-pg-subnets|identifier}}'
+      Engine: postgres
+      EngineVersion: "16"
+      KmsKeyId: arn:aws:kms:eu-west-1:222222222222:key/0f1e2d3c-made-up
+      ManageMasterUserPassword: true
+      MasterUsername: shopadmin
+      MaxAllocatedStorage: 32768
+      MultiAZ: true
+      PubliclyAccessible: false
+      StorageEncrypted: true
+      Tags:
+      - Key: Cost Center
+        Value: "42"
+      - Key: env
+        Value: dev
+      VPCSecurityGroups:
+      - '{{truthform|AWS::EC2::SecurityGroup|shop-pg-db|GroupId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::RDS::DBInstance
+    metadata:
+      annotations:
+        truthform.org/write-only: AllowMajorVersionUpgrade,ApplyImmediately,AutomaticBackupReplicationKmsKeyId,CertificateRotationRestart,DBSnapshotIdentifier,DeleteAutomatedBackups,MasterUserAuthenticationType,MasterUserPassword,RestoreTime,SourceDBInstanceAutomatedBackupsArn,SourceDBInstanceIdentifier,SourceDbiResourceId,SourceRegion,TdeCredentialPassword,UseDefaultProcessorFeatures,UseLatestRestorableTime
+      name: shop-sql
+    spec:
+      AllocatedStorage: "282"
+      BackupRetentionPeriod: 14
+      DBInstanceClass: db.m6i.xlarge
+      DBInstanceIdentifier: shop-sql
+      DBParameterGroupName: '{{truthform|AWS::RDS::DBParameterGroup|shop-sql-params|identifier}}'
+      DBSubnetGroupName: '{{truthform|AWS::RDS::DBSubnetGroup|shop-sql-subnets|identifier}}'
+      DeletionProtection: true
+      Engine: sqlserver-se
+      EngineVersion: 16.00.4185.3.v1
+      LicenseModel: license-included
+      ManageMasterUserPassword: true
+      MasterUsername: sqladmin
+      MultiAZ: false
+      PubliclyAccessible: true
+      StorageEncrypted: true
+      Tags:
+      - Key: env
+        Value: dev
+      VPCSecurityGroups:
+      - '{{truthform|AWS::EC2::SecurityGroup|shop-sql-db|GroupId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::RDS::DBParameterGroup
+    metadata:
+      name: shop-pg-params
+    spec:
+      DBParameterGroupName: shop-pg-params
+      Description: From Azure database server data/shop-pg
+      Family: postgres16
+      Parameters:
+        log_connections: "1"
+        password_encryption: scram-sha-256
+        rds.force_ssl: "1"
+        shared_preload_libraries: pg_stat_statements
+        ssl_min_protocol_version: TLSv1.2
+        work_mem: "8192"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::RDS::DBParameterGroup
+    metadata:
+      name: shop-sql-params
+    spec:
+      DBParameterGroupName: shop-sql-params
+      Description: From Azure database server data/shop-sql
+      Family: sqlserver-se-16.0
+      Parameters:
+        rds.force_ssl: "1"
+        rds.tls10: disabled
+        rds.tls11: disabled
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::RDS::DBSubnetGroup
+    metadata:
+      name: reports-pg-subnets
+    spec:
+      DBSubnetGroupDescription: From Azure database server data/reports-pg
+      DBSubnetGroupName: reports-pg-subnets
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-app|SubnetId}}'
+      - '{{truthform|AWS::EC2::Subnet|core-db2|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::RDS::DBSubnetGroup
+    metadata:
+      name: shop-pg-subnets
+    spec:
+      DBSubnetGroupDescription: From Azure database server data/shop-pg
+      DBSubnetGroupName: shop-pg-subnets
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-db2|SubnetId}}'
+      - '{{truthform|AWS::EC2::Subnet|core-db|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::RDS::DBSubnetGroup
+    metadata:
+      name: shop-sql-subnets
+    spec:
+      DBSubnetGroupDescription: From Azure database server data/shop-sql
+      DBSubnetGroupName: shop-sql-subnets
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-app|SubnetId}}'
+      - '{{truthform|AWS::EC2::Subnet|core-db2|SubnetId}}'

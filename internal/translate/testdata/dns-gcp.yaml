@@ -1,0 +1,477 @@
+report:
+  destinations:
+  - 'dns: cloud-dns'
+  - 'network: vpc'
+  entries:
+  - losses:
+    - field: properties.registrationVirtualNetworks[net/core]
+      why: Azure registered the names of the network's machines in the zone itself;
+        neither Route 53 nor Cloud DNS does, so those names answer only once records
+        are written for them (instances keep the target's own internal names)
+    source: Microsoft.Network/dnsZones dns/old.internal
+    state: mapped with losses
+    targets:
+    - dns.googleapis.com/ManagedZone projects/{{truthform|project}}/managedZones/old-internal
+  - losses:
+    - field: tags.Cost Center
+      why: a GCP label takes lowercase letters, digits, _ and - only (a key starts
+        with a letter), so it is not carried over
+    source: Microsoft.Network/dnsZones dns/shop.example
+    state: mapped with losses
+    targets:
+    - dns.googleapis.com/ManagedZone projects/{{truthform|project}}/managedZones/shop-example
+  - reason: its zone is not in the snapshot
+    source: Microsoft.Network/dnsZones/A dns/missing.example/x
+    state: refused
+  - source: Microsoft.Network/dnsZones/A dns/old.internal/legacy
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/old-internal/rrsets/legacy.old.internal./A
+  - source: Microsoft.Network/dnsZones/A dns/shop.example/@
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/shop-example/rrsets/shop.example./A
+  - reason: 'it is an alias to the Azure resource {{truthform|ref|Microsoft.Network/publicIPAddresses|net|web-ip|id}}:
+      on the target an alias must point at that resource''s translation, which is
+      not translated yet'
+    source: Microsoft.Network/dnsZones/A dns/shop.example/www
+    state: refused
+  - source: Microsoft.Network/dnsZones/AAAA dns/shop.example/@
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/shop-example/rrsets/shop.example./AAAA
+  - source: Microsoft.Network/dnsZones/CAA dns/shop.example/@
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/shop-example/rrsets/shop.example./CAA
+  - source: Microsoft.Network/dnsZones/CNAME dns/shop.example/app
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/shop-example/rrsets/app.shop.example./CNAME
+  - source: Microsoft.Network/dnsZones/DS dns/shop.example/dev
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/shop-example/rrsets/dev.shop.example./DS
+  - source: Microsoft.Network/dnsZones/MX dns/shop.example/@
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/shop-example/rrsets/shop.example./MX
+  - reason: 'the zone''s own name servers: the target makes this record itself, naming
+      its own, and the registrar''s delegation has to change to them'
+    source: Microsoft.Network/dnsZones/NS dns/shop.example/@
+    state: mapped
+  - source: Microsoft.Network/dnsZones/NS dns/shop.example/dev
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/shop-example/rrsets/dev.shop.example./NS
+  - losses:
+    - field: properties.SOARecord
+      why: the target writes the zone's SOA record itself, with its own contact and
+        timers (email azuredns-hostmaster.microsoft.com, refreshTime 3600, retryTime
+        300, expireTime 2419200, minimumTTL 300); the negative-caching TTL in it is
+        the target's
+    reason: the target makes the zone's SOA record itself
+    source: Microsoft.Network/dnsZones/SOA dns/shop.example/@
+    state: mapped with losses
+  - source: Microsoft.Network/dnsZones/SRV dns/shop.example/_sip._tcp
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/shop-example/rrsets/_sip._tcp.shop.example./SRV
+  - losses:
+    - field: properties.metadata
+      why: '1 metadata item(s): a record set on the target has no tags or labels'
+    - field: properties.TXTRecords[1].value
+      why: a string of 300 characters is longer than a DNS string's 255; it is written
+        as consecutive strings, which readers of SPF and DKIM join again
+    source: Microsoft.Network/dnsZones/TXT dns/shop.example/@
+    state: mapped with losses
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/shop-example/rrsets/shop.example./TXT
+  - source: Microsoft.Network/dnsZones/TXT dns/shop.example/www
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/shop-example/rrsets/www.shop.example./TXT
+  - reason: read with its zone Microsoft.Network/dnsZones dns/shop.example
+    source: Microsoft.Network/dnsZones/dnssecConfigs dns/shop.example/default
+    state: mapped
+  - losses:
+    - field: 'virtualNetworkLinks/core-link: properties.registrationEnabled'
+      why: Azure registered the names of the network's machines in the zone itself;
+        neither Route 53 nor Cloud DNS does, so those names answer only once records
+        are written for them (instances keep the target's own internal names)
+    source: Microsoft.Network/privateDnsZones dns/core.internal
+    state: mapped with losses
+    targets:
+    - dns.googleapis.com/ManagedZone projects/{{truthform|project}}/managedZones/core-internal
+  - reason: every network it is linked to is refused or missing, so it would answer
+      nowhere
+    source: Microsoft.Network/privateDnsZones dns/orphan.internal
+    state: refused
+  - source: Microsoft.Network/privateDnsZones/A dns/core.internal/db
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/core-internal/rrsets/db.core.internal./A
+  - reason: 'it holds no records: a record set on either target holds at least one'
+    source: Microsoft.Network/privateDnsZones/A dns/core.internal/web
+    state: refused
+  - reason: its zone Microsoft.Network/privateDnsZones dns/orphan.internal is refused
+    source: Microsoft.Network/privateDnsZones/A dns/orphan.internal/x
+    state: refused
+  - source: Microsoft.Network/privateDnsZones/CNAME dns/core.internal/api
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/core-internal/rrsets/api.core.internal./CNAME
+  - source: Microsoft.Network/privateDnsZones/PTR dns/core.internal/4.1
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/core-internal/rrsets/4.1.core.internal./PTR
+  - losses:
+    - field: properties.soaRecord
+      why: the target writes the zone's SOA record itself, with its own contact and
+        timers (email azureprivatedns-host.microsoft.com, minimumTTL 10); the negative-caching
+        TTL in it is the target's
+    reason: the target makes the zone's SOA record itself
+    source: Microsoft.Network/privateDnsZones/SOA dns/core.internal/@
+    state: mapped with losses
+  - reason: read with its zone Microsoft.Network/privateDnsZones dns/core.internal
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks dns/core.internal/core-link
+    state: mapped
+  - reason: the network it links, Microsoft.Network/virtualNetworks net/empty, is
+      refused
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks dns/core.internal/empty-link
+    state: refused
+  - reason: the network it links, net/gone, is not in the snapshot
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks dns/core.internal/gone-link
+    state: refused
+  - reason: its zone Microsoft.Network/privateDnsZones dns/orphan.internal is refused
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks dns/orphan.internal/gone
+    state: refused
+  - source: Microsoft.Network/virtualNetworks net/core
+    state: mapped
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/core
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+  - reason: it has no IPv4 address range
+    source: Microsoft.Network/virtualNetworks net/empty
+    state: refused
+  from: azure
+  requirements:
+  - 'DNSSEC for shop.example.: Cloud DNS signs it with new keys; replace the DS record
+    at the registrar with the managed zone''s when the name servers change, or resolvers
+    that validate fail the whole zone'
+  - 'Delegation of shop.example.: at its registrar (or in its parent zone), replace
+    Azure''s name servers with the managed zone''s nameServers. Until then the internet
+    still resolves the Azure zone; this is the step that moves traffic'
+  - 'Instances in VPC network core are not registered in private zone core.internal.,
+    as Azure registered its machines'' names: write the records their names need'
+  - 'Instances in VPC network core are not registered in private zone old.internal.,
+    as Azure registered its machines'' names: write the records their names need'
+  - 'Private zone core.internal. answers only in its VPC networks: whatever resolved
+    it through Azure from elsewhere (a DNS forwarder, on-premises conditional forwarding)
+    must forward to a Cloud DNS inbound server policy instead (not translated)'
+  - 'Private zone old.internal. answers only in its VPC networks: whatever resolved
+    it through Azure from elsewhere (a DNS forwarder, on-premises conditional forwarding)
+    must forward to a Cloud DNS inbound server policy instead (not translated)'
+  - 'Record app.shop.example. CNAME is written as it is and names shop-app.azurewebsites.net.,
+    an Azure endpoint: it still sends traffic to Azure until it names the target''s'
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Network
+    metadata:
+      annotations:
+        truthform.org/collection: networks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Network
+      name: projects/{{truthform|project}}/global/networks/core
+    spec:
+      autoCreateSubnetworks: false
+      mtu: 1500
+      name: core
+      routingConfig:
+        routingMode: REGIONAL
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    spec:
+      ipCidrRange: 10.20.1.0/24
+      name: core-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ManagedZone
+    metadata:
+      annotations:
+        truthform.org/collection: managedZones
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: ManagedZone
+      name: projects/{{truthform|project}}/managedZones/core-internal
+    spec:
+      description: From Azure DNS zone dns/core.internal
+      dnsName: core.internal.
+      labels:
+        env: dev
+      name: core-internal
+      privateVisibilityConfig:
+        networks:
+        - networkUrl: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      visibility: private
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ManagedZone
+    metadata:
+      annotations:
+        truthform.org/collection: managedZones
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: ManagedZone
+      name: projects/{{truthform|project}}/managedZones/old-internal
+    spec:
+      description: From Azure DNS zone dns/old.internal
+      dnsName: old.internal.
+      name: old-internal
+      privateVisibilityConfig:
+        networks:
+        - networkUrl: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      visibility: private
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ManagedZone
+    metadata:
+      annotations:
+        truthform.org/collection: managedZones
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: ManagedZone
+      name: projects/{{truthform|project}}/managedZones/shop-example
+    spec:
+      description: From Azure DNS zone dns/shop.example
+      dnsName: shop.example.
+      dnssecConfig:
+        state: "on"
+      labels:
+        env: dev
+      name: shop-example
+      visibility: public
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/core-internal
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/core-internal/rrsets/4.1.core.internal./PTR
+    spec:
+      name: 4.1.core.internal.
+      rrdatas:
+      - db.core.internal.
+      ttl: 10
+      type: PTR
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/core-internal
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/core-internal/rrsets/api.core.internal./CNAME
+    spec:
+      name: api.core.internal.
+      rrdatas:
+      - db.core.internal.
+      ttl: 10
+      type: CNAME
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/core-internal
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/core-internal/rrsets/db.core.internal./A
+    spec:
+      name: db.core.internal.
+      rrdatas:
+      - 10.20.1.4
+      ttl: 10
+      type: A
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/old-internal
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/old-internal/rrsets/legacy.old.internal./A
+    spec:
+      name: legacy.old.internal.
+      rrdatas:
+      - 10.20.1.9
+      ttl: 60
+      type: A
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/shop-example
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/shop-example/rrsets/_sip._tcp.shop.example./SRV
+    spec:
+      name: _sip._tcp.shop.example.
+      rrdatas:
+      - 10 60 5060 sip.shop.example.
+      ttl: 300
+      type: SRV
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/shop-example
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/shop-example/rrsets/app.shop.example./CNAME
+    spec:
+      name: app.shop.example.
+      rrdatas:
+      - shop-app.azurewebsites.net.
+      ttl: 300
+      type: CNAME
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/shop-example
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/shop-example/rrsets/dev.shop.example./DS
+    spec:
+      name: dev.shop.example.
+      rrdatas:
+      - 12345 13 2 ABCDEF0123
+      ttl: 3600
+      type: DS
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/shop-example
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/shop-example/rrsets/dev.shop.example./NS
+    spec:
+      name: dev.shop.example.
+      rrdatas:
+      - ns1.dev-dns.example.net.
+      ttl: 3600
+      type: NS
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/shop-example
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/shop-example/rrsets/shop.example./A
+    spec:
+      name: shop.example.
+      rrdatas:
+      - 203.0.113.10
+      - 203.0.113.11
+      ttl: 300
+      type: A
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/shop-example
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/shop-example/rrsets/shop.example./AAAA
+    spec:
+      name: shop.example.
+      rrdatas:
+      - 2001:db8::10
+      ttl: 300
+      type: AAAA
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/shop-example
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/shop-example/rrsets/shop.example./CAA
+    spec:
+      name: shop.example.
+      rrdatas:
+      - 0 issue "letsencrypt.org"
+      ttl: 3600
+      type: CAA
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/shop-example
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/shop-example/rrsets/shop.example./MX
+    spec:
+      name: shop.example.
+      rrdatas:
+      - 10 mail1.shop.example.
+      - 20 mail2.shop.example.
+      ttl: 3600
+      type: MX
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/shop-example
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/shop-example/rrsets/shop.example./TXT
+    spec:
+      name: shop.example.
+      rrdatas:
+      - '"v=spf1 include:_spf.example.net -all"'
+      - '"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+        "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"'
+      - '"say \"hi\""'
+      ttl: 3600
+      type: TXT
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/shop-example
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/shop-example/rrsets/www.shop.example./TXT
+    spec:
+      name: www.shop.example.
+      rrdatas:
+      - '"verify=1"'
+      ttl: 60
+      type: TXT

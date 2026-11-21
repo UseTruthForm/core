@@ -1434,9 +1434,10 @@ that needs one left out fails, or waits, in the cluster.
 It reads one snapshot and a map, and writes a snapshot per target platform,
 which `plan`, `restore` and `diff` take as they are. It makes no request, so
 the capture-only build has it too. So far it translates Service Bus,
-virtual networks and network security groups, storage accounts' blob
-containers, Key Vault secrets and container registries; every other type
-is reported as not looked at (design: issue #32).
+virtual networks and network security groups, public and private DNS
+zones, storage accounts' blob containers, Key Vault secrets and container
+registries; every other type is reported as not looked at (design: issue
+#32).
 
 ```sh
 truthform translate --from snap/azure --map map.yaml --out moved/
@@ -1457,6 +1458,7 @@ destinations:
   secrets: secret-manager   # Key Vault secrets: Secrets Manager (aws) or Secret Manager (gcp)
   registry: ecr             # ecr (aws) or artifact-registry (gcp)
   storage: buckets          # an S3 bucket (aws) or Cloud Storage bucket (gcp) per blob container
+  dns: route53              # route53 (aws) or cloud-dns (gcp)
 secrets:                    # gcp: where Secret Manager keeps each secret; it cannot change later
   replication: user-managed # automatic, or user-managed with
   locations: [europe-west1, europe-west4]
@@ -1553,6 +1555,25 @@ the restore. A disabled secret is restored without one.
 | Tasks, connected registries, transfer pipelines | refused | refused |
 | Webhooks, cache rules | not translated yet | not translated yet |
 
+| DNS | route53 | cloud-dns |
+|---|---|---|
+| Public zone | public hosted zone, tags as hosted zone tags | public managed zone (global), tags that are labels as labels |
+| Private zone (or a legacy `zoneType: Private` zone) | private hosted zone associated with the VPC each link's network became | private managed zone visible to the VPC network each link's network became |
+| A, AAAA, CAA, CNAME, MX, NS, PTR, SRV, TXT, DS, TLSA, NAPTR record set | record set of its name and type, TTL and records as they are | resource record set of its name and type |
+| SOA, the zone's own NS | not written: the target makes them | the same |
+| Alias to an Azure resource (`targetResource`) | refused: it must point at that resource's translation | refused |
+| Link to a network not in the snapshot, or refused | refused; a zone left with no network is refused | the same |
+| Auto-registration of a network's machines | named: Route 53 registers nothing | named: Cloud DNS registers nothing |
+| DNSSEC (`dnssecConfigs`) | less protected: Route 53 signs only with a KMS key, and keys are not translated | signed (`dnssecConfig.state: on`) with Cloud DNS's own keys |
+
+A TXT string longer than 255 characters is written as consecutive strings.
+Host names in records are written with their final dot. On AWS a hosted
+zone and a record set are named as a capture of the account names them (by
+their DNS name, then `-2`, `-3` for a name's other record sets), so a second
+restore finds them. A translated zone answers nobody on the internet until
+the registrar's delegation names the target's name servers: the report
+lists that, and the DS record to take out or replace for a signed zone.
+
 Every source object ends in one state, and `<out>/translation.yaml` lists
 each with its reason and target objects:
 
@@ -1590,7 +1611,7 @@ Known limits:
   target fills in that the translation does not set.
 - Each target object is built from, or checked against, the target's own
   published definition (the CloudFormation registry, the Pub/Sub, Compute,
-  Cloud Storage, Secret Manager and Artifact Registry Discovery
+  Cloud Storage, Secret Manager, Artifact Registry and Cloud DNS Discovery
   documents): downloaded and cached like `aws-coverage`, or read from
   `--schemas` and `--discovery`.
 - An NSG on a network interface rather than a subnet, application security

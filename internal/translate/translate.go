@@ -172,7 +172,9 @@ type family interface {
 	translate(objs []snapshot.Object, o *out)
 }
 
-var families = []family{serviceBus{}, network{}, storage{}, keyVault{}, registry{}, decided{}}
+// The network family comes before DNS: a private zone names the networks
+// it is written for.
+var families = []family{serviceBus{}, network{}, storage{}, keyVault{}, registry{}, dnsFamily{}, decided{}}
 
 // Translate rewrites an Azure snapshot for the target the map names, with
 // the target's definitions.

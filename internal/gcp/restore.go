@@ -311,6 +311,14 @@ func namedIn(s, name string) bool {
 	return false
 }
 
+// parentOfObject is the resource an object is created under, as its
+// annotation names it: a record set is created after its managed zone.
+func parentOfObject(o snapshot.Object) string {
+	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+	p, _ := ann[annParent].(string)
+	return p
+}
+
 func detok(s, project, number string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, tokProject, project), tokNumber, number)
 }
@@ -336,7 +344,7 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 				continue
 			}
 			ready := true
-			spec := canon(by[k].Body["spec"])
+			spec := canon(by[k].Body["spec"]) + "\x00" + parentOfObject(by[k])
 			for _, tok := range refRE.FindAllString(spec, -1) {
 				if _, in := by[tok]; in && tok != k && !done[tok] {
 					ready = false
@@ -369,7 +377,7 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 	}
 	depIdx = make([][]int, len(order))
 	for i, o := range order {
-		spec := canon(o.Body["spec"])
+		spec := canon(o.Body["spec"]) + "\x00" + parentOfObject(o)
 		for _, tok := range refRE.FindAllString(spec, -1) {
 			if j, ok := at[tok]; ok && j != i {
 				depIdx[i] = append(depIdx[i], j)

@@ -116,7 +116,7 @@ func (f *Fake) Create(_ context.Context, typeName string, desired map[string]any
 		return "", err
 	}
 	f.generate(t, props)
-	id, ok := Identifier(t, props)
+	id, ok := fakeIdentifier(t, props)
 	if !ok {
 		return "", fmt.Errorf("%s: no primary identifier after create", typeName)
 	}
@@ -255,11 +255,33 @@ func (f *Fake) Seed(typeName string, props map[string]any) string {
 	return id
 }
 
+// fakeIdentifier is the identifier the fake files a resource under. One
+// part of a compound identifier can be absent: a Route 53 record set is
+// identified by name, zone, type and SetIdentifier, and a simple record
+// has no SetIdentifier. The part is then empty, and the identifier is
+// still the record's own.
+func fakeIdentifier(t *TypeInfo, props map[string]any) (string, bool) {
+	if id, ok := Identifier(t, props); ok || len(t.PrimaryIdentifier) < 2 {
+		return id, ok
+	}
+	parts := make([]string, len(t.PrimaryIdentifier))
+	have := 0
+	for i, p := range t.PrimaryIdentifier {
+		if v, ok := props[p].(string); ok && v != "" {
+			parts[i] = v
+			have++
+		}
+	}
+	return strings.Join(parts, "|"), have > 0
+}
+
 // generate fills read-only top-level properties, and a missing user-chosen
-// identifier (AWS names an unnamed bucket itself).
+// identifier (AWS names an unnamed bucket itself). Only a whole one: a
+// part of a compound identifier left out (a record set's SetIdentifier,
+// which only a routing policy sets) stays out, as AWS leaves it.
 func (f *Fake) generate(t *TypeInfo, props map[string]any) {
 	for _, p := range t.PrimaryIdentifier {
-		if _, ok := props[p]; !ok && !t.IsReadOnly(p) {
+		if _, ok := props[p]; !ok && !t.IsReadOnly(p) && len(t.PrimaryIdentifier) == 1 {
 			props[p] = f.newValue(t, p, props)
 		}
 	}

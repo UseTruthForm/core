@@ -37,6 +37,9 @@ type Map struct {
 		// Storage: buckets (an S3 bucket on AWS, a Cloud Storage bucket
 		// on GCP, per blob container).
 		Storage string `json:"storage,omitempty"`
+		// DNS: route53 (aws) or cloud-dns (gcp), for Azure's public and
+		// private DNS zones.
+		DNS string `json:"dns,omitempty"`
 	} `json:"destinations"`
 	// Secrets is what GCP's Secret Manager needs that Key Vault cannot say.
 	Secrets *SecretsMap `json:"secrets,omitempty"`
@@ -152,6 +155,19 @@ func (m Map) validate() error {
 	default:
 		return fmt.Errorf("map: network: %q is not vpc", m.Destinations.Network)
 	}
+	switch d := m.Destinations.DNS; d {
+	case "":
+	case "route53":
+		if m.To != "aws" {
+			return fmt.Errorf("map: dns route53 is an AWS destination, and to is %s", m.To)
+		}
+	case "cloud-dns":
+		if m.To != "gcp" {
+			return fmt.Errorf("map: dns cloud-dns is a GCP destination, and to is %s", m.To)
+		}
+	default:
+		return fmt.Errorf("map: dns: %q is not route53 or cloud-dns", d)
+	}
 	if m.Network != nil {
 		if m.Destinations.Network == "" {
 			return fmt.Errorf("map: network is set, and destinations.network is not")
@@ -221,6 +237,9 @@ func (m Map) destinationList() []string {
 	if m.Destinations.Storage != "" {
 		d = append(d, "storage: "+m.Destinations.Storage)
 	}
+	if m.Destinations.DNS != "" {
+		d = append(d, "dns: "+m.Destinations.DNS)
+	}
 	sort.Strings(d)
 	return d
 }
@@ -255,13 +274,13 @@ func (m Map) zoneFor(key string) string {
 // NeedsAWS reports whether a destination the map chooses writes AWS
 // objects, which are built from the CloudFormation registry.
 func (m Map) NeedsAWS() bool {
-	return m.Destinations.Messaging == "sqs-sns" || m.Destinations.Registry == "ecr" ||
+	return m.Destinations.Messaging == "sqs-sns" || m.Destinations.Registry == "ecr" || m.Destinations.DNS == "route53" ||
 		(m.To == "aws" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != ""))
 }
 
 // NeedsGCP reports whether a destination the map chooses writes GCP
 // objects, which are checked against Google's Discovery documents.
 func (m Map) NeedsGCP() bool {
-	return m.Destinations.Messaging == "pubsub" || m.Destinations.Registry == "artifact-registry" ||
+	return m.Destinations.Messaging == "pubsub" || m.Destinations.Registry == "artifact-registry" || m.Destinations.DNS == "cloud-dns" ||
 		(m.To == "gcp" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != ""))
 }

@@ -16,6 +16,12 @@ const (
 	kvVersion  = "2026-05-15"
 	acrVersion = "2025-11-01"
 	stVersion  = "2026-09-01"
+	// Public zones: the newest stable version, and the preview that
+	// alone defines DS, TLSA and NAPTR (a capture takes a preview only
+	// where no stable version exists).
+	dnsVersion        = "2018-05-01"
+	dnsPreviewVersion = "2023-07-01-preview"
+	privateDNSVersion = "2024-06-01"
 )
 
 // reflected is one Azure type a rule reads: its definition's version, a
@@ -32,7 +38,7 @@ func readers() map[string]reflected {
 	sb := func(name string, read func(snapshot.Object) []Loss) reflected {
 		return reflected{version: sbVersion, name: name, read: read}
 	}
-	return map[string]reflected{
+	rd := map[string]reflected{
 		"Microsoft.ServiceBus/namespaces": sb("ns", func(o snapshot.Object) []Loss { return readNamespace(o).losses }),
 		"Microsoft.ServiceBus/namespaces/networkRuleSets": sb("ns/default", func(o snapshot.Object) []Loss {
 			ns := &sbNS{network: &o}
@@ -72,7 +78,25 @@ func readers() map[string]reflected {
 				}
 				return ls
 			}},
+		"Microsoft.Network/dnsZones":        {version: dnsVersion, name: "z.example", read: func(o snapshot.Object) []Loss { return readZone(o, false).losses }},
+		"Microsoft.Network/privateDnsZones": {version: privateDNSVersion, name: "z.internal", read: func(o snapshot.Object) []Loss { return readZone(o, true).losses }},
+		"Microsoft.Network/privateDnsZones/virtualNetworkLinks": {version: privateDNSVersion, name: "z.internal/l", read: func(o snapshot.Object) []Loss {
+			return readLink(o).losses
+		}},
 	}
+	record := func(version, typ string) reflected {
+		return reflected{version: version, name: "z/r", read: func(o snapshot.Object) []Loss { return readRecord(o, typ).losses }}
+	}
+	for _, t := range []string{"A", "AAAA", "CAA", "CNAME", "MX", "NS", "PTR", "SOA", "SRV", "TXT"} {
+		rd["Microsoft.Network/dnsZones/"+t] = record(dnsVersion, t)
+	}
+	for _, t := range []string{"DS", "TLSA", "NAPTR"} {
+		rd["Microsoft.Network/dnsZones/"+t] = record(dnsPreviewVersion, t)
+	}
+	for _, t := range []string{"A", "AAAA", "CNAME", "MX", "PTR", "SOA", "SRV", "TXT"} {
+		rd["Microsoft.Network/privateDnsZones/"+t] = record(privateDNSVersion, t)
+	}
+	return rd
 }
 
 // Every setting Azure's definition declares writable for a type a rule
@@ -342,3 +366,5 @@ func TestEveryRegistryTypeIsDecided(t *testing.T) {
 }
 
 // Every storage account type Azure defines is read, or named here: files,
+
+// Every public and private DNS zone type Azure defines is read, or named

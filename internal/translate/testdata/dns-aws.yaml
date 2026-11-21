@@ -1,0 +1,432 @@
+report:
+  destinations:
+  - 'dns: route53'
+  - 'network: vpc'
+  entries:
+  - losses:
+    - field: properties.registrationVirtualNetworks[net/core]
+      why: Azure registered the names of the network's machines in the zone itself;
+        neither Route 53 nor Cloud DNS does, so those names answer only once records
+        are written for them (instances keep the target's own internal names)
+    source: Microsoft.Network/dnsZones dns/old.internal
+    state: mapped with losses
+    targets:
+    - AWS::Route53::HostedZone old.internal.
+  - losses:
+    - field: dnssecConfigs
+      why: the zone is signed with DNSSEC; Route 53 signs only with a key-signing
+        key backed by a KMS key, and keys are not translated (#32), so the hosted
+        zone is unsigned and its answers can be forged
+      widens: true
+    source: Microsoft.Network/dnsZones dns/shop.example
+    state: mapped with losses
+    targets:
+    - AWS::Route53::HostedZone shop.example.
+  - reason: its zone is not in the snapshot
+    source: Microsoft.Network/dnsZones/A dns/missing.example/x
+    state: refused
+  - source: Microsoft.Network/dnsZones/A dns/old.internal/legacy
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet legacy.old.internal.
+  - source: Microsoft.Network/dnsZones/A dns/shop.example/@
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet shop.example.-4
+  - reason: 'it is an alias to the Azure resource {{truthform|ref|Microsoft.Network/publicIPAddresses|net|web-ip|id}}:
+      on the target an alias must point at that resource''s translation, which is
+      not translated yet'
+    source: Microsoft.Network/dnsZones/A dns/shop.example/www
+    state: refused
+  - source: Microsoft.Network/dnsZones/AAAA dns/shop.example/@
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet shop.example.
+  - source: Microsoft.Network/dnsZones/CAA dns/shop.example/@
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet shop.example.-5
+  - source: Microsoft.Network/dnsZones/CNAME dns/shop.example/app
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet app.shop.example.
+  - source: Microsoft.Network/dnsZones/DS dns/shop.example/dev
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet dev.shop.example.-2
+  - source: Microsoft.Network/dnsZones/MX dns/shop.example/@
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet shop.example.-2
+  - reason: 'the zone''s own name servers: the target makes this record itself, naming
+      its own, and the registrar''s delegation has to change to them'
+    source: Microsoft.Network/dnsZones/NS dns/shop.example/@
+    state: mapped
+  - source: Microsoft.Network/dnsZones/NS dns/shop.example/dev
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet dev.shop.example.
+  - losses:
+    - field: properties.SOARecord
+      why: the target writes the zone's SOA record itself, with its own contact and
+        timers (email azuredns-hostmaster.microsoft.com, refreshTime 3600, retryTime
+        300, expireTime 2419200, minimumTTL 300); the negative-caching TTL in it is
+        the target's
+    reason: the target makes the zone's SOA record itself
+    source: Microsoft.Network/dnsZones/SOA dns/shop.example/@
+    state: mapped with losses
+  - source: Microsoft.Network/dnsZones/SRV dns/shop.example/_sip._tcp
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet _sip._tcp.shop.example.
+  - losses:
+    - field: properties.metadata
+      why: '1 metadata item(s): a record set on the target has no tags or labels'
+    - field: properties.TXTRecords[1].value
+      why: a string of 300 characters is longer than a DNS string's 255; it is written
+        as consecutive strings, which readers of SPF and DKIM join again
+    source: Microsoft.Network/dnsZones/TXT dns/shop.example/@
+    state: mapped with losses
+    targets:
+    - AWS::Route53::RecordSet shop.example.-3
+  - source: Microsoft.Network/dnsZones/TXT dns/shop.example/www
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet www.shop.example.
+  - reason: read with its zone Microsoft.Network/dnsZones dns/shop.example
+    source: Microsoft.Network/dnsZones/dnssecConfigs dns/shop.example/default
+    state: mapped
+  - losses:
+    - field: 'virtualNetworkLinks/core-link: properties.registrationEnabled'
+      why: Azure registered the names of the network's machines in the zone itself;
+        neither Route 53 nor Cloud DNS does, so those names answer only once records
+        are written for them (instances keep the target's own internal names)
+    source: Microsoft.Network/privateDnsZones dns/core.internal
+    state: mapped with losses
+    targets:
+    - AWS::Route53::HostedZone core.internal.
+  - reason: every network it is linked to is refused or missing, so it would answer
+      nowhere
+    source: Microsoft.Network/privateDnsZones dns/orphan.internal
+    state: refused
+  - source: Microsoft.Network/privateDnsZones/A dns/core.internal/db
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet db.core.internal.
+  - reason: 'it holds no records: a record set on either target holds at least one'
+    source: Microsoft.Network/privateDnsZones/A dns/core.internal/web
+    state: refused
+  - reason: its zone Microsoft.Network/privateDnsZones dns/orphan.internal is refused
+    source: Microsoft.Network/privateDnsZones/A dns/orphan.internal/x
+    state: refused
+  - source: Microsoft.Network/privateDnsZones/CNAME dns/core.internal/api
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet api.core.internal.
+  - source: Microsoft.Network/privateDnsZones/PTR dns/core.internal/4.1
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet 4.1.core.internal.
+  - losses:
+    - field: properties.soaRecord
+      why: the target writes the zone's SOA record itself, with its own contact and
+        timers (email azureprivatedns-host.microsoft.com, minimumTTL 10); the negative-caching
+        TTL in it is the target's
+    reason: the target makes the zone's SOA record itself
+    source: Microsoft.Network/privateDnsZones/SOA dns/core.internal/@
+    state: mapped with losses
+  - reason: read with its zone Microsoft.Network/privateDnsZones dns/core.internal
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks dns/core.internal/core-link
+    state: mapped
+  - reason: the network it links, Microsoft.Network/virtualNetworks net/empty, is
+      refused
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks dns/core.internal/empty-link
+    state: refused
+  - reason: the network it links, net/gone, is not in the snapshot
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks dns/core.internal/gone-link
+    state: refused
+  - reason: its zone Microsoft.Network/privateDnsZones dns/orphan.internal is refused
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks dns/orphan.internal/gone
+    state: refused
+  - source: Microsoft.Network/virtualNetworks net/core
+    state: mapped
+    targets:
+    - AWS::EC2::Subnet core-app
+    - AWS::EC2::VPC core
+  - reason: it has no IPv4 address range
+    source: Microsoft.Network/virtualNetworks net/empty
+    state: refused
+  from: azure
+  requirements:
+  - 'DNSSEC for shop.example.: the hosted zone is not signed; take the DS record out
+    at the registrar before the name servers change, or resolvers that validate fail
+    the whole zone'
+  - 'Delegation of shop.example.: at its registrar (or in its parent zone), replace
+    Azure''s name servers with the hosted zone''s NameServers. Until then the internet
+    still resolves the Azure zone; this is the step that moves traffic'
+  - 'Instances in VPC core are not registered in private hosted zone core.internal.,
+    as Azure registered its machines'' names: write the records their names need'
+  - 'Instances in VPC core are not registered in private hosted zone old.internal.,
+    as Azure registered its machines'' names: write the records their names need'
+  - 'Private hosted zone core.internal. answers only in its VPCs: whatever resolved
+    it through Azure from elsewhere (a DNS forwarder, on-premises conditional forwarding)
+    must forward to a Route 53 Resolver inbound endpoint instead (not translated)'
+  - 'Private hosted zone old.internal. answers only in its VPCs: whatever resolved
+    it through Azure from elsewhere (a DNS forwarder, on-premises conditional forwarding)
+    must forward to a Route 53 Resolver inbound endpoint instead (not translated)'
+  - 'Record app.shop.example. CNAME is written as it is and names shop-app.azurewebsites.net.,
+    an Azure endpoint: it still sends traffic to Azure until it names the target''s'
+  to: aws
+snapshots:
+  aws:
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-app
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.1.0/24
+      Tags:
+      - Key: Name
+        Value: core-app
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPC
+    metadata:
+      annotations:
+        truthform.org/write-only: Ipv4IpamPoolId,Ipv4NetmaskLength,VpcEncryptionControl.EgressOnlyInternetGatewayExclusion,VpcEncryptionControl.ElasticFileSystemExclusion,VpcEncryptionControl.InternetGatewayExclusion,VpcEncryptionControl.LambdaExclusion,VpcEncryptionControl.NatGatewayExclusion,VpcEncryptionControl.VirtualPrivateGatewayExclusion,VpcEncryptionControl.VpcLatticeExclusion,VpcEncryptionControl.VpcPeeringExclusion
+      name: core
+    spec:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value: core
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::HostedZone
+    metadata:
+      name: core.internal.
+    spec:
+      HostedZoneConfig:
+        Comment: From Azure DNS zone dns/core.internal
+      HostedZoneTags:
+      - Key: env
+        Value: dev
+      Name: core.internal.
+      VPCs:
+      - VPCId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+        VPCRegion: eu-west-1
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::HostedZone
+    metadata:
+      name: old.internal.
+    spec:
+      HostedZoneConfig:
+        Comment: From Azure DNS zone dns/old.internal
+      Name: old.internal.
+      VPCs:
+      - VPCId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+        VPCRegion: eu-west-1
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::HostedZone
+    metadata:
+      name: shop.example.
+    spec:
+      HostedZoneConfig:
+        Comment: From Azure DNS zone dns/shop.example
+      HostedZoneTags:
+      - Key: Cost Center
+        Value: "42"
+      - Key: env
+        Value: dev
+      Name: shop.example.
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: 4.1.core.internal.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|core.internal.|Id}}'
+      Name: 4.1.core.internal.
+      ResourceRecords:
+      - db.core.internal.
+      TTL: "10"
+      Type: PTR
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: _sip._tcp.shop.example.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|shop.example.|Id}}'
+      Name: _sip._tcp.shop.example.
+      ResourceRecords:
+      - 10 60 5060 sip.shop.example.
+      TTL: "300"
+      Type: SRV
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: api.core.internal.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|core.internal.|Id}}'
+      Name: api.core.internal.
+      ResourceRecords:
+      - db.core.internal.
+      TTL: "10"
+      Type: CNAME
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: app.shop.example.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|shop.example.|Id}}'
+      Name: app.shop.example.
+      ResourceRecords:
+      - shop-app.azurewebsites.net.
+      TTL: "300"
+      Type: CNAME
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: db.core.internal.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|core.internal.|Id}}'
+      Name: db.core.internal.
+      ResourceRecords:
+      - 10.20.1.4
+      TTL: "10"
+      Type: A
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: dev.shop.example.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|shop.example.|Id}}'
+      Name: dev.shop.example.
+      ResourceRecords:
+      - ns1.dev-dns.example.net.
+      TTL: "3600"
+      Type: NS
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: dev.shop.example.-2
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|shop.example.|Id}}'
+      Name: dev.shop.example.
+      ResourceRecords:
+      - 12345 13 2 ABCDEF0123
+      TTL: "3600"
+      Type: DS
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: legacy.old.internal.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|old.internal.|Id}}'
+      Name: legacy.old.internal.
+      ResourceRecords:
+      - 10.20.1.9
+      TTL: "60"
+      Type: A
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: shop.example.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|shop.example.|Id}}'
+      Name: shop.example.
+      ResourceRecords:
+      - 2001:db8::10
+      TTL: "300"
+      Type: AAAA
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: shop.example.-2
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|shop.example.|Id}}'
+      Name: shop.example.
+      ResourceRecords:
+      - 10 mail1.shop.example.
+      - 20 mail2.shop.example.
+      TTL: "3600"
+      Type: MX
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: shop.example.-3
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|shop.example.|Id}}'
+      Name: shop.example.
+      ResourceRecords:
+      - '"v=spf1 include:_spf.example.net -all"'
+      - '"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+        "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"'
+      - '"say \"hi\""'
+      TTL: "3600"
+      Type: TXT
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: shop.example.-4
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|shop.example.|Id}}'
+      Name: shop.example.
+      ResourceRecords:
+      - 203.0.113.10
+      - 203.0.113.11
+      TTL: "300"
+      Type: A
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: shop.example.-5
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|shop.example.|Id}}'
+      Name: shop.example.
+      ResourceRecords:
+      - 0 issue "letsencrypt.org"
+      TTL: "3600"
+      Type: CAA
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: www.shop.example.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|shop.example.|Id}}'
+      Name: www.shop.example.
+      ResourceRecords:
+      - '"verify=1"'
+      TTL: "60"
+      Type: TXT

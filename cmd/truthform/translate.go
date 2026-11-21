@@ -30,7 +30,7 @@ func translateCmd(args []string) int {
 	mapFile := fs.String("map", "", "YAML map: the target (to, region), a destination per service class, and names")
 	outDir := fs.String("out", "", "directory to write a snapshot per target platform into (aws/, gcp/, kubernetes/), and "+reportFile)
 	schemas := fs.String("schemas", "", "aws: the CloudFormation registry's schema bundle (.zip) or a directory of schemas, instead of downloading the public bundle")
-	discovery := fs.String("discovery", "", "gcp: a directory of Discovery documents (pubsub_v1.json, compute_v1.json, storage_v1.json), instead of downloading them from Google")
+	discovery := fs.String("discovery", "", "gcp: a directory of Discovery documents (pubsub_v1.json, compute_v1.json, storage_v1.json, dns_v1.json), instead of downloading them from Google")
 	if err := parseFlags(fs, args); err != nil {
 		if err == flag.ErrHelp {
 			return 0

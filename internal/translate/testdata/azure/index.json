@@ -48,6 +48,51 @@
   "Microsoft.KeyVault/vaults@2026-05-15": {
    "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/135"
   },
+  "Microsoft.Network/dnsZones/A@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/27"
+  },
+  "Microsoft.Network/dnsZones/AAAA@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/31"
+  },
+  "Microsoft.Network/dnsZones/CAA@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/35"
+  },
+  "Microsoft.Network/dnsZones/CNAME@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/39"
+  },
+  "Microsoft.Network/dnsZones/DS@2023-07-01-preview": {
+   "$ref": "_tsp/dns/microsoft.network/2023-07-01-preview/types.json#/52"
+  },
+  "Microsoft.Network/dnsZones/MX@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/43"
+  },
+  "Microsoft.Network/dnsZones/NAPTR@2023-07-01-preview": {
+   "$ref": "_tsp/dns/microsoft.network/2023-07-01-preview/types.json#/56"
+  },
+  "Microsoft.Network/dnsZones/NS@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/47"
+  },
+  "Microsoft.Network/dnsZones/PTR@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/51"
+  },
+  "Microsoft.Network/dnsZones/SOA@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/55"
+  },
+  "Microsoft.Network/dnsZones/SRV@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/59"
+  },
+  "Microsoft.Network/dnsZones/TLSA@2023-07-01-preview": {
+   "$ref": "_tsp/dns/microsoft.network/2023-07-01-preview/types.json#/48"
+  },
+  "Microsoft.Network/dnsZones/TXT@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/63"
+  },
+  "Microsoft.Network/dnsZones/dnssecConfigs@2023-07-01-preview": {
+   "$ref": "_tsp/dns/microsoft.network/2023-07-01-preview/types.json#/63"
+  },
+  "Microsoft.Network/dnsZones@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/75"
+  },
   "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2026-03-01": {
    "$ref": "network/microsoft.network/2026-03-01/types.json#/630"
   },
@@ -56,6 +101,36 @@
   },
   "Microsoft.Network/networkSecurityGroups@2026-03-01": {
    "$ref": "network/microsoft.network/2026-03-01/types.json#/609"
+  },
+  "Microsoft.Network/privateDnsZones/A@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/47"
+  },
+  "Microsoft.Network/privateDnsZones/AAAA@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/51"
+  },
+  "Microsoft.Network/privateDnsZones/CNAME@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/55"
+  },
+  "Microsoft.Network/privateDnsZones/MX@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/59"
+  },
+  "Microsoft.Network/privateDnsZones/PTR@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/63"
+  },
+  "Microsoft.Network/privateDnsZones/SOA@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/67"
+  },
+  "Microsoft.Network/privateDnsZones/SRV@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/71"
+  },
+  "Microsoft.Network/privateDnsZones/TXT@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/75"
+  },
+  "Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/95"
+  },
+  "Microsoft.Network/privateDnsZones@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/25"
   },
   "Microsoft.Network/virtualNetworks/subnets@2026-03-01": {
    "$ref": "network/microsoft.network/2026-03-01/types.json#/622"

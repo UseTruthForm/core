@@ -300,6 +300,24 @@ func (d *Doc) Kind(schema, relName string) (*Kind, error) {
 
 var pathParamRE = regexp.MustCompile(`\{\+?([A-Za-z]+)\}`)
 
+// nameTemplate is the part of a segment-style template that holds the
+// resource's name: from the word before its first parameter on. Most
+// documents put their version in the service path (Compute's
+// compute/v1/), and the template is all name; Cloud DNS's service path is
+// empty and its templates start dns/v1/, which no name holds.
+func nameTemplate(tmpl string) string {
+	segs := strings.Split(tmpl, "/")
+	for i, seg := range segs {
+		if pathParamRE.MatchString(seg) {
+			if i == 0 {
+				return tmpl
+			}
+			return strings.Join(segs[i-1:], "/")
+		}
+	}
+	return tmpl
+}
+
 // segmentwise reports a template that names segments, filled one by one:
 // not reserved expansion ({+name} takes the whole name), and starting with
 // the same word as the name (projects/{project}/global/networks for
@@ -334,18 +352,19 @@ func matchesName(m *Method, relName string) bool {
 		re, err := regexp.Compile("^(?:" + p + ")$")
 		return err == nil && re.MatchString(relName)
 	}
+	tmpl := nameTemplate(m.Path)
 	var b strings.Builder
 	last := 0
-	for _, loc := range pathParamRE.FindAllStringSubmatchIndex(m.Path, -1) {
-		b.WriteString(regexp.QuoteMeta(m.Path[last:loc[0]]))
+	for _, loc := range pathParamRE.FindAllStringSubmatchIndex(tmpl, -1) {
+		b.WriteString(regexp.QuoteMeta(tmpl[last:loc[0]]))
 		pat := `[^/]+`
-		if p, ok := m.Parameters[m.Path[loc[2]:loc[3]]]; ok && p.Pattern != "" {
+		if p, ok := m.Parameters[tmpl[loc[2]:loc[3]]]; ok && p.Pattern != "" {
 			pat = p.Pattern
 		}
 		b.WriteString("(?:" + pat + ")")
 		last = loc[1]
 	}
-	b.WriteString(regexp.QuoteMeta(m.Path[last:]))
+	b.WriteString(regexp.QuoteMeta(tmpl[last:]))
 	re, err := regexp.Compile("^" + b.String() + "$")
 	return err == nil && re.MatchString(relName)
 }
@@ -377,13 +396,14 @@ func bareID(m *Method) (string, bool) {
 // name (projects/p/global/networks/n); an insert takes its parent
 // (projects/p/global) and the template adds "networks".
 func (d *Doc) URL(m *Method, value string) string {
-	if !segmentwise(m.Path, value) {
+	tmpl := nameTemplate(m.Path)
+	if !segmentwise(tmpl, value) {
 		return d.RootURL + d.ServicePath + pathParamRE.ReplaceAllString(m.Path, value)
 	}
 	vals := strings.Split(value, "/")
 	var out []string
 	i := 0
-	for _, seg := range strings.Split(m.Path, "/") {
+	for _, seg := range strings.Split(tmpl, "/") {
 		switch {
 		case pathParamRE.MatchString(seg) && i < len(vals):
 			out = append(out, vals[i])
@@ -395,7 +415,7 @@ func (d *Doc) URL(m *Method, value string) string {
 			out = append(out, seg)
 		}
 	}
-	return d.RootURL + d.ServicePath + strings.Join(out, "/")
+	return d.RootURL + d.ServicePath + strings.TrimSuffix(m.Path, tmpl) + strings.Join(out, "/")
 }
 
 // Fields flattens a schema into dotted field paths for schema-diff.

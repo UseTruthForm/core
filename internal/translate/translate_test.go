@@ -83,9 +83,10 @@ func maps() map[string]Map {
 }
 
 // targets are the definitions from testdata: the AWS tests' SQS queue, SNS
-// topic, VPC pieces and secret, this package's SNS subscription, inline
-// policy and ECR repository creation template, and the Pub/Sub, Compute,
-// Secret Manager and Artifact Registry Discovery documents.
+// topic, VPC pieces, S3 bucket and secret, this package's SNS
+// subscription, inline policy, bucket policy, ECR repository creation
+// template and Route 53 types, and the Pub/Sub, Compute, Cloud Storage,
+// Secret Manager, Artifact Registry and Cloud DNS Discovery documents.
 func targets(t *testing.T) Targets {
 	t.Helper()
 	dir := t.TempDir()
@@ -101,6 +102,8 @@ func targets(t *testing.T) Targets {
 		filepath.Join("testdata", "aws", "aws-ecr-repositorycreationtemplate.json"):               "aws-ecr-repositorycreationtemplate.json",
 		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-s3-bucket.json"):             "aws-s3-bucket.json",
 		filepath.Join("testdata", "aws", "aws-s3-bucketpolicy.json"):                              "aws-s3-bucketpolicy.json",
+		filepath.Join("testdata", "aws", "aws-route53-hostedzone.json"):                           "aws-route53-hostedzone.json",
+		filepath.Join("testdata", "aws", "aws-route53-recordset.json"):                            "aws-route53-recordset.json",
 	} {
 		b, err := os.ReadFile(src)
 		if err != nil {
@@ -116,7 +119,7 @@ func targets(t *testing.T) Targets {
 	}
 	gdir := t.TempDir()
 	for _, src := range []string{filepath.Join("testdata", "gcp", "pubsub_v1.json"), filepath.Join("..", "..", "testdata", "gcp", "discovery", "compute_v1.json"),
-		filepath.Join("testdata", "gcp", "secretmanager_v1.json"), filepath.Join("testdata", "gcp", "artifactregistry_v1.json"), filepath.Join("testdata", "gcp", "storage_v1.json")} {
+		filepath.Join("testdata", "gcp", "secretmanager_v1.json"), filepath.Join("testdata", "gcp", "artifactregistry_v1.json"), filepath.Join("testdata", "gcp", "storage_v1.json"), filepath.Join("testdata", "gcp", "dns_v1.json")} {
 		b, err := os.ReadFile(src)
 		if err != nil {
 			t.Fatal(err)

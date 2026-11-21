@@ -250,10 +250,32 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 		f.w.seq++
 		id = fmt.Sprintf("%d%06d", 1000+len(f.w.projects), f.w.seq) // server-assigned, numeric
 	}
+	// A resource under another (a record set in its managed zone) needs
+	// that one to exist, as Google answers NOT_FOUND otherwise: restore
+	// order matters here too.
+	if ps := strings.Split(parent, "/"); len(ps) >= 4 && f.creatable(ps[len(ps)-2]) {
+		if _, ok := f.res[parent]; !ok {
+			return nil, fmt.Errorf("NOT_FOUND: The resource '%s' was not found", parent)
+		}
+	}
 	coll := collection[strings.LastIndex(collection, ".")+1:]
 	rel := parent + "/" + coll + "/" + id
 	if parent == "" {
 		rel = id // a resource with no parent in its name (a Cloud Storage bucket)
+	}
+	item := itemParams(d, collection, m)
+	if len(item) > 2 {
+		// Named by several of its fields (a record set by its DNS name
+		// and type: rrsets/{name}/{type}), as its get method reads it.
+		var vals []string
+		for _, p := range item[1:] {
+			v, _ := res[p].(string)
+			if v == "" {
+				return nil, fmt.Errorf("INVALID_ARGUMENT: %s needs %s", schema, p)
+			}
+			vals = append(vals, v)
+		}
+		rel = parent + "/" + item[0] + "/" + strings.Join(vals, "/")
 	}
 	if _, dup := f.res[rel]; dup {
 		return nil, fmt.Errorf("ALREADY_EXISTS: %s", rel)
@@ -265,6 +287,9 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	// them; storing the full name here hid an update that sent one.
 	if !strings.Contains(m.Path, "{+") {
 		stored["name"] = id
+	}
+	if len(item) > 2 {
+		stored["name"] = res["name"]
 	}
 	for k, p := range d.Schemas[schema].Properties {
 		if outputOnly(p) && (p.Type == "string" || p.Type == "") && k != "name" {
@@ -405,6 +430,43 @@ func (f *Fake) update(method, u string, body map[string]any) (map[string]any, er
 	return deepCopy(next), nil
 }
 
+// itemParams is how a collection's get names one item beyond its parent:
+// the word its create adds, then the parameters after it (rrsets, name,
+// type). Nil when the templates do not say.
+func itemParams(d *Doc, collection string, create *Method) []string {
+	get := d.collectionMethods(collection)["get"]
+	if get == nil || strings.Contains(get.Path, "{+") || strings.Contains(create.Path, "{+") {
+		return nil
+	}
+	gs := strings.Split(nameTemplate(get.Path), "/")
+	cs := strings.Split(nameTemplate(create.Path), "/")
+	if len(gs) <= len(cs) {
+		return nil
+	}
+	out := []string{cs[len(cs)-1]}
+	for _, seg := range gs[len(cs):] {
+		m := pathParamRE.FindStringSubmatch(seg)
+		if m == nil {
+			return nil
+		}
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// creatable reports a collection, by its last word, that some loaded
+// document can create in.
+func (f *Fake) creatable(word string) bool {
+	for _, d := range f.w.docs.loaded() {
+		for _, c := range d.collections() {
+			if collLast(c.path) == word && createMethod(c.methods) != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // createMethod is a collection's create, or Compute's insert.
 func createMethod(ms map[string]*Method) *Method {
 	if m := ms["create"]; m != nil {
@@ -421,6 +483,13 @@ func createMethod(ms map[string]*Method) *Method {
 // {+parent}, or, for a template naming each segment (Compute's
 // projects/{project}/global/networks), everything before the collection.
 func createParent(tmpl, path string) (string, bool) {
+	// What precedes the name in the template (Cloud DNS's dns/v1/) is
+	// not part of the parent.
+	lead := strings.TrimSuffix(tmpl, nameTemplate(tmpl))
+	if !strings.HasPrefix(path, lead) {
+		return "", false
+	}
+	tmpl, path = tmpl[len(lead):], path[len(lead):]
 	var b strings.Builder
 	last := 0
 	for _, loc := range pathParamRE.FindAllStringSubmatchIndex(tmpl, -1) {

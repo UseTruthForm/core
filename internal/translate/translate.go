@@ -172,7 +172,7 @@ type family interface {
 	translate(objs []snapshot.Object, o *out)
 }
 
-var families = []family{serviceBus{}, network{}, keyVault{}, registry{}, decided{}}
+var families = []family{serviceBus{}, network{}, storage{}, keyVault{}, registry{}, decided{}}
 
 // Translate rewrites an Azure snapshot for the target the map names, with
 // the target's definitions.

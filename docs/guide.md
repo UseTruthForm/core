@@ -1434,9 +1434,9 @@ that needs one left out fails, or waits, in the cluster.
 It reads one snapshot and a map, and writes a snapshot per target platform,
 which `plan`, `restore` and `diff` take as they are. It makes no request, so
 the capture-only build has it too. So far it translates Service Bus,
-virtual networks and network security groups, Key Vault secrets and
-container registries; every other type is reported as not looked at
-(design: issue #32).
+virtual networks and network security groups, storage accounts' blob
+containers, Key Vault secrets and container registries; every other type
+is reported as not looked at (design: issue #32).
 
 ```sh
 truthform translate --from snap/azure --map map.yaml --out moved/
@@ -1450,12 +1450,13 @@ Nothing the map leaves out gets a default.
 
 ```yaml
 to: aws                     # or gcp
-region: eu-west-1           # aws; gcp where something regional is written (a subnetwork)
+region: eu-west-1           # aws; gcp where something regional is written (a subnetwork, a bucket)
 destinations:
   messaging: sqs-sns        # sqs-sns (aws), pubsub (gcp), or rabbitmq (in the cluster, on either)
   network: vpc              # a VPC (aws) or VPC network (gcp)
   secrets: secret-manager   # Key Vault secrets: Secrets Manager (aws) or Secret Manager (gcp)
   registry: ecr             # ecr (aws) or artifact-registry (gcp)
+  storage: buckets          # an S3 bucket (aws) or Cloud Storage bucket (gcp) per blob container
 secrets:                    # gcp: where Secret Manager keeps each secret; it cannot change later
   replication: user-managed # automatic, or user-managed with
   locations: [europe-west1, europe-west4]
@@ -1470,6 +1471,7 @@ rabbitmq:                   # for messaging: rabbitmq
   tlsSecret: broker-tls     # without it the brokers listen in plain text, reported as less protected
 names:
   rg/shop/legacy.feed: legacy-feed   # a name SQS does not allow
+  rg/shopfiles/$root: shopfiles-root # a bucket name, keyed group/account/container
 ```
 
 | Service Bus | sqs-sns | pubsub | rabbitmq |
@@ -1490,6 +1492,27 @@ names:
 | NSG on a subnet | a security group per network, holding what the NSG allows with its denies taken out | a firewall rule per NSG rule, same priority, allow or deny, applied by a network tag per NSG |
 | Azure's default rules | written as their effect (the network allowed in, all allowed out) | the network's allow at 65000; GCP's own rules match the rest |
 | Peering, route table, NAT gateway | not translated yet (a route table is reported as less protected) | the same |
+
+| Storage | aws | gcp |
+|---|---|---|
+| Storage account | no bucket of its own: its settings go into each of its containers' buckets | the same |
+| Blob container | S3 bucket `<account>-<container>` (or the map's name), public access blocked, no ACLs | Cloud Storage bucket in the map's region, uniform access, public access prevention enforced |
+| Public container, static website (`$web`) | refused: public read is an access grant, which is identity | refused |
+| Encryption (Microsoft keys; twice) | SSE-S3; DSSE-KMS with AWS's key | Google's keys (layered by Google) |
+| Customer-managed key, a key's encryption scope | the managed keys, reported as less protected | the same |
+| HTTPS only, minimum TLS 1.2 or 1.3 | a bucket policy that only denies plain HTTP and older TLS | HTTPS only; no TLS minimum per bucket: less protected |
+| Firewall, private endpoints only | the public endpoint, guarded by IAM alone: less protected | the bucket's IP filter with the same public ranges; none for private only |
+| Versioning, soft delete | versioning; soft delete as versioning with noncurrent versions expired (an early permanent delete is reported as less protected) | versioning, soft delete policy (7 to 90 days) |
+| Time-based retention, version-level immutability | Object Lock (locked: compliance, unlocked: governance) | retention policy, written unlocked; version-level: less protected |
+| Legal hold | less protected: holds are per object | the same |
+| Access tier, redundancy | no class per bucket; one region | storage class (Hot, Cool, Cold, Smart as Autoclass); one region |
+| Data Lake (hierarchical namespace) | flat namespace | hierarchical namespace |
+| CORS | rules, GET PUT HEAD POST DELETE | rules, one header list |
+| Lifecycle, inventory, replication, files, queues, tables | not looked at yet (the nearest equivalent named) | the same |
+| Local users, account keys, SAS | refused, or listed as a change to the app: identity | the same |
+
+Blobs are never copied: each bucket is written empty, and the report says
+so. An account with no blob container writes nothing.
 
 Azure evaluates an NSG's rules by priority, the first match deciding. A
 security group only allows, so on AWS each allow is written with every deny
@@ -1566,10 +1589,10 @@ Known limits:
   against them still shows differences: a capture holds every default the
   target fills in that the translation does not set.
 - Each target object is built from, or checked against, the target's own
-  published definition (the CloudFormation registry, the Pub/Sub,
-  Compute, Secret Manager and Artifact Registry Discovery documents):
-  downloaded and cached like `aws-coverage`, or read from `--schemas` and
-  `--discovery`.
+  published definition (the CloudFormation registry, the Pub/Sub, Compute,
+  Cloud Storage, Secret Manager and Artifact Registry Discovery
+  documents): downloaded and cached like `aws-coverage`, or read from
+  `--schemas` and `--discovery`.
 - An NSG on a network interface rather than a subnet, application security
   groups and network peerings are not translated yet.
 

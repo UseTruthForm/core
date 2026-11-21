@@ -107,6 +107,78 @@
   },
   "Microsoft.ServiceBus/namespaces@2026-01-01": {
    "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/82"
+  },
+  "Microsoft.Storage/storageAccounts/accountMigrations@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/673"
+  },
+  "Microsoft.Storage/storageAccounts/advancedPlatformMetrics@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/259"
+  },
+  "Microsoft.Storage/storageAccounts/blobAccessPointConfigurations@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/310"
+  },
+  "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/391"
+  },
+  "Microsoft.Storage/storageAccounts/blobServices/containers@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/386"
+  },
+  "Microsoft.Storage/storageAccounts/blobServices@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/343"
+  },
+  "Microsoft.Storage/storageAccounts/connectors@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/420"
+  },
+  "Microsoft.Storage/storageAccounts/dataShares@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/440"
+  },
+  "Microsoft.Storage/storageAccounts/encryptionScopes@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/452"
+  },
+  "Microsoft.Storage/storageAccounts/fileServices/shares@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/497"
+  },
+  "Microsoft.Storage/storageAccounts/fileServices/usages@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/685"
+  },
+  "Microsoft.Storage/storageAccounts/fileServices@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/463"
+  },
+  "Microsoft.Storage/storageAccounts/inventoryPolicies@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/526"
+  },
+  "Microsoft.Storage/storageAccounts/localUsers@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/537"
+  },
+  "Microsoft.Storage/storageAccounts/managementPolicies@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/564"
+  },
+  "Microsoft.Storage/storageAccounts/networkSecurityPerimeterConfigurations@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/726"
+  },
+  "Microsoft.Storage/storageAccounts/objectReplicationPolicies@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/577"
+  },
+  "Microsoft.Storage/storageAccounts/privateEndpointConnections@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/581"
+  },
+  "Microsoft.Storage/storageAccounts/queueServices/queues@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/594"
+  },
+  "Microsoft.Storage/storageAccounts/queueServices@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/587"
+  },
+  "Microsoft.Storage/storageAccounts/storageTaskAssignments@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/630"
+  },
+  "Microsoft.Storage/storageAccounts/tableServices/tables@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/645"
+  },
+  "Microsoft.Storage/storageAccounts/tableServices@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/636"
+  },
+  "Microsoft.Storage/storageAccounts@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/238"
   }
  }
 }

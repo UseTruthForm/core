@@ -1,0 +1,419 @@
+report:
+  destinations:
+  - 'storage: buckets'
+  entries:
+  - losses:
+    - field: properties.encryption.requireInfrastructureEncryption
+      why: Azure encrypted twice, by the service and its infrastructure; Google encrypts
+        data at rest in more than one layer by itself, and there is no setting for
+        it
+    - field: properties.minimumTlsVersion
+      why: 'TLS 1.2 at least on the source; a bucket has no minimum TLS version of
+        its own: Google''s floor applies until an organization policy (gcp.restrictTLSVersion)
+        raises it (not translated)'
+      widens: true
+    - field: sku.name
+      why: Standard_RAGRS copies the account to a second region; a bucket in europe-west1
+        keeps its objects across that region's zones, and a dual- or multi-region
+        location would be a choice the map does not make
+    - field: properties.networkAcls.virtualNetworkRules
+      why: 1 virtual network subnet(s) were allowed; on Cloud Storage none is until
+        the networks it may come from are named (not translated)
+    - field: properties.networkAcls.bypass
+      why: AzureServices passed the firewall; Azure's trusted services are not the
+        target's
+    - field: tags.Owner
+      why: not a label (lower-case letters, digits, _ and -) the target takes; it
+        is not carried over
+    reason: 'the account is not a bucket: its settings apply to each of its containers''
+      buckets'
+    source: Microsoft.Storage/storageAccounts shop/shopassets
+    state: mapped with losses
+    targets:
+    - storage.googleapis.com/Bucket shopassets-images
+    - storage.googleapis.com/Bucket shopassets-ledger
+    - storage.googleapis.com/Bucket shopassets-records
+  - reason: 'it has no blob container in the snapshot that becomes a bucket, so nothing
+      is written: the account is not a bucket, and its settings apply only to its
+      containers'''
+    source: Microsoft.Storage/storageAccounts shop/shopempty
+    state: mapped
+  - losses:
+    - field: properties.isLocalUserEnabled
+      why: local users are identity, not translated (#32)
+    - field: properties.minimumTlsVersion
+      why: 'TLS 1.2 at least on the source; a bucket has no minimum TLS version of
+        its own: Google''s floor applies until an organization policy (gcp.restrictTLSVersion)
+        raises it (not translated)'
+      widens: true
+    - field: properties.supportsHttpsTrafficOnly
+      why: the account took plain HTTP; Cloud Storage's JSON API takes HTTPS only
+    - field: properties.accessTier
+      why: 'Smart: Autoclass moves objects down as far as Nearline, where Azure''s
+        smart tier went to Cold'
+    - field: properties.isSftpEnabled
+      why: 'SFTP access: a bucket has no SFTP endpoint (not translated)'
+    reason: 'the account is not a bucket: its settings apply to each of its containers''
+      buckets'
+    source: Microsoft.Storage/storageAccounts shop/shoplake
+    state: mapped with losses
+    targets:
+    - storage.googleapis.com/Bucket shoplake-raw
+  - losses:
+    - field: identity
+      why: 'the account''s managed identity is not translated (identity is a separate
+        design, #32)'
+    - field: properties.encryption.keySource
+      why: blobs are encrypted with the customer's own key; the buckets use Google's
+        keys until a Cloud KMS key is named (not translated yet)
+      widens: true
+    - field: properties.immutableStorageWithVersioning
+      why: 'version-level immutability: Cloud Storage''s object retention lock is
+        turned on when a bucket is created, by a request parameter the restore does
+        not send, and a default retention would rule out versioning (not translated
+        yet)'
+      widens: true
+    - field: properties.publicNetworkAccess
+      why: 'public network access is disabled: it answers only on private endpoints;
+        the bucket''s IP filter admits no network until vpcNetworkSources name the
+        VPC networks that may reach it (not translated)'
+    reason: 'the account is not a bucket: its settings apply to each of its containers''
+      buckets'
+    source: Microsoft.Storage/storageAccounts shop/shopvault
+    state: mapped with losses
+    targets:
+    - storage.googleapis.com/Bucket shopvault-backups
+  - losses:
+    - field: properties.containerDeleteRetentionPolicy
+      why: a deleted container could be restored; Cloud Storage deletes only an empty
+        bucket, so its objects are deleted first, and kept as the soft delete policy
+        says
+    - field: properties.changeFeed
+      why: the change feed (a log of every change) is not translated; the nearest
+        equivalent is Pub/Sub notifications for the bucket or Cloud Audit Logs
+    - field: properties.staticWebsite
+      why: 'the static website is not translated: its content is public, and public
+        access is not written (its $web container is refused)'
+    - field: properties.cors.corsRules[0].allowedMethods
+      why: 'methods MERGE are not allowed: the rule keeps GET, PUT, HEAD, POST and
+        DELETE'
+    reason: 'read with its account Microsoft.Storage/storageAccounts shop/shopassets:
+      its settings apply to each of the account''s buckets'
+    source: Microsoft.Storage/storageAccounts/blobServices shop/shopassets/default
+    state: mapped with losses
+  - losses:
+    - field: properties.deleteRetentionPolicy.days
+      why: 120 days on the source; Cloud Storage keeps soft-deleted objects 90 days
+        at most
+      widens: true
+    - field: properties.deleteRetentionPolicy.allowPermanentDelete
+      why: a soft-deleted blob could be deleted for good early; a soft-deleted object
+        cannot
+    reason: 'read with its account Microsoft.Storage/storageAccounts shop/shopvault:
+      its settings apply to each of the account''s buckets'
+    source: Microsoft.Storage/storageAccounts/blobServices shop/shopvault/default
+    state: mapped with losses
+  - reason: 'it holds the account''s static website, which Azure serves to anyone:
+      a website bucket is public, and public access needs a bucket policy (AWS) or
+      allUsers on the bucket (GCP), which is identity and is not translated (#32)'
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/$web
+    state: refused
+  - reason: 'public read access (Blob): anyone may read its blobs without signing
+      in. Writing that needs a bucket policy granting everyone read (AWS) or allUsers
+      on the bucket''s IAM (GCP), which is identity and is not translated (#32); every
+      bucket written here blocks public access'
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/catalog
+    state: refused
+  - source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/images
+    state: mapped
+    targets:
+    - storage.googleapis.com/Bucket shopassets-images
+  - losses:
+    - field: properties.metadata
+      why: '1 metadata pair(s) on the container: a bucket has no metadata (its tags
+        or labels come from the account''s)'
+    - field: properties.defaultEncryptionScope
+      why: its encryption scope tenantkey uses the customer's own key; the bucket
+        uses the cloud's managed keys until a key is named (not translated yet)
+      widens: true
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/ledger
+    state: mapped with losses
+    targets:
+    - storage.googleapis.com/Bucket shopassets-ledger
+  - reason: 'its bucket name "shopassets-monthly-reconciliation-exports-for-the-finance-team-archive"
+      is not a Cloud Storage bucket name (3 to 63 lower-case letters, digits, hyphens
+      and underscores, starting and ending with a letter or digit): give it one in
+      the map''s names, keyed shop/shopassets/monthly-reconciliation-exports-for-the-finance-team-archive
+      (bucket names are global, so it must also be free)'
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/monthly-reconciliation-exports-for-the-finance-team-archive
+    state: refused
+  - losses:
+    - field: 'immutabilityPolicies/default: properties.state'
+      why: 'the policy is locked: nobody can shorten or remove it. The bucket''s is
+        written unlocked, and is locked only by buckets.lockRetentionPolicy, once
+        the data is in (it cannot be undone)'
+      widens: true
+    - field: properties.hasLegalHold
+      why: a legal hold keeps every blob from being changed or deleted; Cloud Storage
+        holds an object only once it is put under a temporary hold, so put each copied
+        object under one
+      widens: true
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/records
+    state: mapped with losses
+    targets:
+    - storage.googleapis.com/Bucket shopassets-records
+  - losses:
+    - field: properties.isHnsEnabled
+      why: the bucket has a hierarchical namespace too; POSIX ACLs on paths are identity
+        and are not translated (#32)
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shoplake/default/raw
+    state: mapped with losses
+    targets:
+    - storage.googleapis.com/Bucket shoplake-raw
+  - reason: 'its public access setting (Container) has no effect: the account forbids
+      public access'
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopvault/default/backups
+    state: mapped
+    targets:
+    - storage.googleapis.com/Bucket shopvault-backups
+  - reason: read with its container Microsoft.Storage/storageAccounts/blobServices/containers
+      shop/shopassets/default/records
+    source: Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies
+      shop/shopassets/default/records/default
+    state: mapped
+  - losses:
+    - field: properties.source
+      why: the scope encrypts with the customer's own key; the buckets written here
+        use the cloud's managed keys until a key is named (not translated yet)
+      widens: true
+    reason: read with the containers that name it as their default; a blob that names
+      it itself is data, which is not copied
+    source: Microsoft.Storage/storageAccounts/encryptionScopes shop/shopassets/tenantkey
+    state: mapped with losses
+  - reason: 'a service with nothing of its own in the snapshot: its settings apply
+      to items there are none of, so nothing is written'
+    source: Microsoft.Storage/storageAccounts/fileServices shop/shopassets/default
+    state: mapped
+  - reason: 'a local user (SFTP or NFS, with its own keys or password): identity is
+      not translated (#32)'
+    source: Microsoft.Storage/storageAccounts/localUsers shop/shopassets/uploader
+    state: refused
+  - reason: 'no descriptor for Microsoft.Storage/storageAccounts/managementPolicies
+      yet: lifecycle rules are not translated (the nearest equivalents are an S3 lifecycle
+      configuration and Cloud Storage lifecycle rules)'
+    source: Microsoft.Storage/storageAccounts/managementPolicies shop/shopassets/default
+    state: not looked at
+  - reason: 'no descriptor for Microsoft.Storage/storageAccounts/queueServices yet:
+      storage queues are not buckets (the nearest equivalents are SQS and Pub/Sub)'
+    source: Microsoft.Storage/storageAccounts/queueServices shop/shopassets/default
+    state: not looked at
+  - reason: 'no descriptor for Microsoft.Storage/storageAccounts/queueServices/queues
+      yet: storage queues are not buckets (the nearest equivalents are SQS and Pub/Sub)'
+    source: Microsoft.Storage/storageAccounts/queueServices/queues shop/shopassets/default/jobs
+    state: not looked at
+  from: azure
+  requirements:
+  - 'Apps move from the Azure Blob SDK to the Cloud Storage client: each container
+    is a bucket, named <account>-<container> unless the map names it'
+  - Apps that sign in to Azure Storage with account keys, SAS tokens or connection
+    strings must move to the target's identity (IAM roles, workload identity); no
+    key or SAS is carried over
+  - 'Blobs are not copied: each bucket is written empty. Copy each container''s blobs
+    into its bucket (AWS DataSync or S3 Batch Operations; the Storage Transfer Service),
+    with their versions, metadata and per-blob tiers and holds, which this translation
+    does not carry'
+  - 'Buckets from a storage account that allowed virtual network subnets (Microsoft.Storage/storageAccounts
+    shop/shopassets) admit only its public ranges: add the VPC networks that may reach
+    them to each bucket''s IP filter (ipFilter.vpcNetworkSources)'
+  - 'Buckets from a storage account that answered only on private endpoints (Microsoft.Storage/storageAccounts
+    shop/shopvault) admit no network: add the VPC networks that may reach them to
+    each bucket''s IP filter (ipFilter.vpcNetworkSources)'
+  - 'Buckets whose container had a locked retention policy are written unlocked: lock
+    each one (buckets.lockRetentionPolicy) once its data is copied'
+  - 'Containers under a legal hold become buckets without one: put each copied object
+    under an Object Lock legal hold (S3) or a temporary hold (Cloud Storage) before
+    anything else can delete it'
+  - 'Local users of a storage account (SFTP, NFS) are identity and are not translated
+    (#32): give each client an IAM or workload identity on the target, or a managed
+    file transfer service (AWS Transfer Family)'
+  - 'Who may read and write each bucket is IAM, which is not translated (#32): grant
+    the app''s role or service account access to its bucket (Azure role assignments
+    on the account are not carried over)'
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: storage.googleapis.com/Bucket
+    metadata:
+      annotations:
+        truthform.org/collection: buckets
+        truthform.org/discovery: storage/v1
+        truthform.org/parent: ""
+        truthform.org/schema: Bucket
+      name: shopassets-images
+    spec:
+      cors:
+      - maxAgeSeconds: 600
+        method:
+        - GET
+        - PUT
+        origin:
+        - https://shop.example
+        responseHeader:
+        - '*'
+      iamConfiguration:
+        bucketPolicyOnly:
+          enabled: true
+        publicAccessPrevention: enforced
+        uniformBucketLevelAccess:
+          enabled: true
+      ipFilter:
+        allowAllServiceAgentAccess: false
+        allowCrossOrgVpcs: false
+        mode: Enabled
+        publicNetworkSource:
+          allowedIpCidrRanges:
+          - 203.0.113.0/24
+          - 198.51.100.7/32
+      labels:
+        env: prod
+      location: EUROPE-WEST1
+      name: shopassets-images
+      softDeletePolicy:
+        retentionDurationSeconds: "1209600"
+      storageClass: STANDARD
+  - apiVersion: gcp.truthform.org/v1
+    kind: storage.googleapis.com/Bucket
+    metadata:
+      annotations:
+        truthform.org/collection: buckets
+        truthform.org/discovery: storage/v1
+        truthform.org/parent: ""
+        truthform.org/schema: Bucket
+      name: shopassets-ledger
+    spec:
+      cors:
+      - maxAgeSeconds: 600
+        method:
+        - GET
+        - PUT
+        origin:
+        - https://shop.example
+        responseHeader:
+        - '*'
+      iamConfiguration:
+        bucketPolicyOnly:
+          enabled: true
+        publicAccessPrevention: enforced
+        uniformBucketLevelAccess:
+          enabled: true
+      ipFilter:
+        allowAllServiceAgentAccess: false
+        allowCrossOrgVpcs: false
+        mode: Enabled
+        publicNetworkSource:
+          allowedIpCidrRanges:
+          - 203.0.113.0/24
+          - 198.51.100.7/32
+      labels:
+        env: prod
+      location: EUROPE-WEST1
+      name: shopassets-ledger
+      softDeletePolicy:
+        retentionDurationSeconds: "1209600"
+      storageClass: STANDARD
+  - apiVersion: gcp.truthform.org/v1
+    kind: storage.googleapis.com/Bucket
+    metadata:
+      annotations:
+        truthform.org/collection: buckets
+        truthform.org/discovery: storage/v1
+        truthform.org/parent: ""
+        truthform.org/schema: Bucket
+      name: shopassets-records
+    spec:
+      cors:
+      - maxAgeSeconds: 600
+        method:
+        - GET
+        - PUT
+        origin:
+        - https://shop.example
+        responseHeader:
+        - '*'
+      iamConfiguration:
+        bucketPolicyOnly:
+          enabled: true
+        publicAccessPrevention: enforced
+        uniformBucketLevelAccess:
+          enabled: true
+      ipFilter:
+        allowAllServiceAgentAccess: false
+        allowCrossOrgVpcs: false
+        mode: Enabled
+        publicNetworkSource:
+          allowedIpCidrRanges:
+          - 203.0.113.0/24
+          - 198.51.100.7/32
+      labels:
+        env: prod
+      location: EUROPE-WEST1
+      name: shopassets-records
+      retentionPolicy:
+        retentionPeriod: "31536000"
+      softDeletePolicy:
+        retentionDurationSeconds: "1209600"
+      storageClass: STANDARD
+  - apiVersion: gcp.truthform.org/v1
+    kind: storage.googleapis.com/Bucket
+    metadata:
+      annotations:
+        truthform.org/collection: buckets
+        truthform.org/discovery: storage/v1
+        truthform.org/parent: ""
+        truthform.org/schema: Bucket
+      name: shoplake-raw
+    spec:
+      autoclass:
+        enabled: true
+        terminalStorageClass: NEARLINE
+      hierarchicalNamespace:
+        enabled: true
+      iamConfiguration:
+        bucketPolicyOnly:
+          enabled: true
+        publicAccessPrevention: enforced
+        uniformBucketLevelAccess:
+          enabled: true
+      location: EUROPE-WEST1
+      name: shoplake-raw
+      softDeletePolicy:
+        retentionDurationSeconds: "0"
+      storageClass: STANDARD
+  - apiVersion: gcp.truthform.org/v1
+    kind: storage.googleapis.com/Bucket
+    metadata:
+      annotations:
+        truthform.org/collection: buckets
+        truthform.org/discovery: storage/v1
+        truthform.org/parent: ""
+        truthform.org/schema: Bucket
+      name: shopvault-backups
+    spec:
+      iamConfiguration:
+        bucketPolicyOnly:
+          enabled: true
+        publicAccessPrevention: enforced
+        uniformBucketLevelAccess:
+          enabled: true
+      ipFilter:
+        allowAllServiceAgentAccess: false
+        allowCrossOrgVpcs: false
+        mode: Enabled
+      location: EUROPE-WEST1
+      name: shopvault-backups
+      softDeletePolicy:
+        retentionDurationSeconds: "7776000"
+      storageClass: NEARLINE
+      versioning:
+        enabled: true

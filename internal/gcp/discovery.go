@@ -193,8 +193,51 @@ func (ds *Docs) Doc(uri, version string) (*Doc, error) {
 	}
 	h := sha256.Sum256(b)
 	d.Digest = "sha256:" + hex.EncodeToString(h[:])
+	d.flagUndeclaredOutput()
 	ds.cache[key] = &d
 	return &d, nil
+}
+
+// undeclaredOutput are fields the server sets that a document flags
+// nowhere, not even in prose, by API, schema and dotted path. Cloud
+// Storage's Bucket says "The URI of this bucket" of its selfLink and "The
+// creation time" of timeCreated: kept as configuration, every bucket would
+// differ from its own snapshot on them, and a create sending them is
+// refused.
+var undeclaredOutput = map[string]map[string][]string{
+	"storage": {"Bucket": {
+		"id", "kind", "selfLink", "projectNumber", "timeCreated", "updated", "metageneration", "generation",
+		"owner", "locationType", "satisfiesPZS", "satisfiesPZI", "softDeleteTime", "hardDeleteTime",
+		"softDeletePolicy.effectiveTime", "softDeletePolicy.hardDeletePause.effectiveTime",
+		"retentionPolicy.effectiveTime", "retentionPolicy.isLocked",
+		"iamConfiguration.uniformBucketLevelAccess.lockedTime", "iamConfiguration.bucketPolicyOnly.lockedTime",
+		"autoclass.toggleTime", "autoclass.terminalStorageClassUpdateTime",
+		"encryption.googleManagedEncryptionEnforcementConfig.effectiveTime",
+		"encryption.customerManagedEncryptionEnforcementConfig.effectiveTime",
+		"encryption.customerSuppliedEncryptionEnforcementConfig.effectiveTime",
+	}},
+}
+
+// flagUndeclaredOutput marks undeclaredOutput's fields read-only in the
+// document, so capture, restore, the fake and a translation's check all
+// read them as the server's.
+func (d *Doc) flagUndeclaredOutput() {
+	for schema, paths := range undeclaredOutput[d.Name] {
+		for _, path := range paths {
+			s := d.Schemas[schema]
+			keys := strings.Split(path, ".")
+			for i, k := range keys {
+				s = d.resolve(s)
+				if s == nil || s.Properties[k] == nil {
+					break
+				}
+				if i == len(keys)-1 {
+					s.Properties[k].ReadOnly = true
+				}
+				s = s.Properties[k]
+			}
+		}
+	}
 }
 
 // Kind is how a resource is read and created, found in a document.
@@ -287,6 +330,10 @@ func matchesName(m *Method, relName string) bool {
 		}
 		return false
 	}
+	if p, ok := bareID(m); ok && !strings.Contains(relName, "/") {
+		re, err := regexp.Compile("^(?:" + p + ")$")
+		return err == nil && re.MatchString(relName)
+	}
 	var b strings.Builder
 	last := 0
 	for _, loc := range pathParamRE.FindAllStringSubmatchIndex(m.Path, -1) {
@@ -301,6 +348,26 @@ func matchesName(m *Method, relName string) bool {
 	b.WriteString(regexp.QuoteMeta(m.Path[last:]))
 	re, err := regexp.Compile("^" + b.String() + "$")
 	return err == nil && re.MatchString(relName)
+}
+
+// bareID reports a get whose path is one word and the resource's ID (Cloud
+// Storage's b/{bucket}): such a resource belongs to no parent in its name,
+// and Cloud Asset Inventory names it by its ID alone (//storage.googleapis.com/b1).
+// It returns the ID's pattern.
+func bareID(m *Method) (string, bool) {
+	locs := pathParamRE.FindAllStringSubmatchIndex(m.Path, -1)
+	if len(locs) != 1 || strings.Contains(m.Path, "{+") || locs[0][1] != len(m.Path) {
+		return "", false
+	}
+	lead := m.Path[:locs[0][0]]
+	if strings.Count(lead, "/") != 1 || !strings.HasSuffix(lead, "/") || pathParamRE.MatchString(lead) {
+		return "", false
+	}
+	pat := `[^/]+`
+	if p, ok := m.Parameters[m.Path[locs[0][2]:locs[0][3]]]; ok && p.Pattern != "" {
+		pat = p.Pattern
+	}
+	return pat, true
 }
 
 // URL expands a method path with a name: the whole value into a single

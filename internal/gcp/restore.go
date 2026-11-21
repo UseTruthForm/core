@@ -153,6 +153,11 @@ func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, pro
 			return false, werr.Error()
 		}
 		u := doc.URL(create, detok(str(annParent), project, number))
+		// A create whose path names no parent takes the project as a
+		// query parameter (Cloud Storage's POST b?project=).
+		if p, ok := create.Parameters["project"]; ok && p.Location == "query" && p.Required {
+			q.Set("project", project)
+		}
 		if len(q) > 0 {
 			u += "?" + q.Encode()
 		}

@@ -17,7 +17,8 @@ type Map struct {
 	// To is the target cloud: aws or gcp.
 	To string `json:"to"`
 	// Region is the region the cloud objects are for: required on AWS,
-	// and on GCP wherever something regional (a subnetwork) is written.
+	// and on GCP wherever something regional (a subnetwork, a bucket's
+	// location) is written.
 	Region string `json:"region,omitempty"`
 	// Destinations chooses, per service class, where it goes. A class with
 	// objects in the snapshot and no choice is refused.
@@ -33,6 +34,9 @@ type Map struct {
 		// Registry: ecr (aws) or artifact-registry (gcp), for container
 		// registries.
 		Registry string `json:"registry,omitempty"`
+		// Storage: buckets (an S3 bucket on AWS, a Cloud Storage bucket
+		// on GCP, per blob container).
+		Storage string `json:"storage,omitempty"`
 	} `json:"destinations"`
 	// Secrets is what GCP's Secret Manager needs that Key Vault cannot say.
 	Secrets *SecretsMap `json:"secrets,omitempty"`
@@ -188,6 +192,11 @@ func (m Map) validate() error {
 	default:
 		return fmt.Errorf("map: registry: %q is not ecr or artifact-registry", d)
 	}
+	switch m.Destinations.Storage {
+	case "", "buckets":
+	default:
+		return fmt.Errorf("map: storage: %q is not buckets", m.Destinations.Storage)
+	}
 	want := map[string]string{"sqs-sns": "fifo", "pubsub": "ordering", "rabbitmq": "single-active-consumer"}[m.Destinations.Messaging]
 	if m.Sessions != "" && m.Sessions != want {
 		return fmt.Errorf("map: sessions: %q does not go with messaging %s (it takes %q)", m.Sessions, m.Destinations.Messaging, want)
@@ -208,6 +217,9 @@ func (m Map) destinationList() []string {
 	}
 	if m.Destinations.Registry != "" {
 		d = append(d, "registry: "+m.Destinations.Registry)
+	}
+	if m.Destinations.Storage != "" {
+		d = append(d, "storage: "+m.Destinations.Storage)
 	}
 	sort.Strings(d)
 	return d
@@ -244,12 +256,12 @@ func (m Map) zoneFor(key string) string {
 // objects, which are built from the CloudFormation registry.
 func (m Map) NeedsAWS() bool {
 	return m.Destinations.Messaging == "sqs-sns" || m.Destinations.Registry == "ecr" ||
-		(m.To == "aws" && (m.Destinations.Network != "" || m.Destinations.Secrets != ""))
+		(m.To == "aws" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != ""))
 }
 
 // NeedsGCP reports whether a destination the map chooses writes GCP
 // objects, which are checked against Google's Discovery documents.
 func (m Map) NeedsGCP() bool {
 	return m.Destinations.Messaging == "pubsub" || m.Destinations.Registry == "artifact-registry" ||
-		(m.To == "gcp" && (m.Destinations.Network != "" || m.Destinations.Secrets != ""))
+		(m.To == "gcp" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != ""))
 }

@@ -2,6 +2,9 @@ report:
   destinations:
   - 'messaging: rabbitmq'
   entries:
+  - reason: no descriptor for Microsoft.Maps/accounts yet
+    source: Microsoft.Maps/accounts rg/shopmaps
+    state: not looked at
   - losses:
     - field: (transport)
       why: Service Bus takes only TLS; these brokers listen in plain text until rabbitmq.tlsSecret
@@ -127,9 +130,9 @@ report:
     targets:
     - Binding shop.b.events.shipping.0
     - Binding shop.b.events.shipping.1
-  - reason: no descriptor for Microsoft.Storage/storageAccounts yet
+  - reason: the map chooses no destination for storage (destinations.storage)
     source: Microsoft.Storage/storageAccounts rg/shopfiles
-    state: not looked at
+    state: refused
   from: azure
   requirements:
   - 'Apps move from the Service Bus SDK to an AMQP client: a queue is a quorum queue,

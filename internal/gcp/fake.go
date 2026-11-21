@@ -141,6 +141,7 @@ func (f *Fake) Seed(api, ver, typ, schema, collection, parent string, body map[s
 func (f *Fake) create(url string, body map[string]any) (map[string]any, error) {
 	url, rawQuery, _ := strings.Cut(url, "?")
 	queryID := ""
+	query, _ := neturl.ParseQuery(rawQuery)
 	for _, kv := range strings.Split(rawQuery, "&") {
 		if k, v, ok := strings.Cut(kv, "="); ok && idParam(k) {
 			queryID = v
@@ -160,6 +161,11 @@ func (f *Fake) create(url string, body map[string]any) (map[string]any, error) {
 			parent, ok := createParent(m.Path, path)
 			if !ok {
 				continue
+			}
+			// A create that names no parent takes the project as a query
+			// parameter, and Google refuses one without it.
+			if p, ok := m.Parameters["project"]; ok && p.Location == "query" && p.Required && query.Get("project") != f.id {
+				return nil, fmt.Errorf("INVALID_ARGUMENT: %s needs project=%s, got %q", m.ID, f.id, query.Get("project"))
 			}
 			schema := c.schema
 			typ := d.Name + ".googleapis.com/" + schema
@@ -246,6 +252,9 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	}
 	coll := collection[strings.LastIndex(collection, ".")+1:]
 	rel := parent + "/" + coll + "/" + id
+	if parent == "" {
+		rel = id // a resource with no parent in its name (a Cloud Storage bucket)
+	}
 	if _, dup := f.res[rel]; dup {
 		return nil, fmt.Errorf("ALREADY_EXISTS: %s", rel)
 	}
@@ -431,6 +440,9 @@ func createParent(tmpl, path string) (string, bool) {
 	}
 	if strings.Contains(tmpl, "{+") {
 		return m[1], true
+	}
+	if !strings.Contains(path, "/") {
+		return "", true // the collection alone (Cloud Storage's b): no parent
 	}
 	return path[:strings.LastIndex(path, "/")], true
 }

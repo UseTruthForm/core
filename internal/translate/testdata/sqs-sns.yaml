@@ -2,6 +2,9 @@ report:
   destinations:
   - 'messaging: sqs-sns'
   entries:
+  - reason: no descriptor for Microsoft.Maps/accounts yet
+    source: Microsoft.Maps/accounts rg/shopmaps
+    state: not looked at
   - losses:
     - field: properties.publicNetworkAccess
       why: its network rule set denies by default and allows 1 address range(s) and
@@ -123,9 +126,9 @@ report:
     state: mapped
     targets:
     - AWS::SNS::Subscription h-2f94f8346827
-  - reason: no descriptor for Microsoft.Storage/storageAccounts yet
+  - reason: the map chooses no destination for storage (destinations.storage)
     source: Microsoft.Storage/storageAccounts rg/shopfiles
-    state: not looked at
+    state: refused
   from: azure
   requirements:
   - 'Apps move from the Service Bus SDK to the AWS SDK: a queue is an SQS queue, a

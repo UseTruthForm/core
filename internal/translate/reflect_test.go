@@ -15,6 +15,7 @@ const (
 	netVersion = "2026-03-01"
 	kvVersion  = "2026-05-15"
 	acrVersion = "2025-11-01"
+	stVersion  = "2026-09-01"
 )
 
 // reflected is one Azure type a rule reads: its definition's version, a
@@ -52,6 +53,15 @@ func readers() map[string]reflected {
 		"Microsoft.ContainerRegistry/registries":              {version: acrVersion, name: "acr", read: func(o snapshot.Object) []Loss { return readRegistry(o).losses }},
 		"Microsoft.ContainerRegistry/registries/replications": {version: acrVersion, name: "acr/r", read: readReplication},
 		"Microsoft.Network/networkSecurityGroups":             {version: netVersion, name: "nsg", read: func(o snapshot.Object) []Loss { return readNSG(o).losses }},
+		"Microsoft.Storage/storageAccounts":                   {version: stVersion, name: "acct", read: func(o snapshot.Object) []Loss { return readAccount(o).losses }},
+		"Microsoft.Storage/storageAccounts/blobServices": {version: stVersion, name: "acct/default",
+			read: func(o snapshot.Object) []Loss { return readBlobService(o).losses }},
+		"Microsoft.Storage/storageAccounts/blobServices/containers": {version: stVersion, name: "acct/default/c",
+			read: func(o snapshot.Object) []Loss { return readContainer(o).losses }},
+		"Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies": {version: stVersion, name: "acct/default/c/default",
+			read: func(o snapshot.Object) []Loss { return readImmutability(o).unread }},
+		"Microsoft.Storage/storageAccounts/encryptionScopes": {version: stVersion, name: "acct/s",
+			read: func(o snapshot.Object) []Loss { return readScope(o).losses }},
 		"Microsoft.Network/networkSecurityGroups/securityRules": {version: netVersion, name: "nsg/r",
 			set: map[string]any{"access": "Allow", "direction": "Inbound", "protocol": "Tcp", "priority": float64(100),
 				"sourcePortRange": "*", "destinationPortRange": "443"},
@@ -330,3 +340,5 @@ func TestEveryRegistryTypeIsDecided(t *testing.T) {
 		}
 	}
 }
+
+// Every storage account type Azure defines is read, or named here: files,

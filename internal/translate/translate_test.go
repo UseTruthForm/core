@@ -67,6 +67,7 @@ func fixture() snapshot.Snapshot {
 		az("Microsoft.ServiceBus/namespaces/topics/subscriptions/rules", "rg", "shop/events/fraud/big", pr(map[string]any{
 			"filterType": "SqlFilter", "sqlFilter": map[string]any{"sqlExpression": "amount > 1000"}})),
 		az("Microsoft.Storage/storageAccounts", "rg", "shopfiles", map[string]any{"location": "westeurope"}),
+		az("Microsoft.Maps/accounts", "rg", "shopmaps", map[string]any{"location": "westeurope"}),
 	}
 	return snapshot.Snapshot{Platform: "azure", Policy: "default", Objects: objs}
 }
@@ -98,6 +99,8 @@ func targets(t *testing.T) Targets {
 		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-ec2-securitygroup.json"):     "aws-ec2-securitygroup.json",
 		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-secretsmanager-secret.json"): "aws-secretsmanager-secret.json",
 		filepath.Join("testdata", "aws", "aws-ecr-repositorycreationtemplate.json"):               "aws-ecr-repositorycreationtemplate.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-s3-bucket.json"):             "aws-s3-bucket.json",
+		filepath.Join("testdata", "aws", "aws-s3-bucketpolicy.json"):                              "aws-s3-bucketpolicy.json",
 	} {
 		b, err := os.ReadFile(src)
 		if err != nil {
@@ -113,7 +116,7 @@ func targets(t *testing.T) Targets {
 	}
 	gdir := t.TempDir()
 	for _, src := range []string{filepath.Join("testdata", "gcp", "pubsub_v1.json"), filepath.Join("..", "..", "testdata", "gcp", "discovery", "compute_v1.json"),
-		filepath.Join("testdata", "gcp", "secretmanager_v1.json"), filepath.Join("testdata", "gcp", "artifactregistry_v1.json")} {
+		filepath.Join("testdata", "gcp", "secretmanager_v1.json"), filepath.Join("testdata", "gcp", "artifactregistry_v1.json"), filepath.Join("testdata", "gcp", "storage_v1.json")} {
 		b, err := os.ReadFile(src)
 		if err != nil {
 			t.Fatal(err)
@@ -235,8 +238,11 @@ func TestEverySourceIsReportedOnce(t *testing.T) {
 func TestStates(t *testing.T) {
 	for name, m := range maps() {
 		r := run(t, m)
-		if e := entry(t, r, "Microsoft.Storage/storageAccounts"); e.State != NotLooked {
+		if e := entry(t, r, "Microsoft.Maps/accounts"); e.State != NotLooked {
 			t.Errorf("%s: a type with no descriptor is %s", name, e.State)
+		}
+		if e := entry(t, r, "Microsoft.Storage/storageAccounts"); e.State != Refused || !strings.Contains(e.Reason, "destinations.storage") {
+			t.Errorf("%s: a class the map does not choose a destination for is %s, %q", name, e.State, e.Reason)
 		}
 		if e := entry(t, r, "Microsoft.ServiceBus/namespaces/queues/authorizationRules"); e.State != Refused || !strings.Contains(e.Reason, "identity") {
 			t.Errorf("%s: a shared access key: %s, %q", name, e.State, e.Reason)

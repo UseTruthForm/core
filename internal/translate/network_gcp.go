@@ -187,9 +187,15 @@ func (d gcpNet) nsgs(st *nsgState, o *out) {
 				case s.member[a]:
 					carries = append(carries, d.selfTag(st, tag, a))
 				default:
+					// A deny it should have had in part is less protected;
+					// an allow it does not get is only stricter.
+					denies := false
+					for _, r := range ns[0].rules {
+						denies = denies || (!r.allow && nsgHas(r.self.asgs, a))
+					}
 					if e := o.entry(s.src); e != nil {
-						e.Losses = append(e.Losses, Loss{Field: "properties.ipConfigurations", Widens: true,
-							Why: "only some of its IP configurations are in application security group " + st.asgName(a) + ", and a network tag is the whole instance's: the rules of " + ns[0].name + " for that group's members, denies among them, are not applied to it"})
+						e.Losses = append(e.Losses, Loss{Field: "properties.ipConfigurations", Widens: denies,
+							Why: "only some of its IP configurations are in application security group " + st.asgName(a) + ", and a network tag is the whole instance's: the rules of " + ns[0].name + " for that group's members are not applied to it"})
 					}
 				}
 			}

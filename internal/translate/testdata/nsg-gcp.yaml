@@ -51,6 +51,16 @@ report:
     - sec/app-nsg
     source: Microsoft.Network/networkInterfaces sec/vm5-nic
     to: what takes the place of virtual machine vm5
+  - asgs:
+    - sec/web
+    attached: requirement
+    carries:
+    - app-nsg
+    - asg-web
+    nsgs:
+    - sec/app-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm6-nic
+    to: what takes the place of virtual machine vm6
   - attached: written
     nsgs:
     - sec/pe-nsg
@@ -139,6 +149,11 @@ report:
       filtered it is written, ready for what takes the place of virtual machine vm5
       (see attachments)'
     source: Microsoft.Network/networkInterfaces sec/vm5-nic
+    state: mapped
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm6
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm6-nic
     state: mapped
   - evidence:
     - access: allow
@@ -1252,7 +1267,7 @@ report:
     takes the place of each member carries it (members on Azure: virtual machine vm3)'
   - 'Network tag asg-web marks the members of application security group sec/web:
     what takes the place of each member carries it (members on Azure: virtual machine
-    vm1, virtual machine vm3)'
+    vm1, virtual machine vm3, virtual machine vm6)'
   - Private Google Access reaches Google's APIs privately from machines with no external
     IP; a machine with one reaches them over the internet
   - 'VPC Flow Logs do not record packets an ingress firewall rule denied: turn on
@@ -1281,6 +1296,10 @@ report:
     sec/vm5-nic) carries network tag(s) app-nsg and no other translated from an NSG:
     every rule that applies to an instance is in one list on GCP, so another NSG''s
     tag beside them would let through what these deny'
+  - 'What takes the place of virtual machine vm6 (Microsoft.Network/networkInterfaces
+    sec/vm6-nic) carries network tag(s) app-nsg, asg-web and no other translated from
+    an NSG: every rule that applies to an instance is in one list on GCP, so another
+    NSG''s tag beside them would let through what these deny'
   to: gcp
 snapshots:
   gcp:

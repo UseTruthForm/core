@@ -1447,8 +1447,10 @@ that needs one left out fails, or waits, in the cluster.
 It reads one snapshot and a map, and writes a snapshot per target platform,
 which `plan`, `restore` and `diff` take as they are. It makes no request, so
 the capture-only build has it too. So far it translates Service Bus,
-virtual networks, network security groups and what routes their subnets'
-traffic (route tables, NAT gateways, peerings), public and private DNS
+virtual networks, network security groups wherever they are attached
+(subnets, network interfaces, both at once), application security groups,
+flow logs, what routes the subnets' traffic (route tables, NAT gateways,
+peerings), public and private DNS
 zones, storage accounts' blob containers, Key Vault secrets, container
 registries, AKS clusters (their configuration: the workloads travel
 through the Kubernetes snapshot), the configuration (never the data)
@@ -1496,6 +1498,11 @@ network:                    # aws: an Azure subnet spans the region's zones, an 
       subnet: 10.20.255.0/28    # a free /28 or wider of the network's range
       zone: eu-west-1a          # network.zone when left out
   defaultOutbound: nat      # Azure's default outbound access becomes a NAT (billed); without it, no egress
+  nsgs:                     # the network an NSG is written in when nothing in the snapshot uses it
+    net/spare-nsg: net/core     # keyed group/nsg: group/network; without it such an NSG is refused
+  flowLogs:
+    destination: arn:aws:s3:::shop-flow-logs/azure/   # aws: the bucket (and folder) flow logs are delivered to
+    everywhere: true            # log every translated network, not only those the source logged (billed)
 privateAccess:              # gcp: the service perimeter for Pub/Sub, Secret Manager, Artifact Registry (see Private access)
   accessPolicy: accessPolicies/123456789
   perimeter: shop_prod
@@ -1554,6 +1561,15 @@ databases:                  # per server, keyed group/server: what Azure cannot 
 | Virtual network | VPC (one IPv4 range, /16 to /28) | VPC network, custom mode, regional routing, MTU 1500 |
 | Subnet | subnet in the map's zone | subnetwork in the map's region |
 | NSG on a subnet | a security group per network, holding what the NSG allows with its denies taken out | a firewall rule per NSG rule, same priority, allow or deny, applied by a network tag per NSG |
+| NSG on a network interface, alone | a security group of its own, for what takes the machine's place | the same rules under the NSG's tag, which that machine carries |
+| NSG on a subnet and another on an interface in it | one security group holding only what both allow; never the two groups side by side, which would add up | one tag of allow rules (priority 1000) for what both allow, and a deny of all other egress (1001); never the two tags side by side |
+| Application security group | a security group with no rules (its only egress rule is to 127.0.0.1/32, so it adds nothing), which rules name as source or destination and members carry | a network tag `asg-<name>`: `sourceTags` in ingress rules; an egress allow to a group is not carried over, an egress deny denies the members' subnets whole |
+| Rule that applies to a group's members only | written in a security group only those members carry (`<nsg>-as-<group>`) | written under a tag only those members carry (`<nsg>-as-<group>`) |
+| Deny that names a group, before an allow of address ranges | the subnets the group's members are in are taken out of the allow whole (stricter) | exact: a deny with `sourceTags` |
+| NSG on a subnet whose `privateEndpointNetworkPolicies` lets it filter private endpoints | the interface endpoints' security group lets in HTTPS from what every private endpoint behind them let in | Private Google Access only on the subnetworks all of whose addresses every such endpoint took HTTPS from |
+| NSG nothing uses | written in the network the map names (`network.nsgs`), attached to nothing; refused without it | the same |
+| Flow log of a virtual network or subnet (or interface: its subnet) | a VPC flow log on the VPC or subnet, to the map's S3 bucket, every minute, in a fixed format | VPC Flow Logs on the subnetworks: every flow, every minute, all metadata, to Cloud Logging |
+| Flow log of an NSG (retiring) | a VPC flow log on each VPC the NSG is used in | VPC Flow Logs on those networks' subnetworks |
 | Azure's default rules | written as their effect (the network allowed in, all allowed out) | the network's allow at 65000; GCP's own rules match the rest |
 | NAT gateway on a subnet | internet gateway, a public subnet from the map (`network.egress.<group/network>`), a NAT gateway there with as many Elastic IPs (8 at most), and a route table per subnet with a route to it | Cloud NAT on a Cloud Router listing those subnetworks, sending from as many reserved addresses, with the same idle timeout |
 | Default outbound access (set, or left unset) | no egress, unless the map says `network.defaultOutbound: nat`: then a NAT gateway per network | the same: then a Cloud NAT gateway with Google's addresses |
@@ -1651,10 +1667,138 @@ Azure evaluates an NSG's rules by priority, the first match deciding. A
 security group only allows, so on AWS each allow is written with every deny
 before it taken out, worked out as address ranges, ports and protocols.
 What cannot be written exactly is dropped and named: a rule that names a
-service tag or application security group, a source port, or part of the
-subnet's addresses. A translation may let through less than the source,
-never more. Each security group and network tag has to be attached to the
-instances in its subnets; the report lists them.
+service tag, a source port, or part of the subnet's addresses. A
+translation may let through less than the source, never more.
+
+An NSG can sit on a subnet, on a network interface, or one on each. Azure
+then asks both, each a list of its own, and lets a packet through only when
+both do: an allow at priority 100 on the interface does not answer a deny
+at 200 on the subnet. AWS adds up the security groups on an interface, and
+GCP puts every rule that applies to an instance in one list, so neither can
+hold the two NSGs side by side. The translation works out what both allow
+and writes that once: one security group, or one network tag whose rules
+only allow, closed by a deny. An NSG alone on an interface, or on a subnet,
+is written by itself as before.
+
+An application security group is a set of interfaces. On AWS it becomes a
+security group with no rules that its members carry beside their own, and
+that other groups' rules name as their source or destination; on GCP a
+network tag. Who is a member is read from the network interfaces, private
+endpoints and scale sets in the snapshot. Where a rule would need "the
+members of a group, except some addresses" or "these addresses, except the
+members of a group", no target can say it: the allow is narrowed (the
+subnets the group's members are in are taken out whole) or left out, and
+the report says which. An NSG whose interfaces fall into more than 16
+different combinations of groups and other NSGs is refused.
+
+Machines are not translated, so nothing attaches what is written for an
+interface: the report's `attachments` list says, for every subnet,
+interface, scale set and private endpoint an NSG filtered, which security
+groups or tags it must carry on the target (all of them, and no other one
+translated from an NSG), and whether the translation attached them
+(`written`: the interface endpoints that stand for private endpoints) or a
+person must (`requirement`). A GKE node pool is given its subnet's tag by
+the translation. An EKS managed node group takes a custom
+security group only through a launch template, which then replaces the
+cluster's own security group instead of adding to it; the translation
+writes none, and names the security group the node group's subnet stands
+for.
+
+### Evidence for an audit
+
+Each network security group's entry in `translation.yaml` has an `evidence`
+list: one row per rule (Azure's six default rules included) for every place
+the NSG is written (`where`: a security group, or a network tag).
+
+```yaml
+- source: Microsoft.Network/networkSecurityGroups sec/app-nsg
+  state: mapped with losses
+  evidence:
+  - where: AWS::EC2::SecurityGroup app-nsg
+    rule: deny-ssh
+    priority: 200
+    direction: inbound
+    access: deny
+    status: exact
+    enforcedBy:
+    - 'AWS::EC2::SecurityGroup app-nsg: security groups only allow, and no rule of it allows what this denies'
+```
+
+`status` is one of:
+
+| Status | Meaning |
+|---|---|
+| `exact` | the target lets through, and keeps out, what the rule did. `enforcedBy` names the target rules: the security group rules that carry an allow, the firewall rule of the same name, or, for a deny where the target only allows, the group none of whose rules allows what it denies |
+| `stricter` | the target lets through less than the rule did; `why` says what and for which reason |
+| `not carried` | an allow that is not written: nothing it allowed is let through. Never a deny: a deny that cannot be written exactly is widened (`stricter`), and one that cannot be read refuses the NSG |
+| `does not apply` | the rule names addresses, or an application security group, that are not in this place: Azure did not apply it there either |
+
+The rows are in a fixed order (place, direction, priority), so two runs
+can be compared line by line. The claim behind them, that the target never
+lets through what Azure denied, is tested by putting the same packets to
+Azure's rules and to each target's rules as that cloud evaluates them.
+
+### Flow logs
+
+Azure's NSG flow logs retire on September 30, 2027, and new ones can no
+longer be created; virtual network flow logs replace them. Both are a
+`Microsoft.Network/networkWatchers/flowLogs` object, told apart by what
+`targetResourceId` names. A virtual network flow log is the fully mapped
+case; an NSG flow log is mapped to the networks its NSG is used in, and the
+report says it is the retiring kind. The network watcher itself is Azure's
+own and is not translated.
+
+| Flow log setting | aws | gcp |
+|---|---|---|
+| Target: a virtual network | exact: `AWS::EC2::FlowLog` on the VPC (`ResourceType: VPC`) | exact: `logConfig.enable` on every subnetwork of the network |
+| Target: a subnet | exact: a flow log on the subnet; none when its VPC is logged already | exact: `logConfig` on that subnetwork |
+| Target: a network interface | more is logged: its subnet (the machine is not translated) | the same |
+| Target: an NSG (retiring) | more is logged: each VPC the NSG is used in | more is logged: those networks' subnetworks |
+| `enabled: false` | exact: nothing is written | exact |
+| `storageId` (a storage account; Azure makes the container `insights-logs-flowlogflowevent`) | the map's choice: `network.flowLogs.destination`, an S3 bucket ARN; refused without it. The bucket's policy must let `delivery.logs.amazonaws.com` write (a requirement) | lost: records go to Cloud Logging (`compute.googleapis.com/vpc_flows`); a Logging sink carries them on (a requirement) |
+| `retentionPolicy` | lost: the bucket's lifecycle rules expire them (a requirement names the days) | lost: the Cloud Logging bucket's retention (a requirement names the days) |
+| Collected every minute | exact: `MaxAggregationInterval: 60` | exact: `aggregationInterval: INTERVAL_1_MIN`, `flowSampling: 1` |
+| `format.version` | lost: the record is AWS's, in the format below | lost: the record is GCP's |
+| `enabledFilteringCriteria`, `recordTypes` | lost: every flow is recorded (`TrafficType: ALL`), which is more | lost: every flow is recorded; `filterExpr` is not written |
+| `flowAnalyticsConfiguration` (traffic analytics) | lost: analysed with AWS's own tools | lost: analysed with GCP's own tools |
+| `identity` | lost: delivery is by the bucket's policy | lost: Google writes to Cloud Logging itself |
+| No flow log on the source | none, unless `network.flowLogs.everywhere: true` | the same |
+
+On AWS every flow log is written with one format, so that a parser can rely
+on the order of its fields (space-separated, one line per record):
+
+```
+${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status} ${vpc-id} ${subnet-id} ${instance-id} ${tcp-flags} ${type} ${pkt-srcaddr} ${pkt-dstaddr} ${region} ${az-id} ${flow-direction} ${traffic-path} ${reject-reason} ${encryption-status}
+```
+
+The first fourteen are AWS's default record in its order. What a record
+holds on each cloud, for a parser that normalises all three:
+
+| Azure virtual network flow log (`flowTuples`, comma-separated, in this order) | AWS (field of the format above) | GCP (`jsonPayload` of a `vpc_flows` entry) |
+|---|---|---|
+| 1. Time stamp, Unix epoch in milliseconds | `start` and `end`, in seconds: the window the record adds up | `start_time`, `end_time` (RFC 3339) |
+| 2. Source IP | `srcaddr`; `pkt-srcaddr` is the packet's own where a NAT or a pod stands between | `connection.src_ip` |
+| 3. Destination IP | `dstaddr`; `pkt-dstaddr` | `connection.dest_ip` |
+| 4. Source port | `srcport` | `connection.src_port` |
+| 5. Destination port | `dstport` | `connection.dest_port` |
+| 6. Protocol, IANA number | `protocol`, IANA number | `connection.protocol`, IANA number |
+| 7. Direction, `I` or `O` | `flow-direction`, `ingress` or `egress` | `reporter`: `DEST` for inbound, `SRC` for outbound (a flow between two logged machines is reported by both) |
+| 8. Flow state: `B` begin, `C` continuing, `E` end, `D` denied | no state. `action` is `ACCEPT` or `REJECT` (Azure's `D` is `REJECT`); `tcp-flags` is the OR of the TCP flags seen in the window (SYN 2, SYN-ACK 18, FIN 1, RST 4), from which begin and end are read for TCP only | no state and no verdict. A packet an ingress rule denied is not recorded at all; one an egress rule denied can be. Denied flows are seen only with firewall rule logging |
+| 9. Encryption: `X`, or `NX` with a reason | `encryption-status` | none: Google encrypts traffic between VMs itself and records nothing of it |
+| 10. Packets, source to destination | `packets`: one direction per record; the reply is a record of its own with the addresses swapped | `packets_sent`, source to destination only, an estimate when sampled |
+| 11. Bytes, source to destination | `bytes` | `bytes_sent`: payload bytes only |
+| 12. Packets, destination to source | the reply's own record | the reply's own entry |
+| 13. Bytes, destination to source | the reply's own record | the reply's own entry |
+| Outside the tuple: the rule that decided (`flowGroups[].rule`), `aclID` | none: `reject-reason` says only why AWS itself rejected | none; firewall rule logging names the rule |
+| Outside the tuple: `macAddress`, `targetResourceID` | `interface-id`, `instance-id`, `subnet-id`, `vpc-id` | `src_instance`, `dest_instance`, `src_vpc`, `dest_vpc` (all metadata is on) |
+| (none) | `log-status`: `OK`, `NODATA`, `SKIPDATA` | `rtt_msec` for TCP |
+
+An NSG flow log's version 2 tuple differs from the above: seconds, not
+milliseconds; `T` or `U` for the protocol; a verdict field (`A` or `D`)
+before the state, which is only `B`, `C` or `E`; no encryption field.
+
+Flow logs are billed by volume on both targets, so none is written where
+the source had none unless the map asks (`network.flowLogs.everywhere`).
 
 | Key Vault | aws | gcp |
 |---|---|---|
@@ -1714,7 +1858,7 @@ target answers its own services' names privately instead, as below.
 
 | Private access | aws | gcp |
 |---|---|---|
-| Private endpoint to Service Bus (sqs-sns), Key Vault, a registry, blob or Data Lake storage | an interface VPC endpoint per service and VPC (`sqs`, `sns`, `secretsmanager`, `ecr.api`, `ecr.dkr`, `s3`) in the private endpoints' subnets, private DNS on, HTTPS from the network | Private Google Access on the network's subnetworks |
+| Private endpoint to Service Bus (sqs-sns), Key Vault, a registry, blob or Data Lake storage | an interface VPC endpoint per service and VPC (`sqs`, `sns`, `secretsmanager`, `ecr.api`, `ecr.dkr`, `s3`) in the private endpoints' subnets, private DNS on, HTTPS from the network (or from what the subnet's NSG let in, where it applied to them) | Private Google Access on the network's subnetworks (only those an NSG that applied to the endpoints let in) |
 | Private endpoint to PostgreSQL or Azure SQL | nothing: RDS answers in the VPC | nothing: Cloud SQL answers on its private IP |
 | Private endpoint to messaging in the cluster (rabbitmq) | nothing: the cluster reaches it | the same |
 | Private endpoint to anything else (Azure Files, queues, tables, App Service) | refused | refused |
@@ -1928,9 +2072,17 @@ Known limits:
   Cloud Storage, Secret Manager, Artifact Registry, Cloud DNS, Cloud SQL,
   GKE and IAM Discovery documents): downloaded and cached like `aws-coverage`, or read
   from `--schemas` and `--discovery`.
-- An NSG on a network interface rather than a subnet, application security
-  groups, public addresses of anything but a NAT gateway, gateways, load
-  balancers and firewalls are not translated yet.
+- Public addresses of anything but a NAT gateway, gateways, load balancers
+  and firewalls are not translated yet. Machines are not either: what an
+  NSG on a network interface comes to is written, and the report says what
+  must carry it.
+- Who is in an application security group is read from the network
+  interfaces, private endpoints and scale sets in the snapshot. A member
+  the snapshot does not hold (in a resource group left out of the capture)
+  is not known, and a deny of the group does not reach its subnet on AWS.
+- On GCP an Azure outbound rule that named a private endpoint's address is
+  not carried to Google's API addresses, which Private Google Access
+  reaches instead.
 - Routing is translated as what each subnet's traffic can do, not object
   for object: Azure's routes are worked out per subnet (longest prefix, a
   route table's before Azure's own), and the target subnet is given the

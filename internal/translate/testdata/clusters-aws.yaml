@@ -240,18 +240,30 @@ report:
     IPAM) is turned on, and a Linux node group runs the cluster''s own pods'
   - 'EKS cluster shop takes no one''s access from Azure: add access entries for the
     people and tools that use it before restoring its workloads (#32)'
-  - EKS node group shop-batch's nodes are in the cluster's security group; security
-    group web, translated from their subnet's NSG, applies to them only through a
-    launch template (not translated)
-  - EKS node group shop-system's nodes are in the cluster's security group; security
-    group web, translated from their subnet's NSG, applies to them only through a
-    launch template (not translated)
-  - EKS node group shop-user's nodes are in the cluster's security group; security
-    group web, translated from their subnet's NSG, applies to them only through a
-    launch template (not translated)
-  - EKS node group shop-win's nodes are in the cluster's security group; security
-    group web, translated from their subnet's NSG, applies to them only through a
-    launch template (not translated)
+  - 'EKS node group shop-batch''s nodes are in the cluster''s security group; security
+    group web, translated from their subnet''s NSG, applies to them only through a
+    launch template, which is not written: with one, EKS no longer adds the cluster''s
+    security group, so the template must name both, and security groups add up (the
+    cluster''s lets its members reach each other on every port, which the NSG may
+    not have); the node group''s DiskSize must move into the template too'
+  - 'EKS node group shop-system''s nodes are in the cluster''s security group; security
+    group web, translated from their subnet''s NSG, applies to them only through a
+    launch template, which is not written: with one, EKS no longer adds the cluster''s
+    security group, so the template must name both, and security groups add up (the
+    cluster''s lets its members reach each other on every port, which the NSG may
+    not have); the node group''s DiskSize must move into the template too'
+  - 'EKS node group shop-user''s nodes are in the cluster''s security group; security
+    group web, translated from their subnet''s NSG, applies to them only through a
+    launch template, which is not written: with one, EKS no longer adds the cluster''s
+    security group, so the template must name both, and security groups add up (the
+    cluster''s lets its members reach each other on every port, which the NSG may
+    not have); the node group''s DiskSize must move into the template too'
+  - 'EKS node group shop-win''s nodes are in the cluster''s security group; security
+    group web, translated from their subnet''s NSG, applies to them only through a
+    launch template, which is not written: with one, EKS no longer adds the cluster''s
+    security group, so the template must name both, and security groups add up (the
+    cluster''s lets its members reach each other on every port, which the NSG may
+    not have); the node group''s DiskSize must move into the template too'
   - 'EKS validates Kubernetes 1.30 at restore: if it no longer offers that version,
     a person chooses one, as the translation never upgrades'
   - 'EKS validates Kubernetes 1.31 at restore: if it no longer offers that version,

@@ -256,7 +256,7 @@ func (d eks) nodegroup(c *aksCluster, p *aksPool, cluster string, ns *netSub, cm
 		e.Losses = append(e.Losses, Loss{Field: at + "upgradeSettings", Why: "EKS upgrades a node group with its own surge; the source's surge is not carried over"})
 	}
 	if ns.tag != "" {
-		o.require(fmt.Sprintf("EKS node group %s's nodes are in the cluster's security group; security group %s, translated from their subnet's NSG, applies to them only through a launch template (not translated)", name, ns.tag))
+		o.require(fmt.Sprintf("EKS node group %s's nodes are in the cluster's security group; security group %s, translated from their subnet's NSG, applies to them only through a launch template, which is not written: with one, EKS no longer adds the cluster's security group, so the template must name both, and security groups add up (the cluster's lets its members reach each other on every port, which the NSG may not have); the node group's DiskSize must move into the template too", name, ns.tag))
 	}
 	return o.add("aws", c.src, awsObject(awsNodegroup, name, spec))
 }

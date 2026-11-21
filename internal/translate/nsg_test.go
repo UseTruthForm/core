@@ -159,6 +159,7 @@ func nsgFixture() snapshot.Snapshot {
 		nic("vm3-nic", "data", "", "vm3", "10.30.2.10", true, "web", "db"),
 		nic("vm4-nic", "bare", "vm-nsg", "vm4", "10.30.6.10", true, "batch"),
 		nic("vm5-nic", "app", "", "vm5", "10.30.1.30", false),
+		nic("vm6-nic", "app", "", "vm6", "10.30.1.140", false, "web"),
 		secPE("pe-store", "pe", "Microsoft.Storage/storageAccounts", "shopfiles", "blob", "10.30.3.4"),
 		secPE("pe-vault", "legacy", "Microsoft.KeyVault/vaults", "shopkv", "vault", "10.30.4.4"),
 		flowLogObj("fl-core", "Microsoft.Network/virtualNetworks", "core", true, map[string]any{
@@ -219,6 +220,7 @@ func orEnds() []orEnd {
 		{name: "vm1", addr: a("10.30.1.10"), subnet: "app", subnetNSG: "app-nsg", nicNSG: "vm-nsg", asgs: []string{"web"}, src: n + "vm1-nic"},
 		{name: "vm2", addr: a("10.30.1.20"), subnet: "app", subnetNSG: "app-nsg", asgs: []string{"api"}, src: n + "vm2-nic"},
 		{name: "vm5", addr: a("10.30.1.30"), subnet: "app", subnetNSG: "app-nsg", src: n + "vm5-nic"},
+		{name: "vm6", addr: a("10.30.1.140"), subnet: "app", subnetNSG: "app-nsg", asgs: []string{"web"}, src: n + "vm6-nic"},
 		{name: "app-other", addr: a("10.30.1.200"), subnet: "app", subnetNSG: "app-nsg", src: "subnet sec/core/app"},
 		{name: "vm3", addr: a("10.30.2.10"), subnet: "data", subnetNSG: "data-nsg", asgs: []string{"web", "db"}, src: n + "vm3-nic"},
 		{name: "data-other", addr: a("10.30.2.200"), subnet: "data", subnetNSG: "data-nsg", src: "subnet sec/core/data"},
@@ -259,7 +261,7 @@ func orGrid() []orPacket {
 				continue
 			}
 			for _, inbound := range []bool{true, false} {
-				for _, port := range []int{22, 80, 443, 5432, 8080, 8443, 9000, 9050, 12345} {
+				for _, port := range []int{22, 80, 443, 5432, 7000, 7001, 8080, 8443, 9000, 9050, 12345} {
 					for _, proto := range []string{"tcp", "udp"} {
 						out = append(out, orPacket{self, peer, inbound, proto, port})
 					}
@@ -376,7 +378,11 @@ func orAWS(t *testing.T, r Result, carries map[string][]string, p orPacket) bool
 		key = "SecurityGroupIngress"
 	}
 	for _, g := range carries[p.self.src] {
-		for _, x := range list(object(t, r, "aws", awsSG, g)[key]) {
+		sg := object(t, r, "aws", awsSG, g)
+		if _, ok := sg[key]; !ok && !p.inbound {
+			return true // a group with no outbound rule is given AWS's allow-all
+		}
+		for _, x := range list(sg[key]) {
 			m := obj(x)
 			switch proto := fmt.Sprint(m["IpProtocol"]); {
 			case proto == "-1":
@@ -535,11 +541,96 @@ func orExplained(r Result, nsgs map[string]*nsg, p orPacket) bool {
 // through that Azure did not let through, and wherever less is, the
 // evidence names a rule that explains it.
 func TestNSGPacketOracle(t *testing.T) {
+	nsgOracle(t, "the fixture", nsgFixture())
+}
+
+// nsgVariant is the fixture with rules that put the arithmetic of groups
+// to the test: a deny of one group before an allow of another that shares
+// a member, a group allowed by one NSG and only part of its subnets by the
+// other on the path, an NSG that lets nothing out, and a group denied
+// after the internet is allowed.
+func nsgVariant() snapshot.Snapshot {
 	s := nsgFixture()
+	add := func(nsg string, replace bool, rules ...any) {
+		for _, o := range s.Objects {
+			if o.Kind() == "Microsoft.Network/networkSecurityGroups" && o.Name() == nsg {
+				p := obj(obj(o.Body["spec"])["properties"])
+				if replace {
+					p["securityRules"] = rules
+				} else {
+					p["securityRules"] = append(list(p["securityRules"]), rules...)
+				}
+			}
+		}
+	}
+	add("aks-nsg", true,
+		rule("allow-https", "Allow", "Inbound", 100, "Tcp", "Internet", "*", "443"),
+		asgRule("deny-batch-https", "Deny", "Inbound", 200, "Tcp", "asg:batch", "*", "443"),
+		asgRule("deny-db-7000", "Deny", "Inbound", 300, "Tcp", "asg:db", "*", "7000"),
+		asgRule("allow-web-7000", "Allow", "Inbound", 310, "Tcp", "asg:web", "*", "7000"),
+		rule("deny-out-all", "Deny", "Outbound", 100, "*", "*", "*", "*"))
+	add("app-nsg", false, asgRule("allow-web-7001", "Allow", "Inbound", 150, "Tcp", "asg:web", "*", "7001"))
+	add("vm-nsg", false, rule("allow-data-7001", "Allow", "Inbound", 130, "Tcp", "10.30.2.0/24", "*", "7001"))
+	return s
+}
+
+func TestNSGPacketOracleGroups(t *testing.T) {
+	s := nsgVariant()
+	nsgOracle(t, "the variant", s)
+	// The packets the variant is there for.
+	nsgs := orFixtureNSGs(s)
+	ends := map[string]orEnd{}
+	for _, e := range orEnds() {
+		ends[e.name] = e
+	}
+	res := map[string]Result{"aws": runNSG(t, s, nsgMaps()["aws"]), "gcp": runNSG(t, s, nsgMaps()["gcp"])}
+	for _, c := range []struct {
+		self, peer string
+		inbound    bool
+		port       int
+		azure      bool
+		aws, gcp   bool
+	}{
+		// vm3 is in web and in db: the deny of db comes first.
+		{"node", "vm3", true, 7000, false, false, false},
+		// vm1 is in web only: Azure lets it in. AWS cannot say "web but
+		// not db", so the group's allow is not written; vm1 gets in by the
+		// network's own allow, from which db's subnet is taken out. GCP
+		// keeps the two rules in order.
+		{"node", "vm1", true, 7000, true, true, true},
+		// One NSG allows the web group, the other only the data subnet.
+		{"vm1", "vm6", true, 7001, false, false, false},
+		{"vm1", "vm3", true, 7001, true, false, false},
+		// Nothing out at all.
+		{"node", "internet", false, 443, false, false, false},
+		{"node", "vm5", false, 443, false, false, false},
+		// The internet in on HTTPS, the batch group not.
+		{"node", "internet", true, 443, true, true, true},
+		{"node", "vm4", true, 443, false, false, false},
+	} {
+		p := orPacket{ends[c.self], ends[c.peer], c.inbound, "tcp", c.port}
+		if az, by := orAzure(nsgs, p); az != c.azure {
+			t.Errorf("Azure: %s: %v (%v), want %v", p, az, by, c.azure)
+		}
+		if got := orAWS(t, res["aws"], orCarries(res["aws"]), p); got != c.aws {
+			t.Errorf("aws: %s: %v, want %v", p, got, c.aws)
+		}
+		if got := orGCP(res["gcp"], orCarries(res["gcp"]), p); got != c.gcp {
+			t.Errorf("gcp: %s: %v, want %v", p, got, c.gcp)
+		}
+	}
+	if eg := sgStrings(t, res["aws"], "aks-nsg", "SecurityGroupEgress"); strings.Join(eg, ",") != "-1 to 127.0.0.1/32" {
+		t.Errorf("an NSG that lets nothing out: %v", eg)
+	}
+}
+
+func nsgOracle(t *testing.T, label string, s snapshot.Snapshot) {
+	t.Helper()
 	nsgs := orFixtureNSGs(s)
 	grid := orGrid()
 	for _, target := range []string{"aws", "gcp"} {
-		r := runNSG(t, s, nsgMaps()[target])
+		target = label + ", " + target
+		r := runNSG(t, s, nsgMaps()[target[len(label)+2:]])
 		carries := orCarries(r)
 		allowedBoth, stricter, wider := 0, map[string]int{}, 0
 		for _, p := range grid {
@@ -552,7 +643,7 @@ func TestNSGPacketOracle(t *testing.T) {
 			az, deciding := orAzure(nsgs, p)
 			var got bool
 			switch {
-			case target == "aws":
+			case strings.HasSuffix(target, "aws"):
 				got = orAWS(t, r, carries, p)
 			case p.self.endpoint:
 				got = orGCPEndpoint(t, r, p)
@@ -729,6 +820,7 @@ func TestNSGsOnInterfacesAWS(t *testing.T) {
 		"Microsoft.Network/networkInterfaces sec/vm3-nic": "data-nsg db web",
 		"Microsoft.Network/networkInterfaces sec/vm4-nic": "vm-nsg batch",
 		"Microsoft.Network/networkInterfaces sec/vm5-nic": "app-nsg",
+		"Microsoft.Network/networkInterfaces sec/vm6-nic": "app-nsg web",
 		"Microsoft.Network/privateEndpoints sec/pe-store": "core-endpoints",
 		"Microsoft.Network/privateEndpoints sec/pe-vault": "core-endpoints",
 		"subnet sec/core/app":                             "app-nsg",
@@ -909,6 +1001,7 @@ func TestNSGsOnInterfacesGCP(t *testing.T) {
 	for _, c := range []struct{ nsg, where, rule, status string }{
 		{"app-nsg", "tag app-nsg", "deny-batch", nsgExact},
 		{"app-nsg", "tag app-nsg", "allow-out-db", nsgNotCarried},
+		{"app-nsg", "tag app-nsg-vm-nsg", "allow-out-db", nsgStricter},
 		{"app-nsg", "tag app-nsg", "deny-out-db", nsgStricter},
 		{"app-nsg", "tag app-nsg", "DenyAllInBound", nsgExact},
 		{"data-nsg", "tag data-nsg", "allow-admin-from-web", nsgExact},
@@ -1033,6 +1126,20 @@ func TestNSGEndpointGroups(t *testing.T) {
 	r = runNSG(t, s, nsgMaps()["aws"])
 	if ids := canonJSON(object(t, r, "aws", awsEndpoint, "core-s3")["SecurityGroupIds"]); !strings.Contains(ids, "|db|") || !strings.Contains(ids, "|core-endpoints|") {
 		t.Errorf("the endpoints do not carry the marker all were in: %s", ids)
+	}
+	// Whatever ports the NSG let in, an interface endpoint answers HTTPS.
+	wide := nsgFixture()
+	for i, o := range wide.Objects {
+		if o.Name() == "pe-vault" {
+			// Alone behind its endpoints: nothing else narrows them.
+			wide.Objects[i] = az("Microsoft.Network/applicationSecurityGroups", "sec", "unused", map[string]any{"location": "westeurope", "properties": map[string]any{}})
+		}
+		if o.Name() == "pe-nsg" {
+			wide.Objects[i] = secNSG("pe-nsg", rule("allow-app", "Allow", "Inbound", 100, "Tcp", "10.30.1.0/24", "*", "400-500"), rule("deny-rest", "Deny", "Inbound", 200, "*", "VirtualNetwork", "*", "*"))
+		}
+	}
+	if in := sgStrings(t, runNSG(t, wide, nsgMaps()["aws"]), "core-endpoints", "SecurityGroupIngress"); strings.Join(in, ",") != "tcp/443-443 from 10.30.1.0/24" {
+		t.Errorf("the endpoints' group for an NSG that let in ports 400-500: %v", in)
 	}
 	// Policies off everywhere: the group written without any NSG.
 	plain := nsgFixture()
@@ -1159,5 +1266,63 @@ func TestNetSetIntersections(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// An interface only some of whose addresses are in a group is not a
+// member: it carries neither the group's marker nor the rules for its
+// members.
+func TestNSGPartMember(t *testing.T) {
+	s := nsgFixture()
+	dual := nic("dual-nic", "app", "", "vm7", "10.30.1.50", false, "api")
+	p := obj(obj(dual.Body["spec"])["properties"])
+	p["ipConfigurations"] = append(list(p["ipConfigurations"]), map[string]any{"name": "ipconfig2", "properties": map[string]any{
+		"subnet": secRef("Microsoft.Network/virtualNetworks/subnets", "core/app"), "privateIPAddress": "10.30.1.51", "privateIPAllocationMethod": "Dynamic"}})
+	s.Objects = append(s.Objects, dual)
+	const src = "Microsoft.Network/networkInterfaces sec/dual-nic"
+	for name, m := range nsgMaps() {
+		r := runNSG(t, s, m)
+		if got := strings.Join(orCarries(r)[src], " "); got != "app-nsg" {
+			t.Errorf("%s: it carries %q", name, got)
+		}
+		for _, l := range entry(t, r, src).Losses {
+			if l.Widens {
+				t.Errorf("%s: %s", name, l.Why)
+			}
+		}
+	}
+	// Where the rule for the group's members is a deny, not applying it
+	// is less protected, and GCP's tags cannot apply it in part.
+	for i, o := range s.Objects {
+		if o.Name() == "aks-nsg" {
+			s.Objects[i] = secNSG("app-nsg-2", asgRule("deny-api-admin", "Deny", "Inbound", 100, "Tcp", "*", "asg:api", "8443"))
+		}
+	}
+	subs := list(obj(obj(s.Objects[0].Body["spec"])["properties"])["subnets"])
+	obj(subs[0])["properties"].(map[string]any)["networkSecurityGroup"] = secRef("Microsoft.Network/networkSecurityGroups", "app-nsg-2")
+	obj(subs[4])["properties"].(map[string]any)["networkSecurityGroup"] = secRef("Microsoft.Network/networkSecurityGroups", "app-nsg")
+	g := runNSG(t, s, nsgMaps()["gcp"])
+	if l := lossAbout(entry(t, g, src), "only some of its IP configurations"); l == nil || !l.Widens {
+		t.Errorf("gcp: a deny for a group it is partly in: %+v", entry(t, g, src).Losses)
+	}
+	a := runNSG(t, s, nsgMaps()["aws"])
+	for _, x := range sgStrings(t, a, orCarries(a)[src][0], "SecurityGroupIngress") {
+		if strings.HasPrefix(x, "-1") || strings.HasPrefix(x, "tcp/0-65535") || strings.Contains(x, "8443") {
+			t.Errorf("aws: the deny is not taken out for an interface partly in the group: %s", x)
+		}
+	}
+}
+
+// A flow log of a network that is refused is refused with it.
+func TestFlowLogOfRefusedNetwork(t *testing.T) {
+	m := nsgMaps()["aws"]
+	m.Network.Zone = ""
+	r := runNSG(t, nsgFixture(), m)
+	e := entry(t, r, "Microsoft.Network/networkWatchers/flowLogs NetworkWatcherRG/NetworkWatcher_westeurope/fl-core")
+	if e.State != Refused || !strings.Contains(e.Reason, "is refused") {
+		t.Errorf("%s %s", e.State, e.Reason)
+	}
+	if len(objectByKind(r, "aws", awsFlowLog)) != 0 {
+		t.Error("a flow log is written for a VPC that is not")
 	}
 }

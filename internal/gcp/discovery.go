@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -152,16 +153,7 @@ func FetchDocs(cacheDir string, maxAge time.Duration) *Docs {
 		if st, err := os.Stat(path); err == nil && time.Since(st.ModTime()) < maxAge {
 			return os.ReadFile(path)
 		}
-		u := docURL(api, ver)
-		resp, err := http.Get(u) //nolint:gosec // fixed googleapis.com host; api and version come from Cloud Asset Inventory
-		if err != nil {
-			return nil, fmt.Errorf("download %s: %w", u, err)
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("download %s: HTTP %d", u, resp.StatusCode)
-		}
-		b, err := io.ReadAll(resp.Body)
+		b, err := download(docURLs(api, ver))
 		if err != nil {
 			return nil, err
 		}
@@ -170,6 +162,45 @@ func FetchDocs(cacheDir string, maxAge time.Duration) *Docs {
 		}
 		return b, os.WriteFile(path, b, 0o644)
 	}}
+}
+
+var apiName = regexp.MustCompile(`^[a-z][a-z0-9]*$`)
+
+// docURLs are where a document is published: Google's directory, then the
+// service's own endpoint. Some APIs are only at the second (Artifact
+// Registry's directory entry answers 404), so translating to them failed
+// before any object was checked.
+var docURLs = func(api, ver string) []string {
+	urls := []string{docURL(api, ver)}
+	if apiName.MatchString(api) {
+		urls = append(urls, "https://"+api+".googleapis.com/$discovery/rest?version="+neturl.QueryEscape(ver))
+	}
+	return urls
+}
+
+// download reads the first URL that answers 200; a 404 tries the next.
+func download(urls []string) ([]byte, error) {
+	var last error
+	for _, u := range urls {
+		resp, err := http.Get(u) //nolint:gosec // fixed googleapis.com hosts; api and version come from Cloud Asset Inventory or a translation
+		if err != nil {
+			return nil, fmt.Errorf("download %s: %w", u, err)
+		}
+		b, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		switch {
+		case err != nil:
+			return nil, fmt.Errorf("download %s: %w", u, err)
+		case resp.StatusCode == http.StatusOK:
+			return b, nil
+		case resp.StatusCode == http.StatusNotFound:
+			last = fmt.Errorf("download %s: HTTP 404", u)
+			continue
+		default:
+			return nil, fmt.Errorf("download %s: HTTP %d", u, resp.StatusCode)
+		}
+	}
+	return nil, last
 }
 
 // Doc returns the document an asset names.

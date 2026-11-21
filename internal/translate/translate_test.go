@@ -19,6 +19,10 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files")
 
+// The support dates a translation compares with are compared with a fixed
+// day, so the golden files hold as the calendar moves.
+func init() { today = func() string { return "2026-11-20" } }
+
 // az is an Azure object as a capture writes it.
 func az(kind, group, name string, spec map[string]any) snapshot.Object {
 	return snapshot.Object{Body: map[string]any{"apiVersion": "azure.truthform.org/v1", "kind": kind,

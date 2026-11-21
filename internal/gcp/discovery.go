@@ -38,6 +38,8 @@ type Schema struct {
 	Properties           map[string]*Schema `json:"properties"`
 	Items                *Schema            `json:"items"`
 	AdditionalProperties *Schema            `json:"additionalProperties"`
+	Enum                 []string           `json:"enum"`
+	EnumDeprecated       []bool             `json:"enumDeprecated"`
 }
 
 // Method is a Discovery method.
@@ -649,6 +651,26 @@ func canon(v any) string { b, _ := json.Marshal(v); return string(b) }
 
 // DocFor loads an API's document by name and version (pubsub, v1).
 func (ds *Docs) DocFor(api, ver string) (*Doc, error) { return ds.Doc(docURL(api, ver), "") }
+
+// Allowed are the values a schema's field takes, as the document lists
+// them, leaving out those it marks deprecated; nil when the field is not
+// an enum. A translation checks a version against these rather than a list
+// of its own, so a version Google adds or retires is known on the day.
+func (d *Doc) Allowed(schema, field string) []string {
+	s := d.resolve(d.Schemas[schema])
+	if s == nil || s.Properties[field] == nil {
+		return nil
+	}
+	f := d.resolve(s.Properties[field])
+	var out []string
+	for i, v := range f.Enum {
+		if i < len(f.EnumDeprecated) && f.EnumDeprecated[i] {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
 
 // CheckSpec refuses a field a request cannot set: one the schema does not
 // declare, or one the server sets, by the document's flag or the prose

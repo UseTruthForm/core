@@ -126,6 +126,12 @@ type DatabaseMap struct {
 	// KMS key name (GCP). Without it such a server is encrypted with the
 	// target's own key, and that is reported as widening.
 	KMSKey string `json:"kmsKey,omitempty"`
+	// AcceptTLSFloor accepts the target's own oldest TLS version where it
+	// cannot be set to the source's (SQL Server on Cloud SQL; TLS 1.3 only
+	// on RDS for SQL Server, which always takes 1.2). Set it once the
+	// floor has been checked on the target: the loss is then named, and
+	// not counted as widening.
+	AcceptTLSFloor bool `json:"acceptTlsFloor,omitempty"`
 }
 
 // ClusterMap is what one cluster needs on the target. Identity is not

@@ -287,7 +287,8 @@ func TestPostgresToCloudSQL(t *testing.T) {
 		t.Errorf("key: %v", k)
 	}
 	flags := canonJSON(st["databaseFlags"])
-	if flags != `[{"name":"log_connections","value":"on"},{"name":"work_mem","value":"8192"}]` {
+	// The oldest TLS version is PostgreSQL's own flag on Cloud SQL too.
+	if flags != `[{"name":"log_connections","value":"on"},{"name":"ssl_min_protocol_version","value":"TLSv1.2"},{"name":"work_mem","value":"8192"}]` {
 		t.Errorf("flags: %s", flags)
 	}
 	if l := hasLoss(entry(t, r, typPG+"/configurations data/shop-pg/password_encryption"), "properties.value"); l == nil || !l.Widens {
@@ -373,7 +374,6 @@ func TestDatabaseWidens(t *testing.T) {
 			typSQL + "/auditingSettings data/shop-sql/default properties.state",
 		},
 		"gcp": {
-			typPG + " data/shop-pg configurations/ssl_min_protocol_version",
 			typPG + "/advancedThreatProtectionSettings data/shop-pg/Default properties.state",
 			typPG + "/configurations data/shop-pg/password_encryption properties.value",
 			typPG + "/configurations data/shop-pg/pgaudit.log properties.value",
@@ -401,6 +401,21 @@ func TestDatabaseWidens(t *testing.T) {
 	setProp(s, typSQL, "shop-sql", "minimalTlsVersion", "1.3")
 	if l := hasLoss(entry(t, runDB(t, s, dbMaps()["aws"]), typSQL+" data/shop-sql"), "properties.minimalTlsVersion"); l == nil || !l.Widens {
 		t.Errorf("TLS 1.3: %+v", l)
+	}
+	// Where the floor cannot be set, a person who has checked the
+	// target's accepts it in the map: named, not widening. Nowhere else
+	// does the setting change anything.
+	for name, m := range dbMaps() {
+		d := m.Databases["data/shop-sql"]
+		d.AcceptTLSFloor = true
+		m.Databases["data/shop-sql"] = d
+		l := hasLoss(entry(t, runDB(t, s, m), typSQL+" data/shop-sql"), "properties.minimalTlsVersion")
+		if l == nil || l.Widens || !strings.Contains(l.Why, "acceptTlsFloor") {
+			t.Errorf("%s: an accepted floor: %+v", name, l)
+		}
+	}
+	if l := hasLoss(entry(t, runDB(t, dbFixture(), dbMaps()["gcp"]), typSQL+" data/shop-sql"), "properties.minimalTlsVersion"); l == nil || !l.Widens || !strings.Contains(l.Why, "acceptTlsFloor") {
+		t.Errorf("gcp SQL Server, not accepted: %+v", l)
 	}
 	// Immutable backups, FIPS, an outbound restriction.
 	s = dbFixture()
@@ -536,11 +551,36 @@ func TestDatabasesNeedTheirChoices(t *testing.T) {
 	}
 	// A version the target does not offer, and Entra ID sign-in only.
 	s = dbFixture()
-	setProp(s, typPG, "shop-pg", "version", "12")
+	setProp(s, typPG, "shop-pg", "version", "10")
 	obj(obj(spec(find(s, typPG, "reports-pg"))["properties"]))["authConfig"] = map[string]any{"activeDirectoryAuth": "Enabled", "passwordAuth": "Disabled"}
 	r = runDB(t, s, dbMaps()["aws"])
-	if e := entry(t, r, typPG+" data/shop-pg"); e.State != Refused || !strings.Contains(e.Reason, `"12" is not a version RDS offers`) {
-		t.Errorf("PostgreSQL 12: %s %s", e.State, e.Reason)
+	if e := entry(t, r, typPG+" data/shop-pg"); e.State != Refused || !strings.Contains(e.Reason, `"10" is not a version RDS creates`) {
+		t.Errorf("PostgreSQL 10: %s %s", e.State, e.Reason)
+	}
+	// Past standard support: carried over, and the Extended Support charge
+	// named; newer than the calendar: carried over for RDS to judge.
+	for v, want := range map[string]string{"12": "RDS Extended Support", "19": "newer than the RDS release calendar"} {
+		s := dbFixture()
+		setProp(s, typPG, "shop-pg", "version", v)
+		r := runDB(t, s, dbMaps()["aws"])
+		if e := entry(t, r, typPG+" data/shop-pg"); e.State == Refused || !anyRequirement(r, want) {
+			t.Errorf("PostgreSQL %s: %s %s %v", v, e.State, e.Reason, r.Report.Requirements)
+		}
+	}
+	// Cloud SQL's versions are its definition's: one it does not list is
+	// refused, on either engine.
+	s8 := dbFixture()
+	setProp(s8, typPG, "shop-pg", "version", "8")
+	g8 := dbMaps()["gcp"]
+	sq := g8.Databases["data/shop-sql"]
+	sq.Version = "SQLSERVER_2025_WEB"
+	g8.Databases["data/shop-sql"] = sq
+	r8 := runDB(t, s8, g8)
+	if e := entry(t, r8, typPG+" data/shop-pg"); e.State != Refused || !strings.Contains(e.Reason, "definition offers") {
+		t.Errorf("gcp PostgreSQL 8: %s %s", e.State, e.Reason)
+	}
+	if e := entry(t, r8, typSQL+" data/shop-sql"); e.State != Refused || !strings.Contains(e.Reason, "definition offers") {
+		t.Errorf("gcp SQL Server 2025 Web: %s %s", e.State, e.Reason)
 	}
 	if e := entry(t, r, typPG+" data/reports-pg"); e.State != Refused || !strings.Contains(e.Reason, "Entra ID sign-in only") {
 		t.Errorf("Entra ID only: %s %s", e.State, e.Reason)

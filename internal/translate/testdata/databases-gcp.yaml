@@ -31,10 +31,6 @@ report:
       why: it could be restored to any point in the last 14 days; Cloud SQL ENTERPRISE
         keeps transaction logs 7 days at most, so a point in time goes back 7 (daily
         backups are kept 14)
-    - field: configurations/ssl_min_protocol_version
-      why: 'TLSv1.2: Cloud SQL has no setting for the oldest TLS version it takes,
-        so it may take older ones than the source did'
-      widens: true
     - field: tags.Cost Center
       why: a GCP label takes lowercase letters, digits, _ and - only (a key starts
         with a letter), so it is not carried over
@@ -156,8 +152,9 @@ report:
         keeps transaction logs 7 days at most, so a point in time goes back 7 (daily
         backups are kept 14)
     - field: properties.minimalTlsVersion
-      why: '1.2: Cloud SQL has no setting for the oldest TLS version it takes, so
-        it may take older ones than the source did'
+      why: '1.2: Cloud SQL for SQL Server has no setting for the oldest TLS version
+        it takes, so it may take older ones than the source did; once its floor is
+        checked on the target, databases.data/shop-sql.acceptTlsFloor accepts it'
       widens: true
     - field: properties.retentionDays
       why: 'Azure kept the server 7 days after it was deleted; Cloud SQL refuses to
@@ -430,6 +427,8 @@ snapshots:
         databaseFlags:
         - name: log_connections
           value: "on"
+        - name: ssl_min_protocol_version
+          value: TLSv1.2
         - name: work_mem
           value: "8192"
         edition: ENTERPRISE

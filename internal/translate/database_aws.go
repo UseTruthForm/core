@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Database servers on AWS: an RDS DB instance each, in a DB subnet group
@@ -24,10 +25,29 @@ const (
 
 var (
 	rdsName = regexp.MustCompile(`^[a-z]([a-z0-9]|-[a-z0-9])*$`)
-	// rdsPG are the PostgreSQL major versions RDS offers under standard
-	// support; an older one is refused, not moved to a newer one.
-	rdsPG = map[string]bool{"13": true, "14": true, "15": true, "16": true, "17": true}
+	// rdsPG is when RDS's standard support ends for each PostgreSQL major
+	// version it creates, from AWS's release calendar
+	// (docs.aws.amazon.com/AmazonRDS/latest/PostgreSQLReleaseNotes/
+	// postgresql-release-calendar.html, read 2026-11-20). The CloudFormation
+	// schema lists no versions, so this is the one list kept here; a major
+	// version newer than all of them is carried over for RDS to accept or
+	// refuse at the restore, and one older is refused.
+	rdsPG = map[string]string{
+		"11": "2024-02-29", "12": "2025-02-28", "13": "2026-02-28", "14": "2027-02-28",
+		"15": "2028-02-29", "16": "2029-02-28", "17": "2030-02-28", "18": "2031-02-28",
+	}
+	rdsPGNewest = 18
 )
+
+// rdsPGSupport says whether RDS creates a PostgreSQL major version, and
+// when its standard support ends ("" for one newer than the calendar).
+func rdsPGSupport(v string) (ends string, ok bool) {
+	if e, ok := rdsPG[v]; ok {
+		return e, true
+	}
+	n, err := strconv.Atoi(v)
+	return "", err == nil && n > rdsPGNewest
+}
 
 // pgCommon are PostgreSQL's own parameters that RDS's parameter groups
 // and Cloud SQL's database flags both take by the same name and meaning.
@@ -110,10 +130,16 @@ func (d rdsWriter) server(s *dbServer, o *out) (Entry, string) {
 		spec["Engine"], spec["EngineVersion"], spec["LicenseModel"] = dm.Edition, dm.Version, dm.LicenseModel
 		spec["AllocatedStorage"] = strconv.Itoa(storage)
 		family = fmt.Sprintf("%s-%d.0", dm.Edition, major)
-		params = d.sqlParams(s, &e)
+		params = d.sqlParams(s, &e, dm.AcceptTLSFloor, key)
 	} else {
-		if !rdsPG[s.version] {
-			return Entry{}, fmt.Sprintf("PostgreSQL %q is not a version RDS offers here (13 to 17); it is not moved to another", s.version)
+		ends, ok := rdsPGSupport(s.version)
+		switch {
+		case !ok:
+			return Entry{}, fmt.Sprintf("PostgreSQL %q is not a version RDS creates (11 to %d, per AWS's release calendar); it is not moved to another", s.version, rdsPGNewest)
+		case ends == "":
+			o.require(fmt.Sprintf("PostgreSQL %s is newer than the RDS release calendar this translation read (to %d): RDS accepts or refuses it at the restore", s.version, rdsPGNewest))
+		case ends < today():
+			o.require(fmt.Sprintf("PostgreSQL %s on RDS is past AWS's end of standard support (%s): %s runs under RDS Extended Support, which AWS charges for; upgrade it, or accept the charge", s.version, ends, s.name))
 		}
 		if s.storageGB == 0 {
 			return Entry{}, "its storage size is not in the snapshot"
@@ -286,7 +312,7 @@ func (d rdsWriter) pgParams(s *dbServer, e *Entry) map[string]any {
 
 // sqlParams are SQL Server's: encrypted connections only, as Azure SQL
 // takes them, and the oldest TLS version.
-func (d rdsWriter) sqlParams(s *dbServer, e *Entry) map[string]any {
+func (d rdsWriter) sqlParams(s *dbServer, e *Entry, accept bool, key string) map[string]any {
 	ps := map[string]any{"rds.force_ssl": "1"}
 	switch s.tlsMin {
 	case "1.1":
@@ -295,8 +321,13 @@ func (d rdsWriter) sqlParams(s *dbServer, e *Entry) map[string]any {
 		ps["rds.tls10"], ps["rds.tls11"] = "disabled", "disabled"
 	case "1.3":
 		ps["rds.tls10"], ps["rds.tls11"] = "disabled", "disabled"
+		if accept {
+			e.Losses = append(e.Losses, Loss{Field: "properties.minimalTlsVersion",
+				Why: "1.3: RDS for SQL Server cannot refuse TLS 1.2 (rds.tls12 cannot be changed); the map accepts that floor (databases." + key + ".acceptTlsFloor), so it is named, not counted as widening"})
+			break
+		}
 		e.Losses = append(e.Losses, Loss{Field: "properties.minimalTlsVersion", Widens: true,
-			Why: "1.3: RDS for SQL Server cannot refuse TLS 1.2, so it takes TLS 1.2 and later"})
+			Why: "1.3: RDS for SQL Server cannot refuse TLS 1.2 (rds.tls12 cannot be changed), so it takes TLS 1.2 and later; databases." + key + ".acceptTlsFloor accepts that"})
 	}
 	return ps
 }
@@ -329,3 +360,7 @@ func rdsTags(tags map[string]string) ([]any, []Loss) {
 	}
 	return out, losses
 }
+
+// today is the date a translation compares support dates with; the tests
+// pin it, so a translation's report does not change as the calendar does.
+var today = func() string { return time.Now().UTC().Format("2006-01-02") }

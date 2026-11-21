@@ -1504,6 +1504,7 @@ databases:                  # per server, keyed group/server: what Azure cannot 
     version: 16.00.4185.3.v1         # aws: an RDS engine version; gcp: SQLSERVER_2022_STANDARD
     subnets: [net/core/app, net/core/db2]
     storageGB: 300                   # only when its databases give no maximum size
+    acceptTlsFloor: true             # only after checking the target: see below
 ```
 
 | Service Bus | sqs-sns | pubsub | rabbitmq |
@@ -1558,7 +1559,9 @@ so. An account with no blob container writes nothing.
 | Private (delegated subnet, or the map's subnets) | in the network's subnets, reached from the network on its port, or through the NSG of its subnet | private IP in the VPC network, no public IP; private services access is a requirement |
 | Public, firewall rules | `PubliclyAccessible`, a security group allowing exactly those ranges on its port | public IP, the ranges as authorized networks |
 | Firewall rule 0.0.0.0 (all Azure services) | not carried over (less than the source) | the same |
-| Encrypted connections only | `rds.force_ssl` and the TLS floor in a parameter group | `sslMode: ENCRYPTED_ONLY`; no TLS floor: reported as less protected |
+| Encrypted connections only | `rds.force_ssl` and the TLS floor in a parameter group | `sslMode: ENCRYPTED_ONLY` |
+| Oldest TLS version | PostgreSQL: `ssl_min_protocol_version`; SQL Server: `rds.tls10`/`rds.tls11` disabled. TLS 1.3 only cannot be set (RDS always takes 1.2): less protected unless accepted | PostgreSQL: the `ssl_min_protocol_version` database flag; SQL Server: Cloud SQL has no such setting: less protected unless accepted |
+| Engine version | PostgreSQL 14 to 18 under standard support; 11 to 13 run under paid RDS Extended Support (named in the report); older refused | the versions Cloud SQL's own definition lists and does not mark deprecated |
 | Server parameters set by a person | the parameter group, where RDS has the parameter | database flags, where Cloud SQL has the flag |
 | Customer-managed key | the map's `kmsKey`; without it, less protected | the same |
 | Admin login | `MasterUsername`, the password kept by RDS in Secrets Manager | a requirement: create the user, with a password from a secret source |
@@ -1566,6 +1569,13 @@ so. An account with no blob container writes nothing.
 | Entra ID admins, Entra-only sign-in | refused: identity (#32) | refused |
 | Auditing, threat detection, vulnerability assessment | lost, reported as less protected | the same |
 | Elastic pools, replicas, failover groups, backups | refused | refused |
+
+Where the target cannot set the source's oldest TLS version (SQL Server on
+Cloud SQL; TLS 1.3 only on RDS for SQL Server), the loss is reported as less
+protected and the run fails. Once the target's floor has been checked,
+`databases.<group/server>.acceptTlsFloor: true` accepts it: the loss is still
+named, and no longer fails the run. RDS's PostgreSQL versions come from AWS's
+release calendar; Cloud SQL's are read from its definition each run.
 
 No password and no row of data is carried over. A server Azure kept after
 deletion (Azure SQL's soft delete) gets deletion protection on the target,

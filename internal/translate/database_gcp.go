@@ -20,10 +20,6 @@ const gcpSQL = "sqladmin.googleapis.com/Instance" // Cloud Asset Inventory's nam
 
 var (
 	gcpSQLName = regexp.MustCompile(`^[a-z]([-a-z0-9]*[a-z0-9])?$`)
-	// gcpPG are the PostgreSQL major versions Azure has that Cloud SQL
-	// offers (its databaseVersion enum).
-	gcpPG         = map[string]bool{"11": true, "12": true, "13": true, "14": true, "15": true, "16": true, "17": true, "18": true}
-	gcpSQLVersion = regexp.MustCompile(`^SQLSERVER_(2017|2019|2022|2025)_(STANDARD|ENTERPRISE|EXPRESS|WEB)$`)
 )
 
 type cloudSQLWriter struct{ m Map }
@@ -66,14 +62,24 @@ func (d cloudSQLWriter) server(s *dbServer, o *out) (Entry, string) {
 		return Entry{}, fmt.Sprintf("%q is not a Cloud SQL instance name (a letter, then letters, digits and hyphens, at most 63): give it one in the map's names (%s)", name, s.src)
 	}
 	e := Entry{Source: s.src, State: Mapped, Losses: append([]Loss(nil), s.losses...)}
+	doc, err := o.tg.GCP.DocFor("sqladmin", "v1")
+	if err != nil {
+		return Entry{}, "Cloud SQL's definition could not be read, so its versions are not known: " + err.Error()
+	}
+	// The versions Cloud SQL takes are its definition's, not a list kept
+	// here: those it lists and does not mark deprecated.
+	offered := map[string]bool{}
+	for _, v := range doc.Allowed("DatabaseInstance", "databaseVersion") {
+		offered[v] = true
+	}
 	var version string
 	storage := s.storageGB
 	if s.sql {
 		switch {
 		case dm.Version == "":
 			return Entry{}, fmt.Sprintf("the map gives no SQL Server version for it (databases.%s.version, such as SQLSERVER_2022_STANDARD): Azure SQL Database has none", key)
-		case !gcpSQLVersion.MatchString(dm.Version):
-			return Entry{}, fmt.Sprintf("databases.%s.version: %q is not a Cloud SQL SQL Server version (SQLSERVER_2022_STANDARD)", key, dm.Version)
+		case !strings.HasPrefix(dm.Version, "SQLSERVER_") || !offered[dm.Version]:
+			return Entry{}, fmt.Sprintf("databases.%s.version: %q is not a SQL Server version Cloud SQL's definition offers (SQLSERVER_2022_STANDARD)", key, dm.Version)
 		}
 		version = dm.Version
 		if dm.StorageGB > 0 {
@@ -83,8 +89,8 @@ func (d cloudSQLWriter) server(s *dbServer, o *out) (Entry, string) {
 			return Entry{}, fmt.Sprintf("its databases give no maximum size, and the map gives no storage for it (databases.%s.storageGB)", key)
 		}
 	} else {
-		if !gcpPG[s.version] {
-			return Entry{}, fmt.Sprintf("PostgreSQL %q is not a version Cloud SQL offers; it is not moved to another", s.version)
+		if !offered["POSTGRES_"+s.version] {
+			return Entry{}, fmt.Sprintf("PostgreSQL %q is not a version Cloud SQL's definition offers (POSTGRES_%s); it is not moved to another", s.version, s.version)
 		}
 		if storage == 0 {
 			return Entry{}, "its storage size is not in the snapshot"
@@ -121,13 +127,19 @@ func (d cloudSQLWriter) server(s *dbServer, o *out) (Entry, string) {
 	if s.tls {
 		ip["sslMode"] = "ENCRYPTED_ONLY"
 	}
-	if s.tlsMin != "" && (s.tls || s.tlsMinSet) && !strings.HasSuffix(s.tlsMin, "1.0") {
-		field := "configurations/ssl_min_protocol_version"
-		if s.sql {
-			field = "properties.minimalTlsVersion"
-		}
-		e.Losses = append(e.Losses, Loss{Field: field, Widens: true,
-			Why: s.tlsMin + ": Cloud SQL has no setting for the oldest TLS version it takes, so it may take older ones than the source did"})
+	var tlsFlag map[string]any
+	switch {
+	case s.tlsMin == "" || !(s.tls || s.tlsMinSet) || strings.HasSuffix(s.tlsMin, "1.0"):
+	case !s.sql:
+		// Cloud SQL for PostgreSQL takes PostgreSQL's own
+		// ssl_min_protocol_version as a database flag (TLSv1 to TLSv1.3).
+		tlsFlag = map[string]any{"name": "ssl_min_protocol_version", "value": s.tlsMin}
+	case dm.AcceptTLSFloor:
+		e.Losses = append(e.Losses, Loss{Field: "properties.minimalTlsVersion",
+			Why: s.tlsMin + ": Cloud SQL for SQL Server has no setting for the oldest TLS version it takes; the map accepts the floor Google keeps (databases." + key + ".acceptTlsFloor), so it is named, not counted as widening"})
+	default:
+		e.Losses = append(e.Losses, Loss{Field: "properties.minimalTlsVersion", Widens: true,
+			Why: s.tlsMin + ": Cloud SQL for SQL Server has no setting for the oldest TLS version it takes, so it may take older ones than the source did; once its floor is checked on the target, databases." + key + ".acceptTlsFloor accepts it"})
 	}
 	if s.public {
 		ip["ipv4Enabled"] = true
@@ -172,6 +184,9 @@ func (d cloudSQLWriter) server(s *dbServer, o *out) (Entry, string) {
 	settings["ipConfiguration"] = ip
 
 	var flags []any
+	if tlsFlag != nil {
+		flags = append(flags, tlsFlag)
+	}
 	for _, p := range s.params {
 		n := strings.ToLower(p.name)
 		if !gcpPGFlags[n] {

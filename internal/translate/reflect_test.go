@@ -117,8 +117,15 @@ func readers() map[string]reflected {
 	rd[typPG] = reflected{version: pgVersion, name: "pg", read: func(o snapshot.Object) []Loss { return readPGServer(o).losses }}
 	rd[typSQL] = reflected{version: sqlVersion, name: "sql", read: func(o snapshot.Object) []Loss { return readSQLServer(o).losses }}
 	rd["Microsoft.Network/privateEndpoints"] = reflected{version: netVersion, name: "pe", read: func(o snapshot.Object) []Loss { return readPrivateEndpoint(o).losses }}
+	for _, more := range moreReaders {
+		more(rd)
+	}
 	return rd
 }
+
+// moreReaders lets a family add its readers from its own test file (in an
+// init), so families do not all edit this one.
+var moreReaders []func(map[string]reflected)
 
 // Every setting Azure's definition declares writable for a type a rule
 // reads is read: carried over, named as having no equivalent, or named as

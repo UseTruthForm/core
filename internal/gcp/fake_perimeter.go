@@ -92,8 +92,6 @@ func fakePerimeter(f *Fake, rel string, data map[string]any) error {
 	return nil
 }
 
-func anyList(v any) []any { l, _ := v.([]any); return l }
-
 // perimeterMethods names a call as VPC Service Controls does, for the
 // services whose ingress rules take method restrictions
 // (https://docs.cloud.google.com/vpc-service-controls/docs/supported-method-restrictions),

@@ -529,9 +529,9 @@ func name(rs []*resource, account string) {
 	for _, r := range rs {
 		seen := map[*resource]bool{}
 		for _, k := range sortedKeys(r.spec) {
-			walkStrings(deepCopy(map[string]any{k: r.spec[k]}), func(s string) string {
+			walkKeyed(deepCopy(map[string]any{k: r.spec[k]}), k, func(key, s string) string {
 				for _, v := range values {
-					if o := owners[v]; o.r != r && !seen[o.r] && (refersTo(r, k, o, s, v) || inJSONText(s, v, o)) {
+					if o := owners[v]; o.r != r && !seen[o.r] && (refersTo(r, k, key, o, s, v) || inJSONText(s, v, o)) {
 						seen[o.r] = true
 						deps[r] = append(deps[r], o.r)
 					}
@@ -649,11 +649,24 @@ func chosenID(t *TypeInfo) bool {
 // "truthform-drill", as is its ECR repository, and its Name became a token
 // for the repository, a false dependency that would block restoring the API
 // without the repository (review, 2026-10-22).
-func refersTo(r *resource, prop string, o refTarget, s, v string) bool {
-	if o.chosen && (prop == "Tags" || (r.base != "" && s == r.base)) {
+//
+// A tag's value in a policy's condition (aws:RequestTag/kubernetes-namespace,
+// aws:PrincipalTag/team) is a label as much as one under Tags, and so is a
+// property that holds the name of something outside AWS: a pod identity
+// association's Kubernetes namespace "shop" became a token for the EKS
+// cluster of that name, the association was then named by another hash,
+// and a second restore made it again.
+func refersTo(r *resource, prop, key string, o refTarget, s, v string) bool {
+	if o.chosen && (prop == "Tags" || strings.Contains(key, "Tag/") || foreignNames[r.t.Name][prop] || (r.base != "" && s == r.base)) {
 		return false
 	}
 	return matches(s, v)
+}
+
+// foreignNames are properties that name something no AWS resource is: a
+// Kubernetes namespace, a Kubernetes service account.
+var foreignNames = map[string]map[string]bool{
+	"AWS::EKS::PodIdentityAssociation": {"Namespace": true, "ServiceAccount": true},
 }
 
 // refable limits reference sources to values that identify something: the
@@ -679,13 +692,13 @@ func matches(s, v string) bool {
 
 func tokenize(r *resource, values []string, owners map[string]refTarget) {
 	for k, x := range r.spec {
-		r.spec[k] = walkStrings(x, func(s string) string {
+		r.spec[k] = walkKeyed(x, k, func(key, s string) string {
 			for _, v := range values {
 				o := owners[v]
 				if o.r == r || o.r.name == "" {
 					continue
 				}
-				if !refersTo(r, k, o, s, v) {
+				if !refersTo(r, k, key, o, s, v) {
 					if inJSONText(s, v, o) {
 						s = strings.ReplaceAll(s, `"`+v+`"`, `"`+refToken(o.r.t.Name, o.r.name, o.attr)+`"`)
 					}

@@ -46,6 +46,8 @@ type Map struct {
 		// Clusters: eks (aws) or gke (gcp), for AKS clusters. Their
 		// workloads travel through the Kubernetes snapshot, not this.
 		Clusters string `json:"clusters,omitempty"`
+		// Identity: workload (map_identity.go).
+		Identity string `json:"identity,omitempty"`
 	} `json:"destinations"`
 	// Secrets is what GCP's Secret Manager needs that Key Vault cannot say.
 	Secrets *SecretsMap `json:"secrets,omitempty"`
@@ -348,6 +350,9 @@ func (m Map) validate() error {
 	if err := m.validateClusters(); err != nil {
 		return err
 	}
+	if err := m.validateIdentity(); err != nil {
+		return err
+	}
 	want := map[string]string{"sqs-sns": "fifo", "pubsub": "ordering", "rabbitmq": "single-active-consumer"}[m.Destinations.Messaging]
 	if m.Sessions != "" && m.Sessions != want {
 		return fmt.Errorf("map: sessions: %q does not go with messaging %s (it takes %q)", m.Sessions, m.Destinations.Messaging, want)
@@ -502,6 +507,7 @@ func (m Map) destinationList() []string {
 	if m.Destinations.Clusters != "" {
 		d = append(d, "clusters: "+m.Destinations.Clusters)
 	}
+	d = append(d, m.identityDestination()...)
 	sort.Strings(d)
 	return d
 }
@@ -537,12 +543,12 @@ func (m Map) zoneFor(key string) string {
 // objects, which are built from the CloudFormation registry.
 func (m Map) NeedsAWS() bool {
 	return m.Destinations.Messaging == "sqs-sns" || m.Destinations.Registry == "ecr" || m.Destinations.DNS == "route53" || m.Destinations.Databases == "rds" || m.Destinations.Clusters == "eks" ||
-		(m.To == "aws" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != ""))
+		(m.To == "aws" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != "" || m.Destinations.Identity != ""))
 }
 
 // NeedsGCP reports whether a destination the map chooses writes GCP
 // objects, which are checked against Google's Discovery documents.
 func (m Map) NeedsGCP() bool {
 	return m.Destinations.Messaging == "pubsub" || m.Destinations.Registry == "artifact-registry" || m.Destinations.DNS == "cloud-dns" || m.Destinations.Databases == "cloud-sql" || m.Destinations.Clusters == "gke" ||
-		(m.To == "gcp" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != ""))
+		(m.To == "gcp" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != "" || m.Destinations.Identity != ""))
 }

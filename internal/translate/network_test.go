@@ -442,7 +442,8 @@ func TestDecidedTypes(t *testing.T) {
 			if want[e.Source] != e.State {
 				t.Errorf("%s: %s is %s, want %s (%s)", name, e.Source, e.State, want[e.Source], e.Reason)
 			}
-			if e.State == Refused && !strings.Contains(e.Reason, "#32") && !strings.Contains(e.Reason, "not a resource") {
+			// The identity family's refusals say their own reasons (identity_test.go).
+			if e.State == Refused && !strings.Contains(e.Reason, "#32") && !strings.Contains(e.Reason, "not a resource") && !(identity{}).claims(strings.ToLower(strings.Fields(e.Source)[0])) {
 				t.Errorf("%s: %s refused without its reason: %s", name, e.Source, e.Reason)
 			}
 		}

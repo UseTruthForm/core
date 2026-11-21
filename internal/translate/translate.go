@@ -149,6 +149,10 @@ type out struct {
 	// gcpServices are the sources written to Google services that only a
 	// service perimeter closes (perimeter.go).
 	gcpServices []gcpService
+	// src are all the source objects, for a family that must read what
+	// another's object says (identity: whether a vault authorizes with
+	// Azure RBAC at all).
+	src []snapshot.Object
 }
 
 // written is the spec of an object already written for a platform, or nil.
@@ -241,8 +245,9 @@ type family interface {
 // The network family comes before those that use its networks: DNS
 // private zones, databases placed in its subnets, and clusters whose nodes
 // are. Private access comes next, before the services it reaches: each
-// reads the private path written for it, to answer nowhere else.
-var families = []family{network{}, privateAccess{}, serviceBus{}, storage{}, keyVault{}, registry{}, dnsFamily{}, databases{}, clusters{}, decided{}}
+// reads the private path written for it, to answer nowhere else. Identity
+// comes after every family whose objects it grants access to.
+var families = []family{network{}, privateAccess{}, serviceBus{}, storage{}, keyVault{}, registry{}, dnsFamily{}, databases{}, clusters{}, identity{}, decided{}}
 
 // Translate rewrites an Azure snapshot for the target the map names, with
 // the target's definitions.
@@ -259,7 +264,7 @@ func Translate(src snapshot.Snapshot, m Map, tg Targets) (Result, error) {
 	case m.NeedsGCP() && tg.GCP == nil:
 		return Result{}, fmt.Errorf("the map's destinations write GCP objects, which need GCP's Discovery documents")
 	}
-	o := &out{m: m, tg: tg, objects: map[string][]snapshot.Object{}, keys: map[string]string{}, reqs: map[string]bool{}, subnets: map[string]*subnet{}, netSubs: map[string]*netSub{}, private: map[string]*privatePath{}}
+	o := &out{m: m, tg: tg, objects: map[string][]snapshot.Object{}, keys: map[string]string{}, reqs: map[string]bool{}, subnets: map[string]*subnet{}, netSubs: map[string]*netSub{}, private: map[string]*privatePath{}, src: src.Objects}
 	claimed := make([][]snapshot.Object, len(families))
 	for _, obj := range src.Objects {
 		hit := false

@@ -1,0 +1,1262 @@
+report:
+  destinations:
+  - 'clusters: eks'
+  - 'identity: workload'
+  - 'messaging: sqs-sns'
+  - 'network: vpc'
+  - 'registry: ecr'
+  - 'secrets: secret-manager'
+  - 'storage: buckets'
+  entries:
+  - losses:
+    - field: properties.roleDefinitionId
+      why: 'Storage Blob Data Contributor: deleting a version of an object for good
+        (s3:DeleteObjectVersion) is not granted with this role: in a versioned bucket
+        a delete leaves the version, as Azure''s did'
+    - field: scope
+      why: 'assigned on resource group rg: on the target it is granted on each translated
+        object in it, by name (AWS::S3::Bucket shopfiles-exports, AWS::S3::Bucket
+        shopfiles-images, AWS::S3::Bucket shoplogs-audit); what is made there later
+        is not covered, as it was on Azure'
+    - field: properties.roleDefinitionId
+      why: 'Storage Blob Data Contributor: the role could also create and delete containers
+        and sign a user delegation SAS: the buckets are the translation''s, and neither
+        is granted'
+    reason: 'Storage Blob Data Contributor on resource group rg: s3:AbortMultipartUpload,
+      s3:ListMultipartUploadParts, s3:PutObject on AWS::S3::Bucket shopfiles-exports,
+      AWS::S3::Bucket shopfiles-images, AWS::S3::Bucket shoplogs-audit; s3:DeleteObject
+      on AWS::S3::Bucket shopfiles-exports, AWS::S3::Bucket shopfiles-images, AWS::S3::Bucket
+      shoplogs-audit; s3:GetObject, s3:GetObjectVersion on AWS::S3::Bucket shopfiles-exports,
+      AWS::S3::Bucket shopfiles-images, AWS::S3::Bucket shoplogs-audit; s3:ListBucket,
+      s3:ListBucketVersions on AWS::S3::Bucket shopfiles-exports, AWS::S3::Bucket
+      shopfiles-images, AWS::S3::Bucket shoplogs-audit'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.Authorization/roleAssignments/b02
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role web-id
+  - reason: 'Owner is not translated: a control-plane role: it manages Azure resources
+      through Azure Resource Manager, which has no counterpart in what an app reads
+      and writes; who manages the target''s resources is the target''s own IAM, set
+      on its own'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.Authorization/roleAssignments/d02
+    state: refused
+  - reason: 'AcrPull on microsoft.containerregistry/registries rg/abacacr: nothing
+      in that scope has a place on the target: Microsoft.ContainerRegistry/registries
+      rg/abacacr authorizes by repository (roleAssignmentMode AbacRepositoryPermissions),
+      where AcrPull gave no access to images: no access to it is written'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.ContainerRegistry/registries/abacacr/providers/Microsoft.Authorization/roleAssignments/c02
+    state: refused
+  - losses:
+    - field: properties.roleDefinitionId
+      why: 'AcrPush: pushing to a repository that does not exist yet fails: ecr:CreateRepository
+        is not granted, so someone makes each repository first, or grants it on the
+        registry''s prefix'
+    reason: 'AcrPush on microsoft.containerregistry/registries rg/shopacr: ecr:BatchCheckLayerAvailability,
+      ecr:BatchGetImage, ecr:GetDownloadUrlForLayer on AWS::ECR::RepositoryCreationTemplate
+      shopacr; ecr:CompleteLayerUpload, ecr:InitiateLayerUpload, ecr:PutImage, ecr:UploadLayerPart
+      on AWS::ECR::RepositoryCreationTemplate shopacr; ecr:GetAuthorizationToken on
+      every resource (the action takes no resource)'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.ContainerRegistry/registries/shopacr/providers/Microsoft.Authorization/roleAssignments/b05
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role web-id
+  - losses:
+    - field: properties.principalId
+      why: 'nothing is granted to the nodes'' role, which is the map''s (clusters.rg/shop.nodeRoleArn):
+        until it may pull from arn:aws:ecr:eu-west-1:<account>:repository/shopacr/*,
+        the cluster''s pods cannot start from images there'
+    reason: 'the nodes of cluster shop pulled images with this: on the target they
+      run as the IAM role the map names (clusters.rg/shop.nodeRoleArn)'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.ContainerRegistry/registries/shopacr/providers/Microsoft.Authorization/roleAssignments/e01
+    state: mapped with losses
+  - reason: 'Key Vault Secrets User on microsoft.keyvault/vaults rg/oldkv: nothing
+      in that scope has a place on the target: Microsoft.KeyVault/vaults/secrets rg/oldkv/token:
+      its vault authorizes with access policies, where this role gave nothing: no
+      access to it is written'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.KeyVault/vaults/oldkv/providers/Microsoft.Authorization/roleAssignments/c01
+    state: refused
+  - losses:
+    - field: scope
+      why: 'assigned on microsoft.keyvault/vaults rg/shopkv: on the target it is granted
+        on each translated object in it, by name (AWS::SecretsManager::Secret shopkv/api-key,
+        AWS::SecretsManager::Secret shopkv/db-password); what is made there later
+        is not covered, as it was on Azure'
+    reason: 'Key Vault Secrets User on microsoft.keyvault/vaults rg/shopkv: secretsmanager:DescribeSecret
+      on AWS::SecretsManager::Secret shopkv/api-key, AWS::SecretsManager::Secret shopkv/db-password;
+      secretsmanager:GetSecretValue on AWS::SecretsManager::Secret shopkv/api-key,
+      AWS::SecretsManager::Secret shopkv/db-password'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.KeyVault/vaults/shopkv/providers/Microsoft.Authorization/roleAssignments/a04
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role orders-id
+  - losses:
+    - field: properties.roleDefinitionId
+      why: 'Key Vault Reader: reading who may read a secret (its resource policy)
+        is not granted'
+    - field: scope
+      why: 'assigned on microsoft.keyvault/vaults rg/shopkv: on the target it is granted
+        on each translated object in it, by name (AWS::SecretsManager::Secret shopkv/api-key,
+        AWS::SecretsManager::Secret shopkv/db-password); what is made there later
+        is not covered, as it was on Azure'
+    - field: properties.roleDefinitionId
+      why: 'Key Vault Reader: the role also read the vault''s own settings and the
+        properties of its keys and certificates: only the translated secrets'' properties
+        are granted'
+    reason: 'Key Vault Reader on microsoft.keyvault/vaults rg/shopkv: secretsmanager:DescribeSecret
+      on AWS::SecretsManager::Secret shopkv/api-key, AWS::SecretsManager::Secret shopkv/db-password'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.KeyVault/vaults/shopkv/providers/Microsoft.Authorization/roleAssignments/b06
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role web-id
+  - reason: 'Key Vault Secrets User on microsoft.keyvault/vaults rg/shopkv is assigned
+      to the kubelet identity of cluster rg/shop: on the target the nodes run as the
+      IAM role the map names (clusters.rg/shop.nodeRoleArn), which every pod on a
+      node can reach unless it is kept from it; nothing is granted to it here. If
+      an app needs this, give its own service account a managed identity with a federated
+      credential'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.KeyVault/vaults/shopkv/providers/Microsoft.Authorization/roleAssignments/d09
+    state: refused
+  - losses:
+    - field: properties.roleDefinitionId
+      why: 'Key Vault Secrets Officer: a new value can be put on each translated secret;
+        creating a secret is not granted, as it would need every name in the account'
+    - field: properties.roleDefinitionId
+      why: 'Key Vault Secrets Officer: reading who may read a secret (its resource
+        policy) is not granted'
+    - field: properties.roleDefinitionId
+      why: 'Key Vault Secrets Officer: the role could also create, delete, recover,
+        purge, back up and restore secrets in the vault: only reading the translated
+        secrets and giving them new versions is granted'
+    reason: 'Key Vault Secrets Officer on microsoft.keyvault/vaults/secrets rg/shopkv/api-key:
+      secretsmanager:DescribeSecret on AWS::SecretsManager::Secret shopkv/api-key;
+      secretsmanager:GetSecretValue on AWS::SecretsManager::Secret shopkv/api-key;
+      secretsmanager:PutSecretValue on AWS::SecretsManager::Secret shopkv/api-key'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.KeyVault/vaults/shopkv/secrets/api-key/providers/Microsoft.Authorization/roleAssignments/b03
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role web-id
+  - losses:
+    - field: scope
+      why: 'assigned on microsoft.servicebus/namespaces rg/shop: on the target it
+        is granted on each translated object in it, by name (AWS::SNS::Topic events,
+        AWS::SQS::Queue events-audit, AWS::SQS::Queue events-audit-dlq, AWS::SQS::Queue
+        orders, AWS::SQS::Queue orders-dlq); what is made there later is not covered,
+        as it was on Azure'
+    - field: scope
+      why: 'Microsoft.ServiceBus/namespaces/queues rg/shop/payments is not translated
+        (refused: a session queue: set sessions: fifo in the map to carry it as a
+        FIFO queue, with the session ID as the message group (a change to the sender)):
+        no access to it is written'
+    reason: 'Azure Service Bus Data Sender on microsoft.servicebus/namespaces rg/shop:
+      sns:Publish on AWS::SNS::Topic events; sqs:GetQueueAttributes, sqs:GetQueueUrl,
+      sqs:SendMessage on AWS::SQS::Queue orders'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.ServiceBus/namespaces/shop/providers/Microsoft.Authorization/roleAssignments/a02
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role orders-id
+  - reason: 'its identity Microsoft.ManagedIdentity/userAssignedIdentities rg/legacy-id
+      is refused: no federated credential of it names a service account of a translated
+      cluster: nothing on the target could use it. An identity of a VM, an app service
+      or a pipeline is not workload identity, and what runs there is given its access
+      on the target on its own'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.ServiceBus/namespaces/shop/providers/Microsoft.Authorization/roleAssignments/d05
+    state: refused
+  - reason: 'Storage Blob Data Reader is a role for blob storage, and its scope is
+      microsoft.servicebus/namespaces rg/shop: it gives nothing there on Azure, and
+      nothing is written'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.ServiceBus/namespaces/shop/providers/Microsoft.Authorization/roleAssignments/d08
+    state: refused
+  - losses:
+    - field: properties.roleDefinitionId
+      why: 'Azure Service Bus Data Receiver: a receiver could dead-letter a message
+        itself; on SQS a message reaches the dead-letter queue only by being received
+        too often, and sending to that queue is not granted'
+    reason: 'Azure Service Bus Data Receiver on microsoft.servicebus/namespaces/queues
+      rg/shop/orders: sqs:ChangeMessageVisibility, sqs:DeleteMessage, sqs:GetQueueAttributes,
+      sqs:GetQueueUrl, sqs:ReceiveMessage on AWS::SQS::Queue orders, AWS::SQS::Queue
+      orders-dlq'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.ServiceBus/namespaces/shop/queues/orders/providers/Microsoft.Authorization/roleAssignments/a01
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role orders-id
+  - reason: 'Azure Service Bus Data Receiver on microsoft.servicebus/namespaces/queues
+      rg/shop/payments: nothing in that scope has a place on the target: Microsoft.ServiceBus/namespaces/queues
+      rg/shop/payments is not translated (refused: a session queue: set sessions:
+      fifo in the map to carry it as a FIFO queue, with the session ID as the message
+      group (a change to the sender)): no access to it is written'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.ServiceBus/namespaces/shop/queues/payments/providers/Microsoft.Authorization/roleAssignments/d07
+    state: refused
+  - losses:
+    - field: properties.roleDefinitionId
+      why: 'Azure Service Bus Data Owner: a receiver could dead-letter a message itself;
+        on SQS a message reaches the dead-letter queue only by being received too
+        often, and sending to that queue is not granted'
+    - field: scope
+      why: 'assigned on microsoft.servicebus/namespaces/topics rg/shop/events: on
+        the target it is granted on each translated object in it, by name (AWS::SNS::Topic
+        events, AWS::SQS::Queue events-audit, AWS::SQS::Queue events-audit-dlq); what
+        is made there later is not covered, as it was on Azure'
+    - field: properties.roleDefinitionId
+      why: 'Azure Service Bus Data Owner: the role also managed the namespace (creating
+        and deleting queues, topics, subscriptions and rules, its keys): only sending
+        and receiving on what the translation wrote is granted'
+    reason: 'Azure Service Bus Data Owner on microsoft.servicebus/namespaces/topics
+      rg/shop/events: sns:Publish on AWS::SNS::Topic events; sqs:ChangeMessageVisibility,
+      sqs:DeleteMessage, sqs:GetQueueAttributes, sqs:GetQueueUrl, sqs:ReceiveMessage
+      on AWS::SQS::Queue events-audit, AWS::SQS::Queue events-audit-dlq'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.ServiceBus/namespaces/shop/topics/events/providers/Microsoft.Authorization/roleAssignments/b04
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role web-id
+  - reason: 'it has a condition (@Resource[Microsoft.Storage/storageAccounts/blobServices/containers/blobs:path]
+      StringStartsWith ''public/'', version 2.0): a grant written without it would
+      give more, and conditions are Azure''s own language'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.Storage/storageAccounts/shopfiles/blobServices/default/containers/exports/providers/Microsoft.Authorization/roleAssignments/d04
+    state: refused
+  - losses:
+    - field: properties.roleDefinitionId
+      why: 'Storage Blob Data Contributor: deleting a version of an object for good
+        (s3:DeleteObjectVersion) is not granted with this role: in a versioned bucket
+        a delete leaves the version, as Azure''s did'
+    - field: properties.roleDefinitionId
+      why: 'Storage Blob Data Contributor: the role could also create and delete containers
+        and sign a user delegation SAS: the buckets are the translation''s, and neither
+        is granted'
+    reason: 'Storage Blob Data Contributor on microsoft.storage/storageaccounts/blobservices/containers
+      rg/shopfiles/default/images: s3:AbortMultipartUpload, s3:ListMultipartUploadParts,
+      s3:PutObject on AWS::S3::Bucket shopfiles-images; s3:DeleteObject on AWS::S3::Bucket
+      shopfiles-images; s3:GetObject, s3:GetObjectVersion on AWS::S3::Bucket shopfiles-images;
+      s3:ListBucket, s3:ListBucketVersions on AWS::S3::Bucket shopfiles-images'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.Storage/storageAccounts/shopfiles/blobServices/default/containers/images/providers/Microsoft.Authorization/roleAssignments/a03
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role orders-id
+  - losses:
+    - field: scope
+      why: 'assigned on microsoft.storage/storageaccounts rg/shopfiles: on the target
+        it is granted on each translated object in it, by name (AWS::S3::Bucket shopfiles-exports,
+        AWS::S3::Bucket shopfiles-images); what is made there later is not covered,
+        as it was on Azure'
+    - field: properties.roleDefinitionId
+      why: 'Storage Blob Data Reader: the role could also sign a user delegation SAS
+        for what it may read: there is no SAS on the target, and nothing is granted
+        for one'
+    reason: 'Storage Blob Data Reader on microsoft.storage/storageaccounts rg/shopfiles:
+      s3:GetObject, s3:GetObjectVersion on AWS::S3::Bucket shopfiles-exports, AWS::S3::Bucket
+      shopfiles-images; s3:ListBucket, s3:ListBucketVersions on AWS::S3::Bucket shopfiles-exports,
+      AWS::S3::Bucket shopfiles-images'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.Storage/storageAccounts/shopfiles/providers/Microsoft.Authorization/roleAssignments/b01
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role web-id
+  - reason: 'custom role Shop reader is not translated: its actions are Azure''s own,
+      and no fixed table says what each becomes on the target'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.Storage/storageAccounts/shopfiles/providers/Microsoft.Authorization/roleAssignments/d01
+    state: refused
+  - reason: 'Storage Blob Data Owner on microsoft.storage/storageaccounts rg/shopfiles
+      is assigned to a user: people and pipelines are the customer''s directory, not
+      workload identity; their access on the target is set on its own'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.Storage/storageAccounts/shopfiles/providers/Microsoft.Authorization/roleAssignments/d03
+    state: refused
+  - reason: 'its identity Microsoft.ManagedIdentity/userAssignedIdentities rg/vm-id
+      is refused: no federated credential of it names a service account of a translated
+      cluster: nothing on the target could use it. An identity of a VM, an app service
+      or a pipeline is not workload identity, and what runs there is given its access
+      on the target on its own'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.Storage/storageAccounts/shopfiles/providers/Microsoft.Authorization/roleAssignments/d06
+    state: refused
+  - reason: 'Storage Blob Data Contributor on microsoft.storage/storageaccounts rg/shopfiles
+      is assigned to a service principal that is no managed identity in the snapshot
+      (an app registration, a pipeline, or an identity of another subscription): people
+      and pipelines are the customer''s directory, not workload identity; their access
+      on the target is set on its own'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.Storage/storageAccounts/shopfiles/providers/Microsoft.Authorization/roleAssignments/d10
+    state: refused
+  - losses:
+    - field: properties.roleDefinitionId
+      why: 'Storage Blob Data Owner: the role also set POSIX ownership and ACLs, blob
+        tags, legal holds and immutability, and created and deleted containers: only
+        reading, writing and deleting objects is granted'
+    reason: 'Storage Blob Data Owner on microsoft.storage/storageaccounts/blobservices/containers
+      rg/shoplogs/default/audit: s3:AbortMultipartUpload, s3:ListMultipartUploadParts,
+      s3:PutObject on AWS::S3::Bucket shoplogs-audit; s3:DeleteObject on AWS::S3::Bucket
+      shoplogs-audit; s3:DeleteObjectVersion on AWS::S3::Bucket shoplogs-audit; s3:GetObject,
+      s3:GetObjectVersion on AWS::S3::Bucket shoplogs-audit; s3:ListBucket, s3:ListBucketVersions
+      on AWS::S3::Bucket shoplogs-audit'
+    source: Microsoft.Authorization/roleAssignments rg/providers/Microsoft.Storage/storageAccounts/shoplogs/blobServices/default/containers/audit/providers/Microsoft.Authorization/roleAssignments/b07
+    state: mapped with losses
+    targets:
+    - AWS::IAM::Role web-id
+  - reason: 'a custom role (Shop reader): its actions are Azure''s own, and no fixed
+      table says what each becomes on the target; an assignment of it is refused.
+      Give the app one of the built-in data roles on Azure, or grant the target''s
+      equivalent on its own'
+    source: Microsoft.Authorization/roleDefinitions providers/Microsoft.Authorization/roleDefinitions/0d1c2b3a-4f5e-4d6c-8b7a-6f5e4d3c2b1a
+    state: refused
+  - losses:
+    - field: sku.name
+      why: 'Standard: a service tier (included storage, throughput, which features)
+        has no equivalent: the target bills by use'
+    - field: properties.roleAssignmentMode
+      why: 'AbacRepositoryPermissions: role assignments scoped to repositories (ABAC)
+        are identity, which is not translated (#32)'
+    reason: 'ECR has one registry per account and region: a repository creation template
+      makes each repository under abacacr/ on its first push, with these settings'
+    source: Microsoft.ContainerRegistry/registries rg/abacacr
+    state: mapped with losses
+    targets:
+    - AWS::ECR::RepositoryCreationTemplate abacacr
+  - losses:
+    - field: sku.name
+      why: 'Standard: a service tier (included storage, throughput, which features)
+        has no equivalent: the target bills by use'
+    reason: 'ECR has one registry per account and region: a repository creation template
+      makes each repository under shopacr/ on its first push, with these settings'
+    source: Microsoft.ContainerRegistry/registries rg/shopacr
+    state: mapped with losses
+    targets:
+    - AWS::ECR::RepositoryCreationTemplate shopacr
+  - reason: 'the map names no IAM role for the control plane (clusters[rg/old].roleArn):
+      identity is not translated (#32), so it names a role that exists; the map names
+      no IAM role for the nodes (clusters[rg/old].nodeRoleArn): identity is not translated
+      (#32), so it names a role that exists; the map names no instance type for pool
+      system (clusters[rg/old].pools.system.instanceType; its Azure size is Standard_D4s_v5):
+      VM sizes are not translated'
+    source: Microsoft.ContainerService/managedClusters rg/old
+    state: refused
+  - losses:
+    - field: properties.agentPoolProfiles[system].mode
+      why: a System pool was kept for the cluster's own pods; the target has no such
+        pool, so they schedule on any node unless the pool is tainted for them
+    source: Microsoft.ContainerService/managedClusters rg/shop
+    state: mapped with losses
+    targets:
+    - AWS::EKS::Cluster shop
+    - AWS::EKS::Nodegroup shop-system
+  - losses:
+    - field: properties.softDeleteRetentionInDays
+      why: a deleted secret was kept 90 days unless purged; Secrets Manager keeps
+        one for the recovery window each delete chooses (7 to 30 days, 30 unless told),
+        and a delete may skip it, as a purge could
+    reason: 'Secrets Manager has no vault: its secrets are written as secrets of their
+      own, named after the vault'
+    source: Microsoft.KeyVault/vaults rg/oldkv
+    state: mapped with losses
+  - losses:
+    - field: properties.enableRbacAuthorization
+      why: 'who may read its secrets was set by Azure RBAC role assignments: identity
+        is not translated (#32), so on the target only those its IAM lets read them
+        can'
+    - field: properties.softDeleteRetentionInDays
+      why: a deleted secret was kept 90 days unless purged; Secrets Manager keeps
+        one for the recovery window each delete chooses (7 to 30 days, 30 unless told),
+        and a delete may skip it, as a purge could
+    reason: 'Secrets Manager has no vault: its secrets are written as secrets of their
+      own, named after the vault'
+    source: Microsoft.KeyVault/vaults rg/shopkv
+    state: mapped with losses
+  - source: Microsoft.KeyVault/vaults/secrets rg/oldkv/token
+    state: mapped
+    targets:
+    - AWS::SecretsManager::Secret oldkv/token
+  - source: Microsoft.KeyVault/vaults/secrets rg/shopkv/api-key
+    state: mapped
+    targets:
+    - AWS::SecretsManager::Secret shopkv/api-key
+  - source: Microsoft.KeyVault/vaults/secrets rg/shopkv/db-password
+    state: mapped
+    targets:
+    - AWS::SecretsManager::Secret shopkv/db-password
+  - reason: 'no federated credential of it names a service account of a translated
+      cluster: nothing on the target could use it. An identity of a VM, an app service
+      or a pipeline is not workload identity, and what runs there is given its access
+      on the target on its own'
+    source: Microsoft.ManagedIdentity/userAssignedIdentities rg/legacy-id
+    state: refused
+  - reason: 'IAM role orders-id. Used by: system:serviceaccount:shop:orders of cluster
+      shop. It may: s3:AbortMultipartUpload, s3:ListMultipartUploadParts, s3:PutObject
+      on AWS::S3::Bucket shopfiles-images; s3:DeleteObject on AWS::S3::Bucket shopfiles-images;
+      s3:GetObject, s3:GetObjectVersion on AWS::S3::Bucket shopfiles-images; s3:ListBucket,
+      s3:ListBucketVersions on AWS::S3::Bucket shopfiles-images; secretsmanager:DescribeSecret
+      on AWS::SecretsManager::Secret shopkv/api-key, AWS::SecretsManager::Secret shopkv/db-password;
+      secretsmanager:GetSecretValue on AWS::SecretsManager::Secret shopkv/api-key,
+      AWS::SecretsManager::Secret shopkv/db-password; sns:Publish on AWS::SNS::Topic
+      events; sqs:ChangeMessageVisibility, sqs:DeleteMessage, sqs:GetQueueAttributes,
+      sqs:GetQueueUrl, sqs:ReceiveMessage on AWS::SQS::Queue orders, AWS::SQS::Queue
+      orders-dlq; sqs:GetQueueAttributes, sqs:GetQueueUrl, sqs:SendMessage on AWS::SQS::Queue
+      orders'
+    source: Microsoft.ManagedIdentity/userAssignedIdentities rg/orders-id
+    state: mapped
+    targets:
+    - AWS::EKS::Addon shop_eks-pod-identity-agent
+    - AWS::IAM::Role orders-id
+  - reason: 'no federated credential of it names a service account of a translated
+      cluster: nothing on the target could use it. An identity of a VM, an app service
+      or a pipeline is not workload identity, and what runs there is given its access
+      on the target on its own'
+    source: Microsoft.ManagedIdentity/userAssignedIdentities rg/vm-id
+    state: refused
+  - reason: 'IAM role web-id. Used by: system:serviceaccount:jobs:web-jobs of cluster
+      shop, system:serviceaccount:shop:web of cluster shop. It may: ecr:BatchCheckLayerAvailability,
+      ecr:BatchGetImage, ecr:GetDownloadUrlForLayer on AWS::ECR::RepositoryCreationTemplate
+      shopacr; ecr:CompleteLayerUpload, ecr:InitiateLayerUpload, ecr:PutImage, ecr:UploadLayerPart
+      on AWS::ECR::RepositoryCreationTemplate shopacr; ecr:GetAuthorizationToken on
+      every resource (the action takes no resource); s3:AbortMultipartUpload, s3:ListMultipartUploadParts,
+      s3:PutObject on AWS::S3::Bucket shopfiles-exports, AWS::S3::Bucket shopfiles-images,
+      AWS::S3::Bucket shoplogs-audit; s3:DeleteObject on AWS::S3::Bucket shopfiles-exports,
+      AWS::S3::Bucket shopfiles-images, AWS::S3::Bucket shoplogs-audit; s3:DeleteObjectVersion
+      on AWS::S3::Bucket shoplogs-audit; s3:GetObject, s3:GetObjectVersion on AWS::S3::Bucket
+      shopfiles-exports, AWS::S3::Bucket shopfiles-images, AWS::S3::Bucket shoplogs-audit;
+      s3:ListBucket, s3:ListBucketVersions on AWS::S3::Bucket shopfiles-exports, AWS::S3::Bucket
+      shopfiles-images, AWS::S3::Bucket shoplogs-audit; secretsmanager:DescribeSecret
+      on AWS::SecretsManager::Secret shopkv/api-key, AWS::SecretsManager::Secret shopkv/db-password;
+      secretsmanager:GetSecretValue on AWS::SecretsManager::Secret shopkv/api-key;
+      secretsmanager:PutSecretValue on AWS::SecretsManager::Secret shopkv/api-key;
+      sns:Publish on AWS::SNS::Topic events; sqs:ChangeMessageVisibility, sqs:DeleteMessage,
+      sqs:GetQueueAttributes, sqs:GetQueueUrl, sqs:ReceiveMessage on AWS::SQS::Queue
+      events-audit, AWS::SQS::Queue events-audit-dlq'
+    source: Microsoft.ManagedIdentity/userAssignedIdentities rg/web-id
+    state: mapped
+    targets:
+    - AWS::IAM::Role web-id
+  - reason: 'its issuer is cluster rg/old, which is not translated (refused: the map
+      names no IAM role for the control plane (clusters[rg/old].roleArn): identity
+      is not translated (#32), so it names a role that exists; the map names no IAM
+      role for the nodes (clusters[rg/old].nodeRoleArn): identity is not translated
+      (#32), so it names a role that exists; the map names no instance type for pool
+      system (clusters[rg/old].pools.system.instanceType; its Azure size is Standard_D4s_v5):
+      VM sizes are not translated): there is no cluster on the target whose service
+      account could be trusted'
+    source: Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials
+      rg/legacy-id/aks
+    state: refused
+  - reason: service account orders in namespace shop of cluster shop may act as orders-id
+    source: Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials
+      rg/orders-id/aks
+    state: mapped
+    targets:
+    - AWS::EKS::PodIdentityAssociation h-55514cab3e8a
+  - reason: 'its issuer (https://token.actions.githubusercontent.com) is not a cluster
+      in the snapshot: only the service accounts of a translated cluster are given
+      the identity. A pipeline''s or another cluster''s tokens are trusted on the
+      target on their own'
+    source: Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials
+      rg/orders-id/ci
+    state: refused
+  - reason: service account web in namespace shop of cluster shop may act as web-id
+    source: Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials
+      rg/web-id/aks
+    state: mapped
+    targets:
+    - AWS::EKS::PodIdentityAssociation h-4528059fbc7a
+  - reason: service account web-jobs in namespace jobs of cluster shop may act as
+      web-id
+    source: Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials
+      rg/web-id/jobs
+    state: mapped
+    targets:
+    - AWS::EKS::PodIdentityAssociation h-c41d54da0aac
+  - losses:
+    - field: properties.subnets[app].properties.defaultOutboundAccess
+      why: 'it is not set, which on Azure leaves default outbound access on: its machines
+        reached the internet with no address of their own. On the target the subnet
+        has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
+    - field: properties.subnets[data].properties.defaultOutboundAccess
+      why: 'it is not set, which on Azure leaves default outbound access on: its machines
+        reached the internet with no address of their own. On the target the subnet
+        has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
+    source: Microsoft.Network/virtualNetworks net/core
+    state: mapped with losses
+    targets:
+    - AWS::EC2::Subnet core-app
+    - AWS::EC2::Subnet core-data
+    - AWS::EC2::VPC core
+  - reason: 'SQS and SNS have no namespace: the account and region hold its queues
+      and topics'
+    source: Microsoft.ServiceBus/namespaces rg/shop
+    state: mapped
+  - losses:
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    source: Microsoft.ServiceBus/namespaces/queues rg/shop/orders
+    state: mapped with losses
+    targets:
+    - AWS::SQS::Queue orders
+    - AWS::SQS::Queue orders-dlq
+  - reason: 'a session queue: set sessions: fifo in the map to carry it as a FIFO
+      queue, with the session ID as the message group (a change to the sender)'
+    source: Microsoft.ServiceBus/namespaces/queues rg/shop/payments
+    state: refused
+  - source: Microsoft.ServiceBus/namespaces/topics rg/shop/events
+    state: mapped
+    targets:
+    - AWS::SNS::Topic events
+  - losses:
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/audit
+    state: mapped with losses
+    targets:
+    - AWS::SNS::Subscription h-c9fb16ede81e
+    - AWS::SQS::Queue events-audit
+    - AWS::SQS::Queue events-audit-dlq
+    - AWS::SQS::QueueInlinePolicy events-audit
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/audit/$Default
+    state: mapped
+    targets:
+    - AWS::SNS::Subscription h-c9fb16ede81e
+  - reason: 'the account is not a bucket: its settings apply to each of its containers''
+      buckets'
+    source: Microsoft.Storage/storageAccounts rg/shopfiles
+    state: mapped
+    targets:
+    - AWS::S3::Bucket shopfiles-exports
+    - AWS::S3::Bucket shopfiles-images
+    - AWS::S3::BucketPolicy shopfiles-exports
+    - AWS::S3::BucketPolicy shopfiles-images
+  - reason: 'the account is not a bucket: its settings apply to each of its containers''
+      buckets'
+    source: Microsoft.Storage/storageAccounts rg/shoplogs
+    state: mapped
+    targets:
+    - AWS::S3::Bucket shoplogs-audit
+    - AWS::S3::BucketPolicy shoplogs-audit
+  - reason: 'read with its account Microsoft.Storage/storageAccounts rg/shopfiles:
+      its settings apply to each of the account''s buckets'
+    source: Microsoft.Storage/storageAccounts/blobServices rg/shopfiles/default
+    state: mapped
+  - reason: 'read with its account Microsoft.Storage/storageAccounts rg/shoplogs:
+      its settings apply to each of the account''s buckets'
+    source: Microsoft.Storage/storageAccounts/blobServices rg/shoplogs/default
+    state: mapped
+  - source: Microsoft.Storage/storageAccounts/blobServices/containers rg/shopfiles/default/exports
+    state: mapped
+    targets:
+    - AWS::S3::Bucket shopfiles-exports
+    - AWS::S3::BucketPolicy shopfiles-exports
+  - source: Microsoft.Storage/storageAccounts/blobServices/containers rg/shopfiles/default/images
+    state: mapped
+    targets:
+    - AWS::S3::Bucket shopfiles-images
+    - AWS::S3::BucketPolicy shopfiles-images
+  - source: Microsoft.Storage/storageAccounts/blobServices/containers rg/shoplogs/default/audit
+    state: mapped
+    targets:
+    - AWS::S3::Bucket shoplogs-audit
+    - AWS::S3::BucketPolicy shoplogs-audit
+  from: azure
+  requirements:
+  - 'A cluster''s workloads are not in this translation: restore TruthForm''s Kubernetes
+    snapshot of Microsoft.ContainerService/managedClusters rg/shop into the EKS cluster
+    once it runs; persistent volumes'' data is not moved, and is copied on its own'
+  - 'A repository is made on push only for a principal allowed ecr:CreateRepository
+    as well as to push: grant the pipelines that push images both (identity, not translated:
+    #32)'
+  - An IAM role written for a managed identity can be given to another service account
+    by whoever may create EKS Pod Identity associations and pass the role (eks:CreatePodIdentityAssociation,
+    iam:PassRole), as whoever could write the identity's federated credentials could
+    on Azure; the role's own trust policy also names each cluster, namespace and service
+    account, so such an association gets no credentials until that is changed too
+  - 'Apps move from the Azure Blob SDK to the S3 API: each container is a bucket,
+    named <account>-<container> unless the map names it'
+  - 'Apps move from the Service Bus SDK to the AWS SDK: a queue is an SQS queue, a
+    topic an SNS topic delivering to an SQS queue per subscription, and a subscription''s
+    filter matches SNS message attributes'
+  - Apps that reached Azure through a managed identity use the AWS SDK's default credential
+    chain, at a version that knows EKS Pod Identity (https://docs.aws.amazon.com/eks/latest/userguide/pod-id-minimum-sdk.html),
+    and no static credential earlier in that chain
+  - Apps that read Key Vault rg/oldkv (its SDK, Key Vault references, the Secrets
+    Store CSI driver) read Secrets Manager instead, by the new names (<vault>/<secret>)
+  - Apps that read Key Vault rg/shopkv (its SDK, Key Vault references, the Secrets
+    Store CSI driver) read Secrets Manager instead, by the new names (<vault>/<secret>)
+  - Apps that sign in to Azure Storage with account keys, SAS tokens or connection
+    strings must move to the target's identity (IAM roles, workload identity); no
+    key or SAS is carried over
+  - 'Blobs are not copied: each bucket is written empty. Copy each container''s blobs
+    into its bucket (AWS DataSync or S3 Batch Operations; the Storage Transfer Service),
+    with their versions, metadata and per-blob tiers and holds, which this translation
+    does not carry'
+  - 'EKS cluster shop takes no one''s access from Azure: add access entries for the
+    people and tools that use it before restoring its workloads (#32)'
+  - 'EKS cluster shop''s API server answers only inside its VPC: kubectl and the restore
+    of its workloads run from there'
+  - 'EKS cluster shop''s nodes pulled their images with the kubelet identity''s AcrPull:
+    let the node role (clusters.rg/shop.nodeRoleArn) pull from ECR, with ecr:GetAuthorizationToken
+    on * and ecr:BatchGetImage, ecr:GetDownloadUrlForLayer and ecr:BatchCheckLayerAvailability
+    on arn:aws:ecr:eu-west-1:<account>:repository/shopacr/* (the managed policy AmazonEC2ContainerRegistryPullOnly
+    gives the same on every repository)'
+  - 'EKS cluster shop: workload identity is EKS Pod Identity, whose agent add-on (eks-pod-identity-agent)
+    is written here. Its nodes'' role (clusters.rg/shop.nodeRoleArn) must allow eks-auth:AssumeRoleForPodIdentity
+    (the managed policy AmazonEKSWorkerNodePolicy does), and nodes with no route to
+    the internet reach the EKS Auth API through an interface endpoint (com.amazonaws.eu-west-1.eks-auth)'
+  - 'EKS validates Kubernetes 1.31 at restore: if it no longer offers that version,
+    a person chooses one, as the translation never upgrades'
+  - 'Images are not copied: copy each from abacacr.azurecr.io to <account>.dkr.ecr.eu-west-1.amazonaws.com/abacacr/<repository>
+    (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
+    image references are rewritten in a later step'
+  - 'Images are not copied: copy each from shopacr.azurecr.io to <account>.dkr.ecr.eu-west-1.amazonaws.com/shopacr/<repository>
+    (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
+    image references are rewritten in a later step'
+  - 'Key Vault rg/oldkv''s secrets (oldkv/token) hold no value: a capture never reads
+    one, and a translation writes none. Supply each at restore with --values (AWS::SecretsManager::Secret/<name>:
+    {SecretString: ...}), read from where its value is kept; the restore lists each
+    one created without it'
+  - 'Key Vault rg/shopkv let Azure RBAC role assignments read its secrets; identity
+    is not translated (#32): grant each app''s new identity secretsmanager:GetSecretValue
+    on the secrets it reads'
+  - 'Key Vault rg/shopkv''s secrets (shopkv/api-key, shopkv/db-password) hold no value:
+    a capture never reads one, and a translation writes none. Supply each at restore
+    with --values (AWS::SecretsManager::Secret/<name>: {SecretString: ...}), read
+    from where its value is kept; the restore lists each one created without it'
+  - 'Kubernetes manifests (Git): a service account needs no annotation for EKS Pod
+    Identity, which binds by cluster, namespace and name; remove the azure.workload.identity/client-id
+    annotations and azure.workload.identity/use labels.'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: the cluster''s service account
+    token issuer changes: federated credentials that trusted the AKS issuer are made
+    again against the target''s (#32)'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: the nodes reached the internet
+    through Azure''s outbound (loadBalancer); the target''s subnets have no internet
+    egress until a NAT gateway (AWS) or Cloud NAT (GCP) is added, and nodes cannot
+    pull public images without it'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: workloads signed in to Azure
+    with workload identity; on the target they use EKS Pod Identity or IRSA, or GKE
+    workload identity, set up on its own: the app''s credentials change (#32)'
+  - 'People, groups and pipelines are not translated: who had roles in Azure (each
+    refused role assignment names one) is given access on the target through its own
+    IAM and the customer''s directory'
+  - 'Who may read and write each bucket is IAM, which is not translated (#32): grant
+    the app''s role or service account access to its bucket (Azure role assignments
+    on the account are not carried over)'
+  to: aws
+snapshots:
+  aws:
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-app
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.1.0/24
+      Tags:
+      - Key: Name
+        Value: core-app
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-data
+    spec:
+      AvailabilityZone: eu-west-1b
+      CidrBlock: 10.20.2.0/24
+      Tags:
+      - Key: Name
+        Value: core-data
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPC
+    metadata:
+      annotations:
+        truthform.org/write-only: Ipv4IpamPoolId,Ipv4NetmaskLength,VpcEncryptionControl.EgressOnlyInternetGatewayExclusion,VpcEncryptionControl.ElasticFileSystemExclusion,VpcEncryptionControl.InternetGatewayExclusion,VpcEncryptionControl.LambdaExclusion,VpcEncryptionControl.NatGatewayExclusion,VpcEncryptionControl.VirtualPrivateGatewayExclusion,VpcEncryptionControl.VpcLatticeExclusion,VpcEncryptionControl.VpcPeeringExclusion
+      name: core
+    spec:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value: core
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::ECR::RepositoryCreationTemplate
+    metadata:
+      name: abacacr
+    spec:
+      AppliedFor:
+      - CREATE_ON_PUSH
+      Description: From Azure Container Registry rg/abacacr
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageTagMutability: MUTABLE
+      Prefix: abacacr
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::ECR::RepositoryCreationTemplate
+    metadata:
+      name: shopacr
+    spec:
+      AppliedFor:
+      - CREATE_ON_PUSH
+      Description: From Azure Container Registry rg/shopacr
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageTagMutability: MUTABLE
+      Prefix: shopacr
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EKS::Addon
+    metadata:
+      annotations:
+        truthform.org/write-only: PodIdentityAssociations,PreserveOnDelete,ResolveConflicts
+      name: shop_eks-pod-identity-agent
+    spec:
+      AddonName: eks-pod-identity-agent
+      ClusterName: '{{truthform|AWS::EKS::Cluster|shop|identifier}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EKS::Cluster
+    metadata:
+      annotations:
+        truthform.org/write-only: AccessConfig.BootstrapClusterCreatorAdminPermissions,ActiveCertificateAuthorityId,BootstrapSelfManagedAddons,Force,RollbackConfig
+      name: shop
+    spec:
+      AccessConfig:
+        AuthenticationMode: API
+        BootstrapClusterCreatorAdminPermissions: false
+      KubernetesNetworkConfig:
+        IpFamily: ipv4
+        ServiceIpv4Cidr: 10.0.0.0/16
+      Name: shop
+      ResourcesVpcConfig:
+        EndpointPrivateAccess: true
+        EndpointPublicAccess: false
+        SubnetIds:
+        - '{{truthform|AWS::EC2::Subnet|core-app|SubnetId}}'
+        - '{{truthform|AWS::EC2::Subnet|core-data|SubnetId}}'
+      RoleArn: arn:aws:iam::{{truthform|account|self|id}}:role/eks-shop
+      UpgradePolicy:
+        SupportType: STANDARD
+      Version: "1.31"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EKS::Nodegroup
+    metadata:
+      annotations:
+        truthform.org/write-only: ForceUpdateEnabled
+      name: shop-system
+    spec:
+      CapacityType: ON_DEMAND
+      ClusterName: '{{truthform|AWS::EKS::Cluster|shop|identifier}}'
+      DiskSize: 128
+      InstanceTypes:
+      - m7i.xlarge
+      NodeRepairConfig:
+        Enabled: true
+      NodeRole: arn:aws:iam::{{truthform|account|self|id}}:role/eks-shop-nodes
+      NodegroupName: shop-system
+      ScalingConfig:
+        DesiredSize: 3
+        MaxSize: 3
+        MinSize: 3
+      Subnets:
+      - '{{truthform|AWS::EC2::Subnet|core-app|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EKS::PodIdentityAssociation
+    metadata:
+      name: h-4528059fbc7a
+    spec:
+      ClusterName: '{{truthform|AWS::EKS::Cluster|shop|identifier}}'
+      Namespace: shop
+      RoleArn: '{{truthform|AWS::IAM::Role|web-id|Arn}}'
+      ServiceAccount: web
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EKS::PodIdentityAssociation
+    metadata:
+      name: h-55514cab3e8a
+    spec:
+      ClusterName: '{{truthform|AWS::EKS::Cluster|shop|identifier}}'
+      Namespace: shop
+      RoleArn: '{{truthform|AWS::IAM::Role|orders-id|Arn}}'
+      ServiceAccount: orders
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EKS::PodIdentityAssociation
+    metadata:
+      name: h-c41d54da0aac
+    spec:
+      ClusterName: '{{truthform|AWS::EKS::Cluster|shop|identifier}}'
+      Namespace: jobs
+      RoleArn: '{{truthform|AWS::IAM::Role|web-id|Arn}}'
+      ServiceAccount: web-jobs
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::IAM::Role
+    metadata:
+      name: orders-id
+    spec:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          - sts:TagSession
+          Condition:
+            StringEquals:
+              aws:RequestTag/eks-cluster-arn: '{{truthform|AWS::EKS::Cluster|shop|Arn}}'
+              aws:RequestTag/kubernetes-namespace: shop
+              aws:RequestTag/kubernetes-service-account: orders
+          Effect: Allow
+          Principal:
+            Service: pods.eks.amazonaws.com
+        Version: "2012-10-17"
+      Description: From Azure managed identity rg/orders-id
+      Policies:
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - s3:DeleteObject
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}/*'
+            Sid: DeleteObjects
+          - Action:
+            - secretsmanager:DescribeSecret
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::SecretsManager::Secret|shopkv/api-key|Id}}'
+            - '{{truthform|AWS::SecretsManager::Secret|shopkv/db-password|Id}}'
+            Sid: DescribeSecrets
+          - Action:
+            - s3:ListBucket
+            - s3:ListBucketVersions
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}'
+            Sid: ListBuckets
+          - Action:
+            - sns:Publish
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+            Sid: PublishToTopics
+          - Action:
+            - s3:GetObject
+            - s3:GetObjectVersion
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}/*'
+            Sid: ReadObjects
+          - Action:
+            - secretsmanager:GetSecretValue
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::SecretsManager::Secret|shopkv/api-key|Id}}'
+            - '{{truthform|AWS::SecretsManager::Secret|shopkv/db-password|Id}}'
+            Sid: ReadSecrets
+          - Action:
+            - sqs:ChangeMessageVisibility
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+            - sqs:GetQueueUrl
+            - sqs:ReceiveMessage
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::SQS::Queue|orders-dlq|Arn}}'
+            - '{{truthform|AWS::SQS::Queue|orders|Arn}}'
+            Sid: ReceiveFromQueues
+          - Action:
+            - sqs:GetQueueAttributes
+            - sqs:GetQueueUrl
+            - sqs:SendMessage
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::SQS::Queue|orders|Arn}}'
+            Sid: SendToQueues
+          - Action:
+            - s3:AbortMultipartUpload
+            - s3:ListMultipartUploadParts
+            - s3:PutObject
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}/*'
+            Sid: WriteObjects
+          Version: "2012-10-17"
+        PolicyName: translated-access
+      RoleName: orders-id
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::IAM::Role
+    metadata:
+      name: web-id
+    spec:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          - sts:TagSession
+          Condition:
+            StringEquals:
+              aws:RequestTag/eks-cluster-arn: '{{truthform|AWS::EKS::Cluster|shop|Arn}}'
+              aws:RequestTag/kubernetes-namespace: jobs
+              aws:RequestTag/kubernetes-service-account: web-jobs
+          Effect: Allow
+          Principal:
+            Service: pods.eks.amazonaws.com
+        - Action:
+          - sts:AssumeRole
+          - sts:TagSession
+          Condition:
+            StringEquals:
+              aws:RequestTag/eks-cluster-arn: '{{truthform|AWS::EKS::Cluster|shop|Arn}}'
+              aws:RequestTag/kubernetes-namespace: shop
+              aws:RequestTag/kubernetes-service-account: web
+          Effect: Allow
+          Principal:
+            Service: pods.eks.amazonaws.com
+        Version: "2012-10-17"
+      Description: From Azure managed identity rg/web-id
+      Policies:
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - s3:DeleteObjectVersion
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::S3::Bucket|shoplogs-audit|Arn}}/*'
+            Sid: DeleteObjectVersions
+          - Action:
+            - s3:DeleteObject
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::S3::Bucket|shopfiles-exports|Arn}}/*'
+            - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}/*'
+            - '{{truthform|AWS::S3::Bucket|shoplogs-audit|Arn}}/*'
+            Sid: DeleteObjects
+          - Action:
+            - secretsmanager:DescribeSecret
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::SecretsManager::Secret|shopkv/api-key|Id}}'
+            - '{{truthform|AWS::SecretsManager::Secret|shopkv/db-password|Id}}'
+            Sid: DescribeSecrets
+          - Action:
+            - s3:ListBucket
+            - s3:ListBucketVersions
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::S3::Bucket|shopfiles-exports|Arn}}'
+            - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}'
+            - '{{truthform|AWS::S3::Bucket|shoplogs-audit|Arn}}'
+            Sid: ListBuckets
+          - Action:
+            - sns:Publish
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+            Sid: PublishToTopics
+          - Action:
+            - ecr:BatchCheckLayerAvailability
+            - ecr:BatchGetImage
+            - ecr:GetDownloadUrlForLayer
+            Effect: Allow
+            Resource:
+            - arn:aws:ecr:eu-west-1:{{truthform|account|self|id}}:repository/shopacr/*
+            Sid: PullImages
+          - Action:
+            - ecr:CompleteLayerUpload
+            - ecr:InitiateLayerUpload
+            - ecr:PutImage
+            - ecr:UploadLayerPart
+            Effect: Allow
+            Resource:
+            - arn:aws:ecr:eu-west-1:{{truthform|account|self|id}}:repository/shopacr/*
+            Sid: PushImages
+          - Action:
+            - secretsmanager:PutSecretValue
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::SecretsManager::Secret|shopkv/api-key|Id}}'
+            Sid: PutSecretVersions
+          - Action:
+            - s3:GetObject
+            - s3:GetObjectVersion
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::S3::Bucket|shopfiles-exports|Arn}}/*'
+            - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}/*'
+            - '{{truthform|AWS::S3::Bucket|shoplogs-audit|Arn}}/*'
+            Sid: ReadObjects
+          - Action:
+            - secretsmanager:GetSecretValue
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::SecretsManager::Secret|shopkv/api-key|Id}}'
+            Sid: ReadSecrets
+          - Action:
+            - sqs:ChangeMessageVisibility
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+            - sqs:GetQueueUrl
+            - sqs:ReceiveMessage
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::SQS::Queue|events-audit-dlq|Arn}}'
+            - '{{truthform|AWS::SQS::Queue|events-audit|Arn}}'
+            Sid: ReceiveFromQueues
+          - Action:
+            - ecr:GetAuthorizationToken
+            Effect: Allow
+            Resource:
+            - '*'
+            Sid: RegistrySignIn
+          - Action:
+            - s3:AbortMultipartUpload
+            - s3:ListMultipartUploadParts
+            - s3:PutObject
+            Effect: Allow
+            Resource:
+            - '{{truthform|AWS::S3::Bucket|shopfiles-exports|Arn}}/*'
+            - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}/*'
+            - '{{truthform|AWS::S3::Bucket|shoplogs-audit|Arn}}/*'
+            Sid: WriteObjects
+          Version: "2012-10-17"
+        PolicyName: translated-access
+      RoleName: web-id
+      Tags:
+      - Key: team
+        Value: web
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::BucketPolicy
+    metadata:
+      name: shopfiles-exports
+    spec:
+      Bucket: shopfiles-exports
+      PolicyDocument:
+        Statement:
+        - Action: s3:*
+          Condition:
+            Bool:
+              aws:SecureTransport: "false"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopfiles-exports|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopfiles-exports|Arn}}/*'
+          Sid: DenyPlainHTTP
+        - Action: s3:*
+          Condition:
+            NumericLessThan:
+              s3:TlsVersion: "1.2"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopfiles-exports|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopfiles-exports|Arn}}/*'
+          Sid: DenyOldTLS
+        Version: "2012-10-17"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::BucketPolicy
+    metadata:
+      name: shopfiles-images
+    spec:
+      Bucket: shopfiles-images
+      PolicyDocument:
+        Statement:
+        - Action: s3:*
+          Condition:
+            Bool:
+              aws:SecureTransport: "false"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}/*'
+          Sid: DenyPlainHTTP
+        - Action: s3:*
+          Condition:
+            NumericLessThan:
+              s3:TlsVersion: "1.2"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopfiles-images|Arn}}/*'
+          Sid: DenyOldTLS
+        Version: "2012-10-17"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::BucketPolicy
+    metadata:
+      name: shoplogs-audit
+    spec:
+      Bucket: shoplogs-audit
+      PolicyDocument:
+        Statement:
+        - Action: s3:*
+          Condition:
+            Bool:
+              aws:SecureTransport: "false"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shoplogs-audit|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shoplogs-audit|Arn}}/*'
+          Sid: DenyPlainHTTP
+        - Action: s3:*
+          Condition:
+            NumericLessThan:
+              s3:TlsVersion: "1.2"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shoplogs-audit|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shoplogs-audit|Arn}}/*'
+          Sid: DenyOldTLS
+        Version: "2012-10-17"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::Bucket
+    metadata:
+      annotations:
+        truthform.org/write-only: AccessControl,BucketNamePrefix,BucketNamespace,LifecycleConfiguration.Rules[].ExpiredObjectDeleteMarker,LifecycleConfiguration.Rules[].NoncurrentVersionExpirationInDays,LifecycleConfiguration.Rules[].NoncurrentVersionTransition,LifecycleConfiguration.Rules[].Transition,MetadataConfiguration.AnnotationTableConfiguration.EncryptionConfiguration,MetadataConfiguration.InventoryTableConfiguration.EncryptionConfiguration,MetadataConfiguration.JournalTableConfiguration.EncryptionConfiguration,ReplicationConfiguration.Rules[].Prefix
+      name: shopfiles-exports
+    spec:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      BucketName: shopfiles-exports
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::Bucket
+    metadata:
+      annotations:
+        truthform.org/write-only: AccessControl,BucketNamePrefix,BucketNamespace,LifecycleConfiguration.Rules[].ExpiredObjectDeleteMarker,LifecycleConfiguration.Rules[].NoncurrentVersionExpirationInDays,LifecycleConfiguration.Rules[].NoncurrentVersionTransition,LifecycleConfiguration.Rules[].Transition,MetadataConfiguration.AnnotationTableConfiguration.EncryptionConfiguration,MetadataConfiguration.InventoryTableConfiguration.EncryptionConfiguration,MetadataConfiguration.JournalTableConfiguration.EncryptionConfiguration,ReplicationConfiguration.Rules[].Prefix
+      name: shopfiles-images
+    spec:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      BucketName: shopfiles-images
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::Bucket
+    metadata:
+      annotations:
+        truthform.org/write-only: AccessControl,BucketNamePrefix,BucketNamespace,LifecycleConfiguration.Rules[].ExpiredObjectDeleteMarker,LifecycleConfiguration.Rules[].NoncurrentVersionExpirationInDays,LifecycleConfiguration.Rules[].NoncurrentVersionTransition,LifecycleConfiguration.Rules[].Transition,MetadataConfiguration.AnnotationTableConfiguration.EncryptionConfiguration,MetadataConfiguration.InventoryTableConfiguration.EncryptionConfiguration,MetadataConfiguration.JournalTableConfiguration.EncryptionConfiguration,ReplicationConfiguration.Rules[].Prefix
+      name: shoplogs-audit
+    spec:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      BucketName: shoplogs-audit
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SNS::Subscription
+    metadata:
+      annotations:
+        truthform.org/write-only: Region
+      name: h-c9fb16ede81e
+    spec:
+      Endpoint: '{{truthform|AWS::SQS::Queue|events-audit|Arn}}'
+      Protocol: sqs
+      RawMessageDelivery: true
+      TopicArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SNS::Topic
+    metadata:
+      name: events
+    spec:
+      TopicName: events
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
+      name: events-audit
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action: sqs:SendMessage
+          Condition:
+            ArnEquals:
+              aws:SourceArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+          Effect: Allow
+          Principal:
+            Service: sns.amazonaws.com
+          Resource: '{{truthform|AWS::SQS::Queue|events-audit|Arn}}'
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|events-audit|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-audit
+    spec:
+      MessageRetentionPeriod: 86400
+      QueueName: events-audit
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|events-audit-dlq|Arn}}'
+        maxReceiveCount: 10
+      VisibilityTimeout: 60
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-audit-dlq
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: events-audit-dlq
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: orders
+    spec:
+      MessageRetentionPeriod: 86400
+      QueueName: orders
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|orders-dlq|Arn}}'
+        maxReceiveCount: 10
+      VisibilityTimeout: 60
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: orders-dlq
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: orders-dlq
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SecretsManager::Secret
+    metadata:
+      annotations:
+        truthform.org/write-only: GenerateSecretString,SecretString
+      name: oldkv/token
+    spec:
+      Description: From Azure Key Vault rg/oldkv, secret token
+      Name: oldkv/token
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SecretsManager::Secret
+    metadata:
+      annotations:
+        truthform.org/write-only: GenerateSecretString,SecretString
+      name: shopkv/api-key
+    spec:
+      Description: From Azure Key Vault rg/shopkv, secret api-key
+      Name: shopkv/api-key
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SecretsManager::Secret
+    metadata:
+      annotations:
+        truthform.org/write-only: GenerateSecretString,SecretString
+      name: shopkv/db-password
+    spec:
+      Description: From Azure Key Vault rg/shopkv, secret db-password
+      Name: shopkv/db-password

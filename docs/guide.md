@@ -1451,9 +1451,11 @@ virtual networks, network security groups and what routes their subnets'
 traffic (route tables, NAT gateways, peerings), public and private DNS
 zones, storage accounts' blob containers, Key Vault secrets, container
 registries, AKS clusters (their configuration: the workloads travel
-through the Kubernetes snapshot), and the configuration (never the data)
-of Azure Database for PostgreSQL flexible servers and Azure SQL servers;
-every other type is reported as not looked at (design: issue #32).
+through the Kubernetes snapshot), the configuration (never the data)
+of Azure Database for PostgreSQL flexible servers and Azure SQL servers,
+and workload identity (the managed identities a cluster's service accounts
+use, with what their data roles let them reach); every other type is
+reported as not looked at (design: issue #32).
 
 ```sh
 truthform translate --from snap/azure --map map.yaml --out moved/
@@ -1481,6 +1483,7 @@ destinations:
   dns: route53              # route53 (aws) or cloud-dns (gcp)
   databases: rds            # rds (aws) or cloud-sql (gcp)
   clusters: eks             # eks (aws) or gke (gcp), for AKS clusters
+  identity: workload        # managed identities of the clusters' service accounts, and their data roles
 secrets:                    # gcp: where Secret Manager keeps each secret; it cannot change later
   replication: user-managed # automatic, or user-managed with
   locations: [europe-west1, europe-west4]
@@ -1632,7 +1635,8 @@ lock, which is not translated.
 | Network policy | `azure`: the VPC CNI's policy enforcement (`vpc-cni` add-on); Calico, Cilium: less protected (their own kinds are not enforced) | `azure`: Dataplane V2; `calico`: Calico; `cilium`: Dataplane V2, less protected |
 | Secrets with a customer key | `EncryptionConfig` with the map's key, else less protected | `databaseEncryption` with the map's key, else less protected |
 | Node pool | `AWS::EKS::Nodegroup` per pool: count and autoscaling bounds, disk, labels, taints, spot, Windows AMI | `nodePools[]`: totals across the map's zones, disk, labels, taints, spot, Windows image, max pods, no public address |
-| Identity (managed, kubelet, Entra ID, workload identity) | not translated: roles from the map, access entries on its own | not translated: service account from the map, IAM on its own |
+| The cluster's and the nodes' own identity, Entra ID sign-in | not translated: roles from the map, access entries on its own | not translated: service account from the map, IAM on its own |
+| Workload identity | with `identity: workload`: the EKS Pod Identity agent add-on, and a role per managed identity (see Workload identity) | the project's workload identity pool, the GKE metadata server on every pool, and a service account per managed identity |
 | Add-ons, mesh, monitoring | not translated; Azure Policy and Istio are less protected until the target's own is installed | the same |
 
 An AKS pool's VM size has no exact equivalent, so each pool's instance or
@@ -1660,7 +1664,8 @@ instances in its subnets; the report lists them.
 | Soft delete | the recovery window each delete chooses | less protected: a delete is immediate |
 | Purge protection | less protected: a delete may skip the window | less protected |
 | Disabled secret, `exp`, `nbf` | written with no value; the dates are named (Key Vault only records them) | the same; `expireTime` would delete the secret, so it is not written |
-| Access policies, RBAC | identity, not translated: named, and listed as grants to make | the same |
+| Access policies | identity, not translated: named, and listed as grants to make | the same |
+| Azure RBAC | the secret roles of a workload's managed identity are translated (see Workload identity); every other assignment is refused | the same |
 | `accessPolicies` child | refused: identity | refused |
 | Key | refused: its material never leaves the vault (make one in AWS KMS) | refused (Cloud KMS) |
 
@@ -1720,6 +1725,77 @@ endpoints in one subnet make endpoints in one zone, and the report says so.
 On S3 the endpoint answers every lookup in the VPC
 (`PrivateDnsOnlyForInboundResolverEndpoint: AllResolvers`), as a private
 endpoint did, without a gateway endpoint.
+
+### Workload identity
+
+With `identity: workload`, an app that reached a queue, a blob, a secret or
+an image on Azure through its pod's managed identity reaches the translated
+one, and nothing else. It is the narrowest part of the translation: a grant
+is written only when it is no more than the source's, and in doubt the role
+assignment is refused and says why.
+
+| Identity | aws | gcp |
+|---|---|---|
+| User-assigned identity with a federated credential for a translated cluster's service account | `AWS::IAM::Role`, trusted by EKS Pod Identity for those service accounts only | IAM service account |
+| Federated credential (issuer a translated AKS cluster, subject `system:serviceaccount:<namespace>:<name>`) | `AWS::EKS::PodIdentityAssociation` (cluster, namespace, service account, role); the role's trust policy names the same three | `roles/iam.workloadIdentityUser` on the service account for `<project>.svc.id.goog[<namespace>/<name>]` |
+| Any other credential (a pipeline's issuer, a cluster that is not translated, a subject that is not one service account, a matching expression) | refused | refused |
+| An identity no translated cluster's service account uses (a VM's, an app service's) | refused, with its role assignments | refused |
+| Two identities federated to one service account | both credentials refused: a service account takes one role | refused: one annotation |
+| The kubelet identity's AcrPull | not written: the nodes run as the map's role; the report asks that it may pull | not written: the report gives the `gcloud` command for the node service account |
+| Role assignment of such an identity, one of the roles below | statements in the role's inline policy, each on the ARNs of the objects by name | a binding on each object's own allow policy |
+| Scope wider than one object (a namespace, an account, a vault, a resource group, the subscription) | narrowed to the translated objects in it, each by name; named as a loss | the same |
+| Control-plane roles (Owner, Contributor, Reader, User Access Administrator), custom roles, any role not below | refused | refused |
+| An assignment with a condition, or to a user, a group or a service principal | refused: people and pipelines are the customer's directory | refused |
+| A Key Vault role on a vault with access policies; AcrPull or AcrPush on a registry with repository permissions | refused: Azure gave nothing there either | refused |
+| Messaging to RabbitMQ | refused: a user's password is a Secret any pod of its namespace can mount, and sending to a queue needs write on the default exchange, which is every queue | refused |
+
+The roles are a fixed table, by role definition ID, from each role's
+published actions and data actions:
+
+| Azure role | aws | gcp |
+|---|---|---|
+| Azure Service Bus Data Sender | `sqs:SendMessage`, `GetQueueAttributes`, `GetQueueUrl` on each queue; `sns:Publish` on each topic | `roles/pubsub.publisher` on each topic |
+| Azure Service Bus Data Receiver | `sqs:ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`, `GetQueueAttributes`, `GetQueueUrl` on each queue and subscription queue and its dead-letter queue | `roles/pubsub.subscriber` on each subscription and its dead-letter subscription |
+| Azure Service Bus Data Owner | both of the above; managing the namespace is not granted | the same |
+| Storage Blob Data Reader | `s3:ListBucket`, `ListBucketVersions` on the bucket; `s3:GetObject`, `GetObjectVersion` on its objects | `roles/storage.objectViewer` on the bucket |
+| Storage Blob Data Contributor | the Reader's, and `s3:PutObject`, `AbortMultipartUpload`, `ListMultipartUploadParts`, `DeleteObject` on its objects | `roles/storage.objectUser` on a bucket without versioning; on one that keeps versions `roles/storage.objectViewer` and `roles/storage.objectCreator` (no overwrite, no delete: `objectUser` would also delete versions for good) |
+| Storage Blob Data Owner | the Contributor's, and `s3:DeleteObjectVersion` | `roles/storage.objectUser` |
+| Key Vault Secrets User | `secretsmanager:GetSecretValue`, `DescribeSecret` on each secret | `roles/secretmanager.secretAccessor` on each secret |
+| Key Vault Secrets Officer | the User's, and `secretsmanager:PutSecretValue` | `secretAccessor`, `roles/secretmanager.secretVersionAdder`, `roles/secretmanager.viewer` |
+| Key Vault Reader | `secretsmanager:DescribeSecret` | `roles/secretmanager.viewer` |
+| AcrPull | `ecr:GetAuthorizationToken` (on `*`: it takes no resource), and `ecr:BatchGetImage`, `GetDownloadUrlForLayer`, `BatchCheckLayerAvailability` on `repository/<registry>/*` | `roles/artifactregistry.reader` on the repository |
+| AcrPush | AcrPull's, and `ecr:InitiateLayerUpload`, `UploadLayerPart`, `CompleteLayerUpload`, `PutImage`; not `ecr:CreateRepository` | `roles/artifactregistry.reader` only: `writer` would also delete what is attached to an image |
+
+What a role allowed that has no line here is not granted and is named: a
+receiver dead-lettering a message itself, creating and deleting containers
+and secrets, a user delegation SAS, and on GCP reading a secret's properties
+with Key Vault Secrets User (the role that does also reads who may read it).
+
+On AWS no statement names a wildcard but three: `*` for
+`ecr:GetAuthorizationToken`, a translated bucket's objects (`<bucket>/*`),
+and the repositories a translated registry's template makes
+(`repository/<registry>/*`), which do not exist yet. A service that answers
+only on its private path still denies these roles from anywhere else, as it
+did on Azure.
+
+EKS Pod Identity is used, not IAM roles for service accounts: a role for the
+latter names the cluster's OIDC issuer, which EKS gives only when it makes
+the cluster. The service accounts need no annotation; the node role must
+allow `eks-auth:AssumeRoleForPodIdentity`; a pod on a Windows node gets no
+role. On GKE each service account carries
+`iam.gke.io/gcp-service-account: <account>@<project>.iam.gserviceaccount.com`,
+which the report lists one by one. A GKE cluster's workload identity pool is
+its project's: a service account of the same namespace and name in another
+cluster of the project is the same principal. Where the translation writes
+two clusters and a credential named one, that is reported as less protected.
+
+On GCP a grant is an object of kind `iam.googleapis.com/Binding`. Restoring
+it reads the object's allow policy, adds the member to its role, and writes
+the policy back with the etag it was read with; nothing already in the
+policy is removed, and a policy that already holds the member is left
+alone. A capture does not read allow policies: a capture of the rebuilt
+project holds none of these objects, and a diff against the translation
+says so.
 
 A service that answered only on its private endpoints (public network access
 disabled), or only its firewall's ranges, answers only there on the target:
@@ -1849,8 +1925,8 @@ Known limits:
   target fills in that the translation does not set.
 - Each target object is built from, or checked against, the target's own
   published definition (the CloudFormation registry, the Pub/Sub, Compute,
-  Cloud Storage, Secret Manager, Artifact Registry, Cloud DNS and Cloud SQL
-  Discovery documents): downloaded and cached like `aws-coverage`, or read
+  Cloud Storage, Secret Manager, Artifact Registry, Cloud DNS, Cloud SQL,
+  GKE and IAM Discovery documents): downloaded and cached like `aws-coverage`, or read
   from `--schemas` and `--discovery`.
 - An NSG on a network interface rather than a subnet, application security
   groups, public addresses of anything but a NAT gateway, gateways, load

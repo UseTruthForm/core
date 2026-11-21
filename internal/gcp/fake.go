@@ -61,6 +61,15 @@ type Fake struct {
 	InventoryName func(rel string, data map[string]any) string
 	// Updates counts applied patches and updates.
 	Updates int
+	// EmailNames makes the fake name a service account as IAM does, by
+	// its email (projects/p/serviceAccounts/id@p.iam.gserviceaccount.com),
+	// and set that email. Off, one is named by its account ID alone, as
+	// the first fixtures were written.
+	EmailNames bool
+	// iam holds the allow policies of resources that have one, and
+	// PolicyWrites counts the times one was written.
+	iam          map[string]*fakePolicy
+	PolicyWrites int
 	// WriteDelay makes each write take this long, outside the lock, so
 	// writes running at once overlap as Google's long-running ones do.
 	WriteDelay time.Duration
@@ -82,7 +91,7 @@ func (w *World) Project(id, number string) *Fake {
 	w.mu.Lock()
 	w.projects[id] = number
 	w.mu.Unlock()
-	return &Fake{w: w, id: id, number: number, res: map[string]fakeRes{}, Unavailable: map[string]bool{}}
+	return &Fake{w: w, id: id, number: number, res: map[string]fakeRes{}, Unavailable: map[string]bool{}, iam: map[string]*fakePolicy{}}
 }
 
 func (f *Fake) Project() string                               { return f.id }
@@ -118,6 +127,9 @@ func (f *Fake) Call(_ context.Context, method, url string, body any) (map[string
 	defer f.w.mu.Unlock()
 	if err := f.perimeterRefuses(method, url); err != nil {
 		return nil, err
+	}
+	if out, ok, err := f.iamCall(method, url, body); ok {
+		return out, err
 	}
 	switch method {
 	case "GET":
@@ -300,6 +312,11 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	if parent == "" {
 		rel = id // a resource with no parent in its name (a Cloud Storage bucket)
 	}
+	email := ""
+	if f.EmailNames && d.Name == "iam" && schema == "ServiceAccount" {
+		email = id + "@" + f.id + ".iam.gserviceaccount.com"
+		rel = parent + "/" + coll + "/" + email
+	}
 	item := itemParams(d, collection, m)
 	if len(item) > 2 {
 		// Named by several of its fields (a record set by its DNS name
@@ -357,6 +374,9 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 				stored[k] = fmt.Sprintf("1%019d", f.w.seq*7919+len(f.id)) // Google's IDs are numbers
 			}
 		}
+	}
+	if email != "" {
+		stored["email"] = email
 	}
 	if _, ok := d.Schemas[schema].Properties["selfLink"]; ok {
 		stored["selfLink"] = d.RootURL + d.ServicePath + rel

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -390,6 +391,13 @@ func tokenizeString(s, project, number string) string {
 		s = strings.TrimSuffix(s, project) + tokProject
 	}
 	s = strings.ReplaceAll(s, "@"+project+".", "@"+tokProject+".")
+	// A project's workload identity pool is named after it
+	// (PROJECT_ID.svc.id.goog, in a GKE cluster's workloadPool and in the
+	// members of that pool): kept, a restored cluster asked for the source
+	// project's pool.
+	if pool := project + ".svc.id.goog"; strings.Contains(s, pool) {
+		s = poolRE(project).ReplaceAllString(s, "${1}"+tokProject+".svc.id.goog")
+	}
 	if number != "" {
 		s = strings.ReplaceAll(s, "projects/"+number+"/", "projects/"+tokNumber+"/")
 		if strings.HasSuffix(s, "projects/"+number) {
@@ -439,4 +447,10 @@ func dropUnder(v any, prefix string) {
 			dropUnder(x, prefix)
 		}
 	}
+}
+
+// poolRE finds a project's workload identity pool where the project ID is
+// a whole name, not the end of a longer one.
+func poolRE(project string) *regexp.Regexp {
+	return regexp.MustCompile(`(^|[^a-z0-9-])` + regexp.QuoteMeta(project) + `\.svc\.id\.goog`)
 }

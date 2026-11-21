@@ -1,5 +1,11 @@
 {
  "resources": {
+  "Microsoft.Authorization/roleAssignments@2022-04-01": {
+   "$ref": "authorization/microsoft.authorization/2022-04-01/types.json#/24"
+  },
+  "Microsoft.Authorization/roleDefinitions@2022-04-01": {
+   "$ref": "authorization/microsoft.authorization/2022-04-01/types.json#/36"
+  },
   "Microsoft.ContainerRegistry/registries/cacheRules@2025-11-01": {
    "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/129"
   },
@@ -125,6 +131,15 @@
   },
   "Microsoft.KeyVault/vaults@2026-05-15": {
    "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/135"
+  },
+  "Microsoft.ManagedIdentity/identities@2024-11-30": {
+   "$ref": "msi/microsoft.managedidentity/2024-11-30/types.json#/35"
+  },
+  "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2024-11-30": {
+   "$ref": "msi/microsoft.managedidentity/2024-11-30/types.json#/28"
+  },
+  "Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30": {
+   "$ref": "msi/microsoft.managedidentity/2024-11-30/types.json#/21"
   },
   "Microsoft.Network/dnsZones/A@2018-05-01": {
    "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/27"

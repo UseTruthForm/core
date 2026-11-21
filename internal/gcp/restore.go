@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -45,7 +46,9 @@ func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, 
 	}
 	need := map[string]bool{}
 	for _, o := range s.Objects {
-		need[o.Kind()] = true
+		if o.Kind() != BindingKind {
+			need[o.Kind()] = true
+		}
 	}
 	have, _, _, err := inventory(ctx, api, docs, func(t string) bool { return need[t] }, 0)
 	if err != nil {
@@ -64,7 +67,8 @@ func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, 
 	unread := map[string]string{}
 	for _, o := range s.Objects {
 		k := o.Kind() + "|" + o.Name()
-		if existing[k] != nil || !outsideProject(o) {
+		// A binding is a grant on a policy, not a resource: restored on its own.
+		if existing[k] != nil || o.Kind() == BindingKind || !outsideProject(o) {
 			continue
 		}
 		switch r, err := readNamed(ctx, api, docs, o, project, number); {
@@ -85,9 +89,16 @@ func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, 
 	// time; results keep the reference order whatever order they finish in.
 	done := make([]snapshot.Result, len(order))
 	applies := make([]*pendingApply, len(order))
+	locks := &policyLocks{}
 	schedule.Run(len(order), deps, workers, func(i int) {
 		if why, bad := unread[order[i].Kind()+"|"+order[i].Name()]; bad {
 			done[i] = snapshot.Result{Key: order[i].Key(), Detail: why}
+			return
+		}
+		if order[i].Kind() == BindingKind {
+			// A grant on a resource's allow policy: added, never created.
+			ok, detail := restoreBinding(ctx, api, docs, order[i], project, number, resolved, locks)
+			done[i] = snapshot.Result{Key: order[i].Key(), OK: ok, Detail: detail}
 			return
 		}
 		ok, detail, apply := restoreOne(ctx, api, docs, order[i], project, number, existing, resolved, opt)
@@ -451,8 +462,9 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 			// (a firewall's network: .../global/networks/net-1), and must
 			// exist first: by sorted key alone, Firewall came before
 			// Network and the fake, as Google, refused it.
+			waits := after(by[k])
 			for _, other := range keys {
-				if other != k && !done[other] && namedIn(spec, by[other].Name()) {
+				if other != k && !done[other] && (namedIn(spec, by[other].Name()) || slices.Contains(waits, by[other].Name())) {
 					ready = false
 				}
 			}
@@ -480,8 +492,9 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 				depIdx[i] = append(depIdx[i], j)
 			}
 		}
+		waits := after(o)
 		for j, other := range order {
-			if j != i && namedIn(spec, other.Name()) {
+			if j != i && (namedIn(spec, other.Name()) || slices.Contains(waits, other.Name())) {
 				depIdx[i] = append(depIdx[i], j)
 			}
 		}

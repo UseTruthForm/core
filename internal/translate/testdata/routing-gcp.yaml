@@ -1,4 +1,12 @@
 report:
+  attachments:
+  - attached: requirement
+    carries:
+    - web
+    nsgs:
+    - net/web
+    source: subnet net/spoke/app
+    to: every instance and GKE node in subnetwork spoke-app that no other row names
   destinations:
   - 'network: vpc'
   entries:
@@ -21,7 +29,89 @@ report:
     - compute.googleapis.com/Address projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-2
     - compute.googleapis.com/Address projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-3
     - compute.googleapis.com/Router projects/{{truthform|project}}/regions/europe-west1/routers/spoke-nat
-  - source: Microsoft.Network/networkSecurityGroups net/web
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-https-vnet
+      priority: 100
+      rule: allow-https-vnet
+      status: exact
+      where: network tag web
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-8080-internet
+      priority: 150
+      rule: allow-8080-internet
+      status: exact
+      where: network tag web
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-deny-rest
+      priority: 200
+      rule: deny-rest
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag web
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag web
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag web
+    source: Microsoft.Network/networkSecurityGroups net/web
     state: mapped
     targets:
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-8080-internet

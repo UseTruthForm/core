@@ -1,4 +1,25 @@
 report:
+  attachments:
+  - attached: written
+    carries:
+    - core-endpoints
+    source: Microsoft.Network/privateEndpoints net/pe-acr
+    to: the interface endpoints of VPC core
+  - attached: written
+    carries:
+    - core-endpoints
+    source: Microsoft.Network/privateEndpoints net/pe-blob
+    to: the interface endpoints of VPC core
+  - attached: written
+    carries:
+    - core-endpoints
+    source: Microsoft.Network/privateEndpoints net/pe-bus
+    to: the interface endpoints of VPC core
+  - attached: written
+    carries:
+    - core-endpoints
+    source: Microsoft.Network/privateEndpoints net/pe-kv
+    to: the interface endpoints of VPC core
   destinations:
   - 'dns: route53'
   - 'messaging: sqs-sns'

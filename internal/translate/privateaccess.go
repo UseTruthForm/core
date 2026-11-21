@@ -200,9 +200,19 @@ func (privateAccess) translate(objs []snapshot.Object, o *out) {
 	}
 	aws.write(o)
 	if len(gcpNets) > 0 {
-		for vk := range gcpNets {
-			for _, ns := range o.netSubs {
-				if ns.vnet == vk && ns.spec != nil {
+		for vk, in := range gcpNets {
+			// Where an NSG filtered the endpoints, only the subnetworks it
+			// let reach them are given the access (nsg_endpoints.go).
+			var allowed map[string]bool
+			if sub := o.subnets[in[0].subnet]; o.nsgs != nil && sub != nil {
+				var keys []string
+				for _, pe := range in {
+					keys = append(keys, strings.ToLower(pe.group+"/"+pe.name))
+				}
+				allowed = o.nsgs.w.privateAccess(o.nsgs, o, sub.vnet, keys)
+			}
+			for key, ns := range o.netSubs {
+				if ns.vnet == vk && ns.spec != nil && (allowed == nil || allowed[key]) {
 					ns.spec["privateIpGoogleAccess"] = true
 				}
 			}
@@ -244,6 +254,7 @@ type vpcEndpoints struct {
 	vpc      string
 	services map[string]bool
 	subnets  map[string]string // zone -> subnet logical name: one per zone
+	pes      []string          // the private endpoints behind them, by group/name
 }
 
 func (a *awsEndpoints) add(pe *privateEndpoint, sub *subnet, services []string, o *out) string {
@@ -262,6 +273,7 @@ func (a *awsEndpoints) add(pe *privateEndpoint, sub *subnet, services []string, 
 	for _, s := range services {
 		ve.services[s] = true
 	}
+	ve.pes = append(ve.pes, strings.ToLower(pe.group+"/"+pe.name))
 	// An endpoint takes one subnet per zone; a private endpoint in another
 	// subnet of a zone already taken shares that one, which the whole VPC
 	// reaches.
@@ -287,14 +299,27 @@ func (a *awsEndpoints) write(o *out) {
 		for _, p := range ve.v.prefixes {
 			in = append(in, sgRule(box{"tcp", 443, 443, nil}, p))
 		}
+		// Where an NSG filtered the private endpoints, the group lets in
+		// what all of them did (nsg_endpoints.go).
+		groups := []any{awsRef(awsSG, sg, "GroupId")}
+		if o.nsgs != nil {
+			rules, markers, filtered := o.nsgs.w.endpointGroups(o.nsgs, o, ve.v, ve.pes, sg)
+			groups = append(groups, markers...)
+			if filtered {
+				in = rules
+			}
+		}
 		tags, _ := awsTags(sg, nil)
-		o.add("aws", src, awsObject(awsSG, sg, map[string]any{
-			"GroupDescription":     "HTTPS from the network to its interface endpoints, for its Azure private endpoints",
-			"VpcId":                awsRef(awsVPC, ve.vpc, "VpcId"),
-			"SecurityGroupIngress": in,
-			"SecurityGroupEgress":  []any{sgRule(box{"all", 0, 65535, nil}, anyV4)},
-			"Tags":                 tags,
-		}))
+		sgSpec := map[string]any{
+			"GroupDescription":    "HTTPS from the network to its interface endpoints, for its Azure private endpoints",
+			"VpcId":               awsRef(awsVPC, ve.vpc, "VpcId"),
+			"SecurityGroupEgress": []any{sgRule(box{"all", 0, 65535, nil}, anyV4)},
+			"Tags":                tags,
+		}
+		if len(in) > 0 {
+			sgSpec["SecurityGroupIngress"] = in
+		}
+		o.add("aws", src, awsObject(awsSG, sg, sgSpec))
 		zones := make([]string, 0, len(ve.subnets))
 		for z := range ve.subnets {
 			zones = append(zones, z)
@@ -315,7 +340,7 @@ func (a *awsEndpoints) write(o *out) {
 			spec := map[string]any{
 				"VpcId": awsRef(awsVPC, ve.vpc, "VpcId"), "ServiceName": "com.amazonaws." + o.m.Region + "." + s,
 				"VpcEndpointType": "Interface", "PrivateDnsEnabled": true, "SubnetIds": subnets,
-				"SecurityGroupIds": []any{awsRef(awsSG, sg, "GroupId")}, "Tags": t,
+				"SecurityGroupIds": groups, "Tags": t,
 			}
 			if s == "s3" {
 				// S3's private DNS otherwise answers only on-premises
@@ -376,9 +401,8 @@ func readPrivateEndpoint(o snapshot.Object) *privateEndpoint {
 		p.lose("ipConfigurations", fmt.Sprintf("its addresses were fixed (%s); the target picks its endpoints' addresses, and names them by DNS", strings.Join(ips, ", ")), false)
 	}
 	p.quiet("ipConfigurations")
-	if len(list(p.m["applicationSecurityGroups"])) > 0 {
-		p.lose("applicationSecurityGroups", "application security groups are not translated: the endpoints take HTTPS from the whole network", false)
-	}
+	// Its application security groups are read with the network's
+	// security rules (nsg_endpoints.go).
 	p.quiet("applicationSecurityGroups")
 	p.unlessDefault("customNetworkInterfaceName", "", "the endpoint's network interface name is the target's own")
 	pe.losses = append(top.rest(), p.rest()...)

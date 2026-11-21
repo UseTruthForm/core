@@ -1,4 +1,12 @@
 report:
+  attachments:
+  - attached: requirement
+    carries:
+    - web
+    nsgs:
+    - net/web
+    source: subnet net/core/app
+    to: every instance and GKE node in subnetwork core-app that no other row names
   destinations:
   - 'clusters: gke'
   - 'network: vpc'
@@ -86,7 +94,73 @@ report:
   - reason: 'Azure''s report of the upgrades open to the cluster: nothing to translate'
     source: Microsoft.ContainerService/managedClusters/upgradeProfiles rg/shop/default
     state: mapped
-  - source: Microsoft.Network/networkSecurityGroups net/web
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-https
+      priority: 100
+      rule: allow-https
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag web
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag web
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag web
+    source: Microsoft.Network/networkSecurityGroups net/web
     state: mapped
     targets:
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-https

@@ -1,4 +1,21 @@
 report:
+  attachments:
+  - attached: written
+    source: Microsoft.Network/privateEndpoints net/pe-acr
+    to: Private Google Access on subnetwork(s) core-app, core-endpoints of network
+      core
+  - attached: written
+    source: Microsoft.Network/privateEndpoints net/pe-blob
+    to: Private Google Access on subnetwork(s) core-app, core-endpoints of network
+      core
+  - attached: written
+    source: Microsoft.Network/privateEndpoints net/pe-bus
+    to: Private Google Access on subnetwork(s) core-app, core-endpoints of network
+      core
+  - attached: written
+    source: Microsoft.Network/privateEndpoints net/pe-kv
+    to: Private Google Access on subnetwork(s) core-app, core-endpoints of network
+      core
   destinations:
   - 'dns: cloud-dns'
   - 'messaging: pubsub'

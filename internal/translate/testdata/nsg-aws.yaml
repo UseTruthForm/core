@@ -1,0 +1,2557 @@
+report:
+  attachments:
+  - asgs:
+    - sec/web
+    attached: requirement
+    carries:
+    - app-nsg-vm-nsg
+    - web
+    nsgs:
+    - sec/app-nsg
+    - sec/vm-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm1-nic
+    to: what takes the place of virtual machine vm1
+  - asgs:
+    - sec/api
+    attached: requirement
+    carries:
+    - app-nsg-as-api
+    - api
+    nsgs:
+    - sec/app-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm2-nic
+    to: what takes the place of virtual machine vm2
+  - asgs:
+    - sec/db
+    - sec/web
+    attached: requirement
+    carries:
+    - data-nsg
+    - db
+    - web
+    nsgs:
+    - sec/data-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm3-nic
+    to: what takes the place of virtual machine vm3
+  - asgs:
+    - sec/batch
+    attached: requirement
+    carries:
+    - vm-nsg
+    - batch
+    nsgs:
+    - sec/vm-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm4-nic
+    to: what takes the place of virtual machine vm4
+  - attached: requirement
+    carries:
+    - app-nsg
+    nsgs:
+    - sec/app-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm5-nic
+    to: what takes the place of virtual machine vm5
+  - attached: written
+    carries:
+    - core-endpoints
+    nsgs:
+    - sec/pe-nsg
+    source: Microsoft.Network/privateEndpoints sec/pe-store
+    to: the interface endpoints of VPC core
+  - attached: written
+    carries:
+    - core-endpoints
+    source: Microsoft.Network/privateEndpoints sec/pe-vault
+    to: the interface endpoints of VPC core
+  - attached: requirement
+    carries:
+    - aks-nsg
+    nsgs:
+    - sec/aks-nsg
+    source: subnet sec/core/aks
+    to: every instance and node group in subnet core-aks that no other row names
+  - attached: requirement
+    carries:
+    - app-nsg
+    nsgs:
+    - sec/app-nsg
+    source: subnet sec/core/app
+    to: every instance and node group in subnet core-app that no other row names
+  - attached: requirement
+    carries:
+    - data-nsg
+    nsgs:
+    - sec/data-nsg
+    source: subnet sec/core/data
+    to: every instance and node group in subnet core-data that no other row names
+  - attached: requirement
+    carries:
+    - pe-nsg
+    nsgs:
+    - sec/pe-nsg
+    source: subnet sec/core/legacy
+    to: every instance and node group in subnet core-legacy that no other row names
+  - attached: requirement
+    carries:
+    - pe-nsg
+    nsgs:
+    - sec/pe-nsg
+    source: subnet sec/core/pe
+    to: every instance and node group in subnet core-pe that no other row names
+  destinations:
+  - 'network: vpc'
+  - 'secrets: secret-manager'
+  - 'storage: buckets'
+  entries:
+  - reason: a security group with no rules, which rules name as their source or destination
+      and members carry
+    source: Microsoft.Network/applicationSecurityGroups sec/api
+    state: mapped
+    targets:
+    - AWS::EC2::SecurityGroup api
+  - reason: a security group with no rules, which rules name as their source or destination
+      and members carry
+    source: Microsoft.Network/applicationSecurityGroups sec/batch
+    state: mapped
+    targets:
+    - AWS::EC2::SecurityGroup batch
+  - reason: a security group with no rules, which rules name as their source or destination
+      and members carry
+    source: Microsoft.Network/applicationSecurityGroups sec/db
+    state: mapped
+    targets:
+    - AWS::EC2::SecurityGroup db
+  - reason: a security group with no rules, which rules name as their source or destination
+      and members carry
+    source: Microsoft.Network/applicationSecurityGroups sec/web
+    state: mapped
+    targets:
+    - AWS::EC2::SecurityGroup web
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm1
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm1-nic
+    state: mapped
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm2
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm2-nic
+    state: mapped
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm3
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm3-nic
+    state: mapped
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm4
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm4-nic
+    state: mapped
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm5
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm5-nic
+    state: mapped
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup aks-nsg ingress tcp/443-443 from 0.0.0.0/0
+      priority: 100
+      rule: allow-https
+      status: exact
+      where: AWS::EC2::SecurityGroup aks-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup aks-nsg ingress -1 from 10.30.0.0/16
+      - AWS::EC2::SecurityGroup aks-nsg ingress tcp/443-443 from 0.0.0.0/0
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup aks-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup aks-nsg
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup aks-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup aks-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup aks-nsg egress -1 to 0.0.0.0/0
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup aks-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup aks-nsg egress -1 to 0.0.0.0/0
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup aks-nsg
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup aks-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup aks-nsg
+    source: Microsoft.Network/networkSecurityGroups sec/aks-nsg
+    state: mapped
+    targets:
+    - AWS::EC2::SecurityGroup aks-nsg
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 0.0.0.0/5
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 10.0.0.0/12
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 10.128.0.0/9
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 10.16.0.0/13
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 10.24.0.0/14
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 10.28.0.0/15
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 10.31.0.0/16
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 10.32.0.0/11
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 10.64.0.0/10
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 11.0.0.0/8
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 12.0.0.0/6
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 128.0.0.0/1
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 16.0.0.0/4
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 32.0.0.0/3
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 64.0.0.0/2
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/443-443 from 8.0.0.0/7
+      priority: 100
+      rule: allow-https
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 200
+      rule: deny-ssh
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg
+    - access: allow
+      direction: inbound
+      priority: 300
+      rule: allow-web-to-api
+      status: does not apply
+      where: AWS::EC2::SecurityGroup app-nsg
+      why: 'it applies only to members of application security group sec/api, and
+        this is written for what is not in it: its members carry a group of their
+        own'
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 310
+      rule: deny-batch
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/9000-9100 from 10.30.0.0/22
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/9000-9100 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/9000-9100 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/9000-9100 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/9000-9100 from 10.30.4.0/23
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/9000-9100 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/9000-9100 from 10.30.7.0/24
+      - AWS::EC2::SecurityGroup app-nsg ingress tcp/9000-9100 from 10.30.8.0/21
+      priority: 320
+      rule: allow-9000
+      status: stricter
+      where: AWS::EC2::SecurityGroup app-nsg
+      why: 'inbound allow rule allow-9000 (priority 320): a deny before it (deny-batch)
+        names application security group sec/batch; single members cannot be taken
+        out of an address range, so the subnets its members are in (10.30.6.0/24)
+        are taken out whole'
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 4000
+      rule: deny-vnet-in
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: stricter
+      where: AWS::EC2::SecurityGroup app-nsg
+      why: 'inbound allow rule AllowVnetInBound (priority 65000) allows every protocol,
+        and a deny before it takes out tcp; a security group cannot write every protocol
+        but one, so it allows TCP, UDP, ICMP, ESP and AH, and no other protocol (GRE,
+        SCTP and the like); inbound allow rule AllowVnetInBound (priority 65000):
+        a deny before it (deny-batch) names application security group sec/batch;
+        single members cannot be taken out of an address range, so the subnets its
+        members are in (10.30.6.0/24) are taken out whole'
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup app-nsg
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg
+    - access: allow
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg egress tcp/5432-5432 to {{truthform|AWS::EC2::SecurityGroup|db|GroupId}}
+      priority: 300
+      rule: allow-out-db
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 400
+      rule: deny-out-db
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.30.0.0/23
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.30.128.0/17
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.30.16.0/20
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.30.3.0/24
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.30.32.0/19
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.30.4.0/22
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.30.64.0/18
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.30.8.0/21
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: stricter
+      where: AWS::EC2::SecurityGroup app-nsg
+      why: 'outbound allow rule AllowVnetOutBound (priority 65000): a deny before
+        it (deny-out-db) names application security group sec/db; single members cannot
+        be taken out of an address range, so the subnets its members are in (10.30.2.0/24)
+        are taken out whole'
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 0.0.0.0/5
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.0.0.0/12
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.128.0.0/9
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.16.0.0/13
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.24.0.0/14
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.28.0.0/15
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.31.0.0/16
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.32.0.0/11
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 10.64.0.0/10
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 11.0.0.0/8
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 12.0.0.0/6
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 128.0.0.0/1
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 16.0.0.0/4
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 32.0.0.0/3
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 64.0.0.0/2
+      - AWS::EC2::SecurityGroup app-nsg egress -1 to 8.0.0.0/7
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 0.0.0.0/5
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 10.0.0.0/12
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 10.128.0.0/9
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 10.16.0.0/13
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 10.24.0.0/14
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 10.28.0.0/15
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 10.31.0.0/16
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 10.32.0.0/11
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 10.64.0.0/10
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 11.0.0.0/8
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 12.0.0.0/6
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 128.0.0.0/1
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 16.0.0.0/4
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 32.0.0.0/3
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 64.0.0.0/2
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/443-443 from 8.0.0.0/7
+      priority: 100
+      rule: allow-https
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-as-api: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 200
+      rule: deny-ssh
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/8080-8080 from {{truthform|AWS::EC2::SecurityGroup|web|GroupId}}
+      priority: 300
+      rule: allow-web-to-api
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-as-api: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 310
+      rule: deny-batch
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/9000-9100 from 10.30.0.0/22
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/9000-9100 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/9000-9100 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/9000-9100 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/9000-9100 from 10.30.4.0/23
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/9000-9100 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/9000-9100 from 10.30.7.0/24
+      - AWS::EC2::SecurityGroup app-nsg-as-api ingress tcp/9000-9100 from 10.30.8.0/21
+      priority: 320
+      rule: allow-9000
+      status: stricter
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+      why: 'inbound allow rule allow-9000 (priority 320): a deny before it (deny-batch)
+        names application security group sec/batch; single members cannot be taken
+        out of an address range, so the subnets its members are in (10.30.6.0/24)
+        are taken out whole'
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-as-api: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 4000
+      rule: deny-vnet-in
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: stricter
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+      why: 'inbound allow rule AllowVnetInBound (priority 65000) allows every protocol,
+        and a deny before it takes out tcp; a security group cannot write every protocol
+        but one, so it allows TCP, UDP, ICMP, ESP and AH, and no other protocol (GRE,
+        SCTP and the like); inbound allow rule AllowVnetInBound (priority 65000):
+        a deny before it (deny-batch) names application security group sec/batch;
+        single members cannot be taken out of an address range, so the subnets its
+        members are in (10.30.6.0/24) are taken out whole'
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-as-api: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+    - access: allow
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress tcp/5432-5432 to {{truthform|AWS::EC2::SecurityGroup|db|GroupId}}
+      priority: 300
+      rule: allow-out-db
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-as-api: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 400
+      rule: deny-out-db
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.30.0.0/23
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.30.128.0/17
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.30.16.0/20
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.30.3.0/24
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.30.32.0/19
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.30.4.0/22
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.30.64.0/18
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.30.8.0/21
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: stricter
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+      why: 'outbound allow rule AllowVnetOutBound (priority 65000): a deny before
+        it (deny-out-db) names application security group sec/db; single members cannot
+        be taken out of an address range, so the subnets its members are in (10.30.2.0/24)
+        are taken out whole'
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 0.0.0.0/5
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.0.0.0/12
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.128.0.0/9
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.16.0.0/13
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.24.0.0/14
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.28.0.0/15
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.31.0.0/16
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.32.0.0/11
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 10.64.0.0/10
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 11.0.0.0/8
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 12.0.0.0/6
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 128.0.0.0/1
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 16.0.0.0/4
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 32.0.0.0/3
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 64.0.0.0/2
+      - AWS::EC2::SecurityGroup app-nsg-as-api egress -1 to 8.0.0.0/7
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-as-api: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-as-api
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.0.0.0/12
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.128.0.0/9
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.16.0.0/13
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.24.0.0/14
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.28.0.0/15
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.31.0.0/16
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.32.0.0/11
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.64.0.0/10
+      priority: 100
+      rule: allow-https
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 200
+      rule: deny-ssh
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: allow
+      direction: inbound
+      priority: 300
+      rule: allow-web-to-api
+      status: does not apply
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+      why: 'it applies only to members of application security group sec/api, and
+        this is written for what is not in it: its members carry a group of their
+        own'
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 310
+      rule: deny-batch
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.0.0/22
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.4.0/23
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.7.0/24
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.8.0/21
+      priority: 320
+      rule: allow-9000
+      status: stricter
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+      why: 'inbound allow rule allow-9000 (priority 320): a deny before it (deny-batch)
+        names application security group sec/batch; single members cannot be taken
+        out of an address range, so the subnets its members are in (10.30.6.0/24)
+        are taken out whole'
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 4000
+      rule: deny-vnet-in
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: stricter
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+      why: 'inbound allow rule AllowVnetInBound (priority 65000) allows every protocol,
+        and a deny before it takes out tcp; a security group cannot write every protocol
+        but one, so it allows TCP, UDP, ICMP, ESP and AH, and no other protocol (GRE,
+        SCTP and the like); inbound allow rule AllowVnetInBound (priority 65000):
+        a deny before it (deny-batch) names application security group sec/batch;
+        single members cannot be taken out of an address range, so the subnets its
+        members are in (10.30.6.0/24) are taken out whole'
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: allow
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress tcp/5432-5432 to {{truthform|AWS::EC2::SecurityGroup|db|GroupId}}
+      priority: 300
+      rule: allow-out-db
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 400
+      rule: deny-out-db
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.0.0/23
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.128.0/17
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.16.0/20
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.3.0/24
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.32.0/19
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.4.0/22
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.64.0/18
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.8.0/21
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: stricter
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+      why: 'outbound allow rule AllowVnetOutBound (priority 65000): a deny before
+        it (deny-out-db) names application security group sec/db; single members cannot
+        be taken out of an address range, so the subnets its members are in (10.30.2.0/24)
+        are taken out whole'
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    losses:
+    - field: properties.securityRules[allow-9000]
+      why: 'inbound allow rule allow-9000 (priority 320): a deny before it (deny-batch)
+        names application security group sec/batch; single members cannot be taken
+        out of an address range, so the subnets its members are in (10.30.6.0/24)
+        are taken out whole'
+    - field: properties.securityRules[AllowVnetInBound]
+      why: inbound allow rule AllowVnetInBound (priority 65000) allows every protocol,
+        and a deny before it takes out tcp; a security group cannot write every protocol
+        but one, so it allows TCP, UDP, ICMP, ESP and AH, and no other protocol (GRE,
+        SCTP and the like)
+    - field: properties.securityRules[AllowVnetInBound]
+      why: 'inbound allow rule AllowVnetInBound (priority 65000): a deny before it
+        (deny-batch) names application security group sec/batch; single members cannot
+        be taken out of an address range, so the subnets its members are in (10.30.6.0/24)
+        are taken out whole'
+    - field: properties.securityRules[AllowVnetOutBound]
+      why: 'outbound allow rule AllowVnetOutBound (priority 65000): a deny before
+        it (deny-out-db) names application security group sec/db; single members cannot
+        be taken out of an address range, so the subnets its members are in (10.30.2.0/24)
+        are taken out whole'
+    source: Microsoft.Network/networkSecurityGroups sec/app-nsg
+    state: mapped with losses
+    targets:
+    - AWS::EC2::SecurityGroup app-nsg
+    - AWS::EC2::SecurityGroup app-nsg-as-api
+    - AWS::EC2::SecurityGroup app-nsg-vm-nsg
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/5432-5432 from {{truthform|AWS::EC2::SecurityGroup|web|GroupId}}
+      priority: 100
+      rule: allow-pg-from-web
+      status: exact
+      where: AWS::EC2::SecurityGroup data-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup data-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 105
+      rule: deny-half
+      status: exact
+      where: AWS::EC2::SecurityGroup data-nsg
+    - access: allow
+      direction: inbound
+      priority: 110
+      rule: allow-admin-from-web
+      status: stricter
+      where: AWS::EC2::SecurityGroup data-nsg
+      why: 'inbound allow rule allow-admin-from-web (priority 110): a deny before
+        it (deny-half) takes out some of the addresses the members of application
+        security group sec/web can have (10.30.1.0/24, 10.30.2.0/24); a group cannot
+        be allowed in part, so on the ports the deny names none of its members are
+        allowed'
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup data-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 200
+      rule: deny-app
+      status: exact
+      where: AWS::EC2::SecurityGroup data-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup data-nsg ingress 50 from 10.30.0.0/24
+      - AWS::EC2::SecurityGroup data-nsg ingress 50 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup data-nsg ingress 50 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup data-nsg ingress 50 from 10.30.2.0/23
+      - AWS::EC2::SecurityGroup data-nsg ingress 50 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup data-nsg ingress 50 from 10.30.4.0/22
+      - AWS::EC2::SecurityGroup data-nsg ingress 50 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup data-nsg ingress 50 from 10.30.8.0/21
+      - AWS::EC2::SecurityGroup data-nsg ingress 51 from 10.30.0.0/24
+      - AWS::EC2::SecurityGroup data-nsg ingress 51 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup data-nsg ingress 51 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup data-nsg ingress 51 from 10.30.2.0/23
+      - AWS::EC2::SecurityGroup data-nsg ingress 51 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup data-nsg ingress 51 from 10.30.4.0/22
+      - AWS::EC2::SecurityGroup data-nsg ingress 51 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup data-nsg ingress 51 from 10.30.8.0/21
+      - AWS::EC2::SecurityGroup data-nsg ingress icmp/-1--1 from 10.30.0.0/24
+      - AWS::EC2::SecurityGroup data-nsg ingress icmp/-1--1 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup data-nsg ingress icmp/-1--1 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup data-nsg ingress icmp/-1--1 from 10.30.2.0/23
+      - AWS::EC2::SecurityGroup data-nsg ingress icmp/-1--1 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup data-nsg ingress icmp/-1--1 from 10.30.4.0/22
+      - AWS::EC2::SecurityGroup data-nsg ingress icmp/-1--1 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup data-nsg ingress icmp/-1--1 from 10.30.8.0/21
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/0-8442 from 10.30.0.0/24
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/0-8442 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/0-8442 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/0-8442 from 10.30.2.0/23
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/0-8442 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/0-8442 from 10.30.4.0/22
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/0-8442 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/0-8442 from 10.30.8.0/21
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8443-8443 from 10.30.0.0/24
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8443-8443 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8443-8443 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8443-8443 from 10.30.2.0/23
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8443-8443 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8443-8443 from 10.30.4.0/22
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8443-8443 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8443-8443 from 10.30.8.0/21
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8444-65535 from 10.30.0.0/24
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8444-65535 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8444-65535 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8444-65535 from 10.30.2.0/23
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8444-65535 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8444-65535 from 10.30.4.0/22
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8444-65535 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup data-nsg ingress tcp/8444-65535 from 10.30.8.0/21
+      - AWS::EC2::SecurityGroup data-nsg ingress udp/0-65535 from 10.30.0.0/24
+      - AWS::EC2::SecurityGroup data-nsg ingress udp/0-65535 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup data-nsg ingress udp/0-65535 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup data-nsg ingress udp/0-65535 from 10.30.2.0/23
+      - AWS::EC2::SecurityGroup data-nsg ingress udp/0-65535 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup data-nsg ingress udp/0-65535 from 10.30.4.0/22
+      - AWS::EC2::SecurityGroup data-nsg ingress udp/0-65535 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup data-nsg ingress udp/0-65535 from 10.30.8.0/21
+      priority: 65000
+      rule: AllowVnetInBound
+      status: stricter
+      where: AWS::EC2::SecurityGroup data-nsg
+      why: inbound allow rule AllowVnetInBound (priority 65000) allows every protocol,
+        and a deny before it takes out tcp; a security group cannot write every protocol
+        but one, so it allows TCP, UDP, ICMP, ESP and AH, and no other protocol (GRE,
+        SCTP and the like)
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup data-nsg
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup data-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup data-nsg
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup data-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 4000
+      rule: deny-internet-out
+      status: exact
+      where: AWS::EC2::SecurityGroup data-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup data-nsg egress -1 to 10.30.0.0/16
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup data-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup data-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup data-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup data-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup data-nsg
+    losses:
+    - field: properties.securityRules[allow-admin-from-web]
+      why: 'inbound allow rule allow-admin-from-web (priority 110): a deny before
+        it (deny-half) takes out some of the addresses the members of application
+        security group sec/web can have (10.30.1.0/24, 10.30.2.0/24); a group cannot
+        be allowed in part, so on the ports the deny names none of its members are
+        allowed'
+    - field: properties.securityRules[AllowVnetInBound]
+      why: inbound allow rule AllowVnetInBound (priority 65000) allows every protocol,
+        and a deny before it takes out tcp; a security group cannot write every protocol
+        but one, so it allows TCP, UDP, ICMP, ESP and AH, and no other protocol (GRE,
+        SCTP and the like)
+    source: Microsoft.Network/networkSecurityGroups sec/data-nsg
+    state: mapped with losses
+    targets:
+    - AWS::EC2::SecurityGroup data-nsg
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup core-endpoints ingress tcp/443-443 from 10.30.1.0/24
+      priority: 100
+      rule: allow-app
+      status: exact
+      where: AWS::EC2::SecurityGroup core-endpoints
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup core-endpoints: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 200
+      rule: deny-rest
+      status: exact
+      where: AWS::EC2::SecurityGroup core-endpoints
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup core-endpoints: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup core-endpoints
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup core-endpoints
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup core-endpoints: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup core-endpoints
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup core-endpoints: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup core-endpoints
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup core-endpoints: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup core-endpoints
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup core-endpoints: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup core-endpoints
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup pe-nsg ingress tcp/443-443 from 10.30.1.0/24
+      priority: 100
+      rule: allow-app
+      status: exact
+      where: AWS::EC2::SecurityGroup pe-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup pe-nsg: security groups only allow, and no rule of
+        it allows what this denies'
+      priority: 200
+      rule: deny-rest
+      status: exact
+      where: AWS::EC2::SecurityGroup pe-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup pe-nsg: security groups only allow, and no rule of
+        it allows what this denies'
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup pe-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup pe-nsg
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup pe-nsg: security groups only allow, and no rule of
+        it allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup pe-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup pe-nsg egress -1 to 0.0.0.0/0
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup pe-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup pe-nsg egress -1 to 0.0.0.0/0
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup pe-nsg
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup pe-nsg: security groups only allow, and no rule of
+        it allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup pe-nsg
+    losses:
+    - field: properties.securityRules
+      why: 'for its private endpoints (sec/pe-store, sec/pe-vault) only its inbound
+        rules for HTTPS are written, on the security group of the interface endpoints
+        of VPC core: an interface endpoint answers on port 443 and starts no traffic'
+    source: Microsoft.Network/networkSecurityGroups sec/pe-nsg
+    state: mapped with losses
+    targets:
+    - AWS::EC2::SecurityGroup core-endpoints
+    - AWS::EC2::SecurityGroup pe-nsg
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup spare-nsg ingress -1 from 10.30.0.0/16
+      - AWS::EC2::SecurityGroup spare-nsg ingress tcp/80-80 from 0.0.0.0/0
+      priority: 100
+      rule: allow-http
+      status: exact
+      where: AWS::EC2::SecurityGroup spare-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup spare-nsg ingress -1 from 10.30.0.0/16
+      - AWS::EC2::SecurityGroup spare-nsg ingress tcp/80-80 from 0.0.0.0/0
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup spare-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup spare-nsg
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup spare-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup spare-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup spare-nsg egress -1 to 0.0.0.0/0
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup spare-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup spare-nsg egress -1 to 0.0.0.0/0
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup spare-nsg
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup spare-nsg: security groups only allow, and no rule
+        of it allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup spare-nsg
+    losses:
+    - field: properties
+      why: not attached to anything on the source either; written unattached in Microsoft.Network/virtualNetworks
+        sec/core, as the map says (network.nsgs)
+    source: Microsoft.Network/networkSecurityGroups sec/spare-nsg
+    state: mapped with losses
+    targets:
+    - AWS::EC2::SecurityGroup spare-nsg
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 100
+      rule: allow-ssh
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.0.0.0/12
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.128.0.0/9
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.16.0.0/13
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.24.0.0/14
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.28.0.0/15
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.31.0.0/16
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.32.0.0/11
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/443-443 from 10.64.0.0/10
+      priority: 110
+      rule: allow-https-corp
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.0.0/22
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.128.0/17
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.16.0/20
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.32.0/19
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.4.0/23
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.64.0/18
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.7.0/24
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg ingress tcp/9050-9050 from 10.30.8.0/21
+      priority: 120
+      rule: allow-9050
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 4000
+      rule: deny-rest
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 100
+      rule: deny-internet
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.0.0/23
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.128.0/17
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.16.0/20
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.3.0/24
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.32.0/19
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.4.0/22
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.64.0/18
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress -1 to 10.30.8.0/21
+      - AWS::EC2::SecurityGroup app-nsg-vm-nsg egress tcp/5432-5432 to {{truthform|AWS::EC2::SecurityGroup|db|GroupId}}
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup app-nsg-vm-nsg: security groups only allow, and no
+        rule of it allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup vm-nsg ingress tcp/22-22 from 0.0.0.0/0
+      priority: 100
+      rule: allow-ssh
+      status: exact
+      where: AWS::EC2::SecurityGroup vm-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup vm-nsg ingress tcp/443-443 from 10.0.0.0/8
+      priority: 110
+      rule: allow-https-corp
+      status: exact
+      where: AWS::EC2::SecurityGroup vm-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup vm-nsg ingress tcp/9050-9050 from 10.30.0.0/16
+      priority: 120
+      rule: allow-9050
+      status: exact
+      where: AWS::EC2::SecurityGroup vm-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup vm-nsg: security groups only allow, and no rule of
+        it allows what this denies'
+      priority: 4000
+      rule: deny-rest
+      status: exact
+      where: AWS::EC2::SecurityGroup vm-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup vm-nsg: security groups only allow, and no rule of
+        it allows what this denies'
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup vm-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup vm-nsg
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup vm-nsg: security groups only allow, and no rule of
+        it allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup vm-nsg
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup vm-nsg: security groups only allow, and no rule of
+        it allows what this denies'
+      priority: 100
+      rule: deny-internet
+      status: exact
+      where: AWS::EC2::SecurityGroup vm-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup vm-nsg egress -1 to 10.30.0.0/16
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup vm-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup vm-nsg: security groups only allow, and no rule of
+        it allows what this denies'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup vm-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup vm-nsg: security groups only allow, and no rule of
+        it allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup vm-nsg
+    source: Microsoft.Network/networkSecurityGroups sec/vm-nsg
+    state: mapped
+    targets:
+    - AWS::EC2::SecurityGroup app-nsg-vm-nsg
+    - AWS::EC2::SecurityGroup vm-nsg
+  - losses:
+    - field: properties.format.version
+      why: 'version 2 of Azure''s record is not what the target writes: a parser reads
+        each cloud''s own record (the guide''s record-field table lines them up)'
+    - field: properties.targetResourceId
+      why: 'an NSG flow log, the kind Azure retires on September 30, 2027 in favour
+        of virtual network flow logs: the target logs networks, not rule sets, so
+        the whole of each network its NSG is used in is logged, which is more'
+    - field: properties.storageId
+      why: storage account shoplogs held the records in a container Azure made; AWS
+        delivers them to arn:aws:s3:::shop-flow-logs/azure/, the map's choice, under
+        AWSLogs/
+    - field: properties.format
+      why: 'the target writes its own record, not Azure''s: one line per flow and
+        direction in the fixed format the guide gives, with ACCEPT or REJECT and TCP
+        flags where Azure had flow states B, C, E and D'
+    source: Microsoft.Network/networkWatchers/flowLogs NetworkWatcherRG/NetworkWatcher_westeurope/fl-app-nsg
+    state: mapped with losses
+    targets:
+    - AWS::EC2::FlowLog core-flow-log
+  - losses:
+    - field: properties.flowAnalyticsConfiguration
+      why: 'traffic analytics is not translated: the target''s records are analysed
+        with its own tools (Athena or CloudWatch Logs Insights; Log Analytics or BigQuery)'
+    - field: properties.enabledFilteringCriteria
+      why: 'it recorded only flows matching dstip=10.30.2.10; the target records every
+        flow, which is more: Azure''s filter has no equal on AWS, and GCP''s filter
+        expressions are written in another language'
+    - field: properties.format.version
+      why: 'version 2 of Azure''s record is not what the target writes: a parser reads
+        each cloud''s own record (the guide''s record-field table lines them up)'
+    - field: properties.storageId
+      why: storage account shoplogs held the records in a container Azure made; AWS
+        delivers them to arn:aws:s3:::shop-flow-logs/azure/, the map's choice, under
+        AWSLogs/
+    - field: properties.retentionPolicy
+      why: records were deleted after 30 day(s); a flow log on AWS has no retention
+        of its own, so the bucket's lifecycle rules must expire them
+    - field: properties.format
+      why: 'the target writes its own record, not Azure''s: one line per flow and
+        direction in the fixed format the guide gives, with ACCEPT or REJECT and TCP
+        flags where Azure had flow states B, C, E and D'
+    source: Microsoft.Network/networkWatchers/flowLogs NetworkWatcherRG/NetworkWatcher_westeurope/fl-core
+    state: mapped with losses
+    targets:
+    - AWS::EC2::FlowLog core-flow-log
+  - losses:
+    - field: properties.format.version
+      why: 'version 2 of Azure''s record is not what the target writes: a parser reads
+        each cloud''s own record (the guide''s record-field table lines them up)'
+    - field: properties.storageId
+      why: storage account shoplogs held the records in a container Azure made; AWS
+        delivers them to arn:aws:s3:::shop-flow-logs/azure/, the map's choice, under
+        AWSLogs/
+    - field: properties.format
+      why: 'the target writes its own record, not Azure''s: one line per flow and
+        direction in the fixed format the guide gives, with ACCEPT or REJECT and TCP
+        flags where Azure had flow states B, C, E and D'
+    source: Microsoft.Network/networkWatchers/flowLogs NetworkWatcherRG/NetworkWatcher_westeurope/fl-data
+    state: mapped with losses
+    targets:
+    - AWS::EC2::FlowLog core-flow-log
+  - reason: it is turned off on the source, so nothing is logged for it on the target
+    source: Microsoft.Network/networkWatchers/flowLogs NetworkWatcherRG/NetworkWatcher_westeurope/fl-off
+    state: mapped
+  - reason: 'an interface VPC endpoint per service in core (s3), with private DNS:
+      the AWS services'' own names answer with the endpoints'' addresses inside the
+      VPC'
+    source: Microsoft.Network/privateEndpoints sec/pe-store
+    state: mapped
+  - reason: 'an interface VPC endpoint per service in core (secretsmanager), with
+      private DNS: the AWS services'' own names answer with the endpoints'' addresses
+      inside the VPC'
+    source: Microsoft.Network/privateEndpoints sec/pe-vault
+    state: mapped
+  - source: Microsoft.Network/virtualNetworks sec/core
+    state: mapped
+    targets:
+    - AWS::EC2::Subnet core-aks
+    - AWS::EC2::Subnet core-app
+    - AWS::EC2::Subnet core-bare
+    - AWS::EC2::Subnet core-data
+    - AWS::EC2::Subnet core-legacy
+    - AWS::EC2::Subnet core-pe
+    - AWS::EC2::VPC core
+  from: azure
+  requirements:
+  - 'Flow log records under arn:aws:s3:::shop-flow-logs/azure/ expire after 30 day(s),
+    as on Azure: set that in the bucket''s lifecycle rules (not written here)'
+  - 'Flow logs are billed by volume on the target: they are written only where the
+    source logged, unless the map asks for them everywhere'
+  - 'Flow logs are delivered to arn:aws:s3:::shop-flow-logs/azure/ by delivery.logs.amazonaws.com:
+    the bucket''s policy must let it write (s3:PutObject under AWSLogs/, s3:GetBucketAcl),
+    which AWS adds itself only when whoever creates the flow log owns the bucket and
+    may change its policy (docs.aws.amazon.com/vpc/latest/userguide/flow-logs-s3-permissions.html)'
+  - 'Interface VPC endpoints are billed per endpoint and zone by the hour, and per
+    gigabyte: the translation writes one per service and VPC that had a private endpoint'
+  - 'Security group aks-nsg takes the place of an NSG on subnet(s) core-aks: an AWS
+    security group applies only to what attaches it, so attach it to the instances
+    (and node groups) in them'
+  - 'Security group api marks the members of application security group sec/api and
+    has no rules of its own: what takes the place of each member carries it beside
+    its own group (members on Azure: virtual machine vm2)'
+  - 'Security group app-nsg takes the place of an NSG on subnet(s) core-app: an AWS
+    security group applies only to what attaches it, so attach it to the instances
+    (and node groups) in them'
+  - 'Security group batch marks the members of application security group sec/batch
+    and has no rules of its own: what takes the place of each member carries it beside
+    its own group (members on Azure: virtual machine vm4)'
+  - 'Security group data-nsg takes the place of an NSG on subnet(s) core-data: an
+    AWS security group applies only to what attaches it, so attach it to the instances
+    (and node groups) in them'
+  - 'Security group db marks the members of application security group sec/db and
+    has no rules of its own: what takes the place of each member carries it beside
+    its own group (members on Azure: virtual machine vm3)'
+  - 'Security group pe-nsg takes the place of an NSG on subnet(s) core-pe, core-legacy:
+    an AWS security group applies only to what attaches it, so attach it to the instances
+    (and node groups) in them'
+  - Security group spare-nsg is written in VPC core attached to nothing, as its NSG
+    was
+  - 'Security group web marks the members of application security group sec/web and
+    has no rules of its own: what takes the place of each member carries it beside
+    its own group (members on Azure: virtual machine vm1, virtual machine vm3)'
+  - 'The interface endpoints in VPC core are in one availability zone (eu-west-1a),
+    as Azure''s private endpoints were in one subnet: add a subnet in another zone
+    for them to survive the loss of that one'
+  - 'VPC flow log records are in the fixed format `${version} ${account-id} ${interface-id}
+    ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start}
+    ${end} ${action} ${log-status} ${vpc-id} ${subnet-id} ${instance-id} ${tcp-flags}
+    ${type} ${pkt-srcaddr} ${pkt-dstaddr} ${region} ${az-id} ${flow-direction} ${traffic-path}
+    ${reject-reason} ${encryption-status}`, one line per flow and direction every
+    minute: a parser relies on that order (the guide''s record-field table)'
+  - 'What takes the place of virtual machine vm1 (Microsoft.Network/networkInterfaces
+    sec/vm1-nic) carries security group(s) app-nsg-vm-nsg, web and no other translated
+    from an NSG: security groups on one interface add up, so the group of either NSG
+    alone beside it would let through what the other denied'
+  - 'What takes the place of virtual machine vm2 (Microsoft.Network/networkInterfaces
+    sec/vm2-nic) carries security group(s) app-nsg-as-api, api and no other translated
+    from an NSG: security groups on one interface add up, so the group of either NSG
+    alone beside it would let through what the other denied'
+  - 'What takes the place of virtual machine vm3 (Microsoft.Network/networkInterfaces
+    sec/vm3-nic) carries security group(s) data-nsg, db, web and no other translated
+    from an NSG: security groups on one interface add up, so the group of either NSG
+    alone beside it would let through what the other denied'
+  - 'What takes the place of virtual machine vm4 (Microsoft.Network/networkInterfaces
+    sec/vm4-nic) carries security group(s) vm-nsg, batch and no other translated from
+    an NSG: security groups on one interface add up, so the group of either NSG alone
+    beside it would let through what the other denied'
+  - 'What takes the place of virtual machine vm5 (Microsoft.Network/networkInterfaces
+    sec/vm5-nic) carries security group(s) app-nsg and no other translated from an
+    NSG: security groups on one interface add up, so the group of either NSG alone
+    beside it would let through what the other denied'
+  to: aws
+snapshots:
+  aws:
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::FlowLog
+    metadata:
+      name: core-flow-log
+    spec:
+      DestinationOptions:
+        FileFormat: plain-text
+        HiveCompatiblePartitions: false
+        PerHourPartition: true
+      LogDestination: arn:aws:s3:::shop-flow-logs/azure/
+      LogDestinationType: s3
+      LogFormat: ${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport}
+        ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status}
+        ${vpc-id} ${subnet-id} ${instance-id} ${tcp-flags} ${type} ${pkt-srcaddr}
+        ${pkt-dstaddr} ${region} ${az-id} ${flow-direction} ${traffic-path} ${reject-reason}
+        ${encryption-status}
+      MaxAggregationInterval: 60
+      ResourceId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+      ResourceType: VPC
+      Tags:
+      - Key: Name
+        Value: core-flow-log
+      TrafficType: ALL
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: aks-nsg
+    spec:
+      GroupDescription: From Azure network security group sec/aks-nsg
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.30.0.0/16
+        IpProtocol: "-1"
+      Tags:
+      - Key: Name
+        Value: aks-nsg
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: api
+    spec:
+      GroupDescription: Members of Azure application security group sec/api
+      SecurityGroupEgress:
+      - CidrIp: 127.0.0.1/32
+        IpProtocol: "-1"
+      Tags:
+      - Key: Name
+        Value: api
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: app-nsg
+    spec:
+      GroupDescription: From Azure network security group sec/app-nsg
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/5
+        IpProtocol: "-1"
+      - CidrIp: 10.0.0.0/12
+        IpProtocol: "-1"
+      - CidrIp: 10.128.0.0/9
+        IpProtocol: "-1"
+      - CidrIp: 10.16.0.0/13
+        IpProtocol: "-1"
+      - CidrIp: 10.24.0.0/14
+        IpProtocol: "-1"
+      - CidrIp: 10.28.0.0/15
+        IpProtocol: "-1"
+      - CidrIp: 10.30.0.0/23
+        IpProtocol: "-1"
+      - CidrIp: 10.30.128.0/17
+        IpProtocol: "-1"
+      - CidrIp: 10.30.16.0/20
+        IpProtocol: "-1"
+      - CidrIp: 10.30.3.0/24
+        IpProtocol: "-1"
+      - CidrIp: 10.30.32.0/19
+        IpProtocol: "-1"
+      - CidrIp: 10.30.4.0/22
+        IpProtocol: "-1"
+      - CidrIp: 10.30.64.0/18
+        IpProtocol: "-1"
+      - CidrIp: 10.30.8.0/21
+        IpProtocol: "-1"
+      - CidrIp: 10.31.0.0/16
+        IpProtocol: "-1"
+      - CidrIp: 10.32.0.0/11
+        IpProtocol: "-1"
+      - CidrIp: 10.64.0.0/10
+        IpProtocol: "-1"
+      - CidrIp: 11.0.0.0/8
+        IpProtocol: "-1"
+      - CidrIp: 12.0.0.0/6
+        IpProtocol: "-1"
+      - CidrIp: 128.0.0.0/1
+        IpProtocol: "-1"
+      - CidrIp: 16.0.0.0/4
+        IpProtocol: "-1"
+      - CidrIp: 32.0.0.0/3
+        IpProtocol: "-1"
+      - CidrIp: 64.0.0.0/2
+        IpProtocol: "-1"
+      - CidrIp: 8.0.0.0/7
+        IpProtocol: "-1"
+      - DestinationSecurityGroupId: '{{truthform|AWS::EC2::SecurityGroup|db|GroupId}}'
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/5
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.0.0.0/12
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.128.0.0/9
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.16.0.0/13
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.24.0.0/14
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.28.0.0/15
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.30.0.0/22
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.128.0/17
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.16.0/20
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.32.0/19
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.4.0/23
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.64.0/18
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.7.0/24
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.8.0/21
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.31.0.0/16
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.32.0.0/11
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.64.0.0/10
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 11.0.0.0/8
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 12.0.0.0/6
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 128.0.0.0/1
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 16.0.0.0/4
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 32.0.0.0/3
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 64.0.0.0/2
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 8.0.0.0/7
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      Tags:
+      - Key: Name
+        Value: app-nsg
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: app-nsg-as-api
+    spec:
+      GroupDescription: What Azure NSG sec/app-nsg let through on the interfaces vm2-nic
+        stood for
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/5
+        IpProtocol: "-1"
+      - CidrIp: 10.0.0.0/12
+        IpProtocol: "-1"
+      - CidrIp: 10.128.0.0/9
+        IpProtocol: "-1"
+      - CidrIp: 10.16.0.0/13
+        IpProtocol: "-1"
+      - CidrIp: 10.24.0.0/14
+        IpProtocol: "-1"
+      - CidrIp: 10.28.0.0/15
+        IpProtocol: "-1"
+      - CidrIp: 10.30.0.0/23
+        IpProtocol: "-1"
+      - CidrIp: 10.30.128.0/17
+        IpProtocol: "-1"
+      - CidrIp: 10.30.16.0/20
+        IpProtocol: "-1"
+      - CidrIp: 10.30.3.0/24
+        IpProtocol: "-1"
+      - CidrIp: 10.30.32.0/19
+        IpProtocol: "-1"
+      - CidrIp: 10.30.4.0/22
+        IpProtocol: "-1"
+      - CidrIp: 10.30.64.0/18
+        IpProtocol: "-1"
+      - CidrIp: 10.30.8.0/21
+        IpProtocol: "-1"
+      - CidrIp: 10.31.0.0/16
+        IpProtocol: "-1"
+      - CidrIp: 10.32.0.0/11
+        IpProtocol: "-1"
+      - CidrIp: 10.64.0.0/10
+        IpProtocol: "-1"
+      - CidrIp: 11.0.0.0/8
+        IpProtocol: "-1"
+      - CidrIp: 12.0.0.0/6
+        IpProtocol: "-1"
+      - CidrIp: 128.0.0.0/1
+        IpProtocol: "-1"
+      - CidrIp: 16.0.0.0/4
+        IpProtocol: "-1"
+      - CidrIp: 32.0.0.0/3
+        IpProtocol: "-1"
+      - CidrIp: 64.0.0.0/2
+        IpProtocol: "-1"
+      - CidrIp: 8.0.0.0/7
+        IpProtocol: "-1"
+      - DestinationSecurityGroupId: '{{truthform|AWS::EC2::SecurityGroup|db|GroupId}}'
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/5
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.0.0.0/12
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.128.0.0/9
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.16.0.0/13
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.24.0.0/14
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.28.0.0/15
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.30.0.0/22
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.128.0/17
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.16.0/20
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.32.0/19
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.4.0/23
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.64.0/18
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.7.0/24
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.30.8.0/21
+        FromPort: 9000
+        IpProtocol: tcp
+        ToPort: 9100
+      - CidrIp: 10.31.0.0/16
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.32.0.0/11
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.64.0.0/10
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 11.0.0.0/8
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 12.0.0.0/6
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 128.0.0.0/1
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 16.0.0.0/4
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 32.0.0.0/3
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 64.0.0.0/2
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 8.0.0.0/7
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - FromPort: 8080
+        IpProtocol: tcp
+        SourceSecurityGroupId: '{{truthform|AWS::EC2::SecurityGroup|web|GroupId}}'
+        ToPort: 8080
+      Tags:
+      - Key: Name
+        Value: app-nsg-as-api
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: app-nsg-vm-nsg
+    spec:
+      GroupDescription: What Azure NSG sec/app-nsg and sec/vm-nsg let through on the
+        interfaces vm1-nic stood for
+      SecurityGroupEgress:
+      - CidrIp: 10.30.0.0/23
+        IpProtocol: "-1"
+      - CidrIp: 10.30.128.0/17
+        IpProtocol: "-1"
+      - CidrIp: 10.30.16.0/20
+        IpProtocol: "-1"
+      - CidrIp: 10.30.3.0/24
+        IpProtocol: "-1"
+      - CidrIp: 10.30.32.0/19
+        IpProtocol: "-1"
+      - CidrIp: 10.30.4.0/22
+        IpProtocol: "-1"
+      - CidrIp: 10.30.64.0/18
+        IpProtocol: "-1"
+      - CidrIp: 10.30.8.0/21
+        IpProtocol: "-1"
+      - DestinationSecurityGroupId: '{{truthform|AWS::EC2::SecurityGroup|db|GroupId}}'
+        FromPort: 5432
+        IpProtocol: tcp
+        ToPort: 5432
+      SecurityGroupIngress:
+      - CidrIp: 10.0.0.0/12
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.128.0.0/9
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.16.0.0/13
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.24.0.0/14
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.28.0.0/15
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.30.0.0/22
+        FromPort: 9050
+        IpProtocol: tcp
+        ToPort: 9050
+      - CidrIp: 10.30.128.0/17
+        FromPort: 9050
+        IpProtocol: tcp
+        ToPort: 9050
+      - CidrIp: 10.30.16.0/20
+        FromPort: 9050
+        IpProtocol: tcp
+        ToPort: 9050
+      - CidrIp: 10.30.32.0/19
+        FromPort: 9050
+        IpProtocol: tcp
+        ToPort: 9050
+      - CidrIp: 10.30.4.0/23
+        FromPort: 9050
+        IpProtocol: tcp
+        ToPort: 9050
+      - CidrIp: 10.30.64.0/18
+        FromPort: 9050
+        IpProtocol: tcp
+        ToPort: 9050
+      - CidrIp: 10.30.7.0/24
+        FromPort: 9050
+        IpProtocol: tcp
+        ToPort: 9050
+      - CidrIp: 10.30.8.0/21
+        FromPort: 9050
+        IpProtocol: tcp
+        ToPort: 9050
+      - CidrIp: 10.31.0.0/16
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.32.0.0/11
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.64.0.0/10
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      Tags:
+      - Key: Name
+        Value: app-nsg-vm-nsg
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: batch
+    spec:
+      GroupDescription: Members of Azure application security group sec/batch
+      SecurityGroupEgress:
+      - CidrIp: 127.0.0.1/32
+        IpProtocol: "-1"
+      Tags:
+      - Key: Name
+        Value: batch
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: core-endpoints
+    spec:
+      GroupDescription: HTTPS from the network to its interface endpoints, for its
+        Azure private endpoints
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 10.30.1.0/24
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      Tags:
+      - Key: Name
+        Value: core-endpoints
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: data-nsg
+    spec:
+      GroupDescription: From Azure network security group sec/data-nsg
+      SecurityGroupEgress:
+      - CidrIp: 10.30.0.0/16
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 10.30.0.0/24
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.30.0.0/24
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.30.0.0/24
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.30.0.0/24
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.30.0.0/24
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.30.0.0/24
+        IpProtocol: "50"
+      - CidrIp: 10.30.0.0/24
+        IpProtocol: "51"
+      - CidrIp: 10.30.128.0/17
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.30.128.0/17
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.30.128.0/17
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.30.128.0/17
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.30.128.0/17
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.30.128.0/17
+        IpProtocol: "50"
+      - CidrIp: 10.30.128.0/17
+        IpProtocol: "51"
+      - CidrIp: 10.30.16.0/20
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.30.16.0/20
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.30.16.0/20
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.30.16.0/20
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.30.16.0/20
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.30.16.0/20
+        IpProtocol: "50"
+      - CidrIp: 10.30.16.0/20
+        IpProtocol: "51"
+      - CidrIp: 10.30.2.0/23
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.30.2.0/23
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.30.2.0/23
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.30.2.0/23
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.30.2.0/23
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.30.2.0/23
+        IpProtocol: "50"
+      - CidrIp: 10.30.2.0/23
+        IpProtocol: "51"
+      - CidrIp: 10.30.32.0/19
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.30.32.0/19
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.30.32.0/19
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.30.32.0/19
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.30.32.0/19
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.30.32.0/19
+        IpProtocol: "50"
+      - CidrIp: 10.30.32.0/19
+        IpProtocol: "51"
+      - CidrIp: 10.30.4.0/22
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.30.4.0/22
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.30.4.0/22
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.30.4.0/22
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.30.4.0/22
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.30.4.0/22
+        IpProtocol: "50"
+      - CidrIp: 10.30.4.0/22
+        IpProtocol: "51"
+      - CidrIp: 10.30.64.0/18
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.30.64.0/18
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.30.64.0/18
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.30.64.0/18
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.30.64.0/18
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.30.64.0/18
+        IpProtocol: "50"
+      - CidrIp: 10.30.64.0/18
+        IpProtocol: "51"
+      - CidrIp: 10.30.8.0/21
+        FromPort: -1
+        IpProtocol: icmp
+        ToPort: -1
+      - CidrIp: 10.30.8.0/21
+        FromPort: 0
+        IpProtocol: tcp
+        ToPort: 8442
+      - CidrIp: 10.30.8.0/21
+        FromPort: 0
+        IpProtocol: udp
+        ToPort: 65535
+      - CidrIp: 10.30.8.0/21
+        FromPort: 8443
+        IpProtocol: tcp
+        ToPort: 8443
+      - CidrIp: 10.30.8.0/21
+        FromPort: 8444
+        IpProtocol: tcp
+        ToPort: 65535
+      - CidrIp: 10.30.8.0/21
+        IpProtocol: "50"
+      - CidrIp: 10.30.8.0/21
+        IpProtocol: "51"
+      - FromPort: 5432
+        IpProtocol: tcp
+        SourceSecurityGroupId: '{{truthform|AWS::EC2::SecurityGroup|web|GroupId}}'
+        ToPort: 5432
+      Tags:
+      - Key: Name
+        Value: data-nsg
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: db
+    spec:
+      GroupDescription: Members of Azure application security group sec/db
+      SecurityGroupEgress:
+      - CidrIp: 127.0.0.1/32
+        IpProtocol: "-1"
+      Tags:
+      - Key: Name
+        Value: db
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: pe-nsg
+    spec:
+      GroupDescription: From Azure network security group sec/pe-nsg
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 10.30.1.0/24
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      Tags:
+      - Key: Name
+        Value: pe-nsg
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: spare-nsg
+    spec:
+      GroupDescription: From Azure network security group sec/spare-nsg
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        FromPort: 80
+        IpProtocol: tcp
+        ToPort: 80
+      - CidrIp: 10.30.0.0/16
+        IpProtocol: "-1"
+      Tags:
+      - Key: Name
+        Value: spare-nsg
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: vm-nsg
+    spec:
+      GroupDescription: What Azure NSG sec/vm-nsg let through on the interfaces vm4-nic
+        stood for
+      SecurityGroupEgress:
+      - CidrIp: 10.30.0.0/16
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/0
+        FromPort: 22
+        IpProtocol: tcp
+        ToPort: 22
+      - CidrIp: 10.0.0.0/8
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.30.0.0/16
+        FromPort: 9050
+        IpProtocol: tcp
+        ToPort: 9050
+      Tags:
+      - Key: Name
+        Value: vm-nsg
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: web
+    spec:
+      GroupDescription: Members of Azure application security group sec/web
+      SecurityGroupEgress:
+      - CidrIp: 127.0.0.1/32
+        IpProtocol: "-1"
+      Tags:
+      - Key: Name
+        Value: web
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-aks
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.5.0/24
+      Tags:
+      - Key: Name
+        Value: core-aks
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-app
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.1.0/24
+      Tags:
+      - Key: Name
+        Value: core-app
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-bare
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.6.0/24
+      Tags:
+      - Key: Name
+        Value: core-bare
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-data
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.2.0/24
+      Tags:
+      - Key: Name
+        Value: core-data
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-legacy
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.4.0/24
+      Tags:
+      - Key: Name
+        Value: core-legacy
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-pe
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.3.0/24
+      Tags:
+      - Key: Name
+        Value: core-pe
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-s3
+    spec:
+      DnsOptions:
+        PrivateDnsOnlyForInboundResolverEndpoint: AllResolvers
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.s3
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-pe|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-s3
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-secretsmanager
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.secretsmanager
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-pe|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-secretsmanager
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPC
+    metadata:
+      annotations:
+        truthform.org/write-only: Ipv4IpamPoolId,Ipv4NetmaskLength,VpcEncryptionControl.EgressOnlyInternetGatewayExclusion,VpcEncryptionControl.ElasticFileSystemExclusion,VpcEncryptionControl.InternetGatewayExclusion,VpcEncryptionControl.LambdaExclusion,VpcEncryptionControl.NatGatewayExclusion,VpcEncryptionControl.VirtualPrivateGatewayExclusion,VpcEncryptionControl.VpcLatticeExclusion,VpcEncryptionControl.VpcPeeringExclusion
+      name: core
+    spec:
+      CidrBlock: 10.30.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value: core

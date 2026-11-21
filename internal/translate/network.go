@@ -37,7 +37,7 @@ const (
 type network struct{}
 
 func (network) claims(kind string) bool {
-	return kind == azVNet || strings.HasPrefix(kind, azVNet+"/") || kind == azNSG || strings.HasPrefix(kind, azNSG+"/") || routingClaims(kind)
+	return kind == azVNet || strings.HasPrefix(kind, azVNet+"/") || kind == azNSG || strings.HasPrefix(kind, azNSG+"/") || nsgClaims(kind) || routingClaims(kind)
 }
 
 type vnet struct {
@@ -81,6 +81,9 @@ type subnet struct {
 	// gateway, lower case; outbound is defaultOutboundAccess as written
 	// ("true", "false", or "" when unset).
 	routeTable, nat, outbound string
+	// endpointNSG says its NSG applies to the private endpoints in it too
+	// (privateEndpointNetworkPolicies).
+	endpointNSG bool
 }
 
 type nsg struct {
@@ -98,7 +101,8 @@ type nsg struct {
 type addrs struct {
 	any, vnet, internet bool
 	prefixes            []netip.Prefix
-	other               []string // service tags and application security groups
+	other               []string // service tags, and what else has no addresses here
+	asgs                []string // application security groups, by group/name in lower case
 }
 
 type nsgRule struct {
@@ -142,7 +146,7 @@ var azureDefaults = []nsgRule{
 func (network) translate(objs []snapshot.Object, o *out) {
 	vnets := map[string]*vnet{}
 	nsgs := map[string]*nsg{}
-	var subnetObjs, ruleObjs []snapshot.Object
+	var subnetObjs, ruleObjs, nicObjs, asgObjs, flowObjs []snapshot.Object
 	rt := newRouting()
 	for _, obj := range objs {
 		if rt.read(strings.ToLower(obj.Kind()), obj) {
@@ -159,6 +163,12 @@ func (network) translate(objs []snapshot.Object, o *out) {
 			subnetObjs = append(subnetObjs, obj)
 		case azNSGRule:
 			ruleObjs = append(ruleObjs, obj)
+		case azNIC:
+			nicObjs = append(nicObjs, obj)
+		case azASG:
+			asgObjs = append(asgObjs, obj)
+		case azFlowLog:
+			flowObjs = append(flowObjs, obj)
 		case azNSG + "/defaultsecurityrules":
 			o.entries = append(o.entries, Entry{Source: source(obj), State: Mapped,
 				Reason: "one of Azure's own rules, which every NSG has; its effect is written with its NSG's"})
@@ -215,6 +225,9 @@ func (network) translate(objs []snapshot.Object, o *out) {
 		for _, n := range sortedNSGs(nsgs) {
 			o.entries = append(o.entries, Entry{Source: n.src, State: Refused, Reason: why})
 		}
+		for _, x := range append(append(nicObjs, asgObjs...), flowObjs...) {
+			o.entries = append(o.entries, Entry{Source: source(x), State: Refused, Reason: why})
+		}
 		rt.refuseAll(why, o)
 		return
 	case o.m.To == "aws":
@@ -230,27 +243,26 @@ func (network) translate(objs []snapshot.Object, o *out) {
 		written[v.key] = w.vnet(v, o)
 	}
 	rt.write(vnets, written, o)
+	st := newNSGState(vnets, nsgs, asgObjs, nicObjs, o)
+	o.nsgs = st
 	for _, n := range sortedNSGs(nsgs) {
 		if n.refuse == "" && len(n.subnets) == 0 {
-			n.refuse = "no subnet in the snapshot uses it (one on a network interface is not translated yet), so there is no network to put it in"
+			n.refuse = st.place(n, written, o.m)
 		}
 		for _, s := range n.subnets {
 			if !written[s.vnet.key] && n.refuse == "" {
 				n.refuse = "its network " + s.vnet.src + " is refused"
 			}
 		}
-		if n.refuse != "" {
-			o.entries = append(o.entries, Entry{Source: n.src, State: Refused, Reason: n.refuse})
-			continue
-		}
-		w.nsg(n, o)
 	}
+	w.nsgs(st, o)
+	flowLogs(flowObjs, st, written, o)
 }
 
 // netWriter writes the model for one target.
 type netWriter interface {
 	vnet(v *vnet, o *out) bool // false: refused
-	nsg(n *nsg, o *out)
+	nsgs(st *nsgState, o *out)
 }
 
 func prefixed(ls []Loss, p string) []Loss {
@@ -466,7 +478,20 @@ func readSubnet(v *vnet, name string, m map[string]any, field string) (*subnet, 
 		p.lose("delegations", fmt.Sprintf("delegated to %s; a subnet on the target is not delegated: the service that used it is translated, if at all, by its own rules", strings.Join(svc, ", ")), false)
 	}
 	p.quiet("delegations")
-	p.unlessDefault("privateEndpointNetworkPolicies", "Disabled", "network policies on private endpoints have no equivalent here")
+	// "You can enable network policies either for network security groups
+	// only, for user-defined routes only, or for both"
+	// (learn.microsoft.com/azure/private-link/disable-private-endpoint-network-policy):
+	// without it an NSG on the subnet does not filter its private endpoints.
+	switch pol := strings.ToLower(p.str("privateEndpointNetworkPolicies")); pol {
+	case "", "disabled":
+	case "networksecuritygroupenabled":
+		s.endpointNSG = true
+	case "enabled", "routetableenabled":
+		s.endpointNSG = pol == "enabled"
+		p.lose("privateEndpointNetworkPolicies", "its route table applied to traffic for the private endpoints in it too; routes are not written for a target's endpoints, which the network reaches directly", false)
+	default:
+		p.lose("privateEndpointNetworkPolicies", pol+" is not a value Azure takes; its NSG is taken not to apply to private endpoints", false)
+	}
 	p.unlessDefault("privateLinkServiceNetworkPolicies", "Enabled", "network policies on Private Link services have no equivalent here")
 	p.unlessDefault("sharingScope", "", "a subnet shared with other tenants has no equivalent here")
 	if v, ok := p.take("defaultOutboundAccess"); ok && v != nil {
@@ -646,7 +671,11 @@ func readAddrs(one string, many, asgs []any) addrs {
 		}
 	}
 	for _, x := range asgs {
-		a.other = append(a.other, "application security group "+fmt.Sprint(obj(x)["id"]))
+		if k := azRefKey(x, typASG); k != "" {
+			a.asgs = append(a.asgs, k)
+		} else {
+			a.other = append(a.other, "application security group "+fmt.Sprint(obj(x)["id"]))
+		}
 	}
 	return a
 }
@@ -657,6 +686,7 @@ func readAddrs(one string, many, asgs []any) addrs {
 // range) has no addresses here.
 func (a addrs) resolve(v *vnet) (ps []netip.Prefix, exact bool) {
 	if a.any {
+		// Every address holds every group's members too.
 		return []netip.Prefix{anyV4}, len(a.other) == 0
 	}
 	if a.internet {

@@ -7488,6 +7488,100 @@
   }
  },
  {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/networkWatchers/flowLogs"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/networkWatchers/flowLogs",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/563"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/564"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/220"
+    },
+    "flags": 0,
+    "description": "Properties of the flow log."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   },
+   "identity": {
+    "type": {
+     "$ref": "#/234"
+    },
+    "flags": 0,
+    "description": "FlowLog resource Managed Identity"
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Resource location."
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/566"
+    },
+    "flags": 0,
+    "description": "Resource tags."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResourceTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/networkWatchers/flowLogs@2026-03-01",
+  "body": {
+   "$ref": "#/565"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
   "$type": "ObjectType",
   "name": "VirtualNetworkPropertiesFormat",
   "properties": {
@@ -7500,7 +7594,7 @@
    },
    "dhcpOptions": {
     "type": {
-     "$ref": "#/564"
+     "$ref": "#/569"
     },
     "flags": 0,
     "description": "The dhcpOptions that contains an array of DNS servers available to VMs deployed in the virtual network."
@@ -7514,14 +7608,14 @@
    },
    "subnets": {
     "type": {
-     "$ref": "#/566"
+     "$ref": "#/571"
     },
     "flags": 0,
     "description": "A list of subnets in a Virtual Network."
    },
    "virtualNetworkPeerings": {
     "type": {
-     "$ref": "#/592"
+     "$ref": "#/597"
     },
     "flags": 0,
     "description": "A list of peerings in a Virtual Network."
@@ -7535,7 +7629,7 @@
    },
    "provisioningState": {
     "type": {
-     "$ref": "#/599"
+     "$ref": "#/604"
     },
     "flags": 2,
     "description": "The provisioning state of the virtual network resource."
@@ -7563,35 +7657,35 @@
    },
    "bgpCommunities": {
     "type": {
-     "$ref": "#/569"
+     "$ref": "#/574"
     },
     "flags": 0,
     "description": "Bgp Communities sent over ExpressRoute with each route corresponding to a prefix in this VNET."
    },
    "encryption": {
     "type": {
-     "$ref": "#/570"
+     "$ref": "#/575"
     },
     "flags": 0,
     "description": "Indicates if encryption is enabled on virtual network and if VM without encryption is allowed in encrypted VNet."
    },
    "ipAllocations": {
     "type": {
-     "$ref": "#/600"
+     "$ref": "#/605"
     },
     "flags": 0,
     "description": "Array of IpAllocation which reference this VNET."
    },
    "flowLogs": {
     "type": {
-     "$ref": "#/601"
+     "$ref": "#/606"
     },
     "flags": 2,
     "description": "A collection of references to flow log resources."
    },
    "privateEndpointVNetPolicies": {
     "type": {
-     "$ref": "#/604"
+     "$ref": "#/609"
     },
     "flags": 0,
     "description": "Private Endpoint VNet Policies."
@@ -7618,7 +7712,7 @@
   "properties": {
    "dnsServers": {
     "type": {
-     "$ref": "#/565"
+     "$ref": "#/570"
     },
     "flags": 0,
     "description": "The list of DNS servers IP addresses."
@@ -7643,7 +7737,7 @@
   "properties": {
    "properties": {
     "type": {
-     "$ref": "#/568"
+     "$ref": "#/573"
     },
     "flags": 0,
     "description": "Properties of the virtual network peering."
@@ -7747,35 +7841,35 @@
    },
    "remoteBgpCommunities": {
     "type": {
-     "$ref": "#/569"
+     "$ref": "#/574"
     },
     "flags": 0,
     "description": "The reference to the remote virtual network's Bgp Communities."
    },
    "remoteVirtualNetworkEncryption": {
     "type": {
-     "$ref": "#/570"
+     "$ref": "#/575"
     },
     "flags": 2,
     "description": "The reference to the remote virtual network's encryption"
    },
    "peeringState": {
     "type": {
-     "$ref": "#/577"
+     "$ref": "#/582"
     },
     "flags": 0,
     "description": "The status of the virtual network peering."
    },
    "peeringSyncLevel": {
     "type": {
-     "$ref": "#/582"
+     "$ref": "#/587"
     },
     "flags": 0,
     "description": "The peering sync status of the virtual network peering."
    },
    "provisioningState": {
     "type": {
-     "$ref": "#/589"
+     "$ref": "#/594"
     },
     "flags": 2,
     "description": "The provisioning state of the virtual network peering resource."
@@ -7810,14 +7904,14 @@
    },
    "localSubnetNames": {
     "type": {
-     "$ref": "#/590"
+     "$ref": "#/595"
     },
     "flags": 0,
     "description": "List of local subnet names that are subnet peered with remote virtual network."
    },
    "remoteSubnetNames": {
     "type": {
-     "$ref": "#/591"
+     "$ref": "#/596"
     },
     "flags": 0,
     "description": "List of remote subnet names from remote virtual network that are subnet peered."
@@ -7857,7 +7951,7 @@
    },
    "enforcement": {
     "type": {
-     "$ref": "#/573"
+     "$ref": "#/578"
     },
     "flags": 0,
     "description": "If the encrypted VNet allows VM that does not support encryption. This field is for future support, AllowUnencrypted is the only supported value at general availability."
@@ -7876,10 +7970,10 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/571"
+    "$ref": "#/576"
    },
    {
-    "$ref": "#/572"
+    "$ref": "#/577"
    },
    {
     "$ref": "#/0"
@@ -7902,13 +7996,13 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/574"
+    "$ref": "#/579"
    },
    {
-    "$ref": "#/575"
+    "$ref": "#/580"
    },
    {
-    "$ref": "#/576"
+    "$ref": "#/581"
    },
    {
     "$ref": "#/0"
@@ -7935,50 +8029,6 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/578"
-   },
-   {
-    "$ref": "#/579"
-   },
-   {
-    "$ref": "#/580"
-   },
-   {
-    "$ref": "#/581"
-   },
-   {
-    "$ref": "#/0"
-   }
-  ]
- },
- {
-  "$type": "StringLiteralType",
-  "value": "Failed"
- },
- {
-  "$type": "StringLiteralType",
-  "value": "Succeeded"
- },
- {
-  "$type": "StringLiteralType",
-  "value": "Canceled"
- },
- {
-  "$type": "StringLiteralType",
-  "value": "Creating"
- },
- {
-  "$type": "StringLiteralType",
-  "value": "Updating"
- },
- {
-  "$type": "StringLiteralType",
-  "value": "Deleting"
- },
- {
-  "$type": "UnionType",
-  "elements": [
-   {
     "$ref": "#/583"
    },
    {
@@ -7991,10 +8041,54 @@
     "$ref": "#/586"
    },
    {
-    "$ref": "#/587"
-   },
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
    {
     "$ref": "#/588"
+   },
+   {
+    "$ref": "#/589"
+   },
+   {
+    "$ref": "#/590"
+   },
+   {
+    "$ref": "#/591"
+   },
+   {
+    "$ref": "#/592"
+   },
+   {
+    "$ref": "#/593"
    },
    {
     "$ref": "#/0"
@@ -8016,7 +8110,7 @@
  {
   "$type": "ArrayType",
   "itemType": {
-   "$ref": "#/567"
+   "$ref": "#/572"
   }
  },
  {
@@ -8047,22 +8141,22 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/593"
-   },
-   {
-    "$ref": "#/594"
-   },
-   {
-    "$ref": "#/595"
-   },
-   {
-    "$ref": "#/596"
-   },
-   {
-    "$ref": "#/597"
-   },
-   {
     "$ref": "#/598"
+   },
+   {
+    "$ref": "#/599"
+   },
+   {
+    "$ref": "#/600"
+   },
+   {
+    "$ref": "#/601"
+   },
+   {
+    "$ref": "#/602"
+   },
+   {
+    "$ref": "#/603"
    },
    {
     "$ref": "#/0"
@@ -8093,15 +8187,102 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/602"
+    "$ref": "#/607"
    },
    {
-    "$ref": "#/603"
+    "$ref": "#/608"
    },
    {
     "$ref": "#/0"
    }
   ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/applicationSecurityGroups"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/applicationSecurityGroups",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/610"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/611"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/64"
+    },
+    "flags": 0,
+    "description": "Properties of the application security group."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Resource location."
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/613"
+    },
+    "flags": 0,
+    "description": "Resource tags."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResourceTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/applicationSecurityGroups@2026-03-01",
+  "body": {
+   "$ref": "#/612"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
  },
  {
   "$type": "StringLiteralType",
@@ -8131,14 +8312,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/605"
+     "$ref": "#/615"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/606"
+     "$ref": "#/616"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8159,7 +8340,7 @@
    },
    "zones": {
     "type": {
-     "$ref": "#/608"
+     "$ref": "#/618"
     },
     "flags": 0,
     "description": "A list of availability zones denoting the zone in which Nat Gateway should be deployed."
@@ -8180,7 +8361,7 @@
    },
    "tags": {
     "type": {
-     "$ref": "#/609"
+     "$ref": "#/619"
     },
     "flags": 0,
     "description": "Resource tags."
@@ -8205,7 +8386,101 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/natGateways@2026-03-01",
   "body": {
-   "$ref": "#/607"
+   "$ref": "#/617"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/networkInterfaces"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/networkInterfaces",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/621"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/622"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/94"
+    },
+    "flags": 0,
+    "description": "Properties of the network interface."
+   },
+   "extendedLocation": {
+    "type": {
+     "$ref": "#/133"
+    },
+    "flags": 0,
+    "description": "The extended location of the network interface."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Resource location."
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/624"
+    },
+    "flags": 0,
+    "description": "Resource tags."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResourceTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/networkInterfaces@2026-03-01",
+  "body": {
+   "$ref": "#/623"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8238,14 +8513,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/611"
+     "$ref": "#/626"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/612"
+     "$ref": "#/627"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8273,7 +8548,7 @@
    },
    "tags": {
     "type": {
-     "$ref": "#/614"
+     "$ref": "#/629"
     },
     "flags": 0,
     "description": "Resource tags."
@@ -8292,7 +8567,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/networkSecurityGroups@2026-03-01",
   "body": {
-   "$ref": "#/613"
+   "$ref": "#/628"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8325,14 +8600,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/616"
+     "$ref": "#/631"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/617"
+     "$ref": "#/632"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8367,7 +8642,7 @@
    },
    "tags": {
     "type": {
-     "$ref": "#/619"
+     "$ref": "#/634"
     },
     "flags": 0,
     "description": "Resource tags."
@@ -8386,7 +8661,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/privateEndpoints@2026-03-01",
   "body": {
-   "$ref": "#/618"
+   "$ref": "#/633"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8419,14 +8694,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/621"
+     "$ref": "#/636"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/622"
+     "$ref": "#/637"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8461,7 +8736,7 @@
    },
    "zones": {
     "type": {
-     "$ref": "#/624"
+     "$ref": "#/639"
     },
     "flags": 0,
     "description": "A list of availability zones denoting the IP allocated for the resource needs to come from."
@@ -8475,7 +8750,7 @@
    },
    "tags": {
     "type": {
-     "$ref": "#/625"
+     "$ref": "#/640"
     },
     "flags": 0,
     "description": "Resource tags."
@@ -8500,7 +8775,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/publicIPAddresses@2026-03-01",
   "body": {
-   "$ref": "#/623"
+   "$ref": "#/638"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8533,21 +8808,21 @@
    },
    "type": {
     "type": {
-     "$ref": "#/627"
+     "$ref": "#/642"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/628"
+     "$ref": "#/643"
     },
     "flags": 10,
     "description": "The resource api version"
    },
    "properties": {
     "type": {
-     "$ref": "#/630"
+     "$ref": "#/645"
     },
     "flags": 0,
     "description": "Public IP prefix properties."
@@ -8561,7 +8836,7 @@
    },
    "sku": {
     "type": {
-     "$ref": "#/644"
+     "$ref": "#/659"
     },
     "flags": 0,
     "description": "The public IP prefix SKU."
@@ -8575,7 +8850,7 @@
    },
    "zones": {
     "type": {
-     "$ref": "#/651"
+     "$ref": "#/666"
     },
     "flags": 0,
     "description": "A list of availability zones denoting the IP allocated for the resource needs to come from."
@@ -8589,7 +8864,7 @@
    },
    "tags": {
     "type": {
-     "$ref": "#/652"
+     "$ref": "#/667"
     },
     "flags": 0,
     "description": "Resource tags."
@@ -8602,14 +8877,14 @@
   "properties": {
    "publicIPAddressVersion": {
     "type": {
-     "$ref": "#/633"
+     "$ref": "#/648"
     },
     "flags": 0,
     "description": "The public IP address version."
    },
    "ipTags": {
     "type": {
-     "$ref": "#/634"
+     "$ref": "#/649"
     },
     "flags": 0,
     "description": "The list of tags associated with the public IP prefix."
@@ -8630,7 +8905,7 @@
    },
    "publicIPAddresses": {
     "type": {
-     "$ref": "#/636"
+     "$ref": "#/651"
     },
     "flags": 2,
     "description": "The list of all referenced PublicIPAddresses."
@@ -8658,7 +8933,7 @@
    },
    "provisioningState": {
     "type": {
-     "$ref": "#/643"
+     "$ref": "#/658"
     },
     "flags": 2,
     "description": "The provisioning state of the public IP prefix resource."
@@ -8691,10 +8966,10 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/631"
+    "$ref": "#/646"
    },
    {
-    "$ref": "#/632"
+    "$ref": "#/647"
    },
    {
     "$ref": "#/0"
@@ -8723,7 +8998,7 @@
  {
   "$type": "ArrayType",
   "itemType": {
-   "$ref": "#/635"
+   "$ref": "#/650"
   }
  },
  {
@@ -8754,22 +9029,22 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/637"
+    "$ref": "#/652"
    },
    {
-    "$ref": "#/638"
+    "$ref": "#/653"
    },
    {
-    "$ref": "#/639"
+    "$ref": "#/654"
    },
    {
-    "$ref": "#/640"
+    "$ref": "#/655"
    },
    {
-    "$ref": "#/641"
+    "$ref": "#/656"
    },
    {
-    "$ref": "#/642"
+    "$ref": "#/657"
    },
    {
     "$ref": "#/0"
@@ -8782,14 +9057,14 @@
   "properties": {
    "name": {
     "type": {
-     "$ref": "#/647"
+     "$ref": "#/662"
     },
     "flags": 0,
     "description": "Name of a public IP prefix SKU."
    },
    "tier": {
     "type": {
-     "$ref": "#/650"
+     "$ref": "#/665"
     },
     "flags": 0,
     "description": "Tier of a public IP prefix SKU."
@@ -8808,10 +9083,10 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/645"
+    "$ref": "#/660"
    },
    {
-    "$ref": "#/646"
+    "$ref": "#/661"
    },
    {
     "$ref": "#/0"
@@ -8830,10 +9105,10 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/648"
+    "$ref": "#/663"
    },
    {
-    "$ref": "#/649"
+    "$ref": "#/664"
    },
    {
     "$ref": "#/0"
@@ -8858,7 +9133,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/publicIPPrefixes@2026-03-01",
   "body": {
-   "$ref": "#/629"
+   "$ref": "#/644"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8891,14 +9166,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/654"
+     "$ref": "#/669"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/655"
+     "$ref": "#/670"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8926,7 +9201,7 @@
    },
    "tags": {
     "type": {
-     "$ref": "#/657"
+     "$ref": "#/672"
     },
     "flags": 0,
     "description": "Resource tags."
@@ -8945,7 +9220,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/routeTables@2026-03-01",
   "body": {
-   "$ref": "#/656"
+   "$ref": "#/671"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8978,21 +9253,21 @@
    },
    "type": {
     "type": {
-     "$ref": "#/659"
+     "$ref": "#/674"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/660"
+     "$ref": "#/675"
     },
     "flags": 10,
     "description": "The resource api version"
    },
    "properties": {
     "type": {
-     "$ref": "#/563"
+     "$ref": "#/568"
     },
     "flags": 0,
     "description": "Properties of the virtual network."
@@ -9020,7 +9295,7 @@
    },
    "tags": {
     "type": {
-     "$ref": "#/662"
+     "$ref": "#/677"
     },
     "flags": 0,
     "description": "Resource tags."
@@ -9039,7 +9314,218 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/virtualNetworks@2026-03-01",
   "body": {
-   "$ref": "#/661"
+   "$ref": "#/676"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringType",
+  "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9_.-]{0,78}[a-zA-Z0-9_])?$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/applicationSecurityGroups/addressPrefixSets"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/applicationSecurityGroups/addressPrefixSets",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/679"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/680"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/681"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/683"
+    },
+    "flags": 0,
+    "description": "Properties of the address prefix set."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "AddressPrefixSetPropertiesFormat",
+  "properties": {
+   "addressPrefixes": {
+    "type": {
+     "$ref": "#/684"
+    },
+    "flags": 1,
+    "description": "The list of address prefixes in CIDR notation. Supports both IPv4 and IPv6 CIDR notation (e.g. '10.0.0.0/16', '2001:db8::/32')."
+   },
+   "provisioningState": {
+    "type": {
+     "$ref": "#/691"
+    },
+    "flags": 2,
+    "description": "The provisioning state of the address prefix set resource."
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  },
+  "minLength": 1
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/685"
+   },
+   {
+    "$ref": "#/686"
+   },
+   {
+    "$ref": "#/687"
+   },
+   {
+    "$ref": "#/688"
+   },
+   {
+    "$ref": "#/689"
+   },
+   {
+    "$ref": "#/690"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/applicationSecurityGroups/addressPrefixSets@2026-03-01",
+  "body": {
+   "$ref": "#/682"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/networkInterfaces/tapConfigurations"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/networkInterfaces/tapConfigurations",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/693"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/694"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/20"
+    },
+    "flags": 0,
+    "description": "Properties of the Virtual Network Tap configuration."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/networkInterfaces/tapConfigurations@2026-03-01",
+  "body": {
+   "$ref": "#/695"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -9072,14 +9558,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/664"
+     "$ref": "#/697"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/665"
+     "$ref": "#/698"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -9104,7 +9590,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/networkSecurityGroups/securityRules@2026-03-01",
   "body": {
-   "$ref": "#/666"
+   "$ref": "#/699"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -9137,14 +9623,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/668"
+     "$ref": "#/701"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/669"
+     "$ref": "#/702"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -9158,7 +9644,7 @@
    },
    "properties": {
     "type": {
-     "$ref": "#/671"
+     "$ref": "#/704"
     },
     "flags": 0,
     "description": "Properties of the private dns zone group."
@@ -9171,14 +9657,14 @@
   "properties": {
    "provisioningState": {
     "type": {
-     "$ref": "#/678"
+     "$ref": "#/711"
     },
     "flags": 2,
     "description": "The provisioning state of the private dns zone group resource."
    },
    "privateDnsZoneConfigs": {
     "type": {
-     "$ref": "#/691"
+     "$ref": "#/724"
     },
     "flags": 0,
     "description": "A collection of private dns zone configurations of the private dns zone group."
@@ -9213,22 +9699,22 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/672"
+    "$ref": "#/705"
    },
    {
-    "$ref": "#/673"
+    "$ref": "#/706"
    },
    {
-    "$ref": "#/674"
+    "$ref": "#/707"
    },
    {
-    "$ref": "#/675"
+    "$ref": "#/708"
    },
    {
-    "$ref": "#/676"
+    "$ref": "#/709"
    },
    {
-    "$ref": "#/677"
+    "$ref": "#/710"
    },
    {
     "$ref": "#/0"
@@ -9248,7 +9734,7 @@
    },
    "properties": {
     "type": {
-     "$ref": "#/680"
+     "$ref": "#/713"
     },
     "flags": 0,
     "description": "Properties of the private dns zone configuration."
@@ -9268,7 +9754,7 @@
    },
    "recordSets": {
     "type": {
-     "$ref": "#/690"
+     "$ref": "#/723"
     },
     "flags": 2,
     "description": "A collection of information regarding a recordSet, holding information to identify private resources."
@@ -9302,7 +9788,7 @@
    },
    "provisioningState": {
     "type": {
-     "$ref": "#/688"
+     "$ref": "#/721"
     },
     "flags": 2,
     "description": "The provisioning state of the recordset."
@@ -9316,7 +9802,7 @@
    },
    "ipAddresses": {
     "type": {
-     "$ref": "#/689"
+     "$ref": "#/722"
     },
     "flags": 0,
     "description": "The private ip address of the private endpoint."
@@ -9351,22 +9837,22 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/682"
+    "$ref": "#/715"
    },
    {
-    "$ref": "#/683"
+    "$ref": "#/716"
    },
    {
-    "$ref": "#/684"
+    "$ref": "#/717"
    },
    {
-    "$ref": "#/685"
+    "$ref": "#/718"
    },
    {
-    "$ref": "#/686"
+    "$ref": "#/719"
    },
    {
-    "$ref": "#/687"
+    "$ref": "#/720"
    },
    {
     "$ref": "#/0"
@@ -9382,20 +9868,20 @@
  {
   "$type": "ArrayType",
   "itemType": {
-   "$ref": "#/681"
+   "$ref": "#/714"
   }
  },
  {
   "$type": "ArrayType",
   "itemType": {
-   "$ref": "#/679"
+   "$ref": "#/712"
   }
  },
  {
   "$type": "ResourceType",
   "name": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2026-03-01",
   "body": {
-   "$ref": "#/670"
+   "$ref": "#/703"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -9428,14 +9914,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/693"
+     "$ref": "#/726"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/694"
+     "$ref": "#/727"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -9460,7 +9946,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/routeTables/routes@2026-03-01",
   "body": {
-   "$ref": "#/695"
+   "$ref": "#/728"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -9493,14 +9979,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/697"
+     "$ref": "#/730"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/698"
+     "$ref": "#/731"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -9525,7 +10011,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/virtualNetworks/subnets@2026-03-01",
   "body": {
-   "$ref": "#/699"
+   "$ref": "#/732"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -9558,21 +10044,21 @@
    },
    "type": {
     "type": {
-     "$ref": "#/701"
+     "$ref": "#/734"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/702"
+     "$ref": "#/735"
     },
     "flags": 10,
     "description": "The resource api version"
    },
    "properties": {
     "type": {
-     "$ref": "#/568"
+     "$ref": "#/573"
     },
     "flags": 0,
     "description": "Properties of the virtual network peering."
@@ -9590,10 +10076,75 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2026-03-01",
   "body": {
-   "$ref": "#/703"
+   "$ref": "#/736"
   },
   "readableScopes": 8,
   "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/networkInterfaces/ipConfigurations"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/networkInterfaces/ipConfigurations",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/738"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/739"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/16"
+    },
+    "flags": 2,
+    "description": "Network interface IP configuration properties."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/networkInterfaces/ipConfigurations@2026-03-01",
+  "body": {
+   "$ref": "#/740"
+  },
+  "readableScopes": 8,
+  "writableScopes": 0
  },
  {
   "$type": "StringLiteralType",
@@ -9623,14 +10174,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/705"
+     "$ref": "#/742"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/706"
+     "$ref": "#/743"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -9655,7 +10206,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2026-03-01",
   "body": {
-   "$ref": "#/707"
+   "$ref": "#/744"
   },
   "readableScopes": 8,
   "writableScopes": 0

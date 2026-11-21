@@ -298,8 +298,8 @@ func TestNetworkRulesNeverWiden(t *testing.T) {
 			}
 		}
 	}
-	// An ASG as the destination of an allow: the rule is not carried
-	// over, on either target.
+	// An ASG as the destination of an allow: the rule applies to its
+	// members only, so it is not in what the subnet's instances carry.
 	s := netFixture()
 	web := obj(s.Objects[1].Body["spec"])["properties"].(map[string]any)
 	web["securityRules"] = append(list(web["securityRules"]), map[string]any{"name": "allow-asg", "properties": map[string]any{
@@ -311,12 +311,21 @@ func TestNetworkRulesNeverWiden(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if l := lossAbout(entry(t, r, "Microsoft.Network/networkSecurityGroups net/web"), "allow-asg"); l == nil || l.Widens {
-			t.Errorf("%s: the ASG allow: %+v", name, l)
+		found := false
+		for _, ev := range entry(t, r, "Microsoft.Network/networkSecurityGroups net/web").Evidence {
+			if ev.Rule == "allow-asg" {
+				found = true
+				if name == "aws" && ev.Status != nsgNoEffect {
+					t.Errorf("aws: the ASG allow in the subnet's group: %+v", ev)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: no evidence for the ASG allow", name)
 		}
 		for _, o := range r.Snapshots[m.To].Objects {
-			if strings.Contains(canonJSON(o.Body), "8080") {
-				t.Errorf("%s: port 8080 is open: %s", name, o.Key())
+			if strings.Contains(canonJSON(o.Body), "8080") && !strings.Contains(canonJSON(obj(o.Body["spec"])["targetTags"]), "web-as-web-vms") {
+				t.Errorf("%s: port 8080 is open to what is not in the group: %s", name, o.Key())
 			}
 		}
 	}

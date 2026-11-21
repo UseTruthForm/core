@@ -1,4 +1,12 @@
 report:
+  attachments:
+  - attached: requirement
+    carries:
+    - web
+    nsgs:
+    - net/web
+    source: subnet net/core/app
+    to: every instance and node group in subnet core-app that no other row names
   destinations:
   - 'clusters: eks'
   - 'network: vpc'
@@ -120,7 +128,73 @@ report:
   - reason: 'Azure''s report of the upgrades open to the cluster: nothing to translate'
     source: Microsoft.ContainerService/managedClusters/upgradeProfiles rg/shop/default
     state: mapped
-  - source: Microsoft.Network/networkSecurityGroups net/web
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup web ingress tcp/443-443 from 0.0.0.0/0
+      priority: 100
+      rule: allow-https
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup web ingress -1 from 10.20.0.0/16
+      - AWS::EC2::SecurityGroup web ingress tcp/443-443 from 0.0.0.0/0
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup web
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup web: security groups only allow, and no rule of it
+        allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup web egress -1 to 0.0.0.0/0
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup web egress -1 to 0.0.0.0/0
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup web: security groups only allow, and no rule of it
+        allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    source: Microsoft.Network/networkSecurityGroups net/web
     state: mapped
     targets:
     - AWS::EC2::SecurityGroup web

@@ -141,6 +141,12 @@
   "Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30": {
    "$ref": "msi/microsoft.managedidentity/2024-11-30/types.json#/21"
   },
+  "Microsoft.Network/applicationSecurityGroups/addressPrefixSets@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/692"
+  },
+  "Microsoft.Network/applicationSecurityGroups@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/614"
+  },
   "Microsoft.Network/dnsZones/A@2018-05-01": {
    "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/27"
   },
@@ -187,16 +193,28 @@
    "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/75"
   },
   "Microsoft.Network/natGateways@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/610"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/620"
+  },
+  "Microsoft.Network/networkInterfaces/ipConfigurations@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/741"
+  },
+  "Microsoft.Network/networkInterfaces/tapConfigurations@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/696"
+  },
+  "Microsoft.Network/networkInterfaces@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/625"
   },
   "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/708"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/745"
   },
   "Microsoft.Network/networkSecurityGroups/securityRules@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/667"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/700"
   },
   "Microsoft.Network/networkSecurityGroups@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/615"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/630"
+  },
+  "Microsoft.Network/networkWatchers/flowLogs@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/567"
   },
   "Microsoft.Network/privateDnsZones/A@2024-06-01": {
    "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/47"
@@ -229,31 +247,31 @@
    "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/25"
   },
   "Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/692"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/725"
   },
   "Microsoft.Network/privateEndpoints@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/620"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/635"
   },
   "Microsoft.Network/publicIPAddresses@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/626"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/641"
   },
   "Microsoft.Network/publicIPPrefixes@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/653"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/668"
   },
   "Microsoft.Network/routeTables/routes@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/696"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/729"
   },
   "Microsoft.Network/routeTables@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/658"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/673"
   },
   "Microsoft.Network/virtualNetworks/subnets@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/700"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/733"
   },
   "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/704"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/737"
   },
   "Microsoft.Network/virtualNetworks@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/663"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/678"
   },
   "Microsoft.ServiceBus/namespaces/AuthorizationRules@2026-01-01": {
    "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/93"

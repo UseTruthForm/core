@@ -281,8 +281,8 @@ func TestEveryNetworkTypeIsDecided(t *testing.T) {
 	}
 	for _, n := range reg.Names() {
 		l := strings.ToLower(n)
-		if !network.claims(network{}, l) || routingClaims(l) {
-			continue // routing's own types: see TestEveryRoutingTypeIsDecided
+		if !network.claims(network{}, l) || routingClaims(l) || nsgClaims(l) {
+			continue // routing's own types: see TestEveryRoutingTypeIsDecided; NSG attachments': TestEveryNSGTypeIsDecided
 		}
 		if _, ok := decided[l]; !ok {
 			t.Errorf("%s has a definition and no decision", n)

@@ -240,3 +240,49 @@ func tidyOnce(bs []box) []box {
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out
 }
+
+// prefixIntersect is the addresses both a and b hold, as prefixes. Two
+// prefixes overlap only when one holds the other, and then what they share
+// is the narrower one.
+func prefixIntersect(a, b []netip.Prefix) []netip.Prefix {
+	var out []netip.Prefix
+	for _, p := range a {
+		for _, q := range b {
+			switch {
+			case !p.Overlaps(q):
+			case p.Bits() >= q.Bits():
+				out = append(out, p.Masked())
+			default:
+				out = append(out, q.Masked())
+			}
+		}
+	}
+	return aggregate(out)
+}
+
+// intersect is the traffic both b and d match: the protocol both name,
+// the ports both hold and the peers both hold. ok is false when there is
+// none. Two NSGs on one path let through only what both allow, so this is
+// how their allowed sets are combined; a union here would let through what
+// either allows.
+func (b box) intersect(d box) (out box, ok bool) {
+	if !protoOverlap(b.proto, d.proto) {
+		return box{}, false
+	}
+	proto := b.proto
+	if proto == "all" {
+		proto = d.proto
+	}
+	lo, hi := max(b.lo, d.lo), min(b.hi, d.hi)
+	if lo > hi {
+		return box{}, false
+	}
+	peer := prefixIntersect(b.peer, d.peer)
+	if len(peer) == 0 {
+		return box{}, false
+	}
+	if proto != "tcp" && proto != "udp" {
+		lo, hi = 0, 65535
+	}
+	return box{proto, lo, hi, peer}, true
+}

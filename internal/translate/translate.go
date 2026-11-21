@@ -63,6 +63,9 @@ type Entry struct {
 	Reason  string   `json:"reason,omitempty"` // why refused or not looked at
 	Targets []string `json:"targets,omitempty"`
 	Losses  []Loss   `json:"losses,omitempty"`
+	// Evidence is, for a network security group, what became of each of
+	// its rules on the target (evidence.go).
+	Evidence []RuleEvidence `json:"evidence,omitempty"`
 }
 
 // Report is everything a translation says about itself.
@@ -78,6 +81,10 @@ type Report struct {
 	// GitOps is what the Kubernetes workloads name that the translation
 	// renamed: see gitops.go. Absent unless it was asked for.
 	GitOps *GitOpsReport `json:"gitops,omitempty"`
+	// Attachments say, for each thing a network security group filtered,
+	// what stands for its rules on the target and whether the translation
+	// attached it (evidence.go).
+	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
 // Failed reports whether anything was refused, not looked at, lost in a
@@ -153,6 +160,10 @@ type out struct {
 	// another's object says (identity: whether a vault authorizes with
 	// Azure RBAC at all).
 	src []snapshot.Object
+	// nsgs is what the network family worked out about security groups,
+	// for the families that attach them (nsg_sites.go).
+	nsgs        *nsgState
+	attachments []Attachment
 }
 
 // written is the spec of an object already written for a platform, or nil.
@@ -307,6 +318,7 @@ func Translate(src snapshot.Snapshot, m Map, tg Targets) (Result, error) {
 		res.Report.Requirements = append(res.Report.Requirements, r)
 	}
 	sort.Strings(res.Report.Requirements)
+	res.Report.Attachments = sortedAttachments(o.attachments)
 	return res, nil
 }
 

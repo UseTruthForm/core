@@ -1,8 +1,121 @@
 report:
+  attachments:
+  - attached: requirement
+    carries:
+    - web
+    nsgs:
+    - net/web
+    source: subnet net/core/app
+    to: every instance and GKE node in subnetwork core-app that no other row names
+  - attached: requirement
+    carries:
+    - data
+    nsgs:
+    - net/data
+    source: subnet net/core/data
+    to: every instance and GKE node in subnetwork core-data that no other row names
   destinations:
   - 'network: vpc'
   entries:
-  - source: Microsoft.Network/networkSecurityGroups net/data
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-allow-pg-from-app
+      priority: 100
+      rule: allow-pg-from-app
+      status: exact
+      where: network tag data
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-deny-app
+      priority: 110
+      rule: deny-app
+      status: exact
+      where: network tag data
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-allow-8443-internet
+      priority: 130
+      rule: allow-8443-internet
+      status: exact
+      where: network tag data
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-deny-vnet-8443
+      priority: 140
+      rule: deny-vnet-8443
+      status: exact
+      where: network tag data
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag data
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag data
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag data
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-deny-internet-out
+      priority: 4000
+      rule: deny-internet-out
+      status: exact
+      where: network tag data
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag data
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag data
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag data
+    source: Microsoft.Network/networkSecurityGroups net/data
     state: mapped
     targets:
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-allow-8443-internet
@@ -11,11 +124,144 @@ report:
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-deny-app
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-deny-internet-out
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-deny-vnet-8443
-  - reason: no subnet in the snapshot uses it (one on a network interface is not translated
-      yet), so there is no network to put it in
+  - reason: 'no subnet or network interface in the snapshot uses it, and an NSG names
+      no network: the map says which network it is written in (network.nsgs, by group/nsg),
+      or it is left out'
     source: Microsoft.Network/networkSecurityGroups net/unused
     state: refused
-  - losses:
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-https
+      priority: 100
+      rule: allow-https
+      status: exact
+      where: network tag web
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-deny-azurecloud
+      priority: 150
+      rule: deny-azurecloud
+      status: stricter
+      where: network tag web
+      why: inbound deny rule deny-azurecloud (priority 150) names AzureCloud, which
+        has no addresses here; it denies every address instead
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-deny-ssh
+      priority: 200
+      rule: deny-ssh
+      status: exact
+      where: network tag web
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-mgmt-ssh
+      priority: 300
+      rule: allow-mgmt-ssh
+      status: exact
+      where: network tag web
+    - access: allow
+      direction: inbound
+      priority: 400
+      rule: allow-frontdoor
+      status: not carried
+      where: network tag web
+      why: inbound allow rule allow-frontdoor (priority 400) allows AzureFrontDoor.Backend,
+        which has no addresses here; it is not carried over
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-dns
+      priority: 500
+      rule: allow-dns
+      status: exact
+      where: network tag web
+    - access: allow
+      direction: inbound
+      priority: 510
+      rule: allow-ephemeral
+      status: not carried
+      where: network tag web
+      why: inbound allow rule allow-ephemeral (priority 510) names source ports; a
+        firewall rule cannot, so it is not carried over
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-one-host
+      priority: 520
+      rule: allow-one-host
+      status: exact
+      where: network tag web
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-8443
+      priority: 600
+      rule: allow-8443
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag web
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag web
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag web
+    losses:
     - field: properties.securityRules[deny-azurecloud]
       why: inbound deny rule deny-azurecloud (priority 150) names AzureCloud, which
         has no addresses here; it denies every address instead

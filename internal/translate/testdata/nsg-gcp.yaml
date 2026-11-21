@@ -1,0 +1,2134 @@
+report:
+  attachments:
+  - asgs:
+    - sec/web
+    attached: requirement
+    carries:
+    - app-nsg-vm-nsg
+    - asg-web
+    nsgs:
+    - sec/app-nsg
+    - sec/vm-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm1-nic
+    to: what takes the place of virtual machine vm1
+  - asgs:
+    - sec/api
+    attached: requirement
+    carries:
+    - app-nsg
+    - app-nsg-as-api
+    - asg-api
+    nsgs:
+    - sec/app-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm2-nic
+    to: what takes the place of virtual machine vm2
+  - asgs:
+    - sec/db
+    - sec/web
+    attached: requirement
+    carries:
+    - data-nsg
+    - asg-db
+    - asg-web
+    nsgs:
+    - sec/data-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm3-nic
+    to: what takes the place of virtual machine vm3
+  - asgs:
+    - sec/batch
+    attached: requirement
+    carries:
+    - vm-nsg
+    - asg-batch
+    nsgs:
+    - sec/vm-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm4-nic
+    to: what takes the place of virtual machine vm4
+  - attached: requirement
+    carries:
+    - app-nsg
+    nsgs:
+    - sec/app-nsg
+    source: Microsoft.Network/networkInterfaces sec/vm5-nic
+    to: what takes the place of virtual machine vm5
+  - attached: written
+    nsgs:
+    - sec/pe-nsg
+    source: Microsoft.Network/privateEndpoints sec/pe-store
+    to: Private Google Access on subnetwork(s) core-app of network core
+  - attached: written
+    source: Microsoft.Network/privateEndpoints sec/pe-vault
+    to: Private Google Access on subnetwork(s) core-app of network core
+  - attached: requirement
+    carries:
+    - aks-nsg
+    nsgs:
+    - sec/aks-nsg
+    source: subnet sec/core/aks
+    to: every instance and GKE node in subnetwork core-aks that no other row names
+  - attached: requirement
+    carries:
+    - app-nsg
+    nsgs:
+    - sec/app-nsg
+    source: subnet sec/core/app
+    to: every instance and GKE node in subnetwork core-app that no other row names
+  - attached: requirement
+    carries:
+    - data-nsg
+    nsgs:
+    - sec/data-nsg
+    source: subnet sec/core/data
+    to: every instance and GKE node in subnetwork core-data that no other row names
+  - attached: requirement
+    carries:
+    - pe-nsg
+    nsgs:
+    - sec/pe-nsg
+    source: subnet sec/core/legacy
+    to: every instance and GKE node in subnetwork core-legacy that no other row names
+  - attached: requirement
+    carries:
+    - pe-nsg
+    nsgs:
+    - sec/pe-nsg
+    source: subnet sec/core/pe
+    to: every instance and GKE node in subnetwork core-pe that no other row names
+  destinations:
+  - 'network: vpc'
+  - 'secrets: secret-manager'
+  - 'storage: buckets'
+  entries:
+  - reason: 'network tag asg-api: a tag is not an object, so nothing is written; rules
+      name it as their source and members carry it'
+    source: Microsoft.Network/applicationSecurityGroups sec/api
+    state: mapped
+  - reason: 'network tag asg-batch: a tag is not an object, so nothing is written;
+      rules name it as their source and members carry it'
+    source: Microsoft.Network/applicationSecurityGroups sec/batch
+    state: mapped
+  - reason: 'network tag asg-db: a tag is not an object, so nothing is written; rules
+      name it as their source and members carry it'
+    source: Microsoft.Network/applicationSecurityGroups sec/db
+    state: mapped
+  - reason: 'network tag asg-web: a tag is not an object, so nothing is written; rules
+      name it as their source and members carry it'
+    source: Microsoft.Network/applicationSecurityGroups sec/web
+    state: mapped
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm1
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm1-nic
+    state: mapped
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm2
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm2-nic
+    state: mapped
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm3
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm3-nic
+    state: mapped
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm4
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm4-nic
+    state: mapped
+  - reason: 'an interface is its machine''s, and machines are not translated: what
+      filtered it is written, ready for what takes the place of virtual machine vm5
+      (see attachments)'
+    source: Microsoft.Network/networkInterfaces sec/vm5-nic
+    state: mapped
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/aks-nsg-allow-https
+      priority: 100
+      rule: allow-https
+      status: exact
+      where: network tag aks-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/aks-nsg-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag aks-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag aks-nsg
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag aks-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag aks-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag aks-nsg
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag aks-nsg
+    source: Microsoft.Network/networkSecurityGroups sec/aks-nsg
+    state: mapped
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/aks-nsg-allow-https
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/aks-nsg-allowvnetinbound
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-allow-https
+      priority: 100
+      rule: allow-https
+      status: exact
+      where: network tag app-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-deny-ssh
+      priority: 200
+      rule: deny-ssh
+      status: exact
+      where: network tag app-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-allow-web-to-api
+      priority: 300
+      rule: allow-web-to-api
+      status: exact
+      where: network tag app-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-deny-batch
+      priority: 310
+      rule: deny-batch
+      status: exact
+      where: network tag app-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-allow-9000
+      priority: 320
+      rule: allow-9000
+      status: exact
+      where: network tag app-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-deny-vnet-in
+      priority: 4000
+      rule: deny-vnet-in
+      status: exact
+      where: network tag app-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag app-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag app-nsg
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag app-nsg
+    - access: allow
+      direction: outbound
+      priority: 300
+      rule: allow-out-db
+      status: not carried
+      where: network tag app-nsg
+      why: outbound allow rule allow-out-db (priority 300) allows traffic to the members
+        of application security group sec/db; a GCP egress rule names destinations
+        by address, and the subnets its members are in hold more than them, so that
+        is not carried over
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-deny-out-db
+      priority: 400
+      rule: deny-out-db
+      status: stricter
+      where: network tag app-nsg
+      why: outbound deny rule deny-out-db (priority 400) denies traffic to the members
+        of application security group sec/db; a GCP egress rule names destinations
+        by address, so the subnets its members are in (10.30.2.0/24) are denied whole
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag app-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag app-nsg
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag app-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-in-1
+      priority: 100
+      rule: allow-https
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 200
+      rule: deny-ssh
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: allow
+      direction: inbound
+      priority: 300
+      rule: allow-web-to-api
+      status: does not apply
+      where: network tag app-nsg-vm-nsg
+      why: 'it applies only to members of application security group sec/api, and
+        this is written for what is not in it: its members carry a group of their
+        own'
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 310
+      rule: deny-batch
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-in-2
+      priority: 320
+      rule: allow-9000
+      status: stricter
+      where: network tag app-nsg-vm-nsg
+      why: 'inbound allow rule allow-9000 (priority 320): a deny before it (deny-batch)
+        names application security group sec/batch; single members cannot be taken
+        out of an address range, so the subnets its members are in (10.30.6.0/24)
+        are taken out whole'
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 4000
+      rule: deny-vnet-in
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: stricter
+      where: network tag app-nsg-vm-nsg
+      why: 'inbound allow rule AllowVnetInBound (priority 65000) allows every protocol,
+        and a deny before it takes out tcp; a rule set made of two NSGs, which only
+        allows, cannot write every protocol but one, so it allows TCP, UDP, ICMP,
+        ESP and AH, and no other protocol (GRE, SCTP and the like); inbound allow
+        rule AllowVnetInBound (priority 65000): a deny before it (deny-batch) names
+        application security group sec/batch; single members cannot be taken out of
+        an address range, so the subnets its members are in (10.30.6.0/24) are taken
+        out whole'
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag app-nsg-vm-nsg
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: allow
+      direction: outbound
+      priority: 300
+      rule: allow-out-db
+      status: stricter
+      where: network tag app-nsg-vm-nsg
+      why: allows traffic to the members of application security group sec/db; a GCP
+        egress rule names destinations by address, and the subnets its members are
+        in hold more than them, so it is not carried over
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 400
+      rule: deny-out-db
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-1
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: stricter
+      where: network tag app-nsg-vm-nsg
+      why: 'outbound allow rule AllowVnetOutBound (priority 65000): a deny before
+        it (deny-out-db) names application security group sec/db; single members cannot
+        be taken out of an address range, so the subnets its members are in (10.30.2.0/24)
+        are taken out whole'
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag app-nsg-vm-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    losses:
+    - field: properties.securityRules[allow-out-db]
+      why: outbound allow rule allow-out-db (priority 300) allows traffic to the members
+        of application security group sec/db; a GCP egress rule names destinations
+        by address, and the subnets its members are in hold more than them, so that
+        is not carried over
+    - field: properties.securityRules[deny-out-db]
+      why: outbound deny rule deny-out-db (priority 400) denies traffic to the members
+        of application security group sec/db; a GCP egress rule names destinations
+        by address, so the subnets its members are in (10.30.2.0/24) are denied whole
+    - field: properties.securityRules[allow-9000]
+      why: 'inbound allow rule allow-9000 (priority 320): a deny before it (deny-batch)
+        names application security group sec/batch; single members cannot be taken
+        out of an address range, so the subnets its members are in (10.30.6.0/24)
+        are taken out whole'
+    - field: properties.securityRules[AllowVnetInBound]
+      why: inbound allow rule AllowVnetInBound (priority 65000) allows every protocol,
+        and a deny before it takes out tcp; a rule set made of two NSGs, which only
+        allows, cannot write every protocol but one, so it allows TCP, UDP, ICMP,
+        ESP and AH, and no other protocol (GRE, SCTP and the like)
+    - field: properties.securityRules[AllowVnetInBound]
+      why: 'inbound allow rule AllowVnetInBound (priority 65000): a deny before it
+        (deny-batch) names application security group sec/batch; single members cannot
+        be taken out of an address range, so the subnets its members are in (10.30.6.0/24)
+        are taken out whole'
+    - field: properties.securityRules[AllowVnetOutBound]
+      why: 'outbound allow rule AllowVnetOutBound (priority 65000): a deny before
+        it (deny-out-db) names application security group sec/db; single members cannot
+        be taken out of an address range, so the subnets its members are in (10.30.2.0/24)
+        are taken out whole'
+    - field: properties.securityRules[allow-out-db]
+      why: 'outbound allow rule allow-out-db (priority 300): allows traffic to the
+        members of application security group sec/db; a GCP egress rule names destinations
+        by address, and the subnets its members are in hold more than them, so it
+        is not carried over'
+    source: Microsoft.Network/networkSecurityGroups sec/app-nsg
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-allow-9000
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-allow-https
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-allow-web-to-api
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-allowvnetinbound
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-deny-batch
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-deny-out-db
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-deny-ssh
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-deny-vnet-in
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-in-1
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-in-2
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-1
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-allow-pg-from-web
+      priority: 100
+      rule: allow-pg-from-web
+      status: exact
+      where: network tag data-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-deny-half
+      priority: 105
+      rule: deny-half
+      status: exact
+      where: network tag data-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-allow-admin-from-web
+      priority: 110
+      rule: allow-admin-from-web
+      status: exact
+      where: network tag data-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-deny-app
+      priority: 200
+      rule: deny-app
+      status: exact
+      where: network tag data-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag data-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag data-nsg
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag data-nsg
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-deny-internet-out
+      priority: 4000
+      rule: deny-internet-out
+      status: exact
+      where: network tag data-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag data-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag data-nsg
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag data-nsg
+    source: Microsoft.Network/networkSecurityGroups sec/data-nsg
+    state: mapped
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-allow-admin-from-web
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-allow-pg-from-web
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-allowvnetinbound
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-deny-app
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-deny-half
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/data-nsg-deny-internet-out
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - privateIpGoogleAccess on compute.googleapis.com/Subnetwork core-app
+      priority: 100
+      rule: allow-app
+      status: stricter
+      where: Private Google Access in network core
+      why: 'it counts only where it lets in a whole subnetwork: core-data, core-pe,
+        core-legacy, core-aks, core-bare are not given Private Google Access'
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'Private Google Access in network core: a subnetwork some address of which
+        this denies is not given it'
+      priority: 200
+      rule: deny-rest
+      status: exact
+      where: Private Google Access in network core
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'Private Google Access in network core: a subnetwork some address of which
+        this denies is not given it'
+      priority: 65000
+      rule: AllowVnetInBound
+      status: stricter
+      where: Private Google Access in network core
+      why: 'it counts only where it lets in a whole subnetwork: core-data, core-pe,
+        core-legacy, core-aks, core-bare are not given Private Google Access'
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: Private Google Access in network core
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'Private Google Access in network core: a subnetwork some address of which
+        this denies is not given it'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: Private Google Access in network core
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'Private Google Access in network core: a subnetwork some address of which
+        this denies is not given it'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: stricter
+      where: Private Google Access in network core
+      why: 'it counts only where it lets in a whole subnetwork: core-data, core-pe,
+        core-legacy, core-aks, core-bare are not given Private Google Access'
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'Private Google Access in network core: a subnetwork some address of which
+        this denies is not given it'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: stricter
+      where: Private Google Access in network core
+      why: 'it counts only where it lets in a whole subnetwork: core-data, core-pe,
+        core-legacy, core-aks, core-bare are not given Private Google Access'
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'Private Google Access in network core: a subnetwork some address of which
+        this denies is not given it'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: Private Google Access in network core
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/pe-nsg-allow-app
+      priority: 100
+      rule: allow-app
+      status: exact
+      where: network tag pe-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/pe-nsg-deny-rest
+      priority: 200
+      rule: deny-rest
+      status: exact
+      where: network tag pe-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/pe-nsg-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag pe-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag pe-nsg
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag pe-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag pe-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag pe-nsg
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag pe-nsg
+    losses:
+    - field: properties.securityRules
+      why: 'GCP has no interface to filter for its private endpoints (sec/pe-store,
+        sec/pe-vault): Private Google Access is a setting of the subnetwork traffic
+        comes from, so it is given to the subnetworks all of whose addresses every
+        one of these endpoints took HTTPS from, and to no other'
+    - field: properties.securityRules
+      why: 'subnetwork(s) core-data, core-pe, core-legacy, core-aks, core-bare are
+        not given Private Google Access: the NSG kept some or all of their addresses
+        from a private endpoint, and the setting is the whole subnetwork''s. Machines
+        in them it did allow, and members of an application security group it allowed
+        by name, lose the private path'
+    source: Microsoft.Network/networkSecurityGroups sec/pe-nsg
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/pe-nsg-allow-app
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/pe-nsg-allowvnetinbound
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/pe-nsg-deny-rest
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/spare-nsg-allow-http
+      priority: 100
+      rule: allow-http
+      status: exact
+      where: network tag spare-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/spare-nsg-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag spare-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag spare-nsg
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag spare-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag spare-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag spare-nsg
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag spare-nsg
+    losses:
+    - field: properties
+      why: not attached to anything on the source either; written unattached in Microsoft.Network/virtualNetworks
+        sec/core, as the map says (network.nsgs)
+    source: Microsoft.Network/networkSecurityGroups sec/spare-nsg
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/spare-nsg-allow-http
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/spare-nsg-allowvnetinbound
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 100
+      rule: allow-ssh
+      status: exact
+      where: network tag app-nsg-vm-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-in-1
+      priority: 110
+      rule: allow-https-corp
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-in-2
+      priority: 120
+      rule: allow-9050
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 4000
+      rule: deny-rest
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag app-nsg-vm-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag app-nsg-vm-nsg
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 100
+      rule: deny-internet
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-1
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: stricter
+      where: network tag app-nsg-vm-nsg
+      why: allows traffic to the members of application security group sec/db; a GCP
+        egress rule names destinations by address, and the subnets its members are
+        in hold more than them, so it is not carried over
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag app-nsg-vm-nsg
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'no rule under network tag app-nsg-vm-nsg allows what this denies: ingress
+        is denied where nothing allows it, and compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+        denies all other egress'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag app-nsg-vm-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-allow-ssh
+      priority: 100
+      rule: allow-ssh
+      status: exact
+      where: network tag vm-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-allow-https-corp
+      priority: 110
+      rule: allow-https-corp
+      status: exact
+      where: network tag vm-nsg
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-allow-9050
+      priority: 120
+      rule: allow-9050
+      status: exact
+      where: network tag vm-nsg
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-deny-rest
+      priority: 4000
+      rule: deny-rest
+      status: exact
+      where: network tag vm-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag vm-nsg
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag vm-nsg
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag vm-nsg
+    - access: deny
+      direction: outbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-deny-internet
+      priority: 100
+      rule: deny-internet
+      status: exact
+      where: network tag vm-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag vm-nsg
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag vm-nsg
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag vm-nsg
+    losses:
+    - field: properties.securityRules[AllowVnetOutBound]
+      why: 'outbound allow rule AllowVnetOutBound (priority 65000): allows traffic
+        to the members of application security group sec/db; a GCP egress rule names
+        destinations by address, and the subnets its members are in hold more than
+        them, so it is not carried over'
+    source: Microsoft.Network/networkSecurityGroups sec/vm-nsg
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-in-1
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-in-2
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-1
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-allow-9050
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-allow-https-corp
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-allow-ssh
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-allowvnetinbound
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-deny-internet
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/vm-nsg-deny-rest
+  - losses:
+    - field: properties.format.version
+      why: 'version 2 of Azure''s record is not what the target writes: a parser reads
+        each cloud''s own record (the guide''s record-field table lines them up)'
+    - field: properties.targetResourceId
+      why: 'an NSG flow log, the kind Azure retires on September 30, 2027 in favour
+        of virtual network flow logs: the target logs networks, not rule sets, so
+        the whole of each network its NSG is used in is logged, which is more'
+    - field: properties.storageId
+      why: storage account shoplogs held the records; GCP writes them to Cloud Logging
+        (log compute.googleapis.com/vpc_flows), and a sink carries them on to a bucket,
+        BigQuery or Pub/Sub
+    - field: properties.format
+      why: 'the target writes its own record, not Azure''s: one entry per flow and
+        reporting side with bytes and packets one way; packets an ingress rule denied
+        are not recorded at all unless firewall rule logging is turned on'
+    source: Microsoft.Network/networkWatchers/flowLogs NetworkWatcherRG/NetworkWatcher_westeurope/fl-app-nsg
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-aks
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-bare
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-legacy
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-pe
+  - losses:
+    - field: properties.flowAnalyticsConfiguration
+      why: 'traffic analytics is not translated: the target''s records are analysed
+        with its own tools (Athena or CloudWatch Logs Insights; Log Analytics or BigQuery)'
+    - field: properties.enabledFilteringCriteria
+      why: 'it recorded only flows matching dstip=10.30.2.10; the target records every
+        flow, which is more: Azure''s filter has no equal on AWS, and GCP''s filter
+        expressions are written in another language'
+    - field: properties.format.version
+      why: 'version 2 of Azure''s record is not what the target writes: a parser reads
+        each cloud''s own record (the guide''s record-field table lines them up)'
+    - field: properties.storageId
+      why: storage account shoplogs held the records; GCP writes them to Cloud Logging
+        (log compute.googleapis.com/vpc_flows), and a sink carries them on to a bucket,
+        BigQuery or Pub/Sub
+    - field: properties.retentionPolicy
+      why: records were deleted after 30 day(s); on GCP that is the retention of the
+        Cloud Logging bucket they are kept in, which is not written here
+    - field: properties.format
+      why: 'the target writes its own record, not Azure''s: one entry per flow and
+        reporting side with bytes and packets one way; packets an ingress rule denied
+        are not recorded at all unless firewall rule logging is turned on'
+    source: Microsoft.Network/networkWatchers/flowLogs NetworkWatcherRG/NetworkWatcher_westeurope/fl-core
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-aks
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-bare
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-legacy
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-pe
+  - losses:
+    - field: properties.format.version
+      why: 'version 2 of Azure''s record is not what the target writes: a parser reads
+        each cloud''s own record (the guide''s record-field table lines them up)'
+    - field: properties.storageId
+      why: storage account shoplogs held the records; GCP writes them to Cloud Logging
+        (log compute.googleapis.com/vpc_flows), and a sink carries them on to a bucket,
+        BigQuery or Pub/Sub
+    - field: properties.format
+      why: 'the target writes its own record, not Azure''s: one entry per flow and
+        reporting side with bytes and packets one way; packets an ingress rule denied
+        are not recorded at all unless firewall rule logging is turned on'
+    source: Microsoft.Network/networkWatchers/flowLogs NetworkWatcherRG/NetworkWatcher_westeurope/fl-data
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
+  - reason: it is turned off on the source, so nothing is logged for it on the target
+    source: Microsoft.Network/networkWatchers/flowLogs NetworkWatcherRG/NetworkWatcher_westeurope/fl-off
+    state: mapped
+  - reason: 'Private Google Access on network core''s subnetworks: its machines reach
+      Google''s APIs by their own names without leaving Google''s network'
+    source: Microsoft.Network/privateEndpoints sec/pe-store
+    state: mapped
+  - reason: 'Private Google Access on network core''s subnetworks: its machines reach
+      Google''s APIs by their own names without leaving Google''s network'
+    source: Microsoft.Network/privateEndpoints sec/pe-vault
+    state: mapped
+  - source: Microsoft.Network/virtualNetworks sec/core
+    state: mapped
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/core
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-aks
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-bare
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-legacy
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-pe
+  from: azure
+  requirements:
+  - 'Flow log records are kept 30 day(s), as on Azure: set that as the retention of
+    the Cloud Logging bucket that holds compute.googleapis.com/vpc_flows (not written
+    here)'
+  - 'Flow logs are billed by volume on the target: they are written only where the
+    source logged, unless the map asks for them everywhere'
+  - 'Google''s load balancers check health from 35.191.0.0/16 and 130.211.0.0/22:
+    where one fronts these instances, allow those ranges (Azure''s load balancer was
+    allowed by every NSG)'
+  - 'Instances (and GKE nodes) in subnetwork(s) core-aks carry the network tag aks-nsg:
+    an NSG applied to a whole subnet, a firewall rule applies to instances by tag'
+  - 'Instances (and GKE nodes) in subnetwork(s) core-app carry the network tag app-nsg:
+    an NSG applied to a whole subnet, a firewall rule applies to instances by tag'
+  - 'Instances (and GKE nodes) in subnetwork(s) core-data carry the network tag data-nsg:
+    an NSG applied to a whole subnet, a firewall rule applies to instances by tag'
+  - 'Instances (and GKE nodes) in subnetwork(s) core-pe, core-legacy carry the network
+    tag pe-nsg: an NSG applied to a whole subnet, a firewall rule applies to instances
+    by tag'
+  - 'Network tag asg-api marks the members of application security group sec/api:
+    what takes the place of each member carries it (members on Azure: virtual machine
+    vm2)'
+  - 'Network tag asg-batch marks the members of application security group sec/batch:
+    what takes the place of each member carries it (members on Azure: virtual machine
+    vm4)'
+  - 'Network tag asg-db marks the members of application security group sec/db: what
+    takes the place of each member carries it (members on Azure: virtual machine vm3)'
+  - 'Network tag asg-web marks the members of application security group sec/web:
+    what takes the place of each member carries it (members on Azure: virtual machine
+    vm1, virtual machine vm3)'
+  - Private Google Access reaches Google's APIs privately from machines with no external
+    IP; a machine with one reaches them over the internet
+  - 'VPC Flow Logs do not record packets an ingress firewall rule denied: turn on
+    firewall rule logging (logConfig on the rules) where denied flows must be seen,
+    as Azure''s flow logs showed them (state D)'
+  - 'VPC Flow Logs go to Cloud Logging (log compute.googleapis.com/vpc_flows, resource
+    type gce_subnetwork): where a security tool reads them from a bucket, BigQuery
+    or Pub/Sub, add a Logging sink for that log (not written here)'
+  - 'What takes the place of virtual machine vm1 (Microsoft.Network/networkInterfaces
+    sec/vm1-nic) carries network tag(s) app-nsg-vm-nsg, asg-web and no other translated
+    from an NSG: every rule that applies to an instance is in one list on GCP, so
+    another NSG''s tag beside them would let through what these deny'
+  - 'What takes the place of virtual machine vm2 (Microsoft.Network/networkInterfaces
+    sec/vm2-nic) carries network tag(s) app-nsg, app-nsg-as-api, asg-api and no other
+    translated from an NSG: every rule that applies to an instance is in one list
+    on GCP, so another NSG''s tag beside them would let through what these deny'
+  - 'What takes the place of virtual machine vm3 (Microsoft.Network/networkInterfaces
+    sec/vm3-nic) carries network tag(s) data-nsg, asg-db, asg-web and no other translated
+    from an NSG: every rule that applies to an instance is in one list on GCP, so
+    another NSG''s tag beside them would let through what these deny'
+  - 'What takes the place of virtual machine vm4 (Microsoft.Network/networkInterfaces
+    sec/vm4-nic) carries network tag(s) vm-nsg, asg-batch and no other translated
+    from an NSG: every rule that applies to an instance is in one list on GCP, so
+    another NSG''s tag beside them would let through what these deny'
+  - 'What takes the place of virtual machine vm5 (Microsoft.Network/networkInterfaces
+    sec/vm5-nic) carries network tag(s) app-nsg and no other translated from an NSG:
+    every rule that applies to an instance is in one list on GCP, so another NSG''s
+    tag beside them would let through what these deny'
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/aks-nsg-allow-https
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "443"
+      direction: INGRESS
+      name: aks-nsg-allow-https
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 100
+      sourceRanges:
+      - 0.0.0.0/0
+      targetTags:
+      - aks-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/aks-nsg-allowvnetinbound
+    spec:
+      allowed:
+      - IPProtocol: all
+      direction: INGRESS
+      name: aks-nsg-allowvnetinbound
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 65000
+      sourceRanges:
+      - 10.30.0.0/16
+      targetTags:
+      - aks-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-allow-9000
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - 9000-9100
+      direction: INGRESS
+      name: app-nsg-allow-9000
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 320
+      sourceRanges:
+      - 10.30.0.0/16
+      targetTags:
+      - app-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-allow-https
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "443"
+      direction: INGRESS
+      name: app-nsg-allow-https
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 100
+      sourceRanges:
+      - 0.0.0.0/5
+      - 8.0.0.0/7
+      - 10.0.0.0/12
+      - 10.16.0.0/13
+      - 10.24.0.0/14
+      - 10.28.0.0/15
+      - 10.31.0.0/16
+      - 10.32.0.0/11
+      - 10.64.0.0/10
+      - 10.128.0.0/9
+      - 11.0.0.0/8
+      - 12.0.0.0/6
+      - 16.0.0.0/4
+      - 32.0.0.0/3
+      - 64.0.0.0/2
+      - 128.0.0.0/1
+      targetTags:
+      - app-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-allow-web-to-api
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "8080"
+      direction: INGRESS
+      name: app-nsg-allow-web-to-api
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 300
+      sourceTags:
+      - asg-web
+      targetTags:
+      - app-nsg-as-api
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-allowvnetinbound
+    spec:
+      allowed:
+      - IPProtocol: all
+      direction: INGRESS
+      name: app-nsg-allowvnetinbound
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 65000
+      sourceRanges:
+      - 10.30.0.0/16
+      targetTags:
+      - app-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-deny-batch
+    spec:
+      denied:
+      - IPProtocol: tcp
+        ports:
+        - 9000-9100
+      direction: INGRESS
+      name: app-nsg-deny-batch
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 310
+      sourceTags:
+      - asg-batch
+      targetTags:
+      - app-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-deny-out-db
+    spec:
+      denied:
+      - IPProtocol: all
+      destinationRanges:
+      - 10.30.2.0/24
+      direction: EGRESS
+      name: app-nsg-deny-out-db
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 400
+      targetTags:
+      - app-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-deny-ssh
+    spec:
+      denied:
+      - IPProtocol: tcp
+        ports:
+        - "22"
+      direction: INGRESS
+      name: app-nsg-deny-ssh
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 200
+      sourceRanges:
+      - 0.0.0.0/0
+      targetTags:
+      - app-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-deny-vnet-in
+    spec:
+      denied:
+      - IPProtocol: all
+      direction: INGRESS
+      name: app-nsg-deny-vnet-in
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 4000
+      sourceRanges:
+      - 10.30.0.0/16
+      targetTags:
+      - app-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-in-1
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "443"
+      direction: INGRESS
+      name: app-nsg-vm-nsg-in-1
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 1000
+      sourceRanges:
+      - 10.0.0.0/12
+      - 10.16.0.0/13
+      - 10.24.0.0/14
+      - 10.28.0.0/15
+      - 10.31.0.0/16
+      - 10.32.0.0/11
+      - 10.64.0.0/10
+      - 10.128.0.0/9
+      targetTags:
+      - app-nsg-vm-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-in-2
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "9050"
+      direction: INGRESS
+      name: app-nsg-vm-nsg-in-2
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 1000
+      sourceRanges:
+      - 10.30.0.0/22
+      - 10.30.4.0/23
+      - 10.30.7.0/24
+      - 10.30.8.0/21
+      - 10.30.16.0/20
+      - 10.30.32.0/19
+      - 10.30.64.0/18
+      - 10.30.128.0/17
+      targetTags:
+      - app-nsg-vm-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-1
+    spec:
+      allowed:
+      - IPProtocol: all
+      destinationRanges:
+      - 10.30.0.0/23
+      - 10.30.3.0/24
+      - 10.30.4.0/22
+      - 10.30.8.0/21
+      - 10.30.16.0/20
+      - 10.30.32.0/19
+      - 10.30.64.0/18
+      - 10.30.128.0/17
+      direction: EGRESS
+      name: app-nsg-vm-nsg-out-1
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 1000
+      targetTags:
+      - app-nsg-vm-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/app-nsg-vm-nsg-out-deny
+    spec:
+      denied:
+      - IPProtocol: all
+      destinationRanges:
+      - 0.0.0.0/0
+      direction: EGRESS
+      name: app-nsg-vm-nsg-out-deny
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 1001
+      targetTags:
+      - app-nsg-vm-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-nsg-allow-admin-from-web
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "8443"
+      direction: INGRESS
+      name: data-nsg-allow-admin-from-web
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 110
+      sourceTags:
+      - asg-web
+      targetTags:
+      - data-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-nsg-allow-pg-from-web
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "5432"
+      direction: INGRESS
+      name: data-nsg-allow-pg-from-web
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 100
+      sourceTags:
+      - asg-web
+      targetTags:
+      - data-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-nsg-allowvnetinbound
+    spec:
+      allowed:
+      - IPProtocol: all
+      direction: INGRESS
+      name: data-nsg-allowvnetinbound
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 65000
+      sourceRanges:
+      - 10.30.0.0/16
+      targetTags:
+      - data-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-nsg-deny-app
+    spec:
+      denied:
+      - IPProtocol: all
+      direction: INGRESS
+      name: data-nsg-deny-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 200
+      sourceRanges:
+      - 10.30.1.0/24
+      targetTags:
+      - data-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-nsg-deny-half
+    spec:
+      denied:
+      - IPProtocol: tcp
+        ports:
+        - "8443"
+      direction: INGRESS
+      name: data-nsg-deny-half
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 105
+      sourceRanges:
+      - 10.30.1.128/25
+      targetTags:
+      - data-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/data-nsg-deny-internet-out
+    spec:
+      denied:
+      - IPProtocol: all
+      destinationRanges:
+      - 0.0.0.0/5
+      - 8.0.0.0/7
+      - 10.0.0.0/12
+      - 10.16.0.0/13
+      - 10.24.0.0/14
+      - 10.28.0.0/15
+      - 10.31.0.0/16
+      - 10.32.0.0/11
+      - 10.64.0.0/10
+      - 10.128.0.0/9
+      - 11.0.0.0/8
+      - 12.0.0.0/6
+      - 16.0.0.0/4
+      - 32.0.0.0/3
+      - 64.0.0.0/2
+      - 128.0.0.0/1
+      direction: EGRESS
+      name: data-nsg-deny-internet-out
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 4000
+      targetTags:
+      - data-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/pe-nsg-allow-app
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "443"
+      direction: INGRESS
+      name: pe-nsg-allow-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 100
+      sourceRanges:
+      - 10.30.1.0/24
+      targetTags:
+      - pe-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/pe-nsg-allowvnetinbound
+    spec:
+      allowed:
+      - IPProtocol: all
+      direction: INGRESS
+      name: pe-nsg-allowvnetinbound
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 65000
+      sourceRanges:
+      - 10.30.0.0/16
+      targetTags:
+      - pe-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/pe-nsg-deny-rest
+    spec:
+      denied:
+      - IPProtocol: all
+      direction: INGRESS
+      name: pe-nsg-deny-rest
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 200
+      sourceRanges:
+      - 10.30.0.0/16
+      targetTags:
+      - pe-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/spare-nsg-allow-http
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "80"
+      direction: INGRESS
+      name: spare-nsg-allow-http
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 100
+      sourceRanges:
+      - 0.0.0.0/0
+      targetTags:
+      - spare-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/spare-nsg-allowvnetinbound
+    spec:
+      allowed:
+      - IPProtocol: all
+      direction: INGRESS
+      name: spare-nsg-allowvnetinbound
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 65000
+      sourceRanges:
+      - 10.30.0.0/16
+      targetTags:
+      - spare-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/vm-nsg-allow-9050
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "9050"
+      direction: INGRESS
+      name: vm-nsg-allow-9050
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 120
+      sourceRanges:
+      - 10.30.0.0/16
+      targetTags:
+      - vm-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/vm-nsg-allow-https-corp
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "443"
+      direction: INGRESS
+      name: vm-nsg-allow-https-corp
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 110
+      sourceRanges:
+      - 10.0.0.0/8
+      targetTags:
+      - vm-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/vm-nsg-allow-ssh
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "22"
+      direction: INGRESS
+      name: vm-nsg-allow-ssh
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 100
+      sourceRanges:
+      - 0.0.0.0/0
+      targetTags:
+      - vm-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/vm-nsg-allowvnetinbound
+    spec:
+      allowed:
+      - IPProtocol: all
+      direction: INGRESS
+      name: vm-nsg-allowvnetinbound
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 65000
+      sourceRanges:
+      - 10.30.0.0/16
+      targetTags:
+      - vm-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/vm-nsg-deny-internet
+    spec:
+      denied:
+      - IPProtocol: all
+      destinationRanges:
+      - 0.0.0.0/5
+      - 8.0.0.0/7
+      - 10.0.0.0/12
+      - 10.16.0.0/13
+      - 10.24.0.0/14
+      - 10.28.0.0/15
+      - 10.31.0.0/16
+      - 10.32.0.0/11
+      - 10.64.0.0/10
+      - 10.128.0.0/9
+      - 11.0.0.0/8
+      - 12.0.0.0/6
+      - 16.0.0.0/4
+      - 32.0.0.0/3
+      - 64.0.0.0/2
+      - 128.0.0.0/1
+      direction: EGRESS
+      name: vm-nsg-deny-internet
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 100
+      targetTags:
+      - vm-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/vm-nsg-deny-rest
+    spec:
+      denied:
+      - IPProtocol: all
+      direction: INGRESS
+      name: vm-nsg-deny-rest
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 4000
+      sourceRanges:
+      - 0.0.0.0/0
+      targetTags:
+      - vm-nsg
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Network
+    metadata:
+      annotations:
+        truthform.org/collection: networks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Network
+      name: projects/{{truthform|project}}/global/networks/core
+    spec:
+      autoCreateSubnetworks: false
+      mtu: 1500
+      name: core
+      routingConfig:
+        routingMode: REGIONAL
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-aks
+    spec:
+      ipCidrRange: 10.30.5.0/24
+      logConfig:
+        aggregationInterval: INTERVAL_1_MIN
+        enable: true
+        flowSampling: 1
+        metadata: INCLUDE_ALL_METADATA
+      name: core-aks
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    spec:
+      ipCidrRange: 10.30.1.0/24
+      logConfig:
+        aggregationInterval: INTERVAL_1_MIN
+        enable: true
+        flowSampling: 1
+        metadata: INCLUDE_ALL_METADATA
+      name: core-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      privateIpGoogleAccess: true
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-bare
+    spec:
+      ipCidrRange: 10.30.6.0/24
+      logConfig:
+        aggregationInterval: INTERVAL_1_MIN
+        enable: true
+        flowSampling: 1
+        metadata: INCLUDE_ALL_METADATA
+      name: core-bare
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
+    spec:
+      ipCidrRange: 10.30.2.0/24
+      logConfig:
+        aggregationInterval: INTERVAL_1_MIN
+        enable: true
+        flowSampling: 1
+        metadata: INCLUDE_ALL_METADATA
+      name: core-data
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-legacy
+    spec:
+      ipCidrRange: 10.30.4.0/24
+      logConfig:
+        aggregationInterval: INTERVAL_1_MIN
+        enable: true
+        flowSampling: 1
+        metadata: INCLUDE_ALL_METADATA
+      name: core-legacy
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-pe
+    spec:
+      ipCidrRange: 10.30.3.0/24
+      logConfig:
+        aggregationInterval: INTERVAL_1_MIN
+        enable: true
+        flowSampling: 1
+        metadata: INCLUDE_ALL_METADATA
+      name: core-pe
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1

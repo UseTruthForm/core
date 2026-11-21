@@ -1,4 +1,12 @@
 report:
+  attachments:
+  - attached: requirement
+    carries:
+    - web
+    nsgs:
+    - net/web
+    source: subnet net/spoke/app
+    to: every instance and node group in subnet spoke-app that no other row names
   destinations:
   - 'network: vpc'
   entries:
@@ -21,7 +29,111 @@ report:
     state: mapped with losses
     targets:
     - AWS::EC2::NatGateway spoke-nat
-  - source: Microsoft.Network/networkSecurityGroups net/web
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup web ingress tcp/443-443 from 10.10.0.0/16
+      - AWS::EC2::SecurityGroup web ingress tcp/443-443 from 10.20.0.0/16
+      priority: 100
+      rule: allow-https-vnet
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 0.0.0.0/5
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.0.0.0/13
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.11.0.0/16
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.12.0.0/14
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.128.0.0/9
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.16.0.0/14
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.21.0.0/16
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.22.0.0/15
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.24.0.0/13
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.32.0.0/11
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.64.0.0/10
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 10.8.0.0/15
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 11.0.0.0/8
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 12.0.0.0/6
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 128.0.0.0/1
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 16.0.0.0/4
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 32.0.0.0/3
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 64.0.0.0/2
+      - AWS::EC2::SecurityGroup web ingress tcp/8080-8080 from 8.0.0.0/7
+      priority: 150
+      rule: allow-8080-internet
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup web: security groups only allow, and no rule of it
+        allows what this denies'
+      priority: 200
+      rule: deny-rest
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup web: security groups only allow, and no rule of it
+        allows what this denies'
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+      why: nothing it allows is left once the rules before it, and any other NSG on
+        the path, have had their say
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: AWS::EC2::SecurityGroup web
+      why: Azure's load balancer has no addresses on the target, whose load balancers
+        check health from addresses the other rules decide on
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup web: security groups only allow, and no rule of it
+        allows what this denies'
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup web egress -1 to 0.0.0.0/0
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - AWS::EC2::SecurityGroup web egress -1 to 0.0.0.0/0
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'AWS::EC2::SecurityGroup web: security groups only allow, and no rule of it
+        allows what this denies'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: AWS::EC2::SecurityGroup web
+    source: Microsoft.Network/networkSecurityGroups net/web
     state: mapped
     targets:
     - AWS::EC2::SecurityGroup web

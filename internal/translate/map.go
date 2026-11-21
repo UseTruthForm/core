@@ -93,6 +93,11 @@ type NetworkMap struct {
 	// nat (a NAT gateway on AWS, Cloud NAT on GCP, which are billed).
 	// Without it such a subnet has no internet egress on the target.
 	DefaultOutbound string `json:"defaultOutbound,omitempty"`
+	// NSGs names the network (group/network) a network security group
+	// (group/nsg) is written in when nothing in the snapshot uses it.
+	NSGs map[string]string `json:"nsgs,omitempty"`
+	// FlowLogs is where flow logs go on the target.
+	FlowLogs *FlowLogsMap `json:"flowLogs,omitempty"`
 }
 
 // SecretsMap is what secrets need on GCP.
@@ -340,6 +345,9 @@ func (m Map) validate() error {
 	case "", "buckets":
 	default:
 		return fmt.Errorf("map: storage: %q is not buckets", m.Destinations.Storage)
+	}
+	if err := m.validateNSG(); err != nil {
+		return err
 	}
 	if err := m.validateRouting(); err != nil {
 		return err

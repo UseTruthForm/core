@@ -1678,7 +1678,7 @@ the restore. A disabled secret is restored without one.
 | Container registry | aws | gcp |
 |---|---|---|
 | Registry | a repository creation template for prefix `<registry>`: ECR makes each repository on its first push, AES-256, mutable tags | an Artifact Registry repository of Docker images in the map's region |
-| Images | not copied: copy them; image references are rewritten in a later step | the same |
+| Images | not copied: copy them; image references are listed with what each becomes (Kubernetes workloads and GitOps), not rewritten | the same |
 | Firewall default deny, public access disabled | the template's repository policy denies pulls and pushes to requests that come neither through the registry's ECR endpoints nor from the firewall's public ranges | no network setting per repository: the project's service perimeter (`privateAccess`), or less protected without one |
 | Customer-managed key, quarantine | less protected | less protected |
 | Anonymous pull | not written: the repositories are private | the same |

@@ -240,7 +240,7 @@ func readReplication(o snapshot.Object) []Loss {
 }
 
 func (r *acr) imageRequirement(o *out, to string) {
-	o.require(fmt.Sprintf("Images are not copied: copy each from %s.azurecr.io to %s (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes image references are rewritten in a later step", strings.ToLower(r.name), to))
+	o.require(fmt.Sprintf("Images are not copied: copy each from %s.azurecr.io to %s (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes image references are not rewritten: the translation's Kubernetes change list names each one and what it becomes, for the repository's owner to change", strings.ToLower(r.name), to))
 	if r.admin {
 		o.require(fmt.Sprintf("Registry %s/%s had its admin user on: whoever pushed or pulled with that user name and password signs in with IAM on the target", r.group, r.name))
 	}

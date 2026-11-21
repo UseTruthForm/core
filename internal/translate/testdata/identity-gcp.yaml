@@ -361,9 +361,10 @@ report:
     state: mapped with losses
   - losses:
     - field: properties.enableRbacAuthorization
-      why: 'who may read its secrets was set by Azure RBAC role assignments: identity
-        is not translated (#32), so on the target only those its IAM lets read them
-        can'
+      why: 'who may read its secrets was set by Azure RBAC role assignments: a managed
+        identity''s Key Vault Secrets role is carried over with destinations.identity:
+        workload, and any other assignment is not, so on the target only those its
+        IAM lets read them can'
     - field: properties.enableSoftDelete
       why: 'a deleted secret was kept 90 days and could be recovered; Secret Manager
         deletes a secret at once, with every version, until an IAM deny policy denies
@@ -648,17 +649,20 @@ report:
     a person chooses one, as the translation never upgrades'
   - 'Images are not copied: copy each from abacacr.azurecr.io to europe-west1-docker.pkg.dev/<project>/abacacr/<repository>
     (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
-    image references are rewritten in a later step'
+    image references are not rewritten: the translation''s Kubernetes change list
+    names each one and what it becomes, for the repository''s owner to change'
   - 'Images are not copied: copy each from shopacr.azurecr.io to europe-west1-docker.pkg.dev/<project>/shopacr/<repository>
     (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
-    image references are rewritten in a later step'
+    image references are not rewritten: the translation''s Kubernetes change list
+    names each one and what it becomes, for the repository''s owner to change'
   - 'Key Vault rg/oldkv''s secrets (oldkv_token) are created with no version: a capture
     never reads a value, a translation writes none, and the GCP restore takes none.
     After the restore, add each one''s value as a version (gcloud secrets versions
     add <id> --data-file=-), read from where it is kept'
-  - 'Key Vault rg/shopkv let Azure RBAC role assignments read its secrets; identity
-    is not translated (#32): grant each app''s new identity roles/secretmanager.secretAccessor
-    on the secrets it reads'
+  - 'Key Vault rg/shopkv let Azure RBAC role assignments read its secrets; a managed
+    identity''s Key Vault Secrets role is carried over with destinations.identity:
+    workload; for anyone else (people, pipelines, access policies) grant roles/secretmanager.secretAccessor
+    on the secrets they read'
   - 'Key Vault rg/shopkv''s secrets (shopkv_api-key, shopkv_db-password) are created
     with no version: a capture never reads a value, a translation writes none, and
     the GCP restore takes none. After the restore, add each one''s value as a version
@@ -693,9 +697,10 @@ report:
     on each subscription that dead-letters; no grant is written here
   - 'The IAM Service Account Credentials API (iamcredentials.googleapis.com) is enabled
     in the target project: a workload acts as its service account through it'
-  - 'Who may read and write each bucket is IAM, which is not translated (#32): grant
-    the app''s role or service account access to its bucket (Azure role assignments
-    on the account are not carried over)'
+  - 'Who may read and write each bucket is IAM. With destinations.identity: workload,
+    a managed identity''s Storage Blob Data role on the account or a container is
+    carried to its bucket; a person''s, a pipeline''s or a custom role''s is not:
+    grant those on the target'
   to: gcp
 snapshots:
   gcp:

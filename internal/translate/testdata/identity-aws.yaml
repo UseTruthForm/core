@@ -344,9 +344,10 @@ report:
     state: mapped with losses
   - losses:
     - field: properties.enableRbacAuthorization
-      why: 'who may read its secrets was set by Azure RBAC role assignments: identity
-        is not translated (#32), so on the target only those its IAM lets read them
-        can'
+      why: 'who may read its secrets was set by Azure RBAC role assignments: a managed
+        identity''s Key Vault Secrets role is carried over with destinations.identity:
+        workload, and any other assignment is not, so on the target only those its
+        IAM lets read them can'
     - field: properties.softDeleteRetentionInDays
       why: a deleted secret was kept 90 days unless purged; Secrets Manager keeps
         one for the recovery window each delete chooses (7 to 30 days, 30 unless told),
@@ -598,17 +599,20 @@ report:
     a person chooses one, as the translation never upgrades'
   - 'Images are not copied: copy each from abacacr.azurecr.io to <account>.dkr.ecr.eu-west-1.amazonaws.com/abacacr/<repository>
     (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
-    image references are rewritten in a later step'
+    image references are not rewritten: the translation''s Kubernetes change list
+    names each one and what it becomes, for the repository''s owner to change'
   - 'Images are not copied: copy each from shopacr.azurecr.io to <account>.dkr.ecr.eu-west-1.amazonaws.com/shopacr/<repository>
     (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
-    image references are rewritten in a later step'
+    image references are not rewritten: the translation''s Kubernetes change list
+    names each one and what it becomes, for the repository''s owner to change'
   - 'Key Vault rg/oldkv''s secrets (oldkv/token) hold no value: a capture never reads
     one, and a translation writes none. Supply each at restore with --values (AWS::SecretsManager::Secret/<name>:
     {SecretString: ...}), read from where its value is kept; the restore lists each
     one created without it'
-  - 'Key Vault rg/shopkv let Azure RBAC role assignments read its secrets; identity
-    is not translated (#32): grant each app''s new identity secretsmanager:GetSecretValue
-    on the secrets it reads'
+  - 'Key Vault rg/shopkv let Azure RBAC role assignments read its secrets; a managed
+    identity''s Key Vault Secrets role is carried over with destinations.identity:
+    workload; for anyone else (people, pipelines, access policies) grant secretsmanager:GetSecretValue
+    on the secrets they read'
   - 'Key Vault rg/shopkv''s secrets (shopkv/api-key, shopkv/db-password) hold no value:
     a capture never reads one, and a translation writes none. Supply each at restore
     with --values (AWS::SecretsManager::Secret/<name>: {SecretString: ...}), read
@@ -629,9 +633,10 @@ report:
   - 'People, groups and pipelines are not translated: who had roles in Azure (each
     refused role assignment names one) is given access on the target through its own
     IAM and the customer''s directory'
-  - 'Who may read and write each bucket is IAM, which is not translated (#32): grant
-    the app''s role or service account access to its bucket (Azure role assignments
-    on the account are not carried over)'
+  - 'Who may read and write each bucket is IAM. With destinations.identity: workload,
+    a managed identity''s Storage Blob Data role on the account or a container is
+    carried to its bucket; a person''s, a pipeline''s or a custom role''s is not:
+    grant those on the target'
   to: aws
 snapshots:
   aws:

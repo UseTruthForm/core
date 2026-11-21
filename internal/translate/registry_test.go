@@ -208,7 +208,7 @@ func TestRegistryLosses(t *testing.T) {
 				t.Errorf("%s: %s is public: %s", name, o.Key(), s)
 			}
 		}
-		if !anyRequirement(r, "rg/pubimages let anyone pull") || !anyRequirement(r, "rg/shopacr had its admin user on") || !anyRequirement(r, "Kubernetes image references are rewritten in a later step") {
+		if !anyRequirement(r, "rg/pubimages let anyone pull") || !anyRequirement(r, "rg/shopacr had its admin user on") || !anyRequirement(r, "Kubernetes image references are not rewritten") {
 			t.Errorf("%s: requirements: %v", name, r.Report.Requirements)
 		}
 	}

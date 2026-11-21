@@ -372,7 +372,7 @@ func toObject(r *res) map[string]any {
 		annDiscovery:  r.doc.Name + "/" + r.doc.Version,
 		annSchema:     r.kind.Schema,
 		annCollection: r.kind.Collection,
-		annParent:     parentOf(r.rel),
+		annParent:     parentIn(r.rel, r.kind.Create),
 	}
 	return map[string]any{"apiVersion": APIVersion, "kind": r.asset.Type,
 		"metadata": map[string]any{"name": r.logical, "annotations": ann}, "spec": r.spec, "status": r.status}
@@ -419,6 +419,23 @@ func parentOf(rel string) string {
 		return ""
 	}
 	return strings.Join(p[:len(p)-2], "/")
+}
+
+// parentIn is the resource a resource was created under. A name is
+// usually parent/collection/id; one named by several of its fields (a
+// Cloud DNS record set: rrsets/<name>/<type>) has a longer tail, so the
+// parent is as long as its create method's path says: everything before
+// the collection's word. Taken as two segments, a captured record set
+// named its parent ".../rrsets", and differed from every snapshot that
+// wrote its zone.
+func parentIn(rel string, create *Method) string {
+	if create != nil && !strings.Contains(create.Path, "{+") {
+		n := len(strings.Split(nameTemplate(create.Path), "/")) - 1
+		if segs := strings.Split(rel, "/"); n > 0 && n < len(segs) {
+			return strings.Join(segs[:n], "/")
+		}
+	}
+	return parentOf(rel)
 }
 
 func collLast(c string) string { return c[strings.LastIndex(c, ".")+1:] }

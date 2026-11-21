@@ -248,9 +248,10 @@ report:
   - 'Local users of a storage account (SFTP, NFS) are identity and are not translated
     (#32): give each client an IAM or workload identity on the target, or a managed
     file transfer service (AWS Transfer Family)'
-  - 'Who may read and write each bucket is IAM, which is not translated (#32): grant
-    the app''s role or service account access to its bucket (Azure role assignments
-    on the account are not carried over)'
+  - 'Who may read and write each bucket is IAM. With destinations.identity: workload,
+    a managed identity''s Storage Blob Data role on the account or a container is
+    carried to its bucket; a person''s, a pipeline''s or a custom role''s is not:
+    grant those on the target'
   to: gcp
 snapshots:
   gcp:

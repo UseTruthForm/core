@@ -72,3 +72,24 @@ func TestCloudDNSRestores(t *testing.T) {
 		t.Error("idParam")
 	}
 }
+
+// A record set's parent is its zone, not the "rrsets" word before its
+// two-part name.
+func TestParentOfAResourceNamedByTwoFields(t *testing.T) {
+	m := func(path string) *Method { return &Method{Path: path} }
+	for _, c := range []struct {
+		rel    string
+		create *Method
+		want   string
+	}{
+		{"projects/p/managedZones/z/rrsets/www.shop.example./A", m("dns/v1/projects/{project}/managedZones/{managedZone}/rrsets"), "projects/p/managedZones/z"},
+		{"projects/p/global/networks/n", m("projects/{project}/global/networks"), "projects/p/global"},
+		{"projects/p/topics/t", m("v1/{+name}"), "projects/p"},
+		{"projects/p/topics/t", nil, "projects/p"},
+		{"b1", m("b"), ""},
+	} {
+		if got := parentIn(c.rel, c.create); got != c.want {
+			t.Errorf("%s: %q, want %q", c.rel, got, c.want)
+		}
+	}
+}

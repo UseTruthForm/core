@@ -173,7 +173,7 @@ func readVault(o snapshot.Object) *kvVault {
 	switch {
 	case p.boolean("enableRbacAuthorization"):
 		v.access = "Azure RBAC role assignments"
-		p.lose("enableRbacAuthorization", "who may read its secrets was set by Azure RBAC role assignments: identity is not translated (#32), so on the target only those its IAM lets read them can", false)
+		p.lose("enableRbacAuthorization", "who may read its secrets was set by Azure RBAC role assignments: a managed identity's Key Vault Secrets role is carried over with destinations.identity: workload, and any other assignment is not, so on the target only those its IAM lets read them can", false)
 	case policies > 0:
 		v.access = fmt.Sprintf("%d access policies", policies)
 		p.lose("accessPolicies", v.access+" set who may read its secrets: identity is not translated (#32), so on the target only those its IAM lets read them can", false)
@@ -281,7 +281,7 @@ func (v *kvVault) secretList(name func(*kvSecret) string) string {
 
 func (v *kvVault) identityRequirement(o *out, grant string) {
 	if v.access != "" {
-		o.require(fmt.Sprintf("Key Vault %s/%s let %s read its secrets; identity is not translated (#32): grant each app's new identity %s on the secrets it reads", v.group, v.name, v.access, grant))
+		o.require(fmt.Sprintf("Key Vault %s/%s let %s read its secrets; a managed identity's Key Vault Secrets role is carried over with destinations.identity: workload; for anyone else (people, pipelines, access policies) grant %s on the secrets they read", v.group, v.name, v.access, grant))
 	}
 }
 

@@ -116,10 +116,12 @@ report:
   requirements:
   - 'Images are not copied: copy each from pubimages.azurecr.io to europe-west1-docker.pkg.dev/<project>/pubimages/<repository>
     (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
-    image references are rewritten in a later step'
+    image references are not rewritten: the translation''s Kubernetes change list
+    names each one and what it becomes, for the repository''s owner to change'
   - 'Images are not copied: copy each from shopacr.azurecr.io to europe-west1-docker.pkg.dev/<project>/shopacr/<repository>
     (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
-    image references are rewritten in a later step'
+    image references are not rewritten: the translation''s Kubernetes change list
+    names each one and what it becomes, for the repository''s owner to change'
   - 'Registry rg/pubimages let anyone pull without signing in; the target does not:
     such clients sign in, or the images are published on purpose'
   - 'Registry rg/shopacr had its admin user on: whoever pushed or pulled with that

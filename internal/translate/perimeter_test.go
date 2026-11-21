@@ -296,9 +296,7 @@ func TestPerimeterRestores(t *testing.T) {
 			t.Fatalf("inside %v: capture: %v, skips %v", inside, err, got.Skips)
 		}
 		for _, c := range snapshot.Compare(gs, got) {
-			// (A record set's parent annotation is read back otherwise
-			// than the DNS translation writes it; that is not this.)
-			if !strings.Contains(c.Key, "servicePerimeters") && !strings.Contains(c.Key, "ResourceRecordSet") {
+			if !strings.Contains(c.Key, "servicePerimeters") {
 				t.Errorf("inside %v: the restored target differs: %s %s %v", inside, c.Kind, c.Key, c.Fields)
 			}
 		}

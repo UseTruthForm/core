@@ -789,7 +789,7 @@ func writeAccount(a *stAccount, w bucketWriter, o *out) {
 	} else {
 		acct.Losses = append(append([]Loss(nil), a.losses...), w.account(a, o)...)
 		o.require("Blobs are not copied: each bucket is written empty. Copy each container's blobs into its bucket (AWS DataSync or S3 Batch Operations; the Storage Transfer Service), with their versions, metadata and per-blob tiers and holds, which this translation does not carry")
-		o.require("Who may read and write each bucket is IAM, which is not translated (#32): grant the app's role or service account access to its bucket (Azure role assignments on the account are not carried over)")
+		o.require("Who may read and write each bucket is IAM. With destinations.identity: workload, a managed identity's Storage Blob Data role on the account or a container is carried to its bucket; a person's, a pipeline's or a custom role's is not: grant those on the target")
 	}
 	o.entries = append(o.entries, acct)
 	if blobEntry != nil {

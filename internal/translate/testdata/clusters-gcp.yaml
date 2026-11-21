@@ -91,8 +91,24 @@ report:
     targets:
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-https
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
-  - source: Microsoft.Network/virtualNetworks net/core
-    state: mapped
+  - losses:
+    - field: properties.subnets[app].properties.defaultOutboundAccess
+      why: 'it is not set, which on Azure leaves default outbound access on: its machines
+        reached the internet with no address of their own. On the target the subnet
+        has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
+    - field: properties.subnets[data].properties.defaultOutboundAccess
+      why: 'it is not set, which on Azure leaves default outbound access on: its machines
+        reached the internet with no address of their own. On the target the subnet
+        has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
+    - field: properties.subnets[spare].properties.defaultOutboundAccess
+      why: 'it is not set, which on Azure leaves default outbound access on: its machines
+        reached the internet with no address of their own. On the target the subnet
+        has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
+    source: Microsoft.Network/virtualNetworks net/core
+    state: mapped with losses
     targets:
     - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/core
     - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app

@@ -1434,7 +1434,8 @@ that needs one left out fails, or waits, in the cluster.
 It reads one snapshot and a map, and writes a snapshot per target platform,
 which `plan`, `restore` and `diff` take as they are. It makes no request, so
 the capture-only build has it too. So far it translates Service Bus,
-virtual networks and network security groups, public and private DNS
+virtual networks, network security groups and what routes their subnets'
+traffic (route tables, NAT gateways, peerings), public and private DNS
 zones, storage accounts' blob containers, Key Vault secrets, container
 registries, AKS clusters (their configuration: the workloads travel
 through the Kubernetes snapshot), and the configuration (never the data)
@@ -1470,6 +1471,11 @@ network:                    # aws: an Azure subnet spans the region's zones, an 
   zone: eu-west-1a          # every subnet, or
   zones:
     net/core/data: eu-west-1b   # one per subnet, keyed group/network/subnet
+  egress:                   # aws: the public subnet a network's NAT gateways sit in
+    net/core:               # keyed group/network
+      subnet: 10.20.255.0/28    # a free /28 or wider of the network's range
+      zone: eu-west-1a          # network.zone when left out
+  defaultOutbound: nat      # Azure's default outbound access becomes a NAT (billed); without it, no egress
 sessions: fifo              # how a session queue is carried: fifo, ordering or single-active-consumer
 rabbitmq:                   # for messaging: rabbitmq
   namespace: messaging
@@ -1525,7 +1531,17 @@ databases:                  # per server, keyed group/server: what Azure cannot 
 | Subnet | subnet in the map's zone | subnetwork in the map's region |
 | NSG on a subnet | a security group per network, holding what the NSG allows with its denies taken out | a firewall rule per NSG rule, same priority, allow or deny, applied by a network tag per NSG |
 | Azure's default rules | written as their effect (the network allowed in, all allowed out) | the network's allow at 65000; GCP's own rules match the rest |
-| Peering, route table, NAT gateway | not translated yet (a route table is reported as less protected) | the same |
+| NAT gateway on a subnet | internet gateway, a public subnet from the map (`network.egress.<group/network>`), a NAT gateway there with as many Elastic IPs (8 at most), and a route table per subnet with a route to it | Cloud NAT on a Cloud Router listing those subnetworks, sending from as many reserved addresses, with the same idle timeout |
+| Default outbound access (set, or left unset) | no egress, unless the map says `network.defaultOutbound: nat`: then a NAT gateway per network | the same: then a Cloud NAT gateway with Google's addresses |
+| Route to a virtual appliance or gateway | no route for those destinations (they go nowhere; the appliance is a machine, and machines are not translated); it comes before a NAT gateway, as on Azure | an egress deny firewall rule for the subnet's range, priority 50, leaving `private.googleapis.com` and `restricted.googleapis.com` open |
+| Route that drops (`None`) | no route for those destinations: the internet route is then written range by range around them | an egress deny firewall rule for the subnet's range |
+| Route to `Internet`, `VnetLocal` | part of what the subnet reaches as before | the same |
+| Route over the network's own range | less protected: a VPC's local route always delivers | the egress deny rule: dropped |
+| Route to a service tag | not carried over; less protected where it kept traffic from the internet and the subnet has egress | the same |
+| Peering, both networks in the snapshot, connected | one VPC peering connection, a route to the peer in each subnet's route table; `VirtualNetwork` in the NSG rules takes in the peer's ranges | refused, with the `gcloud compute networks peerings create` call: a restore creates resources, and a GCP peering is a call on each network. The firewall rules already take in the peer's ranges |
+| Peering to a network outside the snapshot, of some subnets, out of sync | refused | refused |
+| Peering with access off, one-sided or not connected | nothing written: it carried nothing | the same |
+| Forwarded traffic, gateway transit, remote gateways | reported: a peering on the target gives no transit | the same |
 
 | Storage | aws | gcp |
 |---|---|---|
@@ -1776,7 +1792,15 @@ Known limits:
   Discovery documents): downloaded and cached like `aws-coverage`, or read
   from `--schemas` and `--discovery`.
 - An NSG on a network interface rather than a subnet, application security
-  groups and network peerings are not translated yet.
+  groups, public addresses of anything but a NAT gateway, gateways, load
+  balancers and firewalls are not translated yet.
+- Routing is translated as what each subnet's traffic can do, not object
+  for object: Azure's routes are worked out per subnet (longest prefix, a
+  route table's before Azure's own), and the target subnet is given the
+  same reach or less. Azure's own drop of unused private ranges is not
+  written: such an address is on no internet either.
+- Outbound addresses change: whoever allows the old ones by address must be
+  given the new ones (listed in the report's requirements).
 
 ## As a graph (Azure)
 

@@ -42,12 +42,12 @@ report:
     - AWS::EC2::SecurityGroup web
   - losses:
     - field: properties.subnets[app].properties.defaultOutboundAccess
-      why: it reached the internet through Azure's default outbound access; on the
-        target it has no internet egress until a NAT gateway (AWS) or Cloud NAT (GCP)
-        is added
+      why: 'it reached the internet through Azure''s default outbound access; on the
+        target it has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
     - field: properties.subnets[data].properties.routeTable
-      why: 'its traffic follows a route table, which is not translated yet: if it
-        sent traffic through a firewall appliance, the target does not'
+      why: 'its route table is not in the snapshot: if it sent traffic through a firewall
+        appliance or dropped it, the target does not'
       widens: true
     source: Microsoft.Network/virtualNetworks net/core
     state: mapped with losses
@@ -55,10 +55,13 @@ report:
     - AWS::EC2::Subnet core-app
     - AWS::EC2::Subnet core-data
     - AWS::EC2::VPC core
-  - reason: no descriptor for Microsoft.Network/virtualNetworks/virtualNetworkPeerings
-      yet
+  - reason: 'it peers with a network it does not name, which is not in the snapshot
+      (a network in another subscription, or one the capture left out): the target
+      network would not reach it. A peering to a network that is not translated is
+      not written (a map entry naming an existing VPC or network on the target for
+      it does not exist yet)'
     source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/core/to-hub
-    state: not looked at
+    state: refused
   from: azure
   requirements:
   - Security group data has 65 inbound and 1 outbound rules; AWS's default quota is

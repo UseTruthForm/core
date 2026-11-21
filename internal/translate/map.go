@@ -81,6 +81,13 @@ type NetworkMap struct {
 	// a choice.
 	Zone  string            `json:"zone,omitempty"`
 	Zones map[string]string `json:"zones,omitempty"`
+	// Egress gives each network (group/network) whose subnets reach the
+	// internet through a NAT the public subnet AWS puts NAT gateways in.
+	Egress map[string]EgressMap `json:"egress,omitempty"`
+	// DefaultOutbound says what Azure's default outbound access becomes:
+	// nat (a NAT gateway on AWS, Cloud NAT on GCP, which are billed).
+	// Without it such a subnet has no internet egress on the target.
+	DefaultOutbound string `json:"defaultOutbound,omitempty"`
 }
 
 // SecretsMap is what secrets need on GCP.
@@ -325,6 +332,9 @@ func (m Map) validate() error {
 	case "", "buckets":
 	default:
 		return fmt.Errorf("map: storage: %q is not buckets", m.Destinations.Storage)
+	}
+	if err := m.validateRouting(); err != nil {
+		return err
 	}
 	if err := m.validateDatabases(); err != nil {
 		return err

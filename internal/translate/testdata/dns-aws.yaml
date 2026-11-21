@@ -148,8 +148,14 @@ report:
   - reason: its zone Microsoft.Network/privateDnsZones dns/orphan.internal is refused
     source: Microsoft.Network/privateDnsZones/virtualNetworkLinks dns/orphan.internal/gone
     state: refused
-  - source: Microsoft.Network/virtualNetworks net/core
-    state: mapped
+  - losses:
+    - field: properties.subnets[app].properties.defaultOutboundAccess
+      why: 'it is not set, which on Azure leaves default outbound access on: its machines
+        reached the internet with no address of their own. On the target the subnet
+        has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
+    source: Microsoft.Network/virtualNetworks net/core
+    state: mapped with losses
     targets:
     - AWS::EC2::Subnet core-app
     - AWS::EC2::VPC core

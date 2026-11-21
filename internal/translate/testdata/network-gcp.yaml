@@ -37,26 +37,29 @@ report:
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-deny-azurecloud
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-deny-ssh
   - losses:
-    - field: properties.subnets[app].properties.defaultOutboundAccess
-      why: it reached the internet through Azure's default outbound access; on the
-        target it has no internet egress until a NAT gateway (AWS) or Cloud NAT (GCP)
-        is added
-    - field: properties.subnets[data].properties.routeTable
-      why: 'its traffic follows a route table, which is not translated yet: if it
-        sent traffic through a firewall appliance, the target does not'
-      widens: true
     - field: tags
       why: '1 tag(s): a VPC network has no tags or labels to hold them'
+    - field: properties.subnets[app].properties.defaultOutboundAccess
+      why: 'it reached the internet through Azure''s default outbound access; on the
+        target it has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
+    - field: properties.subnets[data].properties.routeTable
+      why: 'its route table is not in the snapshot: if it sent traffic through a firewall
+        appliance or dropped it, the target does not'
+      widens: true
     source: Microsoft.Network/virtualNetworks net/core
     state: mapped with losses
     targets:
     - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/core
     - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
     - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
-  - reason: no descriptor for Microsoft.Network/virtualNetworks/virtualNetworkPeerings
-      yet
+  - reason: 'it peers with a network it does not name, which is not in the snapshot
+      (a network in another subscription, or one the capture left out): the target
+      network would not reach it. A peering to a network that is not translated is
+      not written (a map entry naming an existing VPC or network on the target for
+      it does not exist yet)'
     source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/core/to-hub
-    state: not looked at
+    state: refused
   from: azure
   requirements:
   - 'Google''s load balancers check health from 35.191.0.0/16 and 130.211.0.0/22:

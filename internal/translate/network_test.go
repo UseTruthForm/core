@@ -203,7 +203,7 @@ func TestNSGsBecomeSecurityGroups(t *testing.T) {
 	if e := entry(t, r, "Microsoft.Network/networkSecurityGroups net/unused"); e.State != Refused {
 		t.Errorf("unused NSG: %s", e.State)
 	}
-	if e := entry(t, r, "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"); e.State != NotLooked {
+	if e := entry(t, r, "Microsoft.Network/virtualNetworks/virtualNetworkPeerings"); e.State != Refused {
 		t.Errorf("peering: %s", e.State)
 	}
 	v := entry(t, r, "Microsoft.Network/virtualNetworks net/core")

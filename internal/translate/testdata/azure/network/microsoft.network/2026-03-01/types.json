@@ -8105,7 +8105,7 @@
  },
  {
   "$type": "StringLiteralType",
-  "value": "Microsoft.Network/networkSecurityGroups"
+  "value": "Microsoft.Network/natGateways"
  },
  {
   "$type": "StringLiteralType",
@@ -8113,7 +8113,7 @@
  },
  {
   "$type": "ObjectType",
-  "name": "Microsoft.Network/networkSecurityGroups",
+  "name": "Microsoft.Network/natGateways",
   "properties": {
    "id": {
     "type": {
@@ -8145,6 +8145,113 @@
    },
    "properties": {
     "type": {
+     "$ref": "#/354"
+    },
+    "flags": 0,
+    "description": "Nat Gateway properties."
+   },
+   "sku": {
+    "type": {
+     "$ref": "#/371"
+    },
+    "flags": 0,
+    "description": "The nat gateway SKU."
+   },
+   "zones": {
+    "type": {
+     "$ref": "#/608"
+    },
+    "flags": 0,
+    "description": "A list of availability zones denoting the zone in which Nat Gateway should be deployed."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Resource location."
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/609"
+    },
+    "flags": 0,
+    "description": "Resource tags."
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResourceTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/natGateways@2026-03-01",
+  "body": {
+   "$ref": "#/607"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/networkSecurityGroups"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/networkSecurityGroups",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/611"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/612"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
      "$ref": "#/52"
     },
     "flags": 0,
@@ -8166,7 +8273,7 @@
    },
    "tags": {
     "type": {
-     "$ref": "#/608"
+     "$ref": "#/614"
     },
     "flags": 0,
     "description": "Resource tags."
@@ -8185,7 +8292,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/networkSecurityGroups@2026-03-01",
   "body": {
-   "$ref": "#/607"
+   "$ref": "#/613"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8218,14 +8325,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/610"
+     "$ref": "#/616"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/611"
+     "$ref": "#/617"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8260,7 +8367,7 @@
    },
    "tags": {
     "type": {
-     "$ref": "#/613"
+     "$ref": "#/619"
     },
     "flags": 0,
     "description": "Resource tags."
@@ -8279,7 +8386,566 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/privateEndpoints@2026-03-01",
   "body": {
-   "$ref": "#/612"
+   "$ref": "#/618"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/publicIPAddresses"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/publicIPAddresses",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/621"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/622"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/326"
+    },
+    "flags": 0,
+    "description": "Public IP address properties."
+   },
+   "extendedLocation": {
+    "type": {
+     "$ref": "#/133"
+    },
+    "flags": 0,
+    "description": "The extended location of the public ip address."
+   },
+   "sku": {
+    "type": {
+     "$ref": "#/386"
+    },
+    "flags": 0,
+    "description": "The public IP address SKU."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   },
+   "zones": {
+    "type": {
+     "$ref": "#/624"
+    },
+    "flags": 0,
+    "description": "A list of availability zones denoting the IP allocated for the resource needs to come from."
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Resource location."
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/625"
+    },
+    "flags": 0,
+    "description": "Resource tags."
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResourceTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/publicIPAddresses@2026-03-01",
+  "body": {
+   "$ref": "#/623"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/publicIPPrefixes"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/publicIPPrefixes",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/627"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/628"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/630"
+    },
+    "flags": 0,
+    "description": "Public IP prefix properties."
+   },
+   "extendedLocation": {
+    "type": {
+     "$ref": "#/133"
+    },
+    "flags": 0,
+    "description": "The extended location of the public ip address."
+   },
+   "sku": {
+    "type": {
+     "$ref": "#/644"
+    },
+    "flags": 0,
+    "description": "The public IP prefix SKU."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   },
+   "zones": {
+    "type": {
+     "$ref": "#/651"
+    },
+    "flags": 0,
+    "description": "A list of availability zones denoting the IP allocated for the resource needs to come from."
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Resource location."
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/652"
+    },
+    "flags": 0,
+    "description": "Resource tags."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PublicIPPrefixPropertiesFormat",
+  "properties": {
+   "publicIPAddressVersion": {
+    "type": {
+     "$ref": "#/633"
+    },
+    "flags": 0,
+    "description": "The public IP address version."
+   },
+   "ipTags": {
+    "type": {
+     "$ref": "#/634"
+    },
+    "flags": 0,
+    "description": "The list of tags associated with the public IP prefix."
+   },
+   "prefixLength": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "The Length of the Public IP Prefix."
+   },
+   "ipPrefix": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "The allocated Prefix."
+   },
+   "publicIPAddresses": {
+    "type": {
+     "$ref": "#/636"
+    },
+    "flags": 2,
+    "description": "The list of all referenced PublicIPAddresses."
+   },
+   "loadBalancerFrontendIpConfiguration": {
+    "type": {
+     "$ref": "#/5"
+    },
+    "flags": 2,
+    "description": "The reference to load balancer frontend IP configuration associated with the public IP prefix."
+   },
+   "customIPPrefix": {
+    "type": {
+     "$ref": "#/5"
+    },
+    "flags": 0,
+    "description": "The customIpPrefix that this prefix is associated with."
+   },
+   "resourceGuid": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "The resource GUID property of the public IP prefix resource."
+   },
+   "provisioningState": {
+    "type": {
+     "$ref": "#/643"
+    },
+    "flags": 2,
+    "description": "The provisioning state of the public IP prefix resource."
+   },
+   "natGateway": {
+    "type": {
+     "$ref": "#/353"
+    },
+    "flags": 0,
+    "description": "NatGateway of Public IP Prefix."
+   },
+   "upgradedToV2": {
+    "type": {
+     "$ref": "#/1"
+    },
+    "flags": 2,
+    "description": "Whether the public IP prefix SKU has been upgraded from Standard to StandardV2."
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv4"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "IPv6"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/631"
+   },
+   {
+    "$ref": "#/632"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/344"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ReferencedPublicIpAddress",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The PublicIPAddress Reference."
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/635"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Canceled"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/637"
+   },
+   {
+    "$ref": "#/638"
+   },
+   {
+    "$ref": "#/639"
+   },
+   {
+    "$ref": "#/640"
+   },
+   {
+    "$ref": "#/641"
+   },
+   {
+    "$ref": "#/642"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PublicIPPrefixSku",
+  "properties": {
+   "name": {
+    "type": {
+     "$ref": "#/647"
+    },
+    "flags": 0,
+    "description": "Name of a public IP prefix SKU."
+   },
+   "tier": {
+    "type": {
+     "$ref": "#/650"
+    },
+    "flags": 0,
+    "description": "Tier of a public IP prefix SKU."
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "StandardV2"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/645"
+   },
+   {
+    "$ref": "#/646"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Regional"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Global"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/648"
+   },
+   {
+    "$ref": "#/649"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResourceTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/publicIPPrefixes@2026-03-01",
+  "body": {
+   "$ref": "#/629"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/routeTables"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/routeTables",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/654"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/655"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/253"
+    },
+    "flags": 0,
+    "description": "Properties of the route table."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Resource location."
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/657"
+    },
+    "flags": 0,
+    "description": "Resource tags."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "ResourceTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/routeTables@2026-03-01",
+  "body": {
+   "$ref": "#/656"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8312,14 +8978,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/615"
+     "$ref": "#/659"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/616"
+     "$ref": "#/660"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8354,7 +9020,7 @@
    },
    "tags": {
     "type": {
-     "$ref": "#/618"
+     "$ref": "#/662"
     },
     "flags": 0,
     "description": "Resource tags."
@@ -8373,7 +9039,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/virtualNetworks@2026-03-01",
   "body": {
-   "$ref": "#/617"
+   "$ref": "#/661"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8406,14 +9072,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/620"
+     "$ref": "#/664"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/621"
+     "$ref": "#/665"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8438,7 +9104,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/networkSecurityGroups/securityRules@2026-03-01",
   "body": {
-   "$ref": "#/622"
+   "$ref": "#/666"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8471,14 +9137,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/624"
+     "$ref": "#/668"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/625"
+     "$ref": "#/669"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8492,7 +9158,7 @@
    },
    "properties": {
     "type": {
-     "$ref": "#/627"
+     "$ref": "#/671"
     },
     "flags": 0,
     "description": "Properties of the private dns zone group."
@@ -8505,14 +9171,14 @@
   "properties": {
    "provisioningState": {
     "type": {
-     "$ref": "#/634"
+     "$ref": "#/678"
     },
     "flags": 2,
     "description": "The provisioning state of the private dns zone group resource."
    },
    "privateDnsZoneConfigs": {
     "type": {
-     "$ref": "#/647"
+     "$ref": "#/691"
     },
     "flags": 0,
     "description": "A collection of private dns zone configurations of the private dns zone group."
@@ -8547,22 +9213,22 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/628"
+    "$ref": "#/672"
    },
    {
-    "$ref": "#/629"
+    "$ref": "#/673"
    },
    {
-    "$ref": "#/630"
+    "$ref": "#/674"
    },
    {
-    "$ref": "#/631"
+    "$ref": "#/675"
    },
    {
-    "$ref": "#/632"
+    "$ref": "#/676"
    },
    {
-    "$ref": "#/633"
+    "$ref": "#/677"
    },
    {
     "$ref": "#/0"
@@ -8582,7 +9248,7 @@
    },
    "properties": {
     "type": {
-     "$ref": "#/636"
+     "$ref": "#/680"
     },
     "flags": 0,
     "description": "Properties of the private dns zone configuration."
@@ -8602,7 +9268,7 @@
    },
    "recordSets": {
     "type": {
-     "$ref": "#/646"
+     "$ref": "#/690"
     },
     "flags": 2,
     "description": "A collection of information regarding a recordSet, holding information to identify private resources."
@@ -8636,7 +9302,7 @@
    },
    "provisioningState": {
     "type": {
-     "$ref": "#/644"
+     "$ref": "#/688"
     },
     "flags": 2,
     "description": "The provisioning state of the recordset."
@@ -8650,7 +9316,7 @@
    },
    "ipAddresses": {
     "type": {
-     "$ref": "#/645"
+     "$ref": "#/689"
     },
     "flags": 0,
     "description": "The private ip address of the private endpoint."
@@ -8685,22 +9351,22 @@
   "$type": "UnionType",
   "elements": [
    {
-    "$ref": "#/638"
+    "$ref": "#/682"
    },
    {
-    "$ref": "#/639"
+    "$ref": "#/683"
    },
    {
-    "$ref": "#/640"
+    "$ref": "#/684"
    },
    {
-    "$ref": "#/641"
+    "$ref": "#/685"
    },
    {
-    "$ref": "#/642"
+    "$ref": "#/686"
    },
    {
-    "$ref": "#/643"
+    "$ref": "#/687"
    },
    {
     "$ref": "#/0"
@@ -8716,20 +9382,85 @@
  {
   "$type": "ArrayType",
   "itemType": {
-   "$ref": "#/637"
+   "$ref": "#/681"
   }
  },
  {
   "$type": "ArrayType",
   "itemType": {
-   "$ref": "#/635"
+   "$ref": "#/679"
   }
  },
  {
   "$type": "ResourceType",
   "name": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2026-03-01",
   "body": {
-   "$ref": "#/626"
+   "$ref": "#/670"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.Network/routeTables/routes"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-03-01"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.Network/routeTables/routes",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/693"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/694"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/255"
+    },
+    "flags": 0,
+    "description": "Properties of the route."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "A unique read-only string that changes whenever the resource is updated."
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.Network/routeTables/routes@2026-03-01",
+  "body": {
+   "$ref": "#/695"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8762,14 +9493,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/649"
+     "$ref": "#/697"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/650"
+     "$ref": "#/698"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8794,7 +9525,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/virtualNetworks/subnets@2026-03-01",
   "body": {
-   "$ref": "#/651"
+   "$ref": "#/699"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8827,14 +9558,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/653"
+     "$ref": "#/701"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/654"
+     "$ref": "#/702"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8859,7 +9590,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2026-03-01",
   "body": {
-   "$ref": "#/655"
+   "$ref": "#/703"
   },
   "readableScopes": 8,
   "writableScopes": 8
@@ -8892,14 +9623,14 @@
    },
    "type": {
     "type": {
-     "$ref": "#/657"
+     "$ref": "#/705"
     },
     "flags": 10,
     "description": "The resource type"
    },
    "apiVersion": {
     "type": {
-     "$ref": "#/658"
+     "$ref": "#/706"
     },
     "flags": 10,
     "description": "The resource api version"
@@ -8924,7 +9655,7 @@
   "$type": "ResourceType",
   "name": "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2026-03-01",
   "body": {
-   "$ref": "#/659"
+   "$ref": "#/707"
   },
   "readableScopes": 8,
   "writableScopes": 0

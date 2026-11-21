@@ -128,6 +128,21 @@ report:
       why: 'delegated to Microsoft.DBforPostgreSQL/flexibleServers; a subnet on the
         target is not delegated: the service that used it is translated, if at all,
         by its own rules'
+    - field: properties.subnets[app].properties.defaultOutboundAccess
+      why: 'it is not set, which on Azure leaves default outbound access on: its machines
+        reached the internet with no address of their own. On the target the subnet
+        has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
+    - field: properties.subnets[db].properties.defaultOutboundAccess
+      why: 'it is not set, which on Azure leaves default outbound access on: its machines
+        reached the internet with no address of their own. On the target the subnet
+        has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
+    - field: properties.subnets[db2].properties.defaultOutboundAccess
+      why: 'it is not set, which on Azure leaves default outbound access on: its machines
+        reached the internet with no address of their own. On the target the subnet
+        has no internet egress unless the map makes that a NAT (network.defaultOutbound:
+        nat), which is billed'
     source: Microsoft.Network/virtualNetworks net/core
     state: mapped with losses
     targets:

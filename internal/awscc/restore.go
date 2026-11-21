@@ -33,6 +33,10 @@ type RestoreOptions struct {
 // become readable. Variables so tests need not wait.
 var readBackStep, readBackLimit = 5 * time.Second, 2 * time.Minute
 
+// afterGatewayAttachment are the types a restore creates only once the
+// snapshot's gateway attachments are made.
+var afterGatewayAttachment = map[string]bool{"AWS::EC2::Route": true, "AWS::EC2::EIP": true, "AWS::EC2::NatGateway": true}
+
 var tokenRE = regexp.MustCompile(`\{\{truthform\|([^|{}]+)\|([^|{}]+)\|([^|{}]+)\}\}`)
 
 // Restore creates every snapshot object that is missing from the target, in
@@ -140,6 +144,23 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 		for _, m := range tokenRE.FindAllStringSubmatch(canon(o.Body["spec"]), -1) {
 			if d, ok := at[m[1]+"/"+m[2]]; ok && d != i {
 				deps[i] = append(deps[i], d)
+			}
+		}
+	}
+	// A dependency no reference shows: what leaves through an internet
+	// gateway needs it attached to its VPC first, and names the gateway,
+	// not the attachment. CloudFormation asks for a DependsOn there
+	// ("Elastic IP addresses ... Amazon VPC routes that include the
+	// Internet gateway",
+	// docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-attribute-dependson.html);
+	// a NAT gateway "must be created in a VPC with an internet gateway".
+	for i, o := range order {
+		if !afterGatewayAttachment[o.Kind()] {
+			continue
+		}
+		for j, a := range order {
+			if a.Kind() == "AWS::EC2::VPCGatewayAttachment" {
+				deps[i] = append(deps[i], j)
 			}
 		}
 	}

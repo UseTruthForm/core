@@ -1,0 +1,1290 @@
+report:
+  destinations:
+  - 'network: vpc'
+  entries:
+  - losses:
+    - field: zones
+      why: it was in zone [1]; the target's NAT is in the zone of the map's egress
+        subnet (AWS) or regional (GCP)
+    - field: properties.idleTimeoutInMinutes
+      why: an idle connection was dropped after 10 minutes; an AWS NAT gateway drops
+        one after 350 seconds, and that cannot be set
+    source: Microsoft.Network/natGateways net/hub-nat
+    state: mapped with losses
+    targets:
+    - AWS::EC2::NatGateway hub-nat
+  - losses:
+    - field: properties.idleTimeoutInMinutes
+      why: an idle connection was dropped after 4 minutes; an AWS NAT gateway drops
+        one after 350 seconds, and that cannot be set
+    source: Microsoft.Network/natGateways net/spoke-nat
+    state: mapped with losses
+    targets:
+    - AWS::EC2::NatGateway spoke-nat
+  - source: Microsoft.Network/networkSecurityGroups net/web
+    state: mapped
+    targets:
+    - AWS::EC2::SecurityGroup web
+  - losses:
+    - field: properties.ipAddress
+      why: '198.51.100.7 is Azure''s: the target sends from an address of its own'
+    reason: 'read with its NAT gateway Microsoft.Network/natGateways net/hub-nat:
+      the target''s NAT sends from as many addresses of its own'
+    source: Microsoft.Network/publicIPAddresses net/hub-ip
+    state: mapped with losses
+  - reason: no descriptor yet for a public address that no NAT gateway in the snapshot
+      uses (one of a load balancer, a gateway or a machine)
+    source: Microsoft.Network/publicIPAddresses net/lb-ip
+    state: not looked at
+  - losses:
+    - field: properties.ipAddress
+      why: '198.51.100.8 is Azure''s: the target sends from an address of its own'
+    reason: 'read with its NAT gateway Microsoft.Network/natGateways net/spoke-nat:
+      the target''s NAT sends from as many addresses of its own'
+    source: Microsoft.Network/publicIPAddresses net/spoke-ip
+    state: mapped with losses
+  - reason: 'read with its NAT gateway Microsoft.Network/natGateways net/spoke-nat:
+      the target''s NAT sends from as many addresses of its own'
+    source: Microsoft.Network/publicIPPrefixes net/spoke-prefix
+    state: mapped
+  - source: Microsoft.Network/routeTables net/data-rt
+    state: mapped
+    targets:
+    - AWS::EC2::Route h-02aba9bea87f
+    - AWS::EC2::Route h-122ff6fa2e3e
+    - AWS::EC2::Route h-14f7752a223c
+    - AWS::EC2::Route h-158414ee139f
+    - AWS::EC2::Route h-19437edaa56b
+    - AWS::EC2::Route h-1bd5473c82a6
+    - AWS::EC2::Route h-1deeb8de3a07
+    - AWS::EC2::Route h-1f1e7fda0161
+    - AWS::EC2::Route h-2383cef25e5f
+    - AWS::EC2::Route h-27d7209efd8c
+    - AWS::EC2::Route h-28c2be288876
+    - AWS::EC2::Route h-2b89be153ef3
+    - AWS::EC2::Route h-2d411bc97cec
+    - AWS::EC2::Route h-2d8b86cd995a
+    - AWS::EC2::Route h-2dae7215ddb3
+    - AWS::EC2::Route h-388a3ae2c105
+    - AWS::EC2::Route h-51f5db6b9b30
+    - AWS::EC2::Route h-5415788eb1e5
+    - AWS::EC2::Route h-5d98d2fb3580
+    - AWS::EC2::Route h-61a8be730b92
+    - AWS::EC2::Route h-636a56f38314
+    - AWS::EC2::Route h-63a31f85eb9c
+    - AWS::EC2::Route h-6519d012c555
+    - AWS::EC2::Route h-66e5d3319242
+    - AWS::EC2::Route h-6ca1a0f5cd1a
+    - AWS::EC2::Route h-7494928af962
+    - AWS::EC2::Route h-7f125f2a1238
+    - AWS::EC2::Route h-80a90a623759
+    - AWS::EC2::Route h-85a847521272
+    - AWS::EC2::Route h-8b2cc38a2c5a
+    - AWS::EC2::Route h-9620ee2172f8
+    - AWS::EC2::Route h-9a2d9fe09f3d
+    - AWS::EC2::Route h-9ba0548c5eb0
+    - AWS::EC2::Route h-acb02da5b360
+    - AWS::EC2::Route h-ae7f3b1a50f6
+    - AWS::EC2::Route h-aee2227492ca
+    - AWS::EC2::Route h-bacb4c09d649
+    - AWS::EC2::Route h-c39445a4518b
+    - AWS::EC2::Route h-c49dd6d809e3
+    - AWS::EC2::Route h-cdc121e43951
+    - AWS::EC2::Route h-cf5e9a1dab70
+    - AWS::EC2::Route h-cffeb4bcaa19
+    - AWS::EC2::Route h-d46ba4883883
+    - AWS::EC2::Route h-d5d7a78c81a8
+    - AWS::EC2::Route h-dc3e81289f9b
+    - AWS::EC2::Route h-dfc0bd285b28
+    - AWS::EC2::Route h-ea8f7356b905
+    - AWS::EC2::Route h-ee3c51a723de
+    - AWS::EC2::Route h-f9aa6adaa97b
+    - AWS::EC2::RouteTable spoke-data
+    - AWS::EC2::SubnetRouteTableAssociation h-f4b9eae55820
+  - source: Microsoft.Network/routeTables net/east-west
+    state: mapped
+    targets:
+    - AWS::EC2::Route h-1f1034e05ab4
+    - AWS::EC2::RouteTable spoke-east
+    - AWS::EC2::SubnetRouteTableAssociation h-9d09e5dc5e16
+  - reason: no subnet in the snapshot uses it, so there is no subnet to give its routes
+      to
+    source: Microsoft.Network/routeTables net/spare
+    state: refused
+  - losses:
+    - field: tags
+      why: a route table's routes are written into each subnet's own routes on the
+        target; its tags are not carried over
+    source: Microsoft.Network/routeTables net/to-firewall
+    state: mapped with losses
+    targets:
+    - AWS::EC2::Route h-40e7f30ef2f7
+    - AWS::EC2::RouteTable spoke-app
+    - AWS::EC2::SubnetRouteTableAssociation h-745f1920c7f4
+  - reason: read with its route table Microsoft.Network/routeTables net/data-rt
+    source: Microsoft.Network/routeTables/routes net/data-rt/drop-shared
+    state: mapped
+  - source: Microsoft.Network/virtualNetworks net/hub
+    state: mapped
+    targets:
+    - AWS::EC2::InternetGateway hub-igw
+    - AWS::EC2::Route h-3ba5f4ba5f8a
+    - AWS::EC2::Route h-57bf9c6edeaa
+    - AWS::EC2::Route h-cc1a39a9d4a4
+    - AWS::EC2::Route h-e63de23c8482
+    - AWS::EC2::RouteTable hub-egress
+    - AWS::EC2::RouteTable hub-firewall
+    - AWS::EC2::RouteTable hub-shared
+    - AWS::EC2::Subnet hub-egress
+    - AWS::EC2::Subnet hub-firewall
+    - AWS::EC2::Subnet hub-shared
+    - AWS::EC2::SubnetRouteTableAssociation h-f3e3da5b3849
+    - AWS::EC2::SubnetRouteTableAssociation h-f9947be648e7
+    - AWS::EC2::SubnetRouteTableAssociation h-fd1c6660be82
+    - AWS::EC2::VPC hub
+    - AWS::EC2::VPCGatewayAttachment h-46e4e7b7e7f9
+  - source: Microsoft.Network/virtualNetworks net/lone
+    state: mapped
+    targets:
+    - AWS::EC2::Subnet lone-only
+    - AWS::EC2::VPC lone
+  - losses:
+    - field: properties.subnets[app].properties.natGateway
+      why: 'its route table sends every destination elsewhere, which comes before
+        its NAT gateway on Azure too: the subnet is given no route to the target''s
+        NAT'
+    - field: properties.subnets[app].properties.routeTable
+      why: 'route default (0.0.0.0/0 to virtual appliance 10.10.0.4): the appliance
+        is a machine, which is not translated: the subnet is given no route for these
+        destinations, so that traffic goes nowhere until a route to an inspection
+        appliance on the target is added'
+    - field: properties.subnets[data].properties.routeTable
+      why: 'route storage-direct (Storage to the internet) names a service tag, which
+        has no addresses here: its traffic follows the subnet''s other routes'
+    - field: properties.subnets[east].properties.routeTable
+      why: route inspect (10.20.0.0/16 to virtual appliance 10.20.9.4) covers 10.20.0.0/22,
+        10.20.4.0/24, 10.20.6.0/23, 10.20.8.0/21, and 4 more of the network's own
+        range; an AWS route table always delivers the VPC's own range directly (its
+        local route cannot be dropped, and can be pointed only at an interface or
+        endpoint that is not translated), so that traffic is delivered where Azure
+        dropped it or sent it through the appliance
+      widens: true
+    source: Microsoft.Network/virtualNetworks net/spoke
+    state: mapped with losses
+    targets:
+    - AWS::EC2::InternetGateway spoke-igw
+    - AWS::EC2::NatGateway spoke-default-outbound
+    - AWS::EC2::Route h-178f8800a1aa
+    - AWS::EC2::Route h-a545c425ef9f
+    - AWS::EC2::Route h-d898b3dcfa29
+    - AWS::EC2::Route h-e061248cc7a5
+    - AWS::EC2::Route h-e090ef3ad14b
+    - AWS::EC2::RouteTable spoke-batch
+    - AWS::EC2::RouteTable spoke-egress
+    - AWS::EC2::RouteTable spoke-jobs
+    - AWS::EC2::Subnet spoke-app
+    - AWS::EC2::Subnet spoke-batch
+    - AWS::EC2::Subnet spoke-data
+    - AWS::EC2::Subnet spoke-east
+    - AWS::EC2::Subnet spoke-egress
+    - AWS::EC2::Subnet spoke-jobs
+    - AWS::EC2::SubnetRouteTableAssociation h-399c7792690f
+    - AWS::EC2::SubnetRouteTableAssociation h-521e73dc2359
+    - AWS::EC2::SubnetRouteTableAssociation h-def48cdd463d
+    - AWS::EC2::VPC spoke
+    - AWS::EC2::VPCGatewayAttachment h-4e2aa5f2fd7e
+  - losses:
+    - field: properties.allowGatewayTransit
+      why: the peer could use this network's gateway to reach on-premises; no gateway
+        is translated, and a peering on the target gives no transit through one
+    reason: a VPC peering connection, with a route to the peer's range in the route
+      table of each subnet that reached it
+    source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/hub/to-spoke
+    state: mapped with losses
+    targets:
+    - AWS::EC2::VPCPeeringConnection net-hub-net-spoke
+  - reason: 'it peers with /subscriptions/00000000-0000-0000-0000-00000000c0de/resourceGroups/central/providers/Microsoft.Network/virtualNetworks/central-hub,
+      which is not in the snapshot (a network in another subscription, or one the
+      capture left out): the target network would not reach it. A peering to a network
+      that is not translated is not written (a map entry naming an existing VPC or
+      network on the target for it does not exist yet)'
+    source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/lone/to-central
+    state: refused
+  - losses:
+    - field: properties.allowForwardedTraffic
+      why: 'it accepted traffic the peer forwarded from elsewhere (an appliance or
+        gateway in a hub); a peering on the target carries only traffic between the
+        two networks'' own ranges, so nothing reaches this network through the peer
+        from a third (AWS: a transit gateway; GCP: Network Connectivity Center; neither
+        is translated)'
+    - field: properties.useRemoteGateways
+      why: this network reached on-premises through the peer's gateway; no gateway
+        is translated, and a peering on the target gives no transit through one
+    reason: written once for both sides, as VPC peering connection net-hub-net-spoke
+    source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/spoke/to-hub
+    state: mapped with losses
+    targets:
+    - AWS::EC2::VPCPeeringConnection net-hub-net-spoke
+  from: azure
+  requirements:
+  - 'A NAT gateway''s public subnet and internet gateway take nothing in from the
+    internet by themselves: only a machine put in that subnet with a public address
+    would be reachable, and the translation puts none there'
+  - 'NAT gateway hub-nat is in one availability zone (eu-west-1a), in public subnet
+    hub-egress: add one per zone, with a route table per zone, for egress to survive
+    the loss of that zone'
+  - 'NAT gateway spoke-default-outbound stands for Azure''s default outbound access
+    in network net/spoke, as the map chose (network.defaultOutbound): it is billed
+    by the hour and the gigabyte, and its address is fixed where Azure''s was not'
+  - NAT gateway spoke-nat has 3 Elastic IP addresses; AWS's default quota is 2 per
+    NAT gateway, so raise it before a restore
+  - 'NAT gateway spoke-nat is in one availability zone (eu-west-1b), in public subnet
+    spoke-egress: add one per zone, with a route table per zone, for egress to survive
+    the loss of that zone'
+  - 'Security group web takes the place of an NSG on subnet(s) spoke-app: an AWS security
+    group applies only to what attaches it, so attach it to the instances (and node
+    groups) in them'
+  - 'Traffic that left through NAT gateway hub-nat now leaves from the target''s own
+    addresses: whoever allows the old ones by address (a partner''s firewall, an allowlist)
+    must be given the new ones'
+  - 'Traffic that left through NAT gateway spoke-nat now leaves from the target''s
+    own addresses: whoever allows the old ones by address (a partner''s firewall,
+    an allowlist) must be given the new ones'
+  - 'VPC peering connection net-hub-net-spoke joins Microsoft.Network/virtualNetworks
+    net/hub and Microsoft.Network/virtualNetworks net/spoke for their own ranges only:
+    AWS peering gives no transit to a third network, a gateway or a NAT in the peer
+    (docs.aws.amazon.com/vpc/latest/peering/vpc-peering-basics.html)'
+  to: aws
+snapshots:
+  aws:
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::EIP
+    metadata:
+      annotations:
+        truthform.org/write-only: Address,IpamPoolId,TransferAddress
+      name: hub-nat-1
+    spec:
+      Domain: vpc
+      Tags:
+      - Key: Name
+        Value: hub-nat-1
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::EIP
+    metadata:
+      annotations:
+        truthform.org/write-only: Address,IpamPoolId,TransferAddress
+      name: spoke-default-outbound-1
+    spec:
+      Domain: vpc
+      Tags:
+      - Key: Name
+        Value: spoke-default-outbound-1
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::EIP
+    metadata:
+      annotations:
+        truthform.org/write-only: Address,IpamPoolId,TransferAddress
+      name: spoke-nat-1
+    spec:
+      Domain: vpc
+      Tags:
+      - Key: Name
+        Value: spoke-nat-1
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::EIP
+    metadata:
+      annotations:
+        truthform.org/write-only: Address,IpamPoolId,TransferAddress
+      name: spoke-nat-2
+    spec:
+      Domain: vpc
+      Tags:
+      - Key: Name
+        Value: spoke-nat-2
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::EIP
+    metadata:
+      annotations:
+        truthform.org/write-only: Address,IpamPoolId,TransferAddress
+      name: spoke-nat-3
+    spec:
+      Domain: vpc
+      Tags:
+      - Key: Name
+        Value: spoke-nat-3
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::InternetGateway
+    metadata:
+      name: hub-igw
+    spec:
+      Tags:
+      - Key: Name
+        Value: hub-igw
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::InternetGateway
+    metadata:
+      name: spoke-igw
+    spec:
+      Tags:
+      - Key: Name
+        Value: spoke-igw
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::NatGateway
+    metadata:
+      annotations:
+        truthform.org/write-only: MaxDrainDurationSeconds
+      name: hub-nat
+    spec:
+      AllocationId: '{{truthform|AWS::EC2::EIP|hub-nat-1|AllocationId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|hub-egress|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: hub-nat
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::NatGateway
+    metadata:
+      annotations:
+        truthform.org/write-only: MaxDrainDurationSeconds
+      name: spoke-default-outbound
+    spec:
+      AllocationId: '{{truthform|AWS::EC2::EIP|spoke-default-outbound-1|AllocationId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|spoke-egress|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: spoke-default-outbound
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::NatGateway
+    metadata:
+      annotations:
+        truthform.org/write-only: MaxDrainDurationSeconds
+      name: spoke-nat
+    spec:
+      AllocationId: '{{truthform|AWS::EC2::EIP|spoke-nat-1|AllocationId}}'
+      SecondaryAllocationIds:
+      - '{{truthform|AWS::EC2::EIP|spoke-nat-2|AllocationId}}'
+      - '{{truthform|AWS::EC2::EIP|spoke-nat-3|AllocationId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|spoke-egress|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: spoke-nat
+      - Key: env
+        Value: dev
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::RouteTable
+    metadata:
+      name: hub-egress
+    spec:
+      Tags:
+      - Key: Name
+        Value: hub-egress
+      VpcId: '{{truthform|AWS::EC2::VPC|hub|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::RouteTable
+    metadata:
+      name: hub-firewall
+    spec:
+      Tags:
+      - Key: Name
+        Value: hub-firewall
+      VpcId: '{{truthform|AWS::EC2::VPC|hub|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::RouteTable
+    metadata:
+      name: hub-shared
+    spec:
+      Tags:
+      - Key: Name
+        Value: hub-shared
+      VpcId: '{{truthform|AWS::EC2::VPC|hub|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::RouteTable
+    metadata:
+      name: spoke-app
+    spec:
+      Tags:
+      - Key: Name
+        Value: spoke-app
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::RouteTable
+    metadata:
+      name: spoke-batch
+    spec:
+      Tags:
+      - Key: Name
+        Value: spoke-batch
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::RouteTable
+    metadata:
+      name: spoke-data
+    spec:
+      Tags:
+      - Key: Name
+        Value: spoke-data
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::RouteTable
+    metadata:
+      name: spoke-east
+    spec:
+      Tags:
+      - Key: Name
+        Value: spoke-east
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::RouteTable
+    metadata:
+      name: spoke-egress
+    spec:
+      Tags:
+      - Key: Name
+        Value: spoke-egress
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::RouteTable
+    metadata:
+      name: spoke-jobs
+    spec:
+      Tags:
+      - Key: Name
+        Value: spoke-jobs
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-02aba9bea87f
+    spec:
+      DestinationCidrBlock: 10.0.0.0/13
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-122ff6fa2e3e
+    spec:
+      DestinationCidrBlock: 208.0.0.0/4
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-14f7752a223c
+    spec:
+      DestinationCidrBlock: 16.0.0.0/4
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-158414ee139f
+    spec:
+      DestinationCidrBlock: 64.0.0.0/2
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-178f8800a1aa
+    spec:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: '{{truthform|AWS::EC2::InternetGateway|spoke-igw|InternetGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-egress|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-19437edaa56b
+    spec:
+      DestinationCidrBlock: 224.0.0.0/3
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-1bd5473c82a6
+    spec:
+      DestinationCidrBlock: 10.8.0.0/15
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-1deeb8de3a07
+    spec:
+      DestinationCidrBlock: 10.10.16.0/20
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-1f1034e05ab4
+    spec:
+      DestinationCidrBlock: 10.10.0.0/16
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-east|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-1f1e7fda0161
+    spec:
+      DestinationCidrBlock: 203.2.0.0/15
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-2383cef25e5f
+    spec:
+      DestinationCidrBlock: 10.128.0.0/9
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-27d7209efd8c
+    spec:
+      DestinationCidrBlock: 204.0.0.0/6
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-28c2be288876
+    spec:
+      DestinationCidrBlock: 10.10.128.0/17
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-2b89be153ef3
+    spec:
+      DestinationCidrBlock: 203.128.0.0/9
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-2d411bc97cec
+    spec:
+      DestinationCidrBlock: 203.16.0.0/12
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-2d8b86cd995a
+    spec:
+      DestinationCidrBlock: 203.0.64.0/19
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-2dae7215ddb3
+    spec:
+      DestinationCidrBlock: 203.0.128.0/17
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-388a3ae2c105
+    spec:
+      DestinationCidrBlock: 203.1.0.0/16
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-3ba5f4ba5f8a
+    spec:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|hub-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|hub-firewall|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-40e7f30ef2f7
+    spec:
+      DestinationCidrBlock: 10.10.0.0/16
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-app|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-51f5db6b9b30
+    spec:
+      DestinationCidrBlock: 11.0.0.0/8
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-5415788eb1e5
+    spec:
+      DestinationCidrBlock: 10.32.0.0/11
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-57bf9c6edeaa
+    spec:
+      DestinationCidrBlock: 10.20.0.0/16
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|hub-firewall|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-5d98d2fb3580
+    spec:
+      DestinationCidrBlock: 10.10.0.0/24
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-61a8be730b92
+    spec:
+      DestinationCidrBlock: 10.24.0.0/13
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-636a56f38314
+    spec:
+      DestinationCidrBlock: 203.8.0.0/13
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-63a31f85eb9c
+    spec:
+      DestinationCidrBlock: 10.10.8.0/21
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-6519d012c555
+    spec:
+      DestinationCidrBlock: 10.10.64.0/18
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-66e5d3319242
+    spec:
+      DestinationCidrBlock: 203.4.0.0/14
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-6ca1a0f5cd1a
+    spec:
+      DestinationCidrBlock: 10.10.2.0/23
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-7494928af962
+    spec:
+      DestinationCidrBlock: 10.11.0.0/16
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-7f125f2a1238
+    spec:
+      DestinationCidrBlock: 10.21.0.0/16
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-80a90a623759
+    spec:
+      DestinationCidrBlock: 203.0.114.0/23
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-85a847521272
+    spec:
+      DestinationCidrBlock: 32.0.0.0/3
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-8b2cc38a2c5a
+    spec:
+      DestinationCidrBlock: 12.0.0.0/6
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-9620ee2172f8
+    spec:
+      DestinationCidrBlock: 10.64.0.0/10
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-9a2d9fe09f3d
+    spec:
+      DestinationCidrBlock: 203.0.112.0/24
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-9ba0548c5eb0
+    spec:
+      DestinationCidrBlock: 10.10.4.0/22
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-a545c425ef9f
+    spec:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-default-outbound|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-batch|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-acb02da5b360
+    spec:
+      DestinationCidrBlock: 203.0.120.0/21
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-ae7f3b1a50f6
+    spec:
+      DestinationCidrBlock: 200.0.0.0/7
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-aee2227492ca
+    spec:
+      DestinationCidrBlock: 10.16.0.0/14
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-bacb4c09d649
+    spec:
+      DestinationCidrBlock: 203.0.0.0/18
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-c39445a4518b
+    spec:
+      DestinationCidrBlock: 8.0.0.0/7
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-c49dd6d809e3
+    spec:
+      DestinationCidrBlock: 10.10.32.0/19
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-cc1a39a9d4a4
+    spec:
+      DestinationCidrBlock: 10.20.0.0/16
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|hub-shared|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-cdc121e43951
+    spec:
+      DestinationCidrBlock: 128.0.0.0/2
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-cf5e9a1dab70
+    spec:
+      DestinationCidrBlock: 203.0.96.0/20
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-cffeb4bcaa19
+    spec:
+      DestinationCidrBlock: 0.0.0.0/5
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-d46ba4883883
+    spec:
+      DestinationCidrBlock: 10.22.0.0/15
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-d5d7a78c81a8
+    spec:
+      DestinationCidrBlock: 192.0.0.0/5
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-d898b3dcfa29
+    spec:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-default-outbound|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-jobs|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-dc3e81289f9b
+    spec:
+      DestinationCidrBlock: 10.12.0.0/14
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-dfc0bd285b28
+    spec:
+      DestinationCidrBlock: 203.32.0.0/11
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-e061248cc7a5
+    spec:
+      DestinationCidrBlock: 10.10.0.0/16
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-batch|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-e090ef3ad14b
+    spec:
+      DestinationCidrBlock: 10.10.0.0/16
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-jobs|RouteTableId}}'
+      VpcPeeringConnectionId: '{{truthform|AWS::EC2::VPCPeeringConnection|net-hub-net-spoke|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-e63de23c8482
+    spec:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: '{{truthform|AWS::EC2::InternetGateway|hub-igw|InternetGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|hub-egress|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-ea8f7356b905
+    spec:
+      DestinationCidrBlock: 203.64.0.0/10
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-ee3c51a723de
+    spec:
+      DestinationCidrBlock: 202.0.0.0/8
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Route
+    metadata:
+      name: h-f9aa6adaa97b
+    spec:
+      DestinationCidrBlock: 203.0.116.0/22
+      NatGatewayId: '{{truthform|AWS::EC2::NatGateway|spoke-nat|NatGatewayId}}'
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: web
+    spec:
+      GroupDescription: From Azure network security group net/web
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 0.0.0.0/5
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.0.0.0/13
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.10.0.0/16
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.11.0.0/16
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.12.0.0/14
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.128.0.0/9
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.16.0.0/14
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.20.0.0/16
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 10.21.0.0/16
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.22.0.0/15
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.24.0.0/13
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.32.0.0/11
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.64.0.0/10
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 10.8.0.0/15
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 11.0.0.0/8
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 12.0.0.0/6
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 128.0.0.0/1
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 16.0.0.0/4
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 32.0.0.0/3
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 64.0.0.0/2
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      - CidrIp: 8.0.0.0/7
+        FromPort: 8080
+        IpProtocol: tcp
+        ToPort: 8080
+      Tags:
+      - Key: Name
+        Value: web
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SubnetRouteTableAssociation
+    metadata:
+      name: h-399c7792690f
+    spec:
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-batch|RouteTableId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|spoke-batch|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SubnetRouteTableAssociation
+    metadata:
+      name: h-521e73dc2359
+    spec:
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-jobs|RouteTableId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|spoke-jobs|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SubnetRouteTableAssociation
+    metadata:
+      name: h-745f1920c7f4
+    spec:
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-app|RouteTableId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|spoke-app|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SubnetRouteTableAssociation
+    metadata:
+      name: h-9d09e5dc5e16
+    spec:
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-east|RouteTableId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|spoke-east|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SubnetRouteTableAssociation
+    metadata:
+      name: h-def48cdd463d
+    spec:
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-egress|RouteTableId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|spoke-egress|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SubnetRouteTableAssociation
+    metadata:
+      name: h-f3e3da5b3849
+    spec:
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|hub-firewall|RouteTableId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|hub-firewall|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SubnetRouteTableAssociation
+    metadata:
+      name: h-f4b9eae55820
+    spec:
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|spoke-data|RouteTableId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|spoke-data|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SubnetRouteTableAssociation
+    metadata:
+      name: h-f9947be648e7
+    spec:
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|hub-egress|RouteTableId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|hub-egress|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SubnetRouteTableAssociation
+    metadata:
+      name: h-fd1c6660be82
+    spec:
+      RouteTableId: '{{truthform|AWS::EC2::RouteTable|hub-shared|RouteTableId}}'
+      SubnetId: '{{truthform|AWS::EC2::Subnet|hub-shared|SubnetId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: hub-egress
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.10.255.0/28
+      Tags:
+      - Key: Name
+        Value: hub-egress
+      VpcId: '{{truthform|AWS::EC2::VPC|hub|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: hub-firewall
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.10.0.0/26
+      Tags:
+      - Key: Name
+        Value: hub-firewall
+      VpcId: '{{truthform|AWS::EC2::VPC|hub|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: hub-shared
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.10.1.0/24
+      Tags:
+      - Key: Name
+        Value: hub-shared
+      VpcId: '{{truthform|AWS::EC2::VPC|hub|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: lone-only
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.1.0/24
+      Tags:
+      - Key: Name
+        Value: lone-only
+      VpcId: '{{truthform|AWS::EC2::VPC|lone|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: spoke-app
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.1.0/24
+      Tags:
+      - Key: Name
+        Value: spoke-app
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: spoke-batch
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.4.0/24
+      Tags:
+      - Key: Name
+        Value: spoke-batch
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: spoke-data
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.2.0/24
+      Tags:
+      - Key: Name
+        Value: spoke-data
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: spoke-east
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.5.0/24
+      Tags:
+      - Key: Name
+        Value: spoke-east
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: spoke-egress
+    spec:
+      AvailabilityZone: eu-west-1b
+      CidrBlock: 10.20.255.0/28
+      Tags:
+      - Key: Name
+        Value: spoke-egress
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: spoke-jobs
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.20.3.0/24
+      Tags:
+      - Key: Name
+        Value: spoke-jobs
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCGatewayAttachment
+    metadata:
+      name: h-46e4e7b7e7f9
+    spec:
+      InternetGatewayId: '{{truthform|AWS::EC2::InternetGateway|hub-igw|InternetGatewayId}}'
+      VpcId: '{{truthform|AWS::EC2::VPC|hub|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCGatewayAttachment
+    metadata:
+      name: h-4e2aa5f2fd7e
+    spec:
+      InternetGatewayId: '{{truthform|AWS::EC2::InternetGateway|spoke-igw|InternetGatewayId}}'
+      VpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCPeeringConnection
+    metadata:
+      annotations:
+        truthform.org/write-only: AssumeRoleRegion,PeerRoleArn
+      name: net-hub-net-spoke
+    spec:
+      PeerVpcId: '{{truthform|AWS::EC2::VPC|spoke|VpcId}}'
+      Tags:
+      - Key: Name
+        Value: net-hub-net-spoke
+      VpcId: '{{truthform|AWS::EC2::VPC|hub|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPC
+    metadata:
+      annotations:
+        truthform.org/write-only: Ipv4IpamPoolId,Ipv4NetmaskLength,VpcEncryptionControl.EgressOnlyInternetGatewayExclusion,VpcEncryptionControl.ElasticFileSystemExclusion,VpcEncryptionControl.InternetGatewayExclusion,VpcEncryptionControl.LambdaExclusion,VpcEncryptionControl.NatGatewayExclusion,VpcEncryptionControl.VirtualPrivateGatewayExclusion,VpcEncryptionControl.VpcLatticeExclusion,VpcEncryptionControl.VpcPeeringExclusion
+      name: hub
+    spec:
+      CidrBlock: 10.10.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value: hub
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPC
+    metadata:
+      annotations:
+        truthform.org/write-only: Ipv4IpamPoolId,Ipv4NetmaskLength,VpcEncryptionControl.EgressOnlyInternetGatewayExclusion,VpcEncryptionControl.ElasticFileSystemExclusion,VpcEncryptionControl.InternetGatewayExclusion,VpcEncryptionControl.LambdaExclusion,VpcEncryptionControl.NatGatewayExclusion,VpcEncryptionControl.VirtualPrivateGatewayExclusion,VpcEncryptionControl.VpcLatticeExclusion,VpcEncryptionControl.VpcPeeringExclusion
+      name: lone
+    spec:
+      CidrBlock: 10.30.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value: lone
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPC
+    metadata:
+      annotations:
+        truthform.org/write-only: Ipv4IpamPoolId,Ipv4NetmaskLength,VpcEncryptionControl.EgressOnlyInternetGatewayExclusion,VpcEncryptionControl.ElasticFileSystemExclusion,VpcEncryptionControl.InternetGatewayExclusion,VpcEncryptionControl.LambdaExclusion,VpcEncryptionControl.NatGatewayExclusion,VpcEncryptionControl.VirtualPrivateGatewayExclusion,VpcEncryptionControl.VpcLatticeExclusion,VpcEncryptionControl.VpcPeeringExclusion
+      name: spoke
+    spec:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value: spoke

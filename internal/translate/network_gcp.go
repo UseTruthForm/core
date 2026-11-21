@@ -153,7 +153,7 @@ func (d gcpNet) firewalls(n *nsg, v *vnet, tag string) ([]snapshot.Object, []Los
 				// deny touches the network's own traffic, AllowVnetInBound
 				// allows it anyway, so all addresses says the same in one
 				// range.
-				peers = aggregate(append(peers, v.prefixes...))
+				peers = aggregate(append(peers, v.tagPrefixes()...))
 			}
 		} else {
 			if !exact {
@@ -207,7 +207,7 @@ func (d gcpNet) vnetDenied(rules []nsgRule, r nsgRule, v *vnet) bool {
 		if !dn.peer.any && len(dn.peer.other) > 0 {
 			dp = []netip.Prefix{anyV4}
 		}
-		for _, a := range r.boxes(v.prefixes) {
+		for _, a := range r.boxes(v.tagPrefixes()) {
 			for _, b := range dn.boxes(dp) {
 				if a.overlaps(b) {
 					return true

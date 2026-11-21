@@ -277,12 +277,12 @@ func TestEveryNetworkTypeIsDecided(t *testing.T) {
 	decided := map[string]State{
 		azVNet: Mapped, azSubnet: Mapped, azNSG: Mapped, azNSGRule: Mapped,
 		azNSG + "/defaultsecurityrules": Mapped,
-		azPeering:                       NotLooked,
+		azPeering:                       Refused, // alone, its network is not in the snapshot
 	}
 	for _, n := range reg.Names() {
 		l := strings.ToLower(n)
-		if !network.claims(network{}, l) {
-			continue
+		if !network.claims(network{}, l) || routingClaims(l) {
+			continue // routing's own types: see TestEveryRoutingTypeIsDecided
 		}
 		if _, ok := decided[l]; !ok {
 			t.Errorf("%s has a definition and no decision", n)

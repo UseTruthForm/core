@@ -37,7 +37,7 @@ const (
 type network struct{}
 
 func (network) claims(kind string) bool {
-	return kind == azVNet || strings.HasPrefix(kind, azVNet+"/") || kind == azNSG || strings.HasPrefix(kind, azNSG+"/")
+	return kind == azVNet || strings.HasPrefix(kind, azVNet+"/") || kind == azNSG || strings.HasPrefix(kind, azNSG+"/") || routingClaims(kind)
 }
 
 type vnet struct {
@@ -48,6 +48,27 @@ type vnet struct {
 	tags             map[string]string
 	encryption       string // "", AllowUnencrypted, DropUnencrypted
 	losses           []Loss
+	// peers are the networks a translated peering joins this one to, with
+	// access allowed: Azure's VirtualNetwork tag holds their ranges too.
+	peers []*vnet
+	// inlinePeerings are peerings a network holds inline; a capture makes
+	// them objects of their own.
+	inlinePeerings []map[string]any
+}
+
+// tagPrefixes are the ranges Azure's VirtualNetwork service tag stands for
+// here: the network's own and those of its peers ("The VirtualNetwork
+// service tag for network security groups includes the virtual network and
+// peered virtual network when this setting is selected",
+// learn.microsoft.com/azure/virtual-network/virtual-network-manage-peering).
+// The tag's other members (on-premises ranges, prefixes of user-defined
+// routes) have no addresses here, so a rule is never wider than Azure's.
+func (v *vnet) tagPrefixes() []netip.Prefix {
+	ps := append([]netip.Prefix(nil), v.prefixes...)
+	for _, p := range v.peers {
+		ps = append(ps, p.prefixes...)
+	}
+	return aggregate(ps)
 }
 
 type subnet struct {
@@ -56,6 +77,10 @@ type subnet struct {
 	prefix netip.Prefix
 	nsg    string // group/name of its NSG, lower case
 	field  string // where the report names its settings
+	// routeTable and nat are the group/name of its route table and NAT
+	// gateway, lower case; outbound is defaultOutboundAccess as written
+	// ("true", "false", or "" when unset).
+	routeTable, nat, outbound string
 }
 
 type nsg struct {
@@ -118,7 +143,11 @@ func (network) translate(objs []snapshot.Object, o *out) {
 	vnets := map[string]*vnet{}
 	nsgs := map[string]*nsg{}
 	var subnetObjs, ruleObjs []snapshot.Object
+	rt := newRouting()
 	for _, obj := range objs {
+		if rt.read(strings.ToLower(obj.Kind()), obj) {
+			continue
+		}
 		switch k := strings.ToLower(obj.Kind()); k {
 		case azVNet:
 			v := readVNet(obj)
@@ -186,16 +215,21 @@ func (network) translate(objs []snapshot.Object, o *out) {
 		for _, n := range sortedNSGs(nsgs) {
 			o.entries = append(o.entries, Entry{Source: n.src, State: Refused, Reason: why})
 		}
+		rt.refuseAll(why, o)
 		return
 	case o.m.To == "aws":
 		w = awsNet{m: o.m}
 	case o.m.To == "gcp":
 		w = gcpNet{m: o.m}
 	}
+	// Peerings are decided before anything is written: what a network's
+	// rules mean by VirtualNetwork depends on them.
+	rt.link(vnets, o)
 	written := map[string]bool{}
 	for _, v := range sortedVNets(vnets) {
 		written[v.key] = w.vnet(v, o)
 	}
+	rt.write(vnets, written, o)
 	for _, n := range sortedNSGs(nsgs) {
 		if n.refuse == "" && len(n.subnets) == 0 {
 			n.refuse = "no subnet in the snapshot uses it (one on a network interface is not translated yet), so there is no network to put it in"
@@ -330,8 +364,8 @@ func readVNet(o snapshot.Object) *vnet {
 		v.losses = append(v.losses, losses...)
 	}
 	p.quiet("subnets")
-	if l := list(p.m["virtualNetworkPeerings"]); len(l) > 0 {
-		p.lose("virtualNetworkPeerings", fmt.Sprintf("%d peering(s) to other networks are not translated yet: the target network reaches no other", len(l)), false)
+	for _, x := range list(p.m["virtualNetworkPeerings"]) {
+		v.inlinePeerings = append(v.inlinePeerings, obj(x))
 	}
 	p.quiet("virtualNetworkPeerings")
 	ddos := p.boolean("enableDdosProtection")
@@ -398,12 +432,16 @@ func readSubnet(v *vnet, name string, m map[string]any, field string) (*subnet, 
 		p.lose("networkSecurityGroup", "its network security group could not be read from the reference", true)
 	}
 	p.quiet("networkSecurityGroup")
-	if len(obj(p.m["routeTable"])) > 0 {
-		p.lose("routeTable", "its traffic follows a route table, which is not translated yet: if it sent traffic through a firewall appliance, the target does not", true)
+	// What its route table and NAT gateway come to is decided with them
+	// (routing.go), once every route table and peering is read.
+	s.routeTable = azRefKey(p.m["routeTable"], typRouteTable)
+	if len(obj(p.m["routeTable"])) > 0 && s.routeTable == "" {
+		p.lose("routeTable", "its traffic follows a route table that could not be read from the reference: if it sent traffic through a firewall appliance, the target does not", true)
 	}
 	p.quiet("routeTable")
-	if len(obj(p.m["natGateway"])) > 0 {
-		p.lose("natGateway", "it reached the internet through a NAT gateway; the target subnet has no internet egress until one is added (not translated yet)", false)
+	s.nat = azRefKey(p.m["natGateway"], typNAT)
+	if len(obj(p.m["natGateway"])) > 0 && s.nat == "" {
+		p.lose("natGateway", "it reached the internet through a NAT gateway that could not be read from the reference; the target subnet has no internet egress", false)
 	}
 	p.quiet("natGateway")
 	if len(list(p.m["serviceEndpoints"])) > 0 {
@@ -431,8 +469,8 @@ func readSubnet(v *vnet, name string, m map[string]any, field string) (*subnet, 
 	p.unlessDefault("privateEndpointNetworkPolicies", "Disabled", "network policies on private endpoints have no equivalent here")
 	p.unlessDefault("privateLinkServiceNetworkPolicies", "Enabled", "network policies on Private Link services have no equivalent here")
 	p.unlessDefault("sharingScope", "", "a subnet shared with other tenants has no equivalent here")
-	if p.boolean("defaultOutboundAccess") {
-		p.lose("defaultOutboundAccess", "it reached the internet through Azure's default outbound access; on the target it has no internet egress until a NAT gateway (AWS) or Cloud NAT (GCP) is added", false)
+	if v, ok := p.take("defaultOutboundAccess"); ok && v != nil {
+		s.outbound = fmt.Sprint(v)
 	}
 	if len(obj(p.m["serviceGateway"])) > 0 {
 		p.lose("serviceGateway", "has no equivalent here", false)
@@ -622,10 +660,10 @@ func (a addrs) resolve(v *vnet) (ps []netip.Prefix, exact bool) {
 		return []netip.Prefix{anyV4}, len(a.other) == 0
 	}
 	if a.internet {
-		ps = append(ps, prefixMinus([]netip.Prefix{anyV4}, v.prefixes)...)
+		ps = append(ps, prefixMinus([]netip.Prefix{anyV4}, v.tagPrefixes())...)
 	}
 	if a.vnet {
-		ps = append(ps, v.prefixes...)
+		ps = append(ps, v.tagPrefixes()...)
 	}
 	ps = append(ps, a.prefixes...)
 	return aggregate(ps), len(a.other) == 0

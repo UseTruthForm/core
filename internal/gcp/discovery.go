@@ -40,6 +40,9 @@ type Schema struct {
 	AdditionalProperties *Schema            `json:"additionalProperties"`
 	Enum                 []string           `json:"enum"`
 	EnumDeprecated       []bool             `json:"enumDeprecated"`
+	// Applied marks a list the document flags output only that methods of
+	// the resource's own set (appliedFields): configuration, kept.
+	Applied bool `json:"-"`
 }
 
 // Method is a Discovery method.
@@ -228,6 +231,7 @@ func (ds *Docs) Doc(uri, version string) (*Doc, error) {
 	h := sha256.Sum256(b)
 	d.Digest = "sha256:" + hex.EncodeToString(h[:])
 	d.flagUndeclaredOutput()
+	d.flagApplied()
 	d.liftVersion()
 	ds.cache[key] = &d
 	return &d, nil
@@ -557,6 +561,10 @@ func (d *Doc) clean(v any, s *Schema, path string, ro map[string]any) {
 			case !known && s.AdditionalProperties != nil:
 				d.clean(c[k], s.AdditionalProperties, join(path, "*"), ro)
 			case !known:
+			// A list set by the resource's own methods is configuration,
+			// whatever the document flags it: its items are cleaned.
+			case p.Applied:
+				d.clean(c[k], p, full, ro)
 			// The property's own flag and description decide, not those of
 			// the schema it refers to: they sit beside its $ref.
 			case outputOnly(p):
@@ -686,8 +694,32 @@ func (d *Doc) CheckSpec(schema string, spec map[string]any) error {
 		switch {
 		case p == nil:
 			return fmt.Errorf("%s: %s is not a field of %s %s", schema, k, d.Name, d.Version)
+		case p.Applied:
+			// Set by the resource's own methods, which a restore calls.
+			if err := d.checkItems(schema, k, p, spec[k]); err != nil {
+				return err
+			}
 		case outputOnly(p):
 			return fmt.Errorf("%s: %s is set by the server (%s %s)", schema, k, d.Name, d.Version)
+		}
+	}
+	return nil
+}
+
+// checkItems holds each item of an applied list to its schema, as
+// CheckSpec holds the resource.
+func (d *Doc) checkItems(schema, field string, p *Schema, v any) error {
+	list, ok := v.([]any)
+	if !ok || p.Items == nil || p.Items.Ref == "" {
+		return fmt.Errorf("%s: %s is a list of items (%s %s)", schema, field, d.Name, d.Version)
+	}
+	for _, x := range list {
+		m, ok := x.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: %s is a list of items (%s %s)", schema, field, d.Name, d.Version)
+		}
+		if err := d.CheckSpec(p.Items.Ref, m); err != nil {
+			return fmt.Errorf("%s.%s: %w", schema, field, err)
 		}
 	}
 	return nil

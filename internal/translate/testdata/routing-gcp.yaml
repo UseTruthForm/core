@@ -53,6 +53,7 @@ report:
   - source: Microsoft.Network/routeTables net/data-rt
     state: mapped
     targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/spoke-data-no-peer
     - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/spoke-data-no-route
   - source: Microsoft.Network/routeTables net/east-west
     state: mapped
@@ -104,6 +105,10 @@ report:
     - field: properties.subnets[data].properties.routeTable
       why: 'route storage-direct (Storage to the internet) names a service tag, which
         has no addresses here: its traffic follows the subnet''s other routes'
+    - field: properties.subnets[data].properties.routeTable
+      why: it had no route to 10.10.1.0/24 of its network's peer(s), so what they
+        sent it went unanswered; a GCP firewall answers a connection it let in, so
+        ingress deny rule spoke-data-no-peer keeps their traffic out of this subnet
     - field: properties.subnets[east].properties.routeTable
       why: route inspect (10.20.0.0/16 to virtual appliance 10.20.9.4) covers 10.20.0.0/22,
         10.20.4.0/24, 10.20.6.0/23, 10.20.8.0/21, and 4 more of the network's own
@@ -121,12 +126,17 @@ report:
     - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-data
     - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-east
     - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-jobs
-  - reason: 'a GCP peering is made by a call on each network (networks.addPeering),
-      not by creating a resource, and a restore only creates resources: it is not
-      written. Make it once the networks exist: gcloud compute networks peerings create
-      to-spoke --network=hub --peer-network=spoke'
+  - losses:
+    - field: properties.allowGatewayTransit
+      why: the peer could use this network's gateway to reach on-premises; no gateway
+        is translated, and a peering on the target gives no transit through one
+    reason: peering to-spoke in network hub's own list (networks.addPeering, once
+      both networks exist); its subnets' routes to the peer are Google's, exchanged
+      while both sides are there
     source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/hub/to-spoke
-    state: refused
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/hub
   - reason: 'it peers with /subscriptions/00000000-0000-0000-0000-00000000c0de/resourceGroups/central/providers/Microsoft.Network/virtualNetworks/central-hub,
       which is not in the snapshot (a network in another subscription, or one the
       capture left out): the target network would not reach it. A peering to a network
@@ -134,12 +144,23 @@ report:
       network on the target for it does not exist yet)'
     source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/lone/to-central
     state: refused
-  - reason: 'a GCP peering is made by a call on each network (networks.addPeering),
-      not by creating a resource, and a restore only creates resources: it is not
-      written. Make it once the networks exist: gcloud compute networks peerings create
-      to-hub --network=spoke --peer-network=hub'
+  - losses:
+    - field: properties.allowForwardedTraffic
+      why: 'it accepted traffic the peer forwarded from elsewhere (an appliance or
+        gateway in a hub); a peering on the target carries only traffic between the
+        two networks'' own ranges, so nothing reaches this network through the peer
+        from a third (AWS: a transit gateway; GCP: Network Connectivity Center; neither
+        is translated)'
+    - field: properties.useRemoteGateways
+      why: this network reached on-premises through the peer's gateway; no gateway
+        is translated, and a peering on the target gives no transit through one
+    reason: peering to-hub in network spoke's own list (networks.addPeering, once
+      both networks exist); its subnets' routes to the peer are Google's, exchanged
+      while both sides are there
     source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/spoke/to-hub
-    state: refused
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/spoke
   from: azure
   requirements:
   - 'Cloud NAT gateway default-outbound on router spoke-nat stands for Azure''s default
@@ -153,16 +174,10 @@ report:
     allowed by every NSG)'
   - 'Instances (and GKE nodes) in subnetwork(s) spoke-app carry the network tag web:
     an NSG applied to a whole subnet, a firewall rule applies to instances by tag'
-  - 'Peer network hub with spoke by hand, on both sides, once they are restored (gcloud
-    compute networks peerings create to-spoke --network=hub --peer-network=spoke):
-    the firewall rules written from the NSGs already take the peer''s ranges as part
-    of the network, as Azure''s VirtualNetwork tag did, and the subnets'' routes leave
-    the peer''s ranges alone. GCP peering gives no transit to a third network (docs.cloud.google.com/vpc/docs/vpc-peering)'
-  - 'Peer network spoke with hub by hand, on both sides, once they are restored (gcloud
-    compute networks peerings create to-hub --network=spoke --peer-network=hub): the
-    firewall rules written from the NSGs already take the peer''s ranges as part of
-    the network, as Azure''s VirtualNetwork tag did, and the subnets'' routes leave
-    the peer''s ranges alone. GCP peering gives no transit to a third network (docs.cloud.google.com/vpc/docs/vpc-peering)'
+  - 'Networks hub and spoke are peered for their subnets'' ranges only: GCP peering
+    gives no transit to a third network, a gateway or a NAT in the peer (https://docs.cloud.google.com/vpc/docs/vpc-peering),
+    and the firewall rules written from the NSGs take the peer''s ranges as part of
+    the network, as Azure''s VirtualNetwork tag did'
   - 'Subnetwork spoke-app sent its traffic through a firewall on Azure, and reaches
     nothing outside its network on GCP but 199.36.153.8/30, 199.36.153.4/30: where
     its network has Private Google Access, point googleapis.com at private.googleapis.com
@@ -290,6 +305,26 @@ snapshots:
       priority: 50
       sourceRanges:
       - 10.20.1.0/24
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/spoke-data-no-peer
+    spec:
+      denied:
+      - IPProtocol: all
+      destinationRanges:
+      - 10.20.2.0/24
+      direction: INGRESS
+      name: spoke-data-no-peer
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      priority: 50
+      sourceRanges:
+      - 10.10.1.0/24
   - apiVersion: gcp.truthform.org/v1
     kind: compute.googleapis.com/Firewall
     metadata:
@@ -455,6 +490,17 @@ snapshots:
       autoCreateSubnetworks: false
       mtu: 1500
       name: hub
+      peerings:
+      - autoCreateRoutes: true
+        exchangeSubnetRoutes: true
+        exportCustomRoutes: false
+        exportSubnetRoutesWithPublicIp: true
+        importCustomRoutes: false
+        importSubnetRoutesWithPublicIp: true
+        name: to-spoke
+        network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+        stackType: IPV4_ONLY
+        updateStrategy: INDEPENDENT
       routingConfig:
         routingMode: REGIONAL
   - apiVersion: gcp.truthform.org/v1
@@ -485,6 +531,17 @@ snapshots:
       autoCreateSubnetworks: false
       mtu: 1500
       name: spoke
+      peerings:
+      - autoCreateRoutes: true
+        exchangeSubnetRoutes: true
+        exportCustomRoutes: false
+        exportSubnetRoutesWithPublicIp: true
+        importCustomRoutes: false
+        importSubnetRoutesWithPublicIp: true
+        name: to-hub
+        network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/hub
+        stackType: IPV4_ONLY
+        updateStrategy: INDEPENDENT
       routingConfig:
         routingMode: REGIONAL
   - apiVersion: gcp.truthform.org/v1

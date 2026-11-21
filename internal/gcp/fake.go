@@ -105,6 +105,9 @@ func (f *Fake) Call(_ context.Context, method, url string, body any) (map[string
 		}
 		return nil, fmt.Errorf("%s: %w", url, ErrNotFound)
 	case "POST":
+		if out, ok, err := f.applyItem(method, url, body.(map[string]any)); ok {
+			return out, err
+		}
 		return f.create(url, body.(map[string]any))
 	case "PUT":
 		if out, ok, err := f.createAtName(url, body.(map[string]any)); ok {
@@ -112,6 +115,9 @@ func (f *Fake) Call(_ context.Context, method, url string, body any) (map[string
 		}
 		return f.update(method, url, body.(map[string]any))
 	case "PATCH":
+		if out, ok, err := f.applyItem(method, url, body.(map[string]any)); ok {
+			return out, err
+		}
 		return f.update(method, url, body.(map[string]any))
 	}
 	return nil, fmt.Errorf("fake: unsupported method %s", method)

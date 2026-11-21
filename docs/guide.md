@@ -391,6 +391,14 @@ truthform restore --platform aws --region us-east-2 --from snap/aws --values sec
   `--zone-map use2-az1=use1-az4` overrides a pair.
 - **Several at once (AWS, Azure, GCP):** resources that do not depend on
   each other are created together (`--parallel`, 8 by default).
+- **VPC Network Peering (GCP):** a peering is not a resource but an entry
+  in each network's `peerings`, which a capture keeps in the network's spec
+  (its `state` goes to the status). A restore creates the networks, then
+  adds each entry with `networks.addPeering`, one at a time; the peering is
+  `ACTIVE` once both networks have theirs. With `--update` an entry that
+  differs is changed with `networks.updatePeering` and a missing one added.
+  An entry only the target has is reported and left: a restore removes
+  nothing.
 - **Secrets** come from a YAML file given with `--values`, keyed by
   resource. A restore says which secrets it was not given. The same file can
   set any other property; a list it sets is replaced whole. Give `diff` the
@@ -1542,7 +1550,8 @@ databases:                  # per server, keyed group/server: what Azure cannot 
 | Route to `Internet`, `VnetLocal` | part of what the subnet reaches as before | the same |
 | Route over the network's own range | less protected: a VPC's local route always delivers | the egress deny rule: dropped |
 | Route to a service tag | not carried over; less protected where it kept traffic from the internet and the subnet has egress | the same |
-| Peering, both networks in the snapshot, connected | one VPC peering connection, a route to the peer in each subnet's route table; `VirtualNetwork` in the NSG rules takes in the peer's ranges | refused, with the `gcloud compute networks peerings create` call: a restore creates resources, and a GCP peering is a call on each network. The firewall rules already take in the peer's ranges |
+| Peering, both networks in the snapshot, connected | one VPC peering connection, a route to the peer in each subnet's route table; `VirtualNetwork` in the NSG rules takes in the peer's ranges | an entry in each network's own `peerings` (a GCP peering is no resource: a restore adds it with `networks.addPeering` once both networks exist), every setting said, subnet routes of any range imported as Azure carried them; the firewall rules take in the peer's ranges |
+| Peer ranges a subnet had no peering route to (a route came first, or `disablePeeringRoute`) | no route to them in that subnet's route table | a GCP peering gives every subnet the peer's routes: an egress deny rule, and an ingress deny rule (`<network>-<subnet>-no-peer`) for the answers Azure could not route |
 | Peering to a network outside the snapshot, of some subnets, out of sync | refused | refused |
 | Peering with access off, one-sided or not connected | nothing written: it carried nothing | the same |
 | Forwarded traffic, gateway transit, remote gateways | reported: a peering on the target gives no transit | the same |

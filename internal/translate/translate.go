@@ -205,6 +205,27 @@ func (o *out) add(platform, source string, obj snapshot.Object) string {
 	return obj.Kind() + " " + obj.Name()
 }
 
+// recheck holds a GCP object changed after it was added to its schema
+// again.
+func (o *out) recheck(platform, source, kind, name string) error {
+	for _, x := range o.objects[platform] {
+		if x.Kind() != kind || x.Name() != name {
+			continue
+		}
+		ann, _ := x.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+		api, ver, _ := strings.Cut(fmt.Sprint(ann["truthform.org/discovery"]), "/")
+		doc, err := o.tg.GCP.DocFor(api, ver)
+		if err == nil {
+			spec, _ := x.Body["spec"].(map[string]any)
+			err = doc.CheckSpec(fmt.Sprint(ann["truthform.org/schema"]), spec)
+		}
+		if err != nil {
+			return fmt.Errorf("%s: %w", source, err)
+		}
+	}
+	return nil
+}
+
 func (o *out) require(s string) { o.reqs[s] = true }
 
 // family translates the source objects of one service.

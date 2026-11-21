@@ -289,6 +289,13 @@ func read(ctx context.Context, api API, docs *Docs, a Asset, project, number str
 		return nil, ownedError{why: why, name: tokenizeString(canonical, project, number)}
 	}
 	spec, ro := doc.normalize(k.Schema, data)
+	for _, a := range appliedOf(doc.Name, k.Schema) {
+		// Each item's state goes to the status under the item's name, and
+		// the list is kept in the order of its names, whatever order the
+		// server lists it in.
+		a.itemStatus(doc, data, ro)
+		a.sort(spec)
+	}
 	rel := tokenizeString(canonical, project, number)
 	spec = tokenize(spec, project, number)
 	status := map[string]any{"name": rel}

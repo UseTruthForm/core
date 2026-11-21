@@ -64,11 +64,39 @@ func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, 
 	// Each create starts once what it references is done, several at a
 	// time; results keep the reference order whatever order they finish in.
 	done := make([]snapshot.Result, len(order))
+	applies := make([]*pendingApply, len(order))
 	schedule.Run(len(order), deps, workers, func(i int) {
-		ok, detail := restoreOne(ctx, api, docs, order[i], project, number, existing, resolved, opt)
+		ok, detail, apply := restoreOne(ctx, api, docs, order[i], project, number, existing, resolved, opt)
 		done[i] = snapshot.Result{Key: order[i].Key(), OK: ok, Detail: detail}
+		applies[i] = apply
 	})
+	// Lists set by a resource's own methods (a network's peerings) are
+	// applied once every resource exists, since their items name other
+	// resources in both directions; and one at a time: "Google Cloud
+	// allows only one peering operation at a time across peered networks"
+	// (https://docs.cloud.google.com/vpc/docs/using-vpc-peering).
+	for i, a := range applies {
+		if a == nil || !done[i].OK {
+			continue
+		}
+		did, err := applyFields(ctx, api, docs, order[i], a.name, a.current, project, number, resolved)
+		if did != "" {
+			done[i].Detail += "; " + did
+		}
+		if err != nil {
+			done[i].OK = false
+			done[i].Detail += "; not finished: " + err.Error()
+		}
+	}
 	return append(results, done...)
+}
+
+// pendingApply is a resource whose applied fields are still to be set: its
+// name in the target, and its spec there before the restore (nil when the
+// restore created it).
+type pendingApply struct {
+	name    string
+	current map[string]any
 }
 
 // names maps reference tokens to the names the target gave, shared by the
@@ -92,16 +120,17 @@ func (n *names) set(k, v string) {
 }
 
 func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, project, number string,
-	existing map[string]*res, resolved *names, opt RestoreOptions) (bool, string) {
+	existing map[string]*res, resolved *names, opt RestoreOptions) (bool, string, *pendingApply) {
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	str := func(k string) string { s, _ := ann[k].(string); return s }
 	apiName, ver, _ := strings.Cut(str(annDiscovery), "/")
 	spec, _ := o.Body["spec"].(map[string]any)
 	self := refToken(o.Kind(), o.Name())
+	applied := appliedOfObject(o)
 
 	if ex, ok := existing[o.Kind()+"|"+o.Name()]; ok {
-		if canon(ex.spec) == canon(spec) {
-			return true, "already present and identical"
+		if sameSpecs(ex.spec, spec, applied) {
+			return true, "already present and identical", nil
 		}
 		ch := snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{{Body: map[string]any{"apiVersion": APIVersion, "kind": o.Kind(), "metadata": map[string]any{"name": o.Name()}, "spec": spec}}}},
 			snapshot.Snapshot{Objects: []snapshot.Object{{Body: map[string]any{"apiVersion": APIVersion, "kind": o.Kind(), "metadata": map[string]any{"name": o.Name()}, "spec": ex.spec}}}})
@@ -110,26 +139,35 @@ func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, pro
 			fields = ch[0].Fields
 		}
 		if !opt.Update {
-			return false, "already exists and differs (" + strings.Join(fields, ", ") + "); not modified (--update modifies it)"
+			return false, "already exists and differs (" + strings.Join(fields, ", ") + "); not modified (--update modifies it)", nil
 		}
-		return update(ctx, api, docs, o, ex, project, number, resolved)
+		var apply *pendingApply
+		if len(applied) > 0 {
+			apply = &pendingApply{name: detok(ex.rel, project, number), current: ex.spec}
+		}
+		if !differsOutsideApplied(spec, ex.spec, applied) {
+			return true, "updated " + apply.name, apply
+		}
+		ok, detail := update(ctx, api, docs, o, ex, project, number, resolved)
+		return ok, detail, apply
 	}
 
 	doc, err := docs.Doc(docURL(apiName, ver), "")
 	if err != nil {
-		return false, err.Error()
+		return false, err.Error(), nil
 	}
 	create := doc.collectionMethods(str(annCollection))["create"]
 	if create == nil {
 		create = doc.collectionMethods(str(annCollection))["insert"]
 	}
 	if create == nil {
-		return false, "the " + str(annDiscovery) + " document declares no create method for " + str(annCollection)
+		return false, "the " + str(annDiscovery) + " document declares no create method for " + str(annCollection), nil
 	}
 
-	desired, why := resolveSpec(spec, resolved, project, number)
+	// What the resource's own methods set is applied afterwards.
+	desired, why := resolveSpec(withoutApplied(spec, applied), resolved, project, number)
 	if why != "" {
-		return false, why
+		return false, why, nil
 	}
 
 	id := ""
@@ -150,7 +188,7 @@ func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, pro
 	} else {
 		body, q, werr := wrap(doc, str(annSchema), create, desired, id)
 		if werr != nil {
-			return false, werr.Error()
+			return false, werr.Error(), nil
 		}
 		u := doc.URL(create, detok(str(annParent), project, number))
 		// A create whose path names no parent takes the project as a
@@ -164,7 +202,7 @@ func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, pro
 		got, err = api.Call(ctx, "POST", u, body)
 	}
 	if err != nil {
-		return false, err.Error()
+		return false, err.Error(), nil
 	}
 	n, _ := got["name"].(string)
 	// Compute answers with its short name (net-1); its full name is the
@@ -175,7 +213,13 @@ func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, pro
 		}
 	}
 	resolved.set(self, n)
-	return true, "created " + n
+	var apply *pendingApply
+	for _, a := range applied {
+		if _, order := a.items(spec); len(order) > 0 {
+			apply = &pendingApply{name: n}
+		}
+	}
+	return true, "created " + n, apply
 }
 
 // resolveSpec replaces reference tokens with the target's names and the
@@ -222,13 +266,17 @@ func update(ctx context.Context, api API, docs *Docs, o snapshot.Object, ex *res
 		return false, "already exists and differs; the " + str(annDiscovery) + " document declares no patch or update method for " + str(annCollection)
 	}
 	spec, _ := o.Body["spec"].(map[string]any)
+	// Without what the resource's own methods set: no patch takes it.
+	applied := appliedOfObject(o)
+	spec = withoutApplied(spec, applied)
+	exSpec := withoutApplied(ex.spec, applied)
 	var mask []string
 	for _, k := range sortedKeys(spec) {
-		if canon(spec[k]) != canon(ex.spec[k]) {
+		if canon(spec[k]) != canon(exSpec[k]) {
 			mask = append(mask, k)
 		}
 	}
-	for _, k := range sortedKeys(ex.spec) {
+	for _, k := range sortedKeys(exSpec) {
 		if _, ok := spec[k]; !ok {
 			mask = append(mask, k)
 		}
@@ -319,6 +367,14 @@ func parentOfObject(o snapshot.Object) string {
 	return p
 }
 
+// orderSpec is what decides when an object can be created: its spec and
+// its parent, without the lists its own methods set once everything
+// exists. Two networks that peer name each other there, which is no cycle.
+func orderSpec(o snapshot.Object) string {
+	spec, _ := o.Body["spec"].(map[string]any)
+	return canon(withoutApplied(spec, appliedOfObject(o))) + "\x00" + parentOfObject(o)
+}
+
 func detok(s, project, number string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, tokProject, project), tokNumber, number)
 }
@@ -344,7 +400,7 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 				continue
 			}
 			ready := true
-			spec := canon(by[k].Body["spec"]) + "\x00" + parentOfObject(by[k])
+			spec := orderSpec(by[k])
 			for _, tok := range refRE.FindAllString(spec, -1) {
 				if _, in := by[tok]; in && tok != k && !done[tok] {
 					ready = false
@@ -377,7 +433,7 @@ func restoreGraph(objs []snapshot.Object) (order, cyclic []snapshot.Object, depI
 	}
 	depIdx = make([][]int, len(order))
 	for i, o := range order {
-		spec := canon(o.Body["spec"]) + "\x00" + parentOfObject(o)
+		spec := orderSpec(o)
 		for _, tok := range refRE.FindAllString(spec, -1) {
 			if j, ok := at[tok]; ok && j != i {
 				depIdx[i] = append(depIdx[i], j)

@@ -356,14 +356,105 @@ func TestRoutingOnGCP(t *testing.T) {
 			t.Errorf("%s is not named: %+v", about, v.Losses)
 		}
 	}
-	// A peering is refused, with the call that makes it.
-	for _, side := range []string{"net/hub/to-spoke", "net/spoke/to-hub"} {
-		if e := entry(t, r, typVNet+"/virtualNetworkPeerings "+side); e.State != Refused || !strings.Contains(e.Reason, "gcloud compute networks peerings create") {
-			t.Errorf("%s: %s %s", side, e.State, e.Reason)
+	// Each side of the peering is an entry in its own network's list, with
+	// every setting said; the network that peers outside the snapshot has
+	// none.
+	for side, c := range map[string][2]string{"hub": {"to-spoke", "spoke"}, "spoke": {"to-hub", "hub"}} {
+		net := gcpProject + "/global/networks/" + side
+		e := entry(t, r, typVNet+"/virtualNetworkPeerings net/"+side+"/"+c[0])
+		if e.State != WithLosses || fmt.Sprint(e.Targets) != "["+gcpNetwork+" "+net+"]" || !strings.Contains(e.Reason, "networks.addPeering") {
+			t.Errorf("%s: %s %v %s", side, e.State, e.Targets, e.Reason)
+		}
+		want := `[{"autoCreateRoutes":true,"exchangeSubnetRoutes":true,"exportCustomRoutes":false,"exportSubnetRoutesWithPublicIp":true,"importCustomRoutes":false,"importSubnetRoutesWithPublicIp":true,"name":"` +
+			c[0] + `","network":"` + computeBase + gcpProject + `/global/networks/` + c[1] + `","stackType":"IPV4_ONLY","updateStrategy":"INDEPENDENT"}]`
+		if got := canonJSON(object(t, r, "gcp", gcpNetwork, net)["peerings"]); got != want {
+			t.Errorf("%s's peerings:\n got %s\nwant %s", side, got, want)
 		}
 	}
-	if !anyRequirement(r, "gcloud compute networks peerings create to-hub --network=spoke --peer-network=hub") {
+	if ps, set := object(t, r, "gcp", gcpNetwork, gcpProject+"/global/networks/lone")["peerings"]; set {
+		t.Errorf("a refused peering is written: %v", ps)
+	}
+	if !anyRequirement(r, "Networks hub and spoke are peered for their subnets' ranges only") {
 		t.Errorf("requirements: %v", r.Report.Requirements)
+	}
+	// The spoke's data subnet dropped the hub's shared subnet: it neither
+	// reaches it nor is reached from it, as on Azure, where the answer had
+	// no route back.
+	in := object(t, r, "gcp", gcpFirewall, gcpProject+"/global/firewalls/spoke-data-no-peer")
+	if in["direction"] != "INGRESS" || fmt.Sprint(in["sourceRanges"]) != "[10.10.1.0/24]" || fmt.Sprint(in["destinationRanges"]) != "[10.20.2.0/24]" ||
+		in["priority"] != gcpRoutePriority || canonJSON(in["denied"]) != `[{"IPProtocol":"all"}]` {
+		t.Errorf("ingress deny for a dropped peer range: %v", in)
+	}
+	if l := lossAbout(v, "ingress deny rule spoke-data-no-peer"); l == nil || l.Widens {
+		t.Errorf("the ingress deny is not named: %+v", v.Losses)
+	}
+	for _, o := range r.Snapshots["gcp"].Objects {
+		if strings.HasSuffix(o.Name(), "-no-peer") && o.Name() != gcpProject+"/global/firewalls/spoke-data-no-peer" {
+			t.Errorf("a subnet that reached its peers is closed to them: %s", o.Name())
+		}
+	}
+}
+
+// A route table that turns the peerings' routes off: a GCP peering gives
+// its subnets the peer's routes all the same, so both directions are
+// denied.
+func TestGCPPeeringRoutesTurnedOff(t *testing.T) {
+	s := routingFixture()
+	for _, o := range s.Objects {
+		if o.Name() == "data-rt" {
+			obj(spec(o)["properties"])["disablePeeringRoute"] = "All"
+		}
+	}
+	r := runRouting(t, s, routingMaps()["gcp"])
+	if got := gcpEgress(t, r, "10.20.2.0/24", "spoke-data", "10.10.0.9"); got != "denied" {
+		t.Errorf("spoke-data to the hub with the peerings' routes off: %s", got)
+	}
+	if got := gcpEgress(t, r, "10.20.1.0/24", "spoke-app", "10.10.0.9"); got == "denied" {
+		t.Errorf("spoke-app, whose table left the peerings' routes on: %s", got)
+	}
+	in := object(t, r, "gcp", gcpFirewall, gcpProject+"/global/firewalls/spoke-data-no-peer")
+	if fmt.Sprint(in["sourceRanges"]) != "[10.10.0.0/16]" || fmt.Sprint(in["destinationRanges"]) != "[10.20.2.0/24]" {
+		t.Errorf("ingress deny: %v", in)
+	}
+	v := entry(t, r, typVNet+" net/spoke")
+	if l := lossAbout(v, "turned the peerings' routes off (disablePeeringRoute)"); l == nil || l.Widens || !strings.Contains(l.Why, "egress deny rule spoke-data-no-route") {
+		t.Errorf("not named: %+v", v.Losses)
+	}
+	if len(list(object(t, r, "gcp", gcpNetwork, gcpProject+"/global/networks/spoke")["peerings"])) != 1 {
+		t.Error("the peering itself is still written: its other subnets use it")
+	}
+}
+
+// A peering's name is the map's to change, and two of one network cannot
+// share one.
+func TestGCPPeeringNames(t *testing.T) {
+	m := routingMaps()["gcp"]
+	m.Names = map[string]string{"net/hub/to-spoke": "hub-spoke"}
+	r := runRouting(t, routingFixture(), m)
+	if got := obj(list(object(t, r, "gcp", gcpNetwork, gcpProject+"/global/networks/hub")["peerings"])[0])["name"]; got != "hub-spoke" {
+		t.Errorf("named by the map: %v", got)
+	}
+	m.Names = map[string]string{"net/hub/to-spoke": "Hub_Spoke"}
+	if _, err := Translate(routingFixture(), m, targets(t)); err == nil || !strings.Contains(err.Error(), "net/hub/to-spoke") {
+		t.Errorf("a name no peering takes: %v", err)
+	}
+	// The hub peers with two networks under names that come to the same.
+	s := routingFixture()
+	peer := func(remote string) map[string]any {
+		return pr(map[string]any{"remoteVirtualNetwork": azRef(typVNet, "net", remote), "allowVirtualNetworkAccess": true, "peeringState": "Connected", "peeringSyncLevel": "FullyInSync"})
+	}
+	s.Objects = append(s.Objects, az(typVNet+"/virtualNetworkPeerings", "net", "hub/To_Spoke", peer("lone")), az(typVNet+"/virtualNetworkPeerings", "net", "lone/to-hub", peer("hub")))
+	if _, err := Translate(s, routingMaps()["gcp"], targets(t)); err == nil || !strings.Contains(err.Error(), "both named to-spoke on network hub") {
+		t.Errorf("two peerings of one name: %v", err)
+	}
+	m = routingMaps()["gcp"]
+	m.Names = map[string]string{"net/hub/To_Spoke": "to-lone"}
+	r = runRouting(t, s, m)
+	if n := len(list(object(t, r, "gcp", gcpNetwork, gcpProject+"/global/networks/hub")["peerings"])); n != 2 {
+		t.Errorf("the hub has %d peerings, want 2", n)
+	}
+	if got := fmt.Sprint(list(object(t, r, "gcp", gcpFirewall, gcpProject+"/global/firewalls/web-allow-https-vnet")["sourceRanges"])); got != "[10.10.0.0/16 10.20.0.0/16]" {
+		t.Errorf("a peer's peer is no part of the network (no transit): %s", got)
 	}
 }
 
@@ -404,7 +495,7 @@ func TestVirtualNetworkTagHoldsPeers(t *testing.T) {
 		// the other.
 		r := runRouting(t, blocked, m)
 		for _, o := range r.Snapshots[name].Objects {
-			if o.Kind() == awsPeering || strings.Contains(canonJSON(o.Body), awsPeering) {
+			if o.Kind() == awsPeering || strings.Contains(canonJSON(o.Body), awsPeering) || obj(o.Body["spec"])["peerings"] != nil {
 				t.Errorf("%s: a peering is written with access off: %s", name, o.Key())
 			}
 		}
@@ -529,6 +620,11 @@ func TestRoutingNeedsItsChoices(t *testing.T) {
 	if e := entry(t, r, typVNet+"/virtualNetworkPeerings net/spoke/to-hub"); e.State == Refused || !strings.Contains(e.Reason, "no peering back") {
 		t.Errorf("one-sided peering: %s %s", e.State, e.Reason)
 	}
+	for _, o := range runRouting(t, one, routingMaps()["gcp"]).Snapshots["gcp"].Objects {
+		if obj(o.Body["spec"])["peerings"] != nil {
+			t.Errorf("gcp: a one-sided peering is written: %s", o.Key())
+		}
+	}
 	if got := awsHop(t, r, "10.20.0.0/16", "spoke-data", "10.10.0.9"); strings.Contains(got, awsPeering) || len(r.Snapshots["aws"].Objects) == 0 || strings.Contains(canonJSON(r.Snapshots["aws"].Objects), awsPeering) {
 		t.Errorf("a one-sided peering carries traffic: %s", got)
 	}
@@ -586,6 +682,29 @@ func TestRoutingRestores(t *testing.T) {
 		if !res.OK || res.Detail != "already present and identical" {
 			t.Errorf("gcp again: %s: %v %s", res.Key, res.OK, res.Detail)
 		}
+	}
+	// The peering is made on both sides, and a capture of the target reads
+	// each network as the translation wrote it, peerings included.
+	got, err := gcp.Capture(context.Background(), gf, tg.GCP, gcp.Policy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	peered := 0
+	for _, c := range snapshot.Compare(gs, got) {
+		t.Errorf("gcp: the restored target differs from the translation: %s %s %v", c.Kind, c.Key, c.Fields)
+	}
+	for _, o := range got.Objects {
+		for k, v := range obj(o.Body["status"]) {
+			if strings.HasPrefix(k, "peerings[") && strings.HasSuffix(k, "].state") {
+				peered++
+				if v != "ACTIVE" {
+					t.Errorf("gcp: %s %s is %v", o.Name(), k, v)
+				}
+			}
+		}
+	}
+	if peered != 2 {
+		t.Errorf("gcp: %d peerings in the target, want both sides of one", peered)
 	}
 }
 

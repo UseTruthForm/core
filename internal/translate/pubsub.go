@@ -68,10 +68,10 @@ func psSubObject(id string, spec map[string]any) snapshot.Object {
 func (d pubSub) namespace(ns *sbNS, o *out) {
 	e := Entry{Source: ns.src, State: Mapped, Reason: "Pub/Sub has no namespace: the project holds its topics and subscriptions"}
 	e.Losses = append(e.Losses, ns.losses...)
-	if ns.private != "" {
-		e.Losses = append(e.Losses, Loss{Field: "properties.publicNetworkAccess", Widens: true,
-			Why: ns.private + "; " + gcpPerimeter(o, "Service Bus namespace "+ns.group+"/"+ns.name, "Pub/Sub", "pubsub.googleapis.com", o.privatePathOf(sbNamespace, ns.group, ns.name))})
-	}
+	// Pub/Sub has no network setting of its own: what closes it is the
+	// project's service perimeter, decided once everything is written.
+	o.gcpClosedBy(gcpService{src: ns.src, field: "properties.publicNetworkAccess", what: "Service Bus namespace " + ns.group + "/" + ns.name,
+		product: "Pub/Sub", api: "pubsub.googleapis.com", private: ns.private, ranges: ns.ranges, path: o.privatePathOf(sbNamespace, ns.group, ns.name), at: len(e.Losses)})
 	if ns.cmk {
 		e.Losses = append(e.Losses, Loss{Field: "properties.encryption", Widens: true,
 			Why: "messages are encrypted with the customer's own key; the topics written here use Google's encryption until a Cloud KMS key is named (not translated yet)"})

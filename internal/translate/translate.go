@@ -146,6 +146,9 @@ type out struct {
 	// private is the private path private access wrote for each Azure
 	// service that had a private endpoint (lockdown.go).
 	private map[string]*privatePath
+	// gcpServices are the sources written to Google services that only a
+	// service perimeter closes (perimeter.go).
+	gcpServices []gcpService
 }
 
 // written is the spec of an object already written for a platform, or nil.
@@ -275,6 +278,9 @@ func Translate(src snapshot.Snapshot, m Map, tg Targets) (Result, error) {
 		if len(claimed[i]) > 0 {
 			f.translate(claimed[i], o)
 		}
+	}
+	if m.To == "gcp" {
+		gcpPerimeters(o)
 	}
 	if o.err != nil {
 		return Result{}, o.err

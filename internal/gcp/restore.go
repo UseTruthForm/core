@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"regexp"
 	"strings"
@@ -57,6 +58,25 @@ func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, 
 		resolved.set(refToken(r.asset.Type, r.logical), detok(r.rel, project, number))
 	}
 
+	// What is outside the project (a service perimeter, which is its
+	// access policy's) is in no project's inventory: it is looked for by
+	// its own name, and one that cannot be read is not created over.
+	unread := map[string]string{}
+	for _, o := range s.Objects {
+		k := o.Kind() + "|" + o.Name()
+		if existing[k] != nil || !outsideProject(o) {
+			continue
+		}
+		switch r, err := readNamed(ctx, api, docs, o, project, number); {
+		case errors.Is(err, ErrNotFound):
+		case err != nil:
+			unread[k] = "cannot tell whether it exists: " + err.Error()
+		default:
+			existing[k] = r
+			resolved.set(refToken(o.Kind(), o.Name()), detok(r.rel, project, number))
+		}
+	}
+
 	order, cyclic, deps := restoreGraph(s.Objects)
 	for _, o := range cyclic {
 		results = append(results, snapshot.Result{Key: o.Key(), Detail: "its references form a cycle; no creation order exists"})
@@ -66,6 +86,10 @@ func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, 
 	done := make([]snapshot.Result, len(order))
 	applies := make([]*pendingApply, len(order))
 	schedule.Run(len(order), deps, workers, func(i int) {
+		if why, bad := unread[order[i].Kind()+"|"+order[i].Name()]; bad {
+			done[i] = snapshot.Result{Key: order[i].Key(), Detail: why}
+			return
+		}
 		ok, detail, apply := restoreOne(ctx, api, docs, order[i], project, number, existing, resolved, opt)
 		done[i] = snapshot.Result{Key: order[i].Key(), OK: ok, Detail: detail}
 		applies[i] = apply
@@ -97,6 +121,23 @@ func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, 
 type pendingApply struct {
 	name    string
 	current map[string]any
+}
+
+// outsideProject reports an object that belongs to something other than
+// the project: its parent is named, and is not under the project.
+func outsideProject(o snapshot.Object) bool {
+	p := parentOfObject(o)
+	return p != "" && !strings.HasPrefix(p, "projects/") && !strings.HasPrefix(o.Name(), "projects/") && !strings.Contains(o.Name(), "/~")
+}
+
+// readNamed reads the resource a snapshot object names, as a capture would
+// have, from what the object says of its type.
+func readNamed(ctx context.Context, api API, docs *Docs, o snapshot.Object, project, number string) (*res, error) {
+	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+	str := func(k string) string { s, _ := ann[k].(string); return s }
+	apiName, ver, _ := strings.Cut(str(annDiscovery), "/")
+	return read(ctx, api, docs, Asset{Name: "//" + apiName + ".googleapis.com/" + detok(o.Name(), project, number), Type: o.Kind(),
+		DiscoveryURI: docURL(apiName, ver), Version: ver, DiscoveryName: str(annSchema)}, project, number)
 }
 
 // names maps reference tokens to the names the target gave, shared by the

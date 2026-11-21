@@ -20,10 +20,28 @@ type World struct {
 	docs     *Docs
 	projects map[string]string // id -> number
 	seq      int
+	// outside are the resources that belong to no project (a service
+	// perimeter, in an access policy), by name: every project's caller
+	// reaches them, and no project's inventory lists them.
+	outside map[string]fakeRes
+	// parents are the things such resources are created under, which the
+	// fake does not create (an organization's access policy).
+	parents map[string]bool
+}
+
+// Parent adds something resources are created under outside any project:
+// an access policy (accessPolicies/1234), which is an organization's to
+// make.
+func (w *World) Parent(name string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.parents[name] = true
 }
 
 // NewWorld creates an empty world that serves the documents' types.
-func NewWorld(docs *Docs) *World { return &World{docs: docs, projects: map[string]string{}} }
+func NewWorld(docs *Docs) *World {
+	return &World{docs: docs, projects: map[string]string{}, outside: map[string]fakeRes{}, parents: map[string]bool{}}
+}
 
 // Fake is one project. It knows no Google type: it reads, creates and
 // validates through each type's Discovery document, the same way the real
@@ -46,6 +64,12 @@ type Fake struct {
 	// WriteDelay makes each write take this long, outside the lock, so
 	// writes running at once overlap as Google's long-running ones do.
 	WriteDelay time.Duration
+	// Caller is the principal the calls are made as
+	// (serviceAccount:restore@ops.iam.gserviceaccount.com), and Inside
+	// says they come from one of the project's own networks: what a
+	// service perimeter around the project decides by.
+	Caller string
+	Inside bool
 }
 
 type fakeRes struct {
@@ -92,8 +116,16 @@ func (f *Fake) Call(_ context.Context, method, url string, body any) (map[string
 	}
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
+	if err := f.perimeterRefuses(method, url); err != nil {
+		return nil, err
+	}
 	switch method {
 	case "GET":
+		for rel, r := range f.w.outside {
+			if strings.HasSuffix(url, "/"+rel) {
+				return deepCopy(r.data), nil
+			}
+		}
 		for rel, r := range f.res {
 			alias := ""
 			if f.InventoryName != nil {
@@ -285,6 +317,25 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	if _, dup := f.res[rel]; dup {
 		return nil, fmt.Errorf("ALREADY_EXISTS: %s", rel)
 	}
+	outside := parent != "" && !strings.HasPrefix(parent, "projects/")
+	if outside {
+		// Under something that is no project's: it must be there, the
+		// resource is named in full in its body, and is nobody's twice.
+		if !f.w.parents[parent] {
+			return nil, fmt.Errorf("NOT_FOUND: %s was not found, or the caller may not see it", parent)
+		}
+		if n, _ := res["name"].(string); n != rel {
+			return nil, fmt.Errorf("INVALID_ARGUMENT: the name in the body, %q, is not under %s", n, parent)
+		}
+		if _, dup := f.w.outside[rel]; dup {
+			return nil, fmt.Errorf("ALREADY_EXISTS: %s", rel)
+		}
+		if rule := fakeResourceRules[schema]; rule != nil {
+			if err := rule(f, rel, res); err != nil {
+				return nil, err
+			}
+		}
+	}
 	stored := deepCopy(res)
 	stored["name"] = rel
 	// Compute's resources, created through a template that names each
@@ -315,8 +366,13 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	if f.AfterCreate != nil {
 		f.AfterCreate(schema, stored)
 	}
-	f.res[rel] = fakeRes{asset: Asset{Name: "//" + d.Name + ".googleapis.com/" + rel, Type: typ,
+	made := fakeRes{asset: Asset{Name: "//" + d.Name + ".googleapis.com/" + rel, Type: typ,
 		DiscoveryURI: docURL(d.Name, d.Version), Version: d.Version, DiscoveryName: schema}, data: stored}
+	if outside {
+		f.w.outside[rel] = made
+	} else {
+		f.res[rel] = made
+	}
 	return deepCopy(stored), nil
 }
 
@@ -332,10 +388,16 @@ func (f *Fake) update(method, u string, body map[string]any) (map[string]any, er
 			rel = r
 		}
 	}
+	held := f.res
+	for r := range f.w.outside {
+		if strings.HasSuffix(path, "/"+r) {
+			rel, held = r, f.w.outside
+		}
+	}
 	if rel == "" {
 		return nil, fmt.Errorf("%s: %w", path, ErrNotFound)
 	}
-	cur := f.res[rel]
+	cur := held[rel]
 	d, err := f.w.docs.Doc(cur.asset.DiscoveryURI, cur.asset.Version)
 	if err != nil {
 		return nil, err
@@ -430,9 +492,14 @@ func (f *Fake) update(method, u string, body map[string]any) (map[string]any, er
 			}
 		}
 	}
+	if rule := fakeResourceRules[schema]; rule != nil {
+		if err := rule(f, rel, next); err != nil {
+			return nil, err
+		}
+	}
 	f.w.seq++
 	next["etag"] = fmt.Sprintf("e%d", f.w.seq)
-	f.res[rel] = fakeRes{asset: cur.asset, data: next}
+	held[rel] = fakeRes{asset: cur.asset, data: next}
 	f.Updates++
 	return deepCopy(next), nil
 }

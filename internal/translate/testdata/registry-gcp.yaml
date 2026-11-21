@@ -54,9 +54,8 @@ report:
       why: 'its firewall denies by default, allowing 1 address range(s); Artifact
         Registry answers on Google''s public endpoint to whoever IAM allows: it has
         no network setting of its own, and the VPC Service Controls perimeter that
-        would close it (artifactregistry.googleapis.com for the whole project; no
-        network of this translation reached it privately) is the organization''s to
-        create, and is not written'
+        closes it (artifactregistry.googleapis.com, for the whole project) is written
+        only into an access policy the map names (privateAccess.accessPolicy)'
       widens: true
     - field: properties.encryption
       why: 'its images were encrypted with the customer''s own key; the repository
@@ -125,12 +124,13 @@ report:
     such clients sign in, or the images are published on purpose'
   - 'Registry rg/shopacr had its admin user on: whoever pushed or pulled with that
     user name and password signs in with IAM on the target'
-  - 'To close Artifact Registry to the internet as Registry rg/shopacr was: in the
-    organization''s access policy, create a VPC Service Controls perimeter (accessPolicies/<policy>/servicePerimeters)
-    whose resources are the target project (projects/<project number>) and whose restrictedServices
-    hold artifactregistry.googleapis.com. It closes that service for the whole project,
-    management calls included: add an ingress rule for whoever restores and captures
-    from outside, and try it first as a dry run (useExplicitDryRunSpec)'
+  - 'To close Artifact Registry to the internet as Registry rg/shopacr was, name an
+    existing access policy and a perimeter in the map (privateAccess.accessPolicy:
+    accessPolicies/<number>, privateAccess.perimeter: <name>) and how restores and
+    captures pass it (privateAccess.restoreIdentity: serviceAccount:<email>, or privateAccess.restoreFromInside:
+    true): a VPC Service Controls perimeter is then written that restricts artifactregistry.googleapis.com
+    for the whole target project. The access policy is the organization''s to create
+    (gcloud access-context-manager policies create, scoped to the project or not)'
   to: gcp
 snapshots:
   gcp:

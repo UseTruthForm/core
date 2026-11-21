@@ -15,9 +15,8 @@ report:
       why: 'its public network access is disabled: it answered private endpoints only;
         Artifact Registry answers on Google''s public endpoint to whoever IAM allows:
         it has no network setting of its own, and the VPC Service Controls perimeter
-        that would close it (artifactregistry.googleapis.com for the whole project;
-        its VPC network(s) core are the project''s own, and so inside it) is the organization''s
-        to create, and is not written'
+        that closes it (artifactregistry.googleapis.com, for the whole project) is
+        written only into an access policy the map names (privateAccess.accessPolicy)'
       widens: true
     source: Microsoft.ContainerRegistry/registries shop/shopacr
     state: mapped with losses
@@ -32,9 +31,8 @@ report:
       why: 'its public network access is disabled: it answered private endpoints only;
         Secret Manager answers on Google''s public endpoint to whoever IAM allows:
         it has no network setting of its own, and the VPC Service Controls perimeter
-        that would close it (secretmanager.googleapis.com for the whole project; its
-        VPC network(s) core are the project''s own, and so inside it) is the organization''s
-        to create, and is not written'
+        that closes it (secretmanager.googleapis.com, for the whole project) is written
+        only into an access policy the map names (privateAccess.accessPolicy)'
       widens: true
     - field: properties.enableSoftDelete
       why: 'a deleted secret was kept 90 days and could be recovered; Secret Manager
@@ -113,9 +111,8 @@ report:
       why: 'public network access is disabled: it answers only on private endpoints;
         Pub/Sub answers on Google''s public endpoint to whoever IAM allows: it has
         no network setting of its own, and the VPC Service Controls perimeter that
-        would close it (pubsub.googleapis.com for the whole project; its VPC network(s)
-        core are the project''s own, and so inside it) is the organization''s to create,
-        and is not written'
+        closes it (pubsub.googleapis.com, for the whole project) is written only into
+        an access policy the map names (privateAccess.accessPolicy)'
       widens: true
     - field: properties.minimumTlsVersion
       why: 'TLS 1.2 at least on the source; Pub/Sub''s floor is Google''s and cannot
@@ -216,28 +213,27 @@ report:
   - Pub/Sub's service agent (service-<project-number>@gcp-sa-pubsub.iam.gserviceaccount.com)
     needs roles/pubsub.publisher on each dead-letter topic and roles/pubsub.subscriber
     on each subscription that dead-letters; no grant is written here
-  - 'To close Artifact Registry to the internet as Registry shop/shopacr was: in the
-    organization''s access policy, create a VPC Service Controls perimeter (accessPolicies/<policy>/servicePerimeters)
-    whose resources are the target project (projects/<project number>) and whose restrictedServices
-    hold artifactregistry.googleapis.com; requests from the project''s own networks
-    (//compute.googleapis.com/projects/{{truthform|project}}/global/networks/core)
-    are inside it. It closes that service for the whole project, management calls
-    included: add an ingress rule for whoever restores and captures from outside,
-    and try it first as a dry run (useExplicitDryRunSpec)'
-  - 'To close Pub/Sub to the internet as Service Bus namespace shop/shopbus was: in
-    the organization''s access policy, create a VPC Service Controls perimeter (accessPolicies/<policy>/servicePerimeters)
-    whose resources are the target project (projects/<project number>) and whose restrictedServices
-    hold pubsub.googleapis.com; requests from the project''s own networks (//compute.googleapis.com/projects/{{truthform|project}}/global/networks/core)
-    are inside it. It closes that service for the whole project, management calls
-    included: add an ingress rule for whoever restores and captures from outside,
-    and try it first as a dry run (useExplicitDryRunSpec)'
-  - 'To close Secret Manager to the internet as Key Vault shop/shopkv was: in the
-    organization''s access policy, create a VPC Service Controls perimeter (accessPolicies/<policy>/servicePerimeters)
-    whose resources are the target project (projects/<project number>) and whose restrictedServices
-    hold secretmanager.googleapis.com; requests from the project''s own networks (//compute.googleapis.com/projects/{{truthform|project}}/global/networks/core)
-    are inside it. It closes that service for the whole project, management calls
-    included: add an ingress rule for whoever restores and captures from outside,
-    and try it first as a dry run (useExplicitDryRunSpec)'
+  - 'To close Artifact Registry to the internet as Registry shop/shopacr was, name
+    an existing access policy and a perimeter in the map (privateAccess.accessPolicy:
+    accessPolicies/<number>, privateAccess.perimeter: <name>) and how restores and
+    captures pass it (privateAccess.restoreIdentity: serviceAccount:<email>, or privateAccess.restoreFromInside:
+    true): a VPC Service Controls perimeter is then written that restricts artifactregistry.googleapis.com
+    for the whole target project. The access policy is the organization''s to create
+    (gcloud access-context-manager policies create, scoped to the project or not)'
+  - 'To close Pub/Sub to the internet as Service Bus namespace shop/shopbus was, name
+    an existing access policy and a perimeter in the map (privateAccess.accessPolicy:
+    accessPolicies/<number>, privateAccess.perimeter: <name>) and how restores and
+    captures pass it (privateAccess.restoreIdentity: serviceAccount:<email>, or privateAccess.restoreFromInside:
+    true): a VPC Service Controls perimeter is then written that restricts pubsub.googleapis.com
+    for the whole target project. The access policy is the organization''s to create
+    (gcloud access-context-manager policies create, scoped to the project or not)'
+  - 'To close Secret Manager to the internet as Key Vault shop/shopkv was, name an
+    existing access policy and a perimeter in the map (privateAccess.accessPolicy:
+    accessPolicies/<number>, privateAccess.perimeter: <name>) and how restores and
+    captures pass it (privateAccess.restoreIdentity: serviceAccount:<email>, or privateAccess.restoreFromInside:
+    true): a VPC Service Controls perimeter is then written that restricts secretmanager.googleapis.com
+    for the whole target project. The access policy is the organization''s to create
+    (gcloud access-context-manager policies create, scoped to the project or not)'
   - 'Who may read and write each bucket is IAM, which is not translated (#32): grant
     the app''s role or service account access to its bucket (Azure role assignments
     on the account are not carried over)'

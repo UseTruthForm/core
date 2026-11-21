@@ -400,10 +400,8 @@ func sortedKeys[V any](m map[string]V) []string {
 // <vault>_<secret>, with no version, replicated as the map says.
 func gcpVault(v *kvVault, o *out) {
 	e := vaultEntry(v, "Secret Manager")
-	if v.private != "" {
-		e.Losses = append(e.Losses, Loss{Field: "properties.networkAcls", Widens: true,
-			Why: v.private + "; " + gcpPerimeter(o, "Key Vault "+v.group+"/"+v.name, "Secret Manager", "secretmanager.googleapis.com", o.privatePathOf(azVault, v.group, v.name))})
-	}
+	o.gcpClosedBy(gcpService{src: v.src, field: "properties.networkAcls", what: "Key Vault " + v.group + "/" + v.name,
+		product: "Secret Manager", api: "secretmanager.googleapis.com", private: v.private, ranges: v.ranges, path: o.privatePathOf(azVault, v.group, v.name), at: len(e.Losses)})
 	if v.softDelete {
 		e.Losses = append(e.Losses, Loss{Field: "properties.enableSoftDelete", Widens: true,
 			Why: fmt.Sprintf("a deleted secret was kept %d days and could be recovered; Secret Manager deletes a secret at once, with every version, until an IAM deny policy denies secretmanager.secrets.delete (identity, not translated: #32)", v.retention)})

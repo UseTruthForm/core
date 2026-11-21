@@ -399,6 +399,11 @@ truthform restore --platform aws --region us-east-2 --from snap/aws --values sec
   differs is changed with `networks.updatePeering` and a missing one added.
   An entry only the target has is reported and left: a restore removes
   nothing.
+- **Outside the project (GCP):** a VPC Service Controls perimeter belongs
+  to an access policy, and no project's inventory lists it. A restore looks
+  for it by its own name, creates it under the policy when it is not there,
+  and with `--update` patches one that differs. One it cannot read is not
+  created over. A capture of the project does not hold it.
 - **Secrets** come from a YAML file given with `--values`, keyed by
   resource. A restore says which secrets it was not given. The same file can
   set any other property; a list it sets is replaced whole. Give `diff` the
@@ -1488,6 +1493,10 @@ network:                    # aws: an Azure subnet spans the region's zones, an 
       subnet: 10.20.255.0/28    # a free /28 or wider of the network's range
       zone: eu-west-1a          # network.zone when left out
   defaultOutbound: nat      # Azure's default outbound access becomes a NAT (billed); without it, no egress
+privateAccess:              # gcp: the service perimeter for Pub/Sub, Secret Manager, Artifact Registry (see Private access)
+  accessPolicy: accessPolicies/123456789
+  perimeter: shop_prod
+  restoreIdentity: serviceAccount:truthform@ops.iam.gserviceaccount.com   # or restoreFromInside: true
 sessions: fifo              # how a session queue is carried: fifo, ordering or single-active-consumer
 rabbitmq:                   # for messaging: rabbitmq
   namespace: messaging
@@ -1533,7 +1542,7 @@ databases:                  # per server, keyed group/server: what Azure cannot 
 | Subscription | SQS queue subscribed with raw delivery, a queue policy for that topic only | subscription | quorum `Queue`, a `Binding` per rule |
 | Correlation rule | filter policy on message attributes (`$or` for several) | filter on attributes (`OR` for several) | headers binding |
 | SQL rule, rule action | refused | refused | refused |
-| Rule set default deny, public access disabled | a policy on every queue and topic denies sending, receiving and publishing to requests that come neither through the namespace's SQS and SNS endpoints nor from the rule set's public ranges (see Private access) | less protected: no network setting per topic; the report names the VPC Service Controls perimeter to create | the brokers' Service answers inside the cluster only |
+| Rule set default deny, public access disabled | a policy on every queue and topic denies sending, receiving and publishing to requests that come neither through the namespace's SQS and SNS endpoints nor from the rule set's public ranges (see Private access) | no network setting per topic: the project's service perimeter (`privateAccess` in the map; see Private access), or less protected without one | the brokers' Service answers inside the cluster only |
 | Session queue | FIFO (`sessions: fifo`) | ordered delivery (`sessions: ordering`) | single active consumer |
 | Shared access keys | refused: identity is a change to the app | refused | refused |
 
@@ -1647,7 +1656,7 @@ instances in its subnets; the report lists them.
 |---|---|---|
 | Vault | (none: the account and region) | (none: the project) |
 | Secret | Secrets Manager secret `<vault>/<secret>`, no value; content type in its description, tags as tags | Secret Manager secret `<vault>_<secret>`, no version, replicated as `secrets.replication` says; content type as an annotation, tags that fit as labels |
-| Firewall default deny, public access disabled | a resource policy on each secret denies writing its value, and reading it, to requests that come neither through the vault's Secrets Manager endpoint nor from the firewall's public ranges. A value stays readable through AWS's own services (see Private access): less protected unless Azure's trusted services passed the firewall | less protected: no network setting per secret; the report names the VPC Service Controls perimeter to create |
+| Firewall default deny, public access disabled | a resource policy on each secret denies writing its value, and reading it, to requests that come neither through the vault's Secrets Manager endpoint nor from the firewall's public ranges. A value stays readable through AWS's own services (see Private access): less protected unless Azure's trusted services passed the firewall | no network setting per secret: the project's service perimeter (`privateAccess`), or less protected without one |
 | Soft delete | the recovery window each delete chooses | less protected: a delete is immediate |
 | Purge protection | less protected: a delete may skip the window | less protected |
 | Disabled secret, `exp`, `nbf` | written with no value; the dates are named (Key Vault only records them) | the same; `expireTime` would delete the secret, so it is not written |
@@ -1665,7 +1674,7 @@ the restore. A disabled secret is restored without one.
 |---|---|---|
 | Registry | a repository creation template for prefix `<registry>`: ECR makes each repository on its first push, AES-256, mutable tags | an Artifact Registry repository of Docker images in the map's region |
 | Images | not copied: copy them; image references are rewritten in a later step | the same |
-| Firewall default deny, public access disabled | the template's repository policy denies pulls and pushes to requests that come neither through the registry's ECR endpoints nor from the firewall's public ranges | less protected: no network setting per repository; the report names the VPC Service Controls perimeter to create |
+| Firewall default deny, public access disabled | the template's repository policy denies pulls and pushes to requests that come neither through the registry's ECR endpoints nor from the firewall's public ranges | no network setting per repository: the project's service perimeter (`privateAccess`), or less protected without one |
 | Customer-managed key, quarantine | less protected | less protected |
 | Anonymous pull | not written: the repositories are private | the same |
 | Admin user | not written: named, with who signed in with it | the same |
@@ -1717,10 +1726,10 @@ disabled), or only its firewall's ranges, answers only there on the target:
 
 | Private only | aws | gcp |
 |---|---|---|
-| Service Bus (sqs-sns, pubsub) | `AWS::SQS::QueueInlinePolicy` on every queue and dead-letter queue (a subscription's holds SNS's delivery too), `AWS::SNS::TopicInlinePolicy` on every topic | less protected: the report names the perimeter |
+| Service Bus (sqs-sns, pubsub) | `AWS::SQS::QueueInlinePolicy` on every queue and dead-letter queue (a subscription's holds SNS's delivery too), `AWS::SNS::TopicInlinePolicy` on every topic | the project's service perimeter, where the map names an access policy (`privateAccess`); less protected without |
 | Storage | statements in the bucket policy | the bucket's IP filter (`vpcNetworkSources`: each network, with its own address ranges) |
-| Key Vault | `AWS::SecretsManager::ResourcePolicy` on every secret | less protected: the report names the perimeter |
-| Registry | `RepositoryPolicy` in the repository creation template | less protected: the report names the perimeter |
+| Key Vault | `AWS::SecretsManager::ResourcePolicy` on every secret | the project's service perimeter, where the map names an access policy (`privateAccess`); less protected without |
+| Registry | `RepositoryPolicy` in the repository creation template | the project's service perimeter, where the map names an access policy (`privateAccess`); less protected without |
 | A private service with no private endpoint in the snapshot and no public range | less protected: there is no private path to lock it to | the same (a bucket admits no network) |
 | PostgreSQL, Azure SQL, AKS | already private: RDS not publicly accessible, the EKS endpoint | Cloud SQL's private IP, GKE's private endpoint |
 
@@ -1754,14 +1763,52 @@ A repository gets the template's policy when its first push makes it; one
 made any other way needs the same policy by hand.
 
 On GCP, Pub/Sub, Secret Manager and Artifact Registry have no setting for
-where a request comes from. A VPC Service Controls perimeter closes them, and
-is not written: it belongs to the organization's access policy, it closes a
-service for the whole project (more than one namespace or vault), a project
-can be in one perimeter only, and it refuses management calls from outside
-too, the restore's own among them, until an ingress rule admits who runs
-them. The report keeps these as less protected and names the perimeter to
-create. A bucket's IP filter also covers the bucket's own settings: whoever
-restores and captures from outside the admitted networks needs
+where a request comes from. A VPC Service Controls perimeter closes them. It
+belongs to an access policy, which is the organization's to create (scoped
+to the project or not), so the map names an existing one:
+
+```yaml
+privateAccess:              # gcp
+  accessPolicy: accessPolicies/123456789   # gcloud access-context-manager policies list
+  perimeter: shop_prod      # its ID in the policy: your choice, one per target project
+  restoreIdentity: serviceAccount:truthform@ops.iam.gserviceaccount.com   # or user:<email>
+  # restoreFromInside: true # instead: restores and captures run from one of the project's networks
+```
+
+One perimeter is then written for the target project. It restricts exactly
+the services that had a private source, and a restore creates it in the
+policy (`accesscontextmanager.servicePerimeters.create`, `get` and `update`
+on the policy). What it does that the Azure source did not is reported:
+
+- It restricts a service for the whole project. A namespace, vault or
+  registry that answered the internet is closed with the private one of its
+  service, and says so. A service with no private source is left out.
+- It refuses management calls from outside too, the restore's own. So the
+  map must say how restores and captures pass, or it is refused:
+  `restoreIdentity` writes an ingress rule for that principal from
+  anywhere, `restoreFromInside` writes none. The rule names Pub/Sub's
+  management methods alone. Secret Manager takes no method restriction and
+  an Artifact Registry create must be polled, so there the principal is
+  admitted for the whole API, which stays reported as less protected;
+  `restoreFromInside` closes that.
+- Every network of the project is inside it. A translated network with no
+  private endpoint to the service, and no peering with one that had,
+  reaches it: reported as less protected.
+- A public range the source's firewall allowed is not admitted (that takes
+  an access level): narrower, and named.
+
+A project can be in one perimeter only; where the target already is in
+one, the restore is refused, and the services and rule go into that one by
+hand. A perimeter takes up to 30 minutes to take effect. A capture of the
+project does not hold it (it is the policy's), so a `diff` against the
+translation lists it as missing; a restore finds it by its name. Without
+`privateAccess` nothing is written, and these services stay reported as
+less protected.
+
+Cloud Storage is not put in the perimeter: a bucket's IP filter names the
+networks per bucket, where the perimeter would close every bucket of the
+project. The filter also covers the bucket's own settings: whoever restores
+and captures from outside the admitted networks needs
 `storage.buckets.exemptFromIpFilter`.
 
 Every source object ends in one state, and `<out>/translation.yaml` lists
@@ -1778,8 +1825,9 @@ each with its reason and target objects:
 
 A loss that makes the target less protected than the source is marked
 `widens`. Examples: a namespace that answered only private endpoints
-becomes Pub/Sub topics on Google's public endpoint, guarded by IAM alone; a
-customer-managed key becomes the platform's.
+becomes Pub/Sub topics on Google's public endpoint, guarded by IAM alone,
+where the map names no access policy for a perimeter; a customer-managed
+key becomes the platform's.
 
 A setting no rule reads is marked `unread`. Each reader is checked in
 the tests against Azure's published definition of its type, so a setting

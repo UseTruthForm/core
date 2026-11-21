@@ -24,6 +24,11 @@ var fixtureKinds = map[string][]string{ // api/version -> collections (dotted)
 	// {+name}, and answers a create with its own kind of operation. Fake
 	// only: Compute needs billing, which the sandbox project does not have.
 	"compute/v1": {"networks", "subnetworks", "firewalls"},
+	// A service perimeter belongs to an access policy, not to a project:
+	// created under accessPolicies/<number>, answered with an operation,
+	// and listed in no project's inventory. Fake only: a perimeter needs
+	// an organization.
+	"accesscontextmanager/v1": {"accessPolicies.servicePerimeters"},
 }
 
 const fixtureDir = "../../testdata/gcp/discovery"

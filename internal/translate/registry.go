@@ -321,10 +321,8 @@ func arRegistry(r *acr, o *out) {
 		return
 	}
 	e := Entry{Source: r.src, State: Mapped, Losses: append([]Loss(nil), r.losses...)}
-	if r.private != "" {
-		e.Losses = append(e.Losses, Loss{Field: "properties.networkRuleSet", Widens: true,
-			Why: r.private + "; " + gcpPerimeter(o, "Registry "+key, "Artifact Registry", "artifactregistry.googleapis.com", o.privatePathOf(azRegistry, r.group, r.name))})
-	}
+	o.gcpClosedBy(gcpService{src: r.src, field: "properties.networkRuleSet", what: "Registry " + key,
+		product: "Artifact Registry", api: "artifactregistry.googleapis.com", private: r.private, ranges: r.ranges, path: o.privatePathOf(azRegistry, r.group, r.name), at: len(e.Losses)})
 	if r.cmk {
 		e.Losses = append(e.Losses, Loss{Field: "properties.encryption", Widens: true,
 			Why: "its images were encrypted with the customer's own key; the repository uses Google's encryption until a Cloud KMS key is named (kmsKeyName), which Artifact Registry's service agent must be granted (identity, not translated: #32)"})

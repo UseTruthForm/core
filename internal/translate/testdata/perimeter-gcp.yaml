@@ -1,0 +1,557 @@
+report:
+  destinations:
+  - 'dns: cloud-dns'
+  - 'messaging: pubsub'
+  - 'network: vpc'
+  - 'registry: artifact-registry'
+  - 'secrets: secret-manager'
+  - 'storage: buckets'
+  entries:
+  - losses:
+    - field: sku.name
+      why: 'Premium: a service tier (included storage, throughput, which features)
+        has no equivalent: the target bills by use'
+    - field: properties.networkRuleSet
+      why: 'its public network access is disabled: it answered private endpoints only;
+        on GCP service perimeter shop_private restricts Artifact Registry (artifactregistry.googleapis.com)
+        for the whole project: requests from the project''s own networks pass, and
+        serviceAccount:restore@shop-ops.iam.gserviceaccount.com from anywhere, for
+        restores and captures (privateAccess.restoreIdentity). Every other request
+        is refused, management calls too, which Azure''s management plane answered
+        from anywhere'
+    - field: properties.networkRuleSet
+      why: 'serviceAccount:restore@shop-ops.iam.gserviceaccount.com is admitted from
+        anywhere for all of Artifact Registry''s API, reading and writing its data
+        included, wherever IAM allows it: a repository''s create answers with an operation,
+        and polling it is not a method an ingress rule can name, so the restore''s
+        own calls cannot be admitted alone. Running restores and captures from inside
+        the perimeter closes that (privateAccess.restoreFromInside)'
+      widens: true
+    source: Microsoft.ContainerRegistry/registries shop/shopacr
+    state: mapped with losses
+    targets:
+    - accesscontextmanager.googleapis.com/ServicePerimeter accessPolicies/4321/servicePerimeters/shop_private
+    - artifactregistry.googleapis.com/Repository projects/{{truthform|project}}/locations/europe-west1/repositories/shopacr
+  - losses:
+    - field: properties.enableRbacAuthorization
+      why: 'who may read its secrets was set by Azure RBAC role assignments: identity
+        is not translated (#32), so on the target only those its IAM lets read them
+        can'
+    - field: properties.networkAcls
+      why: 'its public network access is disabled: it answered private endpoints only;
+        on GCP service perimeter shop_private restricts Secret Manager (secretmanager.googleapis.com)
+        for the whole project: requests from the project''s own networks pass, and
+        serviceAccount:restore@shop-ops.iam.gserviceaccount.com from anywhere, for
+        restores and captures (privateAccess.restoreIdentity). Every other request
+        is refused, management calls too, which Azure''s management plane answered
+        from anywhere'
+    - field: properties.networkAcls
+      why: 'serviceAccount:restore@shop-ops.iam.gserviceaccount.com is admitted from
+        anywhere for all of Secret Manager''s API, reading and writing its data included,
+        wherever IAM allows it: Secret Manager takes no method restriction in an ingress
+        rule, so the restore''s own calls cannot be admitted alone. Running restores
+        and captures from inside the perimeter closes that (privateAccess.restoreFromInside)'
+      widens: true
+    - field: properties.enableSoftDelete
+      why: 'a deleted secret was kept 90 days and could be recovered; Secret Manager
+        deletes a secret at once, with every version, until an IAM deny policy denies
+        secretmanager.secrets.delete (identity, not translated: #32)'
+      widens: true
+    reason: 'Secret Manager has no vault: its secrets are written as secrets of their
+      own, named after the vault'
+    source: Microsoft.KeyVault/vaults shop/shopkv
+    state: mapped with losses
+    targets:
+    - accesscontextmanager.googleapis.com/ServicePerimeter accessPolicies/4321/servicePerimeters/shop_private
+  - source: Microsoft.KeyVault/vaults/secrets shop/shopkv/db-password
+    state: mapped
+    targets:
+    - secretmanager.googleapis.com/Secret projects/{{truthform|project}}/secrets/shopkv_db-password
+  - source: Microsoft.Network/privateDnsZones net/internal.shop
+    state: mapped
+    targets:
+    - dns.googleapis.com/ManagedZone projects/{{truthform|project}}/managedZones/internal-shop
+  - reason: 'Azure''s zone for its services'' private endpoints, not copied: it names
+      Azure''s services at Azure''s addresses. On GCP the networks'' subnetworks reach
+      Google''s APIs by their own names through Private Google Access, and Cloud SQL
+      answers on its private IP.'
+    source: Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net
+    state: mapped
+  - source: Microsoft.Network/privateDnsZones/A net/internal.shop/db
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/internal-shop/rrsets/db.internal.shop./A
+  - reason: 'read with its zone Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net,
+      Azure''s zone for its services'' private endpoints: not copied'
+    source: Microsoft.Network/privateDnsZones/A net/privatelink.servicebus.windows.net/shopbus
+    state: mapped
+  - reason: read with its zone Microsoft.Network/privateDnsZones net/internal.shop
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks net/internal.shop/core
+    state: mapped
+  - reason: 'read with its zone Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net,
+      Azure''s zone for its services'' private endpoints: not copied'
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks net/privatelink.servicebus.windows.net/core
+    state: mapped
+  - reason: 'Private Google Access on network core''s subnetworks: its machines reach
+      Google''s APIs by their own names without leaving Google''s network'
+    source: Microsoft.Network/privateEndpoints net/pe-acr
+    state: mapped
+  - reason: 'Private Google Access on network core''s subnetworks: its machines reach
+      Google''s APIs by their own names without leaving Google''s network'
+    source: Microsoft.Network/privateEndpoints net/pe-blob
+    state: mapped
+  - reason: 'Private Google Access on network core''s subnetworks: its machines reach
+      Google''s APIs by their own names without leaving Google''s network'
+    source: Microsoft.Network/privateEndpoints net/pe-bus
+    state: mapped
+  - reason: a private endpoint to shop/shopfiles (file), which is not translated
+    source: Microsoft.Network/privateEndpoints net/pe-file
+    state: refused
+  - reason: 'Private Google Access on network core''s subnetworks: its machines reach
+      Google''s APIs by their own names without leaving Google''s network'
+    source: Microsoft.Network/privateEndpoints net/pe-kv
+    state: mapped
+  - reason: a private endpoint to shop/shopweb (sites), which is not translated
+    source: Microsoft.Network/privateEndpoints net/pe-web
+    state: refused
+  - reason: 'read with its private endpoint: the zones it fills are Azure''s names
+      for the service, which the target answers privately by its own (On GCP the networks''
+      subnetworks reach Google''s APIs by their own names through Private Google Access,
+      and Cloud SQL answers on its private IP.)'
+    source: Microsoft.Network/privateEndpoints/privateDnsZoneGroups net/pe-bus/default
+    state: mapped
+  - source: Microsoft.Network/virtualNetworks net/core
+    state: mapped
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/core
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-endpoints
+  - losses:
+    - field: properties.publicNetworkAccess
+      why: 'public network access is disabled: it answers only on private endpoints;
+        on GCP service perimeter shop_private restricts Pub/Sub (pubsub.googleapis.com)
+        for the whole project: requests from the project''s own networks pass, and
+        serviceAccount:restore@shop-ops.iam.gserviceaccount.com from anywhere, for
+        restores and captures (privateAccess.restoreIdentity). Every other request
+        is refused, management calls too, which Azure''s management plane answered
+        from anywhere'
+    - field: properties.minimumTlsVersion
+      why: 'TLS 1.2 at least on the source; Pub/Sub''s floor is Google''s and cannot
+        be set per project: confirm it meets this'
+      widens: true
+    reason: 'Pub/Sub has no namespace: the project holds its topics and subscriptions'
+    source: Microsoft.ServiceBus/namespaces shop/shopbus
+    state: mapped with losses
+    targets:
+    - accesscontextmanager.googleapis.com/ServicePerimeter accessPolicies/4321/servicePerimeters/shop_private
+  - losses:
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 7 days at most on Pub/Sub; Service Bus
+        keeps them until they are read
+    source: Microsoft.ServiceBus/namespaces/queues shop/shopbus/orders
+    state: mapped with losses
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/orders
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/orders-dlq
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/orders
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/orders-dlq
+  - losses:
+    - field: properties.defaultMessageTimeToLive
+      why: the topic's time to live is applied to its subscriptions
+    source: Microsoft.ServiceBus/namespaces/topics shop/shopbus/events
+    state: mapped with losses
+    targets:
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/events
+  - losses:
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 7 days at most on Pub/Sub; Service Bus
+        keeps them until they are read
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions shop/shopbus/events/audit
+    state: mapped with losses
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/events-audit
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/events-audit-dlq
+    - pubsub.googleapis.com/Topic projects/{{truthform|project}}/topics/events-audit-dlq
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules shop/shopbus/events/audit/all
+    state: mapped
+    targets:
+    - pubsub.googleapis.com/Subscription projects/{{truthform|project}}/subscriptions/events-audit
+  - losses:
+    - field: properties.minimumTlsVersion
+      why: 'TLS 1.2 at least on the source; a bucket has no minimum TLS version of
+        its own: Google''s floor applies until an organization policy (gcp.restrictTLSVersion)
+        raises it (not translated)'
+      widens: true
+    reason: 'the account is not a bucket: its settings apply to each of its containers''
+      buckets'
+    source: Microsoft.Storage/storageAccounts shop/shopfiles
+    state: mapped with losses
+    targets:
+    - storage.googleapis.com/Bucket shopfiles-docs
+  - source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopfiles/default/docs
+    state: mapped
+    targets:
+    - storage.googleapis.com/Bucket shopfiles-docs
+  from: azure
+  requirements:
+  - 'A capture of the target project does not hold service perimeter shop_private:
+    it is the access policy''s, and Cloud Asset Inventory lists a project''s own resources.
+    A diff of the target against this translation reports it as missing; a restore
+    finds it by its name'
+  - 'Apps move from the Azure Blob SDK to the Cloud Storage client: each container
+    is a bucket, named <account>-<container> unless the map names it'
+  - 'Apps move from the Service Bus SDK to the Pub/Sub client: a queue is a topic
+    with one subscription of its name, and a subscription''s filter matches message
+    attributes'
+  - Apps that read Key Vault shop/shopkv (its SDK, Key Vault references, the Secrets
+    Store CSI driver) read Secret Manager instead, by the new names (<vault>_<secret>)
+  - Apps that sign in to Azure Storage with account keys, SAS tokens or connection
+    strings must move to the target's identity (IAM roles, workload identity); no
+    key or SAS is carried over
+  - 'Blobs are not copied: each bucket is written empty. Copy each container''s blobs
+    into its bucket (AWS DataSync or S3 Batch Operations; the Storage Transfer Service),
+    with their versions, metadata and per-blob tiers and holds, which this translation
+    does not carry'
+  - 'Buckets from Microsoft.Storage/storageAccounts shop/shopfiles admit the VPC network(s)
+    core by their own address ranges, as the private endpoints'' network: a peered
+    or on-premises network that reached the private endpoints is not admitted until
+    its ranges are added (ipFilter.vpcNetworkSources)'
+  - 'Buckets from a storage account that limited its network (Microsoft.Storage/storageAccounts
+    shop/shopfiles) have an IP filter, which also refuses reading and changing the
+    bucket''s own settings from elsewhere: grant whoever restores and captures them
+    storage.buckets.exemptFromIpFilter (a custom role; it reaches the bucket''s settings,
+    never its objects), or run them from an admitted network'
+  - 'Images are not copied: copy each from shopacr.azurecr.io to europe-west1-docker.pkg.dev/<project>/shopacr/<repository>
+    (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
+    image references are rewritten in a later step'
+  - Inside a service perimeter Pub/Sub makes a new push subscription only to a Cloud
+    Run service's default run.app URL, and a subscription must be in the same perimeter
+    as its topic (https://docs.cloud.google.com/vpc-service-controls/docs/supported-products)
+  - 'Inside a service perimeter, machines pull from Artifact Registry by pkg.dev names
+    that resolve to private.googleapis.com or restricted.googleapis.com: "you must
+    configure DNS" for *.pkg.dev (https://docs.cloud.google.com/vpc-service-controls/docs/supported-products);
+    that zone is not written'
+  - 'Key Vault shop/shopkv let Azure RBAC role assignments read its secrets; identity
+    is not translated (#32): grant each app''s new identity roles/secretmanager.secretAccessor
+    on the secrets it reads'
+  - 'Key Vault shop/shopkv''s secrets (shopkv_db-password) are created with no version:
+    a capture never reads a value, a translation writes none, and the GCP restore
+    takes none. After the restore, add each one''s value as a version (gcloud secrets
+    versions add <id> --data-file=-), read from where it is kept'
+  - Private Google Access reaches Google's APIs privately from machines with no external
+    IP; a machine with one reaches them over the internet
+  - 'Private zone internal.shop. answers only in its VPC networks: whatever resolved
+    it through Azure from elsewhere (a DNS forwarder, on-premises conditional forwarding)
+    must forward to a Cloud DNS inbound server policy instead (not translated)'
+  - Pub/Sub's service agent (service-<project-number>@gcp-sa-pubsub.iam.gserviceaccount.com)
+    needs roles/pubsub.publisher on each dead-letter topic and roles/pubsub.subscriber
+    on each subscription that dead-letters; no grant is written here
+  - 'Service perimeter accessPolicies/4321/servicePerimeters/shop_private restricts
+    artifactregistry.googleapis.com, pubsub.googleapis.com, secretmanager.googleapis.com
+    for the whole target project, in access policy accessPolicies/4321, which is the
+    organization''s: whoever restores needs accesscontextmanager.servicePerimeters.create,
+    get and update on that policy (roles/accesscontextmanager.policyEditor), the Access
+    Context Manager API enabled in the target project (the restore''s calls are counted
+    against it), and the project must be in the policy''s scope and in no other perimeter
+    ("You can include your project only in one service perimeter", https://docs.cloud.google.com/vpc-service-controls/docs/service-perimeters);
+    where it already is in one, add these services and the ingress rule to that perimeter
+    instead'
+  - 'Service perimeter shop_private takes up to 30 minutes to take effect (https://docs.cloud.google.com/vpc-service-controls/docs/create-service-perimeters),
+    and then refuses every request to artifactregistry.googleapis.com, pubsub.googleapis.com,
+    secretmanager.googleapis.com from outside the project''s networks with "Request
+    is prohibited by organization''s policy": the Google Cloud console, other projects
+    and other tooling included. Admit what must pass with ingress rules or access
+    levels of the organization''s own, and try the perimeter as a dry run first where
+    unsure (gcloud access-context-manager perimeters dry-run create)'
+  - 'Who may read and write each bucket is IAM, which is not translated (#32): grant
+    the app''s role or service account access to its bucket (Azure role assignments
+    on the account are not carried over)'
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: accesscontextmanager.googleapis.com/ServicePerimeter
+    metadata:
+      annotations:
+        truthform.org/collection: accessPolicies.servicePerimeters
+        truthform.org/discovery: accesscontextmanager/v1
+        truthform.org/parent: accessPolicies/4321
+        truthform.org/schema: ServicePerimeter
+      name: accessPolicies/4321/servicePerimeters/shop_private
+    spec:
+      name: accessPolicies/4321/servicePerimeters/shop_private
+      status:
+        ingressPolicies:
+        - ingressFrom:
+            identities:
+            - serviceAccount:restore@shop-ops.iam.gserviceaccount.com
+            sources:
+            - accessLevel: '*'
+          ingressTo:
+            operations:
+            - methodSelectors:
+              - method: '*'
+              serviceName: artifactregistry.googleapis.com
+            - methodSelectors:
+              - method: Publisher.CreateTopic
+              - method: Publisher.GetTopic
+              - method: Publisher.UpdateTopic
+              - method: Subscriber.CreateSubscription
+              - method: Subscriber.GetSubscription
+              - method: Subscriber.UpdateSubscription
+              serviceName: pubsub.googleapis.com
+            - methodSelectors:
+              - method: '*'
+              serviceName: secretmanager.googleapis.com
+            resources:
+            - '*'
+          title: restore and capture
+        resources:
+        - projects/{{truthform|project-number}}
+        restrictedServices:
+        - artifactregistry.googleapis.com
+        - pubsub.googleapis.com
+        - secretmanager.googleapis.com
+      title: shop_private
+  - apiVersion: gcp.truthform.org/v1
+    kind: artifactregistry.googleapis.com/Repository
+    metadata:
+      annotations:
+        truthform.org/collection: projects.locations.repositories
+        truthform.org/discovery: artifactregistry/v1
+        truthform.org/parent: projects/{{truthform|project}}/locations/europe-west1
+        truthform.org/schema: Repository
+      name: projects/{{truthform|project}}/locations/europe-west1/repositories/shopacr
+    spec:
+      description: From Azure Container Registry shop/shopacr
+      format: DOCKER
+      mode: STANDARD_REPOSITORY
+      name: projects/{{truthform|project}}/locations/europe-west1/repositories/shopacr
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Network
+    metadata:
+      annotations:
+        truthform.org/collection: networks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Network
+      name: projects/{{truthform|project}}/global/networks/core
+    spec:
+      autoCreateSubnetworks: false
+      mtu: 1500
+      name: core
+      routingConfig:
+        routingMode: REGIONAL
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    spec:
+      ipCidrRange: 10.30.1.0/24
+      name: core-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      privateIpGoogleAccess: true
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-endpoints
+    spec:
+      ipCidrRange: 10.30.9.0/24
+      name: core-endpoints
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      privateIpGoogleAccess: true
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ManagedZone
+    metadata:
+      annotations:
+        truthform.org/collection: managedZones
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: ManagedZone
+      name: projects/{{truthform|project}}/managedZones/internal-shop
+    spec:
+      description: From Azure DNS zone net/internal.shop
+      dnsName: internal.shop.
+      name: internal-shop
+      privateVisibilityConfig:
+        networks:
+        - networkUrl: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      visibility: private
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/internal-shop
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/internal-shop/rrsets/db.internal.shop./A
+    spec:
+      name: db.internal.shop.
+      rrdatas:
+      - 10.30.1.10
+      ttl: 300
+      type: A
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/events-audit
+    spec:
+      ackDeadlineSeconds: 60
+      deadLetterPolicy:
+        deadLetterTopic: projects/{{truthform|project}}/topics/events-audit-dlq
+        maxDeliveryAttempts: 10
+      expirationPolicy: {}
+      filter: attributes.type = "order"
+      messageRetentionDuration: 86400s
+      name: projects/{{truthform|project}}/subscriptions/events-audit
+      topic: projects/{{truthform|project}}/topics/events
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/events-audit-dlq
+    spec:
+      expirationPolicy: {}
+      messageRetentionDuration: 604800s
+      name: projects/{{truthform|project}}/subscriptions/events-audit-dlq
+      topic: projects/{{truthform|project}}/topics/events-audit-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/orders
+    spec:
+      ackDeadlineSeconds: 60
+      deadLetterPolicy:
+        deadLetterTopic: projects/{{truthform|project}}/topics/orders-dlq
+        maxDeliveryAttempts: 10
+      expirationPolicy: {}
+      messageRetentionDuration: 86400s
+      name: projects/{{truthform|project}}/subscriptions/orders
+      topic: projects/{{truthform|project}}/topics/orders
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Subscription
+    metadata:
+      annotations:
+        truthform.org/collection: projects.subscriptions
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Subscription
+      name: projects/{{truthform|project}}/subscriptions/orders-dlq
+    spec:
+      expirationPolicy: {}
+      messageRetentionDuration: 604800s
+      name: projects/{{truthform|project}}/subscriptions/orders-dlq
+      topic: projects/{{truthform|project}}/topics/orders-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/events
+    spec:
+      name: projects/{{truthform|project}}/topics/events
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/events-audit-dlq
+    spec:
+      name: projects/{{truthform|project}}/topics/events-audit-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/orders
+    spec:
+      name: projects/{{truthform|project}}/topics/orders
+  - apiVersion: gcp.truthform.org/v1
+    kind: pubsub.googleapis.com/Topic
+    metadata:
+      annotations:
+        truthform.org/collection: projects.topics
+        truthform.org/discovery: pubsub/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Topic
+      name: projects/{{truthform|project}}/topics/orders-dlq
+    spec:
+      name: projects/{{truthform|project}}/topics/orders-dlq
+  - apiVersion: gcp.truthform.org/v1
+    kind: secretmanager.googleapis.com/Secret
+    metadata:
+      annotations:
+        truthform.org/collection: projects.secrets
+        truthform.org/discovery: secretmanager/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: Secret
+      name: projects/{{truthform|project}}/secrets/shopkv_db-password
+    spec:
+      replication:
+        automatic: {}
+  - apiVersion: gcp.truthform.org/v1
+    kind: storage.googleapis.com/Bucket
+    metadata:
+      annotations:
+        truthform.org/collection: buckets
+        truthform.org/discovery: storage/v1
+        truthform.org/parent: ""
+        truthform.org/schema: Bucket
+      name: shopfiles-docs
+    spec:
+      iamConfiguration:
+        bucketPolicyOnly:
+          enabled: true
+        publicAccessPrevention: enforced
+        uniformBucketLevelAccess:
+          enabled: true
+      ipFilter:
+        allowAllServiceAgentAccess: false
+        allowCrossOrgVpcs: false
+        mode: Enabled
+        vpcNetworkSources:
+        - allowedIpCidrRanges:
+          - 10.30.0.0/16
+          network: projects/{{truthform|project}}/global/networks/core
+      location: EUROPE-WEST1
+      name: shopfiles-docs
+      softDeletePolicy:
+        retentionDurationSeconds: "0"
+      storageClass: STANDARD

@@ -58,6 +58,9 @@ type Map struct {
 	// Clusters is what each AKS cluster needs on the target that Azure
 	// cannot say, keyed group/cluster.
 	Clusters map[string]ClusterMap `json:"clusters,omitempty"`
+	// PrivateAccess is where a service perimeter goes, for the Google
+	// services only one closes to the internet (map_perimeter.go).
+	PrivateAccess *PrivateAccessMap `json:"privateAccess,omitempty"`
 	// RabbitMQ is needed when messaging goes to rabbitmq.
 	RabbitMQ *RabbitMQ `json:"rabbitmq,omitempty"`
 	// Sessions says how a Service Bus session queue is carried over: fifo
@@ -269,6 +272,9 @@ func (m Map) validate() error {
 		}
 	} else if m.RabbitMQ != nil {
 		return fmt.Errorf("map: rabbitmq is set, and messaging does not go to rabbitmq")
+	}
+	if err := m.validatePerimeter(); err != nil {
+		return err
 	}
 	switch m.Destinations.Network {
 	case "", "vpc":

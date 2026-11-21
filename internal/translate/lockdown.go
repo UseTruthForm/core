@@ -28,7 +28,7 @@ import (
 //
 // On GCP, a bucket's IP filter names the VPC networks. Pub/Sub, Secret
 // Manager and Artifact Registry have no setting of their own for where a
-// request comes from (gcpPerimeter).
+// request comes from: a service perimeter closes them (perimeter.go).
 //
 // A private service with no private endpoint in the snapshot, and no
 // public range, could be reached from nowhere this knows: there is nothing
@@ -267,55 +267,4 @@ func awsPolicyJSON(doc map[string]any) string {
 // lockRequireAWS says what the lock asks of whoever uses the service.
 func lockRequireAWS(o *out, what string, l *awsLock) {
 	o.require(fmt.Sprintf("%s only %s, as on Azure: a resource policy denies the data actions to every other request, whoever makes it. The settings can still be read and changed from anywhere IAM allows, as Azure's management plane could; apps and people that read or write the data from elsewhere must come that way", what, l.where()))
-}
-
-// gcpPerimeter says why a private Azure service stays less protected on
-// one of Google's services with no network setting of its own, and what
-// closes it.
-//
-// Pub/Sub, Secret Manager and Artifact Registry take no network
-// restriction per resource: IAM conditions know no source network ("The
-// access levels attribute is available only when you use Identity-Aware
-// Proxy", https://docs.cloud.google.com/iam/docs/conditions-attribute-reference),
-// and deny policies' conditions "only recognize resource tag functions"
-// (https://docs.cloud.google.com/iam/docs/deny-overview). Google's answer
-// is a VPC Service Controls perimeter, which this does not write:
-//
-//   - it is the organization's, not the project's: a service perimeter
-//     belongs to an access policy whose parent is organizations/{id}, and
-//     names the project by its number
-//     (https://accesscontextmanager.googleapis.com/$discovery/rest?version=v1,
-//     ServicePerimeterConfig.resources);
-//   - it restricts a service for the whole project, and "a single Google
-//     Cloud project ... can only belong to a single regular Service
-//     Perimeter": one Azure namespace's setting would close every topic,
-//     secret or repository of the project, and collide with a perimeter
-//     the organization already has;
-//   - it closes the management calls too ("VPC Service Controls protection
-//     applies to all administrator operations, publisher operations, and
-//     subscriber operations",
-//     https://docs.cloud.google.com/vpc-service-controls/docs/supported-products):
-//     the restore that wrote it, and a later capture, would be refused
-//     from outside until an ingress rule admits who runs them, and who
-//     that is, is identity (#32).
-//
-// So the service stays reported as less protected, with the perimeter to
-// create named exactly.
-func gcpPerimeter(o *out, private, what, api string, p *privatePath) string {
-	var nets []string
-	if p != nil {
-		nets = sortedKeys(p.networks)
-	}
-	from := "no network of this translation reached it privately"
-	if len(nets) > 0 {
-		var rs []string
-		for _, n := range nets {
-			rs = append(rs, "//compute.googleapis.com/"+gcpProject+"/global/networks/"+n)
-		}
-		from = "its VPC network(s) " + strings.Join(nets, ", ") + " are the project's own, and so inside it"
-		o.require(fmt.Sprintf("To close %s to the internet as %s was: in the organization's access policy, create a VPC Service Controls perimeter (accessPolicies/<policy>/servicePerimeters) whose resources are the target project (projects/<project number>) and whose restrictedServices hold %s; requests from the project's own networks (%s) are inside it. It closes that service for the whole project, management calls included: add an ingress rule for whoever restores and captures from outside, and try it first as a dry run (useExplicitDryRunSpec)", what, private, api, strings.Join(rs, ", ")))
-	} else {
-		o.require(fmt.Sprintf("To close %s to the internet as %s was: in the organization's access policy, create a VPC Service Controls perimeter (accessPolicies/<policy>/servicePerimeters) whose resources are the target project (projects/<project number>) and whose restrictedServices hold %s. It closes that service for the whole project, management calls included: add an ingress rule for whoever restores and captures from outside, and try it first as a dry run (useExplicitDryRunSpec)", what, private, api))
-	}
-	return fmt.Sprintf("%s answers on Google's public endpoint to whoever IAM allows: it has no network setting of its own, and the VPC Service Controls perimeter that would close it (%s for the whole project; %s) is the organization's to create, and is not written", what, api, from)
 }

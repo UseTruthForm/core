@@ -431,8 +431,9 @@ func TestLockdownLeavesPublicServicesOpen(t *testing.T) {
 
 // On GCP a bucket's IP filter names the networks that had a private
 // endpoint to its account, with their own ranges. Pub/Sub, Secret Manager
-// and Artifact Registry have no such setting: they stay less protected,
-// and the report names the perimeter that would close them.
+// and Artifact Registry have no such setting: where the map names no
+// access policy they stay less protected, and the report names the map
+// keys that have their perimeter written (perimeter_test.go).
 func TestLockdownOnGCP(t *testing.T) {
 	r := runPE(t, peFixture(), peMaps()["gcp"])
 	if got := canonJSON(object(t, r, "gcp", gcsBucket, "shopfiles-docs")["ipFilter"]); got != `{"allowAllServiceAgentAccess":false,"allowCrossOrgVpcs":false,"mode":"Enabled","vpcNetworkSources":[{"allowedIpCidrRanges":["10.30.0.0/16"],"network":"projects/{{truthform|project}}/global/networks/core"}]}` {
@@ -460,14 +461,14 @@ func TestLockdownOnGCP(t *testing.T) {
 	} {
 		i := strings.LastIndex(src, " ")
 		l := hasLoss(entry(t, r, src[:i]), src[i+1:])
-		if l == nil || !l.Widens || !strings.Contains(l.Why, "VPC Service Controls perimeter") || !strings.Contains(l.Why, api+" for the whole project") || !strings.Contains(l.Why, "is not written") {
+		if l == nil || !l.Widens || !strings.Contains(l.Why, "VPC Service Controls perimeter") || !strings.Contains(l.Why, api+", for the whole project") || !strings.Contains(l.Why, "written only into an access policy the map names (privateAccess.accessPolicy)") {
 			t.Errorf("%s: %+v", src, l)
 		}
-		if !anyRequirement(r, "restrictedServices hold "+api+"; requests from the project's own networks (//compute.googleapis.com/projects/{{truthform|project}}/global/networks/core) are inside it") {
+		if !anyRequirement(r, "a VPC Service Controls perimeter is then written that restricts "+api+" for the whole target project") {
 			t.Errorf("no perimeter named for %s: %v", api, r.Report.Requirements)
 		}
 	}
-	for _, s := range []string{"storage.buckets.exemptFromIpFilter", "admit the VPC network(s) core by their own address ranges", "management calls included: add an ingress rule"} {
+	for _, s := range []string{"storage.buckets.exemptFromIpFilter", "admit the VPC network(s) core by their own address ranges", "privateAccess.restoreIdentity: serviceAccount:<email>, or privateAccess.restoreFromInside: true"} {
 		if !anyRequirement(r, s) {
 			t.Errorf("no requirement about %q", s)
 		}

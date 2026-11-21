@@ -1,5 +1,53 @@
 {
  "resources": {
+  "Microsoft.ContainerRegistry/registries/cacheRules@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/129"
+  },
+  "Microsoft.ContainerRegistry/registries/connectedRegistries@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/180"
+  },
+  "Microsoft.ContainerRegistry/registries/credentialSets@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/200"
+  },
+  "Microsoft.ContainerRegistry/registries/privateEndpointConnections@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/204"
+  },
+  "Microsoft.ContainerRegistry/registries/privateLinkResources@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/292"
+  },
+  "Microsoft.ContainerRegistry/registries/replications@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/220"
+  },
+  "Microsoft.ContainerRegistry/registries/scopeMaps@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/234"
+  },
+  "Microsoft.ContainerRegistry/registries/tokens@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/260"
+  },
+  "Microsoft.ContainerRegistry/registries/webhooks@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/285"
+  },
+  "Microsoft.ContainerRegistry/registries@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/116"
+  },
+  "Microsoft.KeyVault/vaults/accessPolicies@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/145"
+  },
+  "Microsoft.KeyVault/vaults/keys/versions@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/207"
+  },
+  "Microsoft.KeyVault/vaults/keys@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/189"
+  },
+  "Microsoft.KeyVault/vaults/privateEndpointConnections@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/194"
+  },
+  "Microsoft.KeyVault/vaults/secrets@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/201"
+  },
+  "Microsoft.KeyVault/vaults@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/135"
+  },
   "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2026-03-01": {
    "$ref": "network/microsoft.network/2026-03-01/types.json#/630"
   },

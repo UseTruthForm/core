@@ -27,7 +27,15 @@ type Map struct {
 		Messaging string `json:"messaging,omitempty"`
 		// Network: vpc (a VPC on AWS, a VPC network on GCP).
 		Network string `json:"network,omitempty"`
+		// Secrets: secret-manager (AWS Secrets Manager, GCP Secret
+		// Manager), for Key Vault secrets.
+		Secrets string `json:"secrets,omitempty"`
+		// Registry: ecr (aws) or artifact-registry (gcp), for container
+		// registries.
+		Registry string `json:"registry,omitempty"`
 	} `json:"destinations"`
+	// Secrets is what GCP's Secret Manager needs that Key Vault cannot say.
+	Secrets *SecretsMap `json:"secrets,omitempty"`
 	// Network is what the network destination needs that Azure cannot
 	// say.
 	Network *NetworkMap `json:"network,omitempty"`
@@ -54,6 +62,17 @@ type NetworkMap struct {
 	// a choice.
 	Zone  string            `json:"zone,omitempty"`
 	Zones map[string]string `json:"zones,omitempty"`
+}
+
+// SecretsMap is what secrets need on GCP.
+type SecretsMap struct {
+	// Replication is where Secret Manager keeps a secret's data:
+	// automatic (where Google chooses) or user-managed (only in
+	// Locations). A Key Vault is in one region and says nothing of this,
+	// and it cannot be changed once a secret is made, so it is a choice.
+	Replication string `json:"replication,omitempty"`
+	// Locations are the regions a user-managed secret is kept in.
+	Locations []string `json:"locations,omitempty"`
 }
 
 // RabbitMQ is what the in-cluster messaging destination needs.
@@ -137,6 +156,38 @@ func (m Map) validate() error {
 			return fmt.Errorf("map: network zones are for aws: a GCP subnetwork spans its region's zones")
 		}
 	}
+	switch m.Destinations.Secrets {
+	case "", "secret-manager":
+	default:
+		return fmt.Errorf("map: secrets: %q is not secret-manager", m.Destinations.Secrets)
+	}
+	if sm := m.Secrets; sm != nil {
+		switch {
+		case m.Destinations.Secrets == "":
+			return fmt.Errorf("map: secrets is set, and destinations.secrets is not")
+		case m.To != "gcp":
+			return fmt.Errorf("map: secrets.replication is for gcp: an AWS secret is kept in its region")
+		case sm.Replication == "automatic" && len(sm.Locations) > 0:
+			return fmt.Errorf("map: secrets.locations are for replication user-managed")
+		case sm.Replication == "user-managed" && len(sm.Locations) == 0:
+			return fmt.Errorf("map: secrets.replication user-managed needs secrets.locations")
+		case sm.Replication != "automatic" && sm.Replication != "user-managed":
+			return fmt.Errorf("map: secrets.replication: %q is not automatic or user-managed", sm.Replication)
+		}
+	}
+	switch d := m.Destinations.Registry; d {
+	case "":
+	case "ecr":
+		if m.To != "aws" {
+			return fmt.Errorf("map: registry ecr is an AWS destination, and to is %s", m.To)
+		}
+	case "artifact-registry":
+		if m.To != "gcp" {
+			return fmt.Errorf("map: registry artifact-registry is a GCP destination, and to is %s", m.To)
+		}
+	default:
+		return fmt.Errorf("map: registry: %q is not ecr or artifact-registry", d)
+	}
 	want := map[string]string{"sqs-sns": "fifo", "pubsub": "ordering", "rabbitmq": "single-active-consumer"}[m.Destinations.Messaging]
 	if m.Sessions != "" && m.Sessions != want {
 		return fmt.Errorf("map: sessions: %q does not go with messaging %s (it takes %q)", m.Sessions, m.Destinations.Messaging, want)
@@ -151,6 +202,12 @@ func (m Map) destinationList() []string {
 	}
 	if m.Destinations.Network != "" {
 		d = append(d, "network: "+m.Destinations.Network)
+	}
+	if m.Destinations.Secrets != "" {
+		d = append(d, "secrets: "+m.Destinations.Secrets)
+	}
+	if m.Destinations.Registry != "" {
+		d = append(d, "registry: "+m.Destinations.Registry)
 	}
 	sort.Strings(d)
 	return d
@@ -186,11 +243,13 @@ func (m Map) zoneFor(key string) string {
 // NeedsAWS reports whether a destination the map chooses writes AWS
 // objects, which are built from the CloudFormation registry.
 func (m Map) NeedsAWS() bool {
-	return m.Destinations.Messaging == "sqs-sns" || (m.To == "aws" && m.Destinations.Network != "")
+	return m.Destinations.Messaging == "sqs-sns" || m.Destinations.Registry == "ecr" ||
+		(m.To == "aws" && (m.Destinations.Network != "" || m.Destinations.Secrets != ""))
 }
 
 // NeedsGCP reports whether a destination the map chooses writes GCP
 // objects, which are checked against Google's Discovery documents.
 func (m Map) NeedsGCP() bool {
-	return m.Destinations.Messaging == "pubsub" || (m.To == "gcp" && m.Destinations.Network != "")
+	return m.Destinations.Messaging == "pubsub" || m.Destinations.Registry == "artifact-registry" ||
+		(m.To == "gcp" && (m.Destinations.Network != "" || m.Destinations.Secrets != ""))
 }

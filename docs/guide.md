@@ -1434,8 +1434,9 @@ that needs one left out fails, or waits, in the cluster.
 It reads one snapshot and a map, and writes a snapshot per target platform,
 which `plan`, `restore` and `diff` take as they are. It makes no request, so
 the capture-only build has it too. So far it translates Service Bus,
-virtual networks and network security groups; every other type is reported
-as not looked at (design: issue #32).
+virtual networks and network security groups, Key Vault secrets and
+container registries; every other type is reported as not looked at
+(design: issue #32).
 
 ```sh
 truthform translate --from snap/azure --map map.yaml --out moved/
@@ -1453,6 +1454,11 @@ region: eu-west-1           # aws; gcp where something regional is written (a su
 destinations:
   messaging: sqs-sns        # sqs-sns (aws), pubsub (gcp), or rabbitmq (in the cluster, on either)
   network: vpc              # a VPC (aws) or VPC network (gcp)
+  secrets: secret-manager   # Key Vault secrets: Secrets Manager (aws) or Secret Manager (gcp)
+  registry: ecr             # ecr (aws) or artifact-registry (gcp)
+secrets:                    # gcp: where Secret Manager keeps each secret; it cannot change later
+  replication: user-managed # automatic, or user-managed with
+  locations: [europe-west1, europe-west4]
 network:                    # aws: an Azure subnet spans the region's zones, an AWS one is in one
   zone: eu-west-1a          # every subnet, or
   zones:
@@ -1494,6 +1500,36 @@ subnet's addresses. A translation may let through less than the source,
 never more. Each security group and network tag has to be attached to the
 instances in its subnets; the report lists them.
 
+| Key Vault | aws | gcp |
+|---|---|---|
+| Vault | (none: the account and region) | (none: the project) |
+| Secret | Secrets Manager secret `<vault>/<secret>`, no value; content type in its description, tags as tags | Secret Manager secret `<vault>_<secret>`, no version, replicated as `secrets.replication` says; content type as an annotation, tags that fit as labels |
+| Firewall default deny, public access disabled | less protected: IAM alone until a VPC endpoint | less protected: IAM alone until VPC Service Controls |
+| Soft delete | the recovery window each delete chooses | less protected: a delete is immediate |
+| Purge protection | less protected: a delete may skip the window | less protected |
+| Disabled secret, `exp`, `nbf` | written with no value; the dates are named (Key Vault only records them) | the same; `expireTime` would delete the secret, so it is not written |
+| Access policies, RBAC | identity, not translated: named, and listed as grants to make | the same |
+| `accessPolicies` child | refused: identity | refused |
+| Key | refused: its material never leaves the vault (make one in AWS KMS) | refused (Cloud KMS) |
+
+A capture never holds a secret's value and a translation writes none. On
+AWS the restore takes each from `--values`
+(`AWS::SecretsManager::Secret/<vault>/<secret>: {SecretString: ...}`) and
+lists those created without one; on GCP add each value as a version after
+the restore. A disabled secret is restored without one.
+
+| Container registry | aws | gcp |
+|---|---|---|
+| Registry | a repository creation template for prefix `<registry>`: ECR makes each repository on its first push, AES-256, mutable tags | an Artifact Registry repository of Docker images in the map's region |
+| Images | not copied: copy them; image references are rewritten in a later step | the same |
+| Firewall default deny, customer-managed key, quarantine | less protected | less protected |
+| Anonymous pull | not written: the repositories are private | the same |
+| Admin user | not written: named, with who signed in with it | the same |
+| Tokens, scope maps, credential sets | refused: identity | refused |
+| Geo-replication, retention, content trust, export policy | named: kept in the map's region, untagged images kept, signatures and export settings not carried | the same |
+| Tasks, connected registries, transfer pipelines | refused | refused |
+| Webhooks, cache rules | not translated yet | not translated yet |
+
 Every source object ends in one state, and `<out>/translation.yaml` lists
 each with its reason and target objects:
 
@@ -1530,9 +1566,10 @@ Known limits:
   against them still shows differences: a capture holds every default the
   target fills in that the translation does not set.
 - Each target object is built from, or checked against, the target's own
-  published definition (the CloudFormation registry, the Pub/Sub and
-  Compute Discovery documents): downloaded and cached like `aws-coverage`,
-  or read from `--schemas` and `--discovery`.
+  published definition (the CloudFormation registry, the Pub/Sub,
+  Compute, Secret Manager and Artifact Registry Discovery documents):
+  downloaded and cached like `aws-coverage`, or read from `--schemas` and
+  `--discovery`.
 - An NSG on a network interface rather than a subnet, application security
   groups and network peerings are not translated yet.
 

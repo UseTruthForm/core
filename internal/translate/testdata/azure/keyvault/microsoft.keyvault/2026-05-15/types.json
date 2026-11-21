@@ -1,0 +1,2340 @@
+[
+ {
+  "$type": "StringType"
+ },
+ {
+  "$type": "StringType",
+  "minLength": 36,
+  "maxLength": 36,
+  "pattern": "^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$"
+ },
+ {
+  "$type": "BooleanType"
+ },
+ {
+  "$type": "IntegerType"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SystemData",
+  "properties": {
+   "createdBy": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The identity that created the resource."
+   },
+   "createdByType": {
+    "type": {
+     "$ref": "#/9"
+    },
+    "flags": 0,
+    "description": "The type of identity that created the resource."
+   },
+   "createdAt": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The timestamp of resource creation (UTC)."
+   },
+   "lastModifiedBy": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The identity that last modified the resource."
+   },
+   "lastModifiedByType": {
+    "type": {
+     "$ref": "#/14"
+    },
+    "flags": 0,
+    "description": "The type of identity that last modified the resource."
+   },
+   "lastModifiedAt": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The timestamp of resource last modification (UTC)"
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/5"
+   },
+   {
+    "$ref": "#/6"
+   },
+   {
+    "$ref": "#/7"
+   },
+   {
+    "$ref": "#/8"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "User"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Application"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "ManagedIdentity"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Key"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/10"
+   },
+   {
+    "$ref": "#/11"
+   },
+   {
+    "$ref": "#/12"
+   },
+   {
+    "$ref": "#/13"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.KeyVault/vaults"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-05-15"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.KeyVault/vaults",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/15"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/16"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 1,
+    "description": "The supported Azure location where the key vault should be created."
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/18"
+    },
+    "flags": 0,
+    "description": "The tags that will be assigned to the key vault."
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/19"
+    },
+    "flags": 1,
+    "description": "Properties of the vault"
+   },
+   "systemData": {
+    "type": {
+     "$ref": "#/4"
+    },
+    "flags": 2,
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VaultCreateOrUpdateParametersTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VaultProperties",
+  "properties": {
+   "tenantId": {
+    "type": {
+     "$ref": "#/1"
+    },
+    "flags": 1,
+    "description": "The Azure Active Directory tenant ID that should be used for authenticating requests to the key vault."
+   },
+   "sku": {
+    "type": {
+     "$ref": "#/20"
+    },
+    "flags": 1,
+    "description": "SKU details"
+   },
+   "accessPolicies": {
+    "type": {
+     "$ref": "#/98"
+    },
+    "flags": 0,
+    "description": "An array of 0 to 1024 identities that have access to the key vault. All identities in the array must use the same tenant ID as the key vault's tenant ID. When `createMode` is set to `recover`, access policies are not required. Otherwise, access policies are required."
+   },
+   "vaultUri": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The URI of the vault for performing operations on keys and secrets."
+   },
+   "hsmPoolResourceId": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "The resource id of HSM Pool."
+   },
+   "enabledForDeployment": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "Property to specify whether Azure Virtual Machines are permitted to retrieve certificates stored as secrets from the key vault."
+   },
+   "enabledForDiskEncryption": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "Property to specify whether Azure Disk Encryption is permitted to retrieve secrets from the vault and unwrap keys."
+   },
+   "enabledForTemplateDeployment": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "Property to specify whether Azure Resource Manager is permitted to retrieve secrets from the key vault."
+   },
+   "enableSoftDelete": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "Property to specify whether the 'soft delete' functionality is enabled for this key vault. If it's not set to any value(true or false) when creating new key vault, it will be set to true by default. Once set to true, it cannot be reverted to false."
+   },
+   "softDeleteRetentionInDays": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 0,
+    "description": "softDelete data retention days. It accepts >=7 and <=90."
+   },
+   "enableRbacAuthorization": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "Property that controls how data actions are authorized. When true, the key vault will use Role Based Access Control (RBAC) for authorization of data actions, and the access policies specified in vault properties will be  ignored. When false, the key vault will use the access policies specified in vault properties, and any policy stored on Azure Resource Manager will be ignored. If null or not specified, the vault is created with the default value of false. Note that management actions are always authorized with RBAC."
+   },
+   "createMode": {
+    "type": {
+     "$ref": "#/101"
+    },
+    "flags": 4,
+    "description": "The vault's create mode to indicate whether the vault need to be recovered or not."
+   },
+   "enablePurgeProtection": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "Property specifying whether protection against purge is enabled for this vault. Setting this property to true activates protection against purge for this vault and its content - only the Key Vault service may initiate a hard, irrecoverable deletion. The setting is effective only if soft delete is also enabled. Enabling this functionality is irreversible - that is, the property does not accept false as its value."
+   },
+   "networkAcls": {
+    "type": {
+     "$ref": "#/102"
+    },
+    "flags": 0,
+    "description": "Rules governing the accessibility of the key vault from specific network locations."
+   },
+   "provisioningState": {
+    "type": {
+     "$ref": "#/115"
+    },
+    "flags": 0,
+    "description": "Provisioning state of the vault."
+   },
+   "privateEndpointConnections": {
+    "type": {
+     "$ref": "#/134"
+    },
+    "flags": 2,
+    "description": "List of private endpoint connections associated with the key vault."
+   },
+   "publicNetworkAccess": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Property to specify whether the vault will accept traffic from public internet. If set to 'disabled' all traffic except private endpoint traffic and that that originates from trusted services will be blocked. This will override the set firewall rules, meaning that even if the firewall rules are present we will not honor the rules."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Sku",
+  "properties": {
+   "family": {
+    "type": {
+     "$ref": "#/22"
+    },
+    "flags": 1,
+    "description": "SKU family name"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/25"
+    },
+    "flags": 1,
+    "description": "SKU name to specify whether the key vault is a standard vault or a premium vault."
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "A"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/21"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "standard"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "premium"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/23"
+   },
+   {
+    "$ref": "#/24"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "AccessPolicyEntry",
+  "properties": {
+   "tenantId": {
+    "type": {
+     "$ref": "#/1"
+    },
+    "flags": 1,
+    "description": "The Azure Active Directory tenant ID that should be used for authenticating requests to the key vault."
+   },
+   "objectId": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 1,
+    "description": "The object ID of a user, service principal or security group in the Azure Active Directory tenant for the vault. The object ID must be unique for the list of access policies."
+   },
+   "applicationId": {
+    "type": {
+     "$ref": "#/1"
+    },
+    "flags": 0,
+    "description": "Application ID of the client making request on behalf of a principal"
+   },
+   "permissions": {
+    "type": {
+     "$ref": "#/27"
+    },
+    "flags": 1,
+    "description": "Permissions the identity has for keys, secrets and certificates."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Permissions",
+  "properties": {
+   "keys": {
+    "type": {
+     "$ref": "#/50"
+    },
+    "flags": 0,
+    "description": "Permissions to keys"
+   },
+   "secrets": {
+    "type": {
+     "$ref": "#/61"
+    },
+    "flags": 0,
+    "description": "Permissions to secrets"
+   },
+   "certificates": {
+    "type": {
+     "$ref": "#/80"
+    },
+    "flags": 0,
+    "description": "Permissions to certificates"
+   },
+   "storage": {
+    "type": {
+     "$ref": "#/97"
+    },
+    "flags": 0,
+    "description": "Permissions to storage accounts"
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "all"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "encrypt"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "decrypt"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "wrapKey"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "unwrapKey"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "sign"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "verify"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "get"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "list"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "create"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "update"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "import"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "delete"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "backup"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "restore"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "recover"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "purge"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "release"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "rotate"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "getrotationpolicy"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "setrotationpolicy"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/28"
+   },
+   {
+    "$ref": "#/29"
+   },
+   {
+    "$ref": "#/30"
+   },
+   {
+    "$ref": "#/31"
+   },
+   {
+    "$ref": "#/32"
+   },
+   {
+    "$ref": "#/33"
+   },
+   {
+    "$ref": "#/34"
+   },
+   {
+    "$ref": "#/35"
+   },
+   {
+    "$ref": "#/36"
+   },
+   {
+    "$ref": "#/37"
+   },
+   {
+    "$ref": "#/38"
+   },
+   {
+    "$ref": "#/39"
+   },
+   {
+    "$ref": "#/40"
+   },
+   {
+    "$ref": "#/41"
+   },
+   {
+    "$ref": "#/42"
+   },
+   {
+    "$ref": "#/43"
+   },
+   {
+    "$ref": "#/44"
+   },
+   {
+    "$ref": "#/45"
+   },
+   {
+    "$ref": "#/46"
+   },
+   {
+    "$ref": "#/47"
+   },
+   {
+    "$ref": "#/48"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/49"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "all"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "get"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "list"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "set"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "delete"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "backup"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "restore"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "recover"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "purge"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/51"
+   },
+   {
+    "$ref": "#/52"
+   },
+   {
+    "$ref": "#/53"
+   },
+   {
+    "$ref": "#/54"
+   },
+   {
+    "$ref": "#/55"
+   },
+   {
+    "$ref": "#/56"
+   },
+   {
+    "$ref": "#/57"
+   },
+   {
+    "$ref": "#/58"
+   },
+   {
+    "$ref": "#/59"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/60"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "all"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "get"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "list"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "delete"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "create"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "import"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "update"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "managecontacts"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "getissuers"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "listissuers"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "setissuers"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "deleteissuers"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "manageissuers"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "recover"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "purge"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "backup"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "restore"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/62"
+   },
+   {
+    "$ref": "#/63"
+   },
+   {
+    "$ref": "#/64"
+   },
+   {
+    "$ref": "#/65"
+   },
+   {
+    "$ref": "#/66"
+   },
+   {
+    "$ref": "#/67"
+   },
+   {
+    "$ref": "#/68"
+   },
+   {
+    "$ref": "#/69"
+   },
+   {
+    "$ref": "#/70"
+   },
+   {
+    "$ref": "#/71"
+   },
+   {
+    "$ref": "#/72"
+   },
+   {
+    "$ref": "#/73"
+   },
+   {
+    "$ref": "#/74"
+   },
+   {
+    "$ref": "#/75"
+   },
+   {
+    "$ref": "#/76"
+   },
+   {
+    "$ref": "#/77"
+   },
+   {
+    "$ref": "#/78"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/79"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "all"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "get"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "list"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "delete"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "set"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "update"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "regeneratekey"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "recover"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "purge"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "backup"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "restore"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "setsas"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "listsas"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "getsas"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "deletesas"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/81"
+   },
+   {
+    "$ref": "#/82"
+   },
+   {
+    "$ref": "#/83"
+   },
+   {
+    "$ref": "#/84"
+   },
+   {
+    "$ref": "#/85"
+   },
+   {
+    "$ref": "#/86"
+   },
+   {
+    "$ref": "#/87"
+   },
+   {
+    "$ref": "#/88"
+   },
+   {
+    "$ref": "#/89"
+   },
+   {
+    "$ref": "#/90"
+   },
+   {
+    "$ref": "#/91"
+   },
+   {
+    "$ref": "#/92"
+   },
+   {
+    "$ref": "#/93"
+   },
+   {
+    "$ref": "#/94"
+   },
+   {
+    "$ref": "#/95"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/96"
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/26"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "recover"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "default"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/99"
+   },
+   {
+    "$ref": "#/100"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "NetworkRuleSet",
+  "properties": {
+   "bypass": {
+    "type": {
+     "$ref": "#/105"
+    },
+    "flags": 0,
+    "description": "Tells what traffic can bypass network rules. This can be 'AzureServices' or 'None'.  If not specified the default is 'AzureServices'."
+   },
+   "defaultAction": {
+    "type": {
+     "$ref": "#/108"
+    },
+    "flags": 0,
+    "description": "The default action when no rule from ipRules and from virtualNetworkRules match. This is only used after the bypass property has been evaluated."
+   },
+   "ipRules": {
+    "type": {
+     "$ref": "#/110"
+    },
+    "flags": 0,
+    "description": "The list of IP address rules."
+   },
+   "virtualNetworkRules": {
+    "type": {
+     "$ref": "#/112"
+    },
+    "flags": 0,
+    "description": "The list of virtual network rules."
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "AzureServices"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/103"
+   },
+   {
+    "$ref": "#/104"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Allow"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deny"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/106"
+   },
+   {
+    "$ref": "#/107"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "IPRule",
+  "properties": {
+   "value": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 1,
+    "description": "An IPv4 address range in CIDR notation, such as '124.56.78.91' (simple IP address) or '124.56.78.0/24' (all addresses that start with 124.56.78)."
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/109"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VirtualNetworkRule",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 1,
+    "description": "Full resource id of a vnet subnet, such as '/subscriptions/subid/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/test-vnet/subnets/subnet1'."
+   },
+   "ignoreMissingVnetServiceEndpoint": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "Property to specify whether NRP will ignore the check if parent subnet has serviceEndpoints configured."
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/111"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RegisteringDns"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/113"
+   },
+   {
+    "$ref": "#/114"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointConnectionItem",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Id of private endpoint connection."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Modified whenever there is a change in the state of private endpoint connection."
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/117"
+    },
+    "flags": 0,
+    "description": "Private endpoint connection properties."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointConnectionProperties",
+  "properties": {
+   "privateEndpoint": {
+    "type": {
+     "$ref": "#/118"
+    },
+    "flags": 0,
+    "description": "Properties of the private endpoint object."
+   },
+   "privateLinkServiceConnectionState": {
+    "type": {
+     "$ref": "#/119"
+    },
+    "flags": 0,
+    "description": "Approval state of the private link connection."
+   },
+   "provisioningState": {
+    "type": {
+     "$ref": "#/133"
+    },
+    "flags": 2,
+    "description": "Provisioning state of the private endpoint connection."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpoint",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "Full identifier of the private endpoint resource."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateLinkServiceConnectionState",
+  "properties": {
+   "status": {
+    "type": {
+     "$ref": "#/124"
+    },
+    "flags": 0,
+    "description": "Indicates whether the connection has been approved, rejected or removed by the key vault owner."
+   },
+   "description": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The reason for approval or rejection."
+   },
+   "actionsRequired": {
+    "type": {
+     "$ref": "#/126"
+    },
+    "flags": 0,
+    "description": "A message indicating if changes on the service provider require any updates on the consumer."
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Pending"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Approved"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Rejected"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disconnected"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/120"
+   },
+   {
+    "$ref": "#/121"
+   },
+   {
+    "$ref": "#/122"
+   },
+   {
+    "$ref": "#/123"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "None"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/125"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Succeeded"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Creating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Updating"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Deleting"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Failed"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Disconnected"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/127"
+   },
+   {
+    "$ref": "#/128"
+   },
+   {
+    "$ref": "#/129"
+   },
+   {
+    "$ref": "#/130"
+   },
+   {
+    "$ref": "#/131"
+   },
+   {
+    "$ref": "#/132"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/116"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.KeyVault/vaults@2026-05-15",
+  "body": {
+   "$ref": "#/17"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "add"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "replace"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "remove"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/136"
+   },
+   {
+    "$ref": "#/137"
+   },
+   {
+    "$ref": "#/138"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.KeyVault/vaults/accessPolicies"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-05-15"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.KeyVault/vaults/accessPolicies",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/139"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/140"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/141"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "The resource type of the access policy."
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/143"
+    },
+    "flags": 1,
+    "description": "Properties of the access policy"
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "VaultAccessPolicyProperties",
+  "properties": {
+   "accessPolicies": {
+    "type": {
+     "$ref": "#/144"
+    },
+    "flags": 1,
+    "description": "An array of 0 to 16 identities that have access to the key vault. All identities in the array must use the same tenant ID as the key vault's tenant ID."
+   }
+  }
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/26"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.KeyVault/vaults/accessPolicies@2026-05-15",
+  "body": {
+   "$ref": "#/142"
+  },
+  "readableScopes": 0,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringType",
+  "pattern": "^[a-zA-Z0-9-]{1,127}$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.KeyVault/vaults/keys"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-05-15"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.KeyVault/vaults/keys",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/146"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/147"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/148"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/150"
+    },
+    "flags": 0,
+    "description": "The tags that will be assigned to the key."
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/151"
+    },
+    "flags": 1,
+    "description": "The properties of the key to be created."
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "The supported Azure location where the managed HSM Pool should be created."
+   },
+   "systemData": {
+    "type": {
+     "$ref": "#/4"
+    },
+    "flags": 2,
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "KeyCreateParametersTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "KeyProperties",
+  "properties": {
+   "attributes": {
+    "type": {
+     "$ref": "#/152"
+    },
+    "flags": 0,
+    "description": "The attributes of the key."
+   },
+   "kty": {
+    "type": {
+     "$ref": "#/163"
+    },
+    "flags": 0,
+    "description": "The type of the key. For valid values, see JsonWebKeyType."
+   },
+   "keyOps": {
+    "type": {
+     "$ref": "#/173"
+    },
+    "flags": 0
+   },
+   "keySize": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 0,
+    "description": "The key size in bits. For example: 2048, 3072, or 4096 for RSA. Default for RSA and RSA-HSM keys is 2048. Exception made for bring your own key (BYOK), key exchange keys default to 4096."
+   },
+   "curveName": {
+    "type": {
+     "$ref": "#/178"
+    },
+    "flags": 0,
+    "description": "The elliptic curve name. For valid values, see JsonWebKeyCurveName. Default for EC and EC-HSM keys is P-256"
+   },
+   "keyUri": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "The URI to retrieve the current version of the key."
+   },
+   "keyUriWithVersion": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "The URI to retrieve the specific version of the key."
+   },
+   "rotationPolicy": {
+    "type": {
+     "$ref": "#/179"
+    },
+    "flags": 0,
+    "description": "Key rotation policy in response. It will be used for both output and input. Omitted if empty"
+   },
+   "release_policy": {
+    "type": {
+     "$ref": "#/188"
+    },
+    "flags": 0,
+    "description": "Key release policy in response. It will be used for both output and input. Omitted if empty"
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "KeyAttributes",
+  "properties": {
+   "enabled": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "Determines whether or not the object is enabled."
+   },
+   "nbf": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 0,
+    "description": "Not before date in seconds since 1970-01-01T00:00:00Z."
+   },
+   "exp": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 0,
+    "description": "Expiry date in seconds since 1970-01-01T00:00:00Z."
+   },
+   "created": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 2,
+    "description": "Creation time in seconds since 1970-01-01T00:00:00Z."
+   },
+   "updated": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 2,
+    "description": "Last updated time in seconds since 1970-01-01T00:00:00Z."
+   },
+   "recoveryLevel": {
+    "type": {
+     "$ref": "#/157"
+    },
+    "flags": 2,
+    "description": "The deletion recovery level currently in effect for the object. If it contains 'Purgeable', then the object can be permanently deleted by a privileged user; otherwise, only the system can purge the object at the end of the retention interval."
+   },
+   "exportable": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "Indicates if the private key can be exported."
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Purgeable"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Recoverable+Purgeable"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Recoverable"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Recoverable+ProtectedSubscription"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/153"
+   },
+   {
+    "$ref": "#/154"
+   },
+   {
+    "$ref": "#/155"
+   },
+   {
+    "$ref": "#/156"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "EC"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "EC-HSM"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RSA"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "RSA-HSM"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "oct-HSM"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/158"
+   },
+   {
+    "$ref": "#/159"
+   },
+   {
+    "$ref": "#/160"
+   },
+   {
+    "$ref": "#/161"
+   },
+   {
+    "$ref": "#/162"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "encrypt"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "decrypt"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "sign"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "verify"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "wrapKey"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "unwrapKey"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "import"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "release"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/164"
+   },
+   {
+    "$ref": "#/165"
+   },
+   {
+    "$ref": "#/166"
+   },
+   {
+    "$ref": "#/167"
+   },
+   {
+    "$ref": "#/168"
+   },
+   {
+    "$ref": "#/169"
+   },
+   {
+    "$ref": "#/170"
+   },
+   {
+    "$ref": "#/171"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/172"
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "P-256"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "P-384"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "P-521"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "P-256K"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/174"
+   },
+   {
+    "$ref": "#/175"
+   },
+   {
+    "$ref": "#/176"
+   },
+   {
+    "$ref": "#/177"
+   },
+   {
+    "$ref": "#/0"
+   }
+  ]
+ },
+ {
+  "$type": "ObjectType",
+  "name": "RotationPolicy",
+  "properties": {
+   "attributes": {
+    "type": {
+     "$ref": "#/180"
+    },
+    "flags": 0,
+    "description": "The attributes of key rotation policy."
+   },
+   "lifetimeActions": {
+    "type": {
+     "$ref": "#/187"
+    },
+    "flags": 0,
+    "description": "The lifetimeActions for key rotation action."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "KeyRotationPolicyAttributes",
+  "properties": {
+   "created": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 2,
+    "description": "Creation time in seconds since 1970-01-01T00:00:00Z."
+   },
+   "updated": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 2,
+    "description": "Last updated time in seconds since 1970-01-01T00:00:00Z."
+   },
+   "expiryTime": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The expiration time for the new key version. It should be in ISO8601 format. Eg: 'P90D', 'P1Y'."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "LifetimeAction",
+  "properties": {
+   "trigger": {
+    "type": {
+     "$ref": "#/182"
+    },
+    "flags": 0,
+    "description": "The trigger of key rotation policy lifetimeAction."
+   },
+   "action": {
+    "type": {
+     "$ref": "#/183"
+    },
+    "flags": 0,
+    "description": "The action of key rotation policy lifetimeAction."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Trigger",
+  "properties": {
+   "timeAfterCreate": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The time duration after key creation to rotate the key. It only applies to rotate. It will be in ISO 8601 duration format. Eg: 'P90D', 'P1Y'."
+   },
+   "timeBeforeExpiry": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The time duration before key expiring to rotate or notify. It will be in ISO 8601 duration format. Eg: 'P90D', 'P1Y'."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Action",
+  "properties": {
+   "type": {
+    "type": {
+     "$ref": "#/186"
+    },
+    "flags": 0,
+    "description": "The type of action."
+   }
+  }
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "rotate"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "notify"
+ },
+ {
+  "$type": "UnionType",
+  "elements": [
+   {
+    "$ref": "#/184"
+   },
+   {
+    "$ref": "#/185"
+   }
+  ]
+ },
+ {
+  "$type": "ArrayType",
+  "itemType": {
+   "$ref": "#/181"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "KeyReleasePolicy",
+  "properties": {
+   "contentType": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Content type and version of key release policy"
+   },
+   "data": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Blob encoding the policy rules under which the key can be released."
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.KeyVault/vaults/keys@2026-05-15",
+  "body": {
+   "$ref": "#/149"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.KeyVault/vaults/privateEndpointConnections"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-05-15"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.KeyVault/vaults/privateEndpointConnections",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/190"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/191"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/117"
+    },
+    "flags": 0,
+    "description": "Resource properties."
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "Azure location of the key vault resource."
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/193"
+    },
+    "flags": 2,
+    "description": "Tags assigned to the key vault resource."
+   },
+   "etag": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "Modified whenever there is a change in the state of private endpoint connection."
+   },
+   "systemData": {
+    "type": {
+     "$ref": "#/4"
+    },
+    "flags": 2,
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "PrivateEndpointConnectionTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.KeyVault/vaults/privateEndpointConnections@2026-05-15",
+  "body": {
+   "$ref": "#/192"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.KeyVault/vaults/secrets"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-05-15"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.KeyVault/vaults/secrets",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/195"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/196"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/198"
+    },
+    "flags": 0,
+    "description": "The tags that will be assigned to the secret."
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/199"
+    },
+    "flags": 1,
+    "description": "Properties of the secret"
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "Azure location of the key vault resource."
+   },
+   "systemData": {
+    "type": {
+     "$ref": "#/4"
+    },
+    "flags": 2,
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SecretCreateOrUpdateParametersTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SecretProperties",
+  "properties": {
+   "value": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The value of the secret. NOTE: 'value' will never be returned from the service, as APIs using this model are is intended for internal use in ARM deployments. Users should use the data-plane REST service for interaction with vault secrets."
+   },
+   "contentType": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 0,
+    "description": "The content type of the secret."
+   },
+   "attributes": {
+    "type": {
+     "$ref": "#/200"
+    },
+    "flags": 0,
+    "description": "The attributes of the secret."
+   },
+   "secretUri": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "The URI to retrieve the current version of the secret."
+   },
+   "secretUriWithVersion": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "The URI to retrieve the specific version of the secret."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "SecretAttributes",
+  "properties": {
+   "enabled": {
+    "type": {
+     "$ref": "#/2"
+    },
+    "flags": 0,
+    "description": "Determines whether the object is enabled."
+   },
+   "nbf": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 0,
+    "description": "Not before date in seconds since 1970-01-01T00:00:00Z."
+   },
+   "exp": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 0,
+    "description": "Expiry date in seconds since 1970-01-01T00:00:00Z."
+   },
+   "created": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 2,
+    "description": "Creation time in seconds since 1970-01-01T00:00:00Z."
+   },
+   "updated": {
+    "type": {
+     "$ref": "#/3"
+    },
+    "flags": 2,
+    "description": "Last updated time in seconds since 1970-01-01T00:00:00Z."
+   }
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.KeyVault/vaults/secrets@2026-05-15",
+  "body": {
+   "$ref": "#/197"
+  },
+  "readableScopes": 8,
+  "writableScopes": 8
+ },
+ {
+  "$type": "StringType",
+  "pattern": "^[a-fA-F0-9]{32}$"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "Microsoft.KeyVault/vaults/keys/versions"
+ },
+ {
+  "$type": "StringLiteralType",
+  "value": "2026-05-15"
+ },
+ {
+  "$type": "ObjectType",
+  "name": "Microsoft.KeyVault/vaults/keys/versions",
+  "properties": {
+   "id": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 10,
+    "description": "The resource id"
+   },
+   "name": {
+    "type": {
+     "$ref": "#/202"
+    },
+    "flags": 9,
+    "description": "The resource name"
+   },
+   "type": {
+    "type": {
+     "$ref": "#/203"
+    },
+    "flags": 10,
+    "description": "The resource type"
+   },
+   "apiVersion": {
+    "type": {
+     "$ref": "#/204"
+    },
+    "flags": 10,
+    "description": "The resource api version"
+   },
+   "properties": {
+    "type": {
+     "$ref": "#/151"
+    },
+    "flags": 2,
+    "description": "The properties of the key."
+   },
+   "location": {
+    "type": {
+     "$ref": "#/0"
+    },
+    "flags": 2,
+    "description": "The supported Azure location where the managed HSM Pool should be created."
+   },
+   "tags": {
+    "type": {
+     "$ref": "#/206"
+    },
+    "flags": 2,
+    "description": "Resource tags"
+   },
+   "systemData": {
+    "type": {
+     "$ref": "#/4"
+    },
+    "flags": 2,
+    "description": "Azure Resource Manager metadata containing createdBy and modifiedBy information."
+   }
+  }
+ },
+ {
+  "$type": "ObjectType",
+  "name": "KeyTags",
+  "properties": {},
+  "additionalProperties": {
+   "$ref": "#/0"
+  }
+ },
+ {
+  "$type": "ResourceType",
+  "name": "Microsoft.KeyVault/vaults/keys/versions@2026-05-15",
+  "body": {
+   "$ref": "#/205"
+  },
+  "readableScopes": 8,
+  "writableScopes": 0
+ }
+]

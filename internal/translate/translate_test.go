@@ -81,20 +81,23 @@ func maps() map[string]Map {
 	return map[string]Map{"sqs-sns": aws, "pubsub": gcp, "rabbitmq": rmq}
 }
 
-// targets are the definitions from testdata: the AWS tests' SQS queue and
-// SNS topic and this package's SNS subscription and inline policy, and the
-// Pub/Sub Discovery document.
+// targets are the definitions from testdata: the AWS tests' SQS queue, SNS
+// topic, VPC pieces and secret, this package's SNS subscription, inline
+// policy and ECR repository creation template, and the Pub/Sub, Compute,
+// Secret Manager and Artifact Registry Discovery documents.
 func targets(t *testing.T) Targets {
 	t.Helper()
 	dir := t.TempDir()
 	for src, name := range map[string]string{
-		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-sqs-queue.json"):         "aws-sqs-queue.json",
-		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-sns-topic.json"):         "aws-sns-topic.json",
-		filepath.Join("testdata", "aws", "aws-sns-subscription.json"):                         "aws-sns-subscription.json",
-		filepath.Join("testdata", "aws", "aws-sqs-queueinlinepolicy.json"):                    "aws-sqs-queueinlinepolicy.json",
-		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-ec2-vpc.json"):           "aws-ec2-vpc.json",
-		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-ec2-subnet.json"):        "aws-ec2-subnet.json",
-		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-ec2-securitygroup.json"): "aws-ec2-securitygroup.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-sqs-queue.json"):             "aws-sqs-queue.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-sns-topic.json"):             "aws-sns-topic.json",
+		filepath.Join("testdata", "aws", "aws-sns-subscription.json"):                             "aws-sns-subscription.json",
+		filepath.Join("testdata", "aws", "aws-sqs-queueinlinepolicy.json"):                        "aws-sqs-queueinlinepolicy.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-ec2-vpc.json"):               "aws-ec2-vpc.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-ec2-subnet.json"):            "aws-ec2-subnet.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-ec2-securitygroup.json"):     "aws-ec2-securitygroup.json",
+		filepath.Join("..", "..", "testdata", "aws", "schemas", "aws-secretsmanager-secret.json"): "aws-secretsmanager-secret.json",
+		filepath.Join("testdata", "aws", "aws-ecr-repositorycreationtemplate.json"):               "aws-ecr-repositorycreationtemplate.json",
 	} {
 		b, err := os.ReadFile(src)
 		if err != nil {
@@ -109,7 +112,8 @@ func targets(t *testing.T) Targets {
 		t.Fatal(err)
 	}
 	gdir := t.TempDir()
-	for _, src := range []string{filepath.Join("testdata", "gcp", "pubsub_v1.json"), filepath.Join("..", "..", "testdata", "gcp", "discovery", "compute_v1.json")} {
+	for _, src := range []string{filepath.Join("testdata", "gcp", "pubsub_v1.json"), filepath.Join("..", "..", "testdata", "gcp", "discovery", "compute_v1.json"),
+		filepath.Join("testdata", "gcp", "secretmanager_v1.json"), filepath.Join("testdata", "gcp", "artifactregistry_v1.json")} {
 		b, err := os.ReadFile(src)
 		if err != nil {
 			t.Fatal(err)

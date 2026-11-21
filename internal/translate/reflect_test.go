@@ -13,6 +13,8 @@ import (
 const (
 	sbVersion  = "2026-01-01"
 	netVersion = "2026-03-01"
+	kvVersion  = "2026-05-15"
+	acrVersion = "2025-11-01"
 )
 
 // reflected is one Azure type a rule reads: its definition's version, a
@@ -45,7 +47,11 @@ func readers() map[string]reflected {
 			_, ls := readSubnet(&vnet{}, "s", spec(o), "")
 			return ls
 		}},
-		"Microsoft.Network/networkSecurityGroups": {version: netVersion, name: "nsg", read: func(o snapshot.Object) []Loss { return readNSG(o).losses }},
+		"Microsoft.KeyVault/vaults":                           {version: kvVersion, name: "kv", read: func(o snapshot.Object) []Loss { return readVault(o).losses }},
+		"Microsoft.KeyVault/vaults/secrets":                   {version: kvVersion, name: "kv/s", read: func(o snapshot.Object) []Loss { return readSecret(o).losses }},
+		"Microsoft.ContainerRegistry/registries":              {version: acrVersion, name: "acr", read: func(o snapshot.Object) []Loss { return readRegistry(o).losses }},
+		"Microsoft.ContainerRegistry/registries/replications": {version: acrVersion, name: "acr/r", read: readReplication},
+		"Microsoft.Network/networkSecurityGroups":             {version: netVersion, name: "nsg", read: func(o snapshot.Object) []Loss { return readNSG(o).losses }},
 		"Microsoft.Network/networkSecurityGroups/securityRules": {version: netVersion, name: "nsg/r",
 			set: map[string]any{"access": "Allow", "direction": "Inbound", "protocol": "Tcp", "priority": float64(100),
 				"sourcePortRange": "*", "destinationPortRange": "443"},
@@ -231,6 +237,96 @@ func TestEveryNetworkTypeIsDecided(t *testing.T) {
 		}
 		if e := r.Report.Entries[0]; e.State != want {
 			t.Errorf("%s: %s, want %s", k, e.State, want)
+		}
+	}
+}
+
+// Every Key Vault vault type Azure defines is read, or named here; a
+// managed HSM is a type of its own, not a vault's child.
+func TestEveryKeyVaultTypeIsDecided(t *testing.T) {
+	reg, err := azarm.LoadDefinitions("testdata/azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decided := map[string]State{
+		azVault: Mapped, azVaultSecret: Mapped,
+		azVault + "/keys":                       Refused,
+		azVault + "/keys/versions":              Refused,
+		azVault + "/accesspolicies":             Refused,
+		azVault + "/privateendpointconnections": NotLooked,
+	}
+	n := 0
+	for _, name := range reg.Names() {
+		l := strings.ToLower(name)
+		if !(keyVault{}).claims(l) {
+			continue
+		}
+		n++
+		if _, ok := decided[l]; !ok {
+			t.Errorf("%s has a definition and no decision", name)
+		}
+	}
+	if n != len(decided) {
+		t.Errorf("%d types under %s, %d decided", n, azVault, len(decided))
+	}
+	if (keyVault{}).claims("microsoft.keyvault/managedhsms") {
+		t.Error("a managed HSM is claimed as a vault")
+	}
+	for k, want := range decided {
+		if k == azVault || k == azVaultSecret {
+			continue // read; see the secrets tests
+		}
+		for name, m := range kvMaps() {
+			r, err := Translate(snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{az(k, "rg", "x/y", nil)}}, m, targets(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if e := r.Report.Entries[0]; e.State != want {
+				t.Errorf("%s: %s: %s, want %s", name, k, e.State, want)
+			}
+		}
+	}
+}
+
+// Every container registry type Azure defines is read, or named here.
+func TestEveryRegistryTypeIsDecided(t *testing.T) {
+	reg, err := azarm.LoadDefinitions("testdata/azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decided := map[string]State{azRegistry: Mapped, azReplication: Mapped}
+	for k := range registryRefusals {
+		decided[k] = Refused
+	}
+	for k := range registryNotLooked {
+		decided[k] = NotLooked
+	}
+	n := 0
+	for _, name := range reg.Names() {
+		l := strings.ToLower(name)
+		if !(registry{}).claims(l) {
+			continue
+		}
+		n++
+		if _, ok := decided[l]; !ok {
+			t.Errorf("%s has a definition and no decision", name)
+		}
+	}
+	if n < 10 {
+		t.Errorf("only %d registry types have a definition here", n)
+	}
+	for k, want := range decided {
+		if k == azRegistry || k == azReplication {
+			continue // read; see the registry tests
+		}
+		for name, m := range acrMaps() {
+			r, err := Translate(snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{az(k, "rg", "x/y", nil)}}, m, targets(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if e := r.Report.Entries[0]; e.State != want {
+				t.Errorf("%s: %s: %s, want %s", name, k, e.State, want)
+			}
 		}
 	}
 }

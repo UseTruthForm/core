@@ -98,13 +98,22 @@ func TestRegistryGolden(t *testing.T) {
 func TestRegistryOnAWS(t *testing.T) {
 	r := runKV(t, acrFixture(), acrMaps()["aws"])
 	tm := object(t, r, "aws", awsRepoTmpl, "shopacr")
+	// Its firewall allowed one range: the repositories' policy denies
+	// pulls and pushes from anywhere else, and grants nothing.
 	want := map[string]any{"Prefix": "shopacr", "AppliedFor": []any{"CREATE_ON_PUSH"}, "Description": "From Azure Container Registry rg/shopacr",
-		"ImageTagMutability": "MUTABLE", "EncryptionConfiguration": map[string]any{"EncryptionType": "AES256"}}
+		"ImageTagMutability": "MUTABLE", "EncryptionConfiguration": map[string]any{"EncryptionType": "AES256"},
+		"RepositoryPolicy": `{"Statement":[{"Action":["ecr:BatchGetImage","ecr:GetDownloadUrlForLayer","ecr:BatchCheckLayerAvailability","ecr:InitiateLayerUpload","ecr:UploadLayerPart","ecr:CompleteLayerUpload","ecr:PutImage"],"Condition":{"BoolIfExists":{"aws:PrincipalIsAWSService":"false"},"NotIpAddress":{"aws:SourceIp":["198.51.100.0/24"]}},"Effect":"Deny","Principal":"*","Sid":"DenyOutsidePrivateAccess"}],"Version":"2012-10-17"}`}
 	if !reflect.DeepEqual(tm, want) {
 		t.Errorf("template: %v", tm)
 	}
-	// ECR's prefixes take a leading digit.
-	object(t, r, "aws", awsRepoTmpl, "9lives")
+	// ECR's prefixes take a leading digit; a public registry's
+	// repositories get no policy.
+	if p := object(t, r, "aws", awsRepoTmpl, "9lives"); p["RepositoryPolicy"] != nil {
+		t.Errorf("a policy on a registry that was not private: %v", p["RepositoryPolicy"])
+	}
+	if p := object(t, r, "aws", awsRepoTmpl, "pubimages"); p["RepositoryPolicy"] != nil {
+		t.Errorf("a policy on a public registry: %v", p["RepositoryPolicy"])
+	}
 	if !anyRequirement(r, "<account>.dkr.ecr.eu-west-1.amazonaws.com/shopacr/<repository>") || !anyRequirement(r, "ecr:CreateRepository") {
 		t.Errorf("requirements: %v", r.Report.Requirements)
 	}
@@ -156,7 +165,13 @@ func TestRegistryLosses(t *testing.T) {
 				widens = append(widens, l.Field)
 			}
 		}
-		if w := []string{"properties.networkRuleSet", "properties.encryption", "properties.policies.quarantinePolicy.status"}; !reflect.DeepEqual(widens, w) {
+		// The firewall is closed on ECR by the repositories' policy; on
+		// Artifact Registry nothing closes it.
+		w := []string{"properties.networkRuleSet", "properties.encryption", "properties.policies.quarantinePolicy.status"}
+		if name == "aws" {
+			w = w[1:]
+		}
+		if !reflect.DeepEqual(widens, w) {
 			t.Errorf("%s: shopacr widens %v, want %v", name, widens, w)
 		}
 		for _, f := range []string{"sku.name", "identity", "properties.adminUserEnabled", "properties.policies.trustPolicy.status",
@@ -189,7 +204,7 @@ func TestRegistryLosses(t *testing.T) {
 		// Public pulls are not written: everything the target holds is
 		// private.
 		for _, o := range r.Snapshots[m.To].Objects {
-			if s := canonJSON(o.Body); strings.Contains(s, "allUsers") || strings.Contains(s, "RepositoryPolicy") {
+			if s := canonJSON(o.Body); strings.Contains(s, "allUsers") || strings.Contains(s, `\"Effect\":\"Allow\"`) {
 				t.Errorf("%s: %s is public: %s", name, o.Key(), s)
 			}
 		}

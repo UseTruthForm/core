@@ -287,7 +287,9 @@ func TestStorageOnAWS(t *testing.T) {
 	}
 
 	acct := entry(t, r, src(stAcct, "shopassets"))
-	wantLoss(t, acct, "aws:SourceIp", true)
+	// Its firewall's ranges are the buckets' policy; what still passes it
+	// passed Azure's too (bypass AzureServices).
+	wantLoss(t, acct, "only from 203.0.113.0/24, 198.51.100.7/32", false)
 	wantLoss(t, acct, "Standard_RAGRS", false)
 	wantLoss(t, acct, "virtualNetworkRules", false)
 	wantLoss(t, acct, "bypass", false)
@@ -402,7 +404,7 @@ func TestStorageOnGCP(t *testing.T) {
 func TestStorageWidens(t *testing.T) {
 	want := map[string][]string{
 		"aws": {
-			"shopassets properties.networkAcls", "shopvault properties.publicNetworkAccess", "shopvault properties.encryption.keySource",
+			"shopvault properties.publicNetworkAccess", "shopvault properties.encryption.keySource",
 			"shopassets/default properties.deleteRetentionPolicy", "shopassets/default/records properties.hasLegalHold",
 			"shopassets/default/ledger properties.defaultEncryptionScope", "shopassets/tenantkey properties.source",
 		},

@@ -1515,6 +1515,7 @@ databases:                  # per server, keyed group/server: what Azure cannot 
 | Subscription | SQS queue subscribed with raw delivery, a queue policy for that topic only | subscription | quorum `Queue`, a `Binding` per rule |
 | Correlation rule | filter policy on message attributes (`$or` for several) | filter on attributes (`OR` for several) | headers binding |
 | SQL rule, rule action | refused | refused | refused |
+| Rule set default deny, public access disabled | a policy on every queue and topic denies sending, receiving and publishing to requests that come neither through the namespace's SQS and SNS endpoints nor from the rule set's public ranges (see Private access) | less protected: no network setting per topic; the report names the VPC Service Controls perimeter to create | the brokers' Service answers inside the cluster only |
 | Session queue | FIFO (`sessions: fifo`) | ordered delivery (`sessions: ordering`) | single active consumer |
 | Shared access keys | refused: identity is a change to the app | refused | refused |
 
@@ -1534,7 +1535,7 @@ databases:                  # per server, keyed group/server: what Azure cannot 
 | Encryption (Microsoft keys; twice) | SSE-S3; DSSE-KMS with AWS's key | Google's keys (layered by Google) |
 | Customer-managed key, a key's encryption scope | the managed keys, reported as less protected | the same |
 | HTTPS only, minimum TLS 1.2 or 1.3 | a bucket policy that only denies plain HTTP and older TLS | HTTPS only; no TLS minimum per bucket: less protected |
-| Firewall, private endpoints only | the public endpoint, guarded by IAM alone: less protected | the bucket's IP filter with the same public ranges; none for private only |
+| Firewall, private endpoints only | the bucket policy also denies object reads, writes, deletes and listings to requests that come neither through the account's S3 interface endpoint nor from the firewall's public ranges. Object names stay listable through AWS's own services (see Private access): less protected unless Azure's trusted services passed the firewall | the bucket's IP filter: the firewall's public ranges, and the VPC networks that had a private endpoint to the account |
 | Versioning, soft delete | versioning; soft delete as versioning with noncurrent versions expired (an early permanent delete is reported as less protected) | versioning, soft delete policy (7 to 90 days) |
 | Time-based retention, version-level immutability | Object Lock (locked: compliance, unlocked: governance) | retention policy, written unlocked; version-level: less protected |
 | Legal hold | less protected: holds are per object | the same |
@@ -1617,7 +1618,7 @@ instances in its subnets; the report lists them.
 |---|---|---|
 | Vault | (none: the account and region) | (none: the project) |
 | Secret | Secrets Manager secret `<vault>/<secret>`, no value; content type in its description, tags as tags | Secret Manager secret `<vault>_<secret>`, no version, replicated as `secrets.replication` says; content type as an annotation, tags that fit as labels |
-| Firewall default deny, public access disabled | less protected: IAM alone until a VPC endpoint | less protected: IAM alone until VPC Service Controls |
+| Firewall default deny, public access disabled | a resource policy on each secret denies writing its value, and reading it, to requests that come neither through the vault's Secrets Manager endpoint nor from the firewall's public ranges. A value stays readable through AWS's own services (see Private access): less protected unless Azure's trusted services passed the firewall | less protected: no network setting per secret; the report names the VPC Service Controls perimeter to create |
 | Soft delete | the recovery window each delete chooses | less protected: a delete is immediate |
 | Purge protection | less protected: a delete may skip the window | less protected |
 | Disabled secret, `exp`, `nbf` | written with no value; the dates are named (Key Vault only records them) | the same; `expireTime` would delete the secret, so it is not written |
@@ -1635,7 +1636,8 @@ the restore. A disabled secret is restored without one.
 |---|---|---|
 | Registry | a repository creation template for prefix `<registry>`: ECR makes each repository on its first push, AES-256, mutable tags | an Artifact Registry repository of Docker images in the map's region |
 | Images | not copied: copy them; image references are rewritten in a later step | the same |
-| Firewall default deny, customer-managed key, quarantine | less protected | less protected |
+| Firewall default deny, public access disabled | the template's repository policy denies pulls and pushes to requests that come neither through the registry's ECR endpoints nor from the firewall's public ranges | less protected: no network setting per repository; the report names the VPC Service Controls perimeter to create |
+| Customer-managed key, quarantine | less protected | less protected |
 | Anonymous pull | not written: the repositories are private | the same |
 | Admin user | not written: named, with who signed in with it | the same |
 | Tokens, scope maps, credential sets | refused: identity | refused |
@@ -1679,10 +1681,59 @@ An interface endpoint takes one subnet per availability zone; private
 endpoints in one subnet make endpoints in one zone, and the report says so.
 On S3 the endpoint answers every lookup in the VPC
 (`PrivateDnsOnlyForInboundResolverEndpoint: AllResolvers`), as a private
-endpoint did, without a gateway endpoint. The services still answer on their
-public endpoints to principals allowed to call them; closing those
-(`aws:SourceVpce` policies, VPC Service Controls) is not translated yet, and
-is reported as less protected.
+endpoint did, without a gateway endpoint.
+
+A service that answered only on its private endpoints (public network access
+disabled), or only its firewall's ranges, answers only there on the target:
+
+| Private only | aws | gcp |
+|---|---|---|
+| Service Bus (sqs-sns, pubsub) | `AWS::SQS::QueueInlinePolicy` on every queue and dead-letter queue (a subscription's holds SNS's delivery too), `AWS::SNS::TopicInlinePolicy` on every topic | less protected: the report names the perimeter |
+| Storage | statements in the bucket policy | the bucket's IP filter (`vpcNetworkSources`: each network, with its own address ranges) |
+| Key Vault | `AWS::SecretsManager::ResourcePolicy` on every secret | less protected: the report names the perimeter |
+| Registry | `RepositoryPolicy` in the repository creation template | less protected: the report names the perimeter |
+| A private service with no private endpoint in the snapshot and no public range | less protected: there is no private path to lock it to | the same (a bucket admits no network) |
+| PostgreSQL, Azure SQL, AKS | already private: RDS not publicly accessible, the EKS endpoint | Cloud SQL's private IP, GKE's private endpoint |
+
+On AWS the policy only denies, so it grants nobody anything and is not
+identity. It denies the service's data actions (sending and receiving
+messages, publishing, object reads and writes, a secret's value, image pulls
+and pushes) to a request that comes neither through the interface endpoints
+written for the service's private endpoints (`aws:SourceVpce`) nor from an
+allowed public range (`aws:SourceIp`). Three things pass, on purpose:
+
+- **Management actions.** Reading and changing a queue's, bucket's or
+  secret's settings works from anywhere IAM allows, as Azure's management
+  plane did with public network access disabled. Denying them would lock out
+  the restore, a later capture and the console.
+- **AWS's services acting as themselves** (`aws:PrincipalIsAWSService`):
+  SNS delivering to a subscription's queue does not come through an endpoint.
+  Such a service still needs an allow of its own; the only one written is
+  that delivery.
+- **Two actions, through AWS's services acting with the caller's
+  credentials** (`aws:ViaAWSService`): `s3:ListBucket` and
+  `secretsmanager:GetSecretValue`. The bucket's and the secret's own Cloud
+  Control handlers call them, never through an endpoint, so a restore could
+  not read what it wrote without that. It leaves a bucket's object names
+  (through Athena, say) and a secret's value (through a CloudFormation
+  reference) reachable from outside the network by a principal IAM allows.
+  Where Azure's trusted services passed the source's firewall
+  (`bypass: AzureServices`) that is what the source did; otherwise it is
+  reported as less protected.
+
+A repository gets the template's policy when its first push makes it; one
+made any other way needs the same policy by hand.
+
+On GCP, Pub/Sub, Secret Manager and Artifact Registry have no setting for
+where a request comes from. A VPC Service Controls perimeter closes them, and
+is not written: it belongs to the organization's access policy, it closes a
+service for the whole project (more than one namespace or vault), a project
+can be in one perimeter only, and it refuses management calls from outside
+too, the restore's own among them, until an ingress rule admits who runs
+them. The report keeps these as less protected and names the perimeter to
+create. A bucket's IP filter also covers the bucket's own settings: whoever
+restores and captures from outside the admitted networks needs
+`storage.buckets.exemptFromIpFilter`.
 
 Every source object ends in one state, and `<out>/translation.yaml` lists
 each with its reason and target objects:
@@ -1697,9 +1748,9 @@ each with its reason and target objects:
 - **not looked at**: no descriptor for the type yet.
 
 A loss that makes the target less protected than the source is marked
-`widens`. Examples: a namespace that answered only listed networks or
-private endpoints becomes queues on a public endpoint guarded by IAM
-alone; a customer-managed key becomes the platform's.
+`widens`. Examples: a namespace that answered only private endpoints
+becomes Pub/Sub topics on Google's public endpoint, guarded by IAM alone; a
+customer-managed key becomes the platform's.
 
 A setting no rule reads is marked `unread`. Each reader is checked in
 the tests against Azure's published definition of its type, so a setting

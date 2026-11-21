@@ -52,8 +52,22 @@ func (awsBuckets) account(a *stAccount, o *out) []Loss {
 		if a.closed {
 			field = "properties.publicNetworkAccess"
 		}
-		ls = append(ls, Loss{Field: field, Widens: true,
-			Why: a.private + "; S3 answers on its public endpoint, guarded by IAM alone, until a bucket policy on aws:SourceIp or aws:SourceVpce (with a VPC endpoint) limits where requests come from (a resource policy: not translated, #32)"})
+		if l := a.lockAWS(o); l == nil {
+			ls = append(ls, Loss{Field: field, Widens: true,
+				Why: a.private + "; " + lockNoPath + ". S3 answers on its public endpoint, guarded by IAM alone"})
+		} else {
+			// Objects are closed. Their names are listed by s3:ListBucket,
+			// which the bucket's own Cloud Control handlers need too
+			// (HeadBucket): that stays open to AWS's services acting with
+			// the caller's credentials.
+			via := "its buckets' objects are read, written and deleted only " + l.where() + ", but their names can still be listed from elsewhere through an AWS service that acts with the caller's credentials (Athena), by a principal allowed s3:ListBucket: Cloud Control reads a bucket with that permission, so that path cannot be denied without locking out the restore"
+			if strings.Contains(a.bypass, "AzureServices") {
+				ls = append(ls, Loss{Field: field, Why: a.private + ", and Azure's trusted services passed it; " + via})
+			} else {
+				ls = append(ls, Loss{Field: field, Widens: true, Why: a.private + ", and no Azure service passed it; " + via})
+			}
+			lockRequireAWS(o, "Storage account "+a.group+"/"+a.name+"'s buckets answer", l)
+		}
 	}
 	if a.cmk {
 		ls = append(ls, Loss{Field: "properties.encryption.keySource", Widens: true,
@@ -92,14 +106,14 @@ func (awsBuckets) account(a *stAccount, o *out) []Loss {
 	if a.worm != nil && a.worm.appends {
 		ls = append(ls, Loss{Field: "properties.immutableStorageWithVersioning.immutabilityPolicy.allowProtectedAppendWrites", Why: "appends to protected append blobs: S3 has no append, so a protected object cannot be appended to"})
 	}
-	ls = append(ls, stNetworkLosses(a, "S3")...)
+	ls = append(ls, stNetworkLosses(a, "on S3 a subnet reaches the buckets through its VPC's S3 endpoint, and only those written for a private endpoint are let through")...)
 	_, tl := awsBucketTags(a.tags)
 	ls = append(ls, tl...)
 	if a.keys {
 		o.require("Apps that sign in to Azure Storage with account keys, SAS tokens or connection strings must move to the target's identity (IAM roles, workload identity); no key or SAS is carried over")
 	}
-	if a.private != "" {
-		o.require("Buckets from a storage account that limited its network (" + a.src + ") answer on S3's public endpoint: add a VPC endpoint for S3 and a bucket policy that denies requests not from it, or not from the allowed ranges")
+	if a.private != "" && a.lockAWS(o) == nil {
+		o.require("Buckets from a storage account that limited its network (" + a.src + ") answer on S3's public endpoint: add a VPC endpoint for S3 and a bucket policy that denies requests not from it")
 	}
 	o.require("Apps move from the Azure Blob SDK to the S3 API: each container is a bucket, named <account>-<container> unless the map names it")
 	return ls
@@ -107,10 +121,10 @@ func (awsBuckets) account(a *stAccount, o *out) []Loss {
 
 // stNetworkLosses names what the firewall allowed that no target can say
 // as Azure did: narrower, never wider.
-func stNetworkLosses(a *stAccount, target string) []Loss {
+func stNetworkLosses(a *stAccount, instead string) []Loss {
 	var ls []Loss
 	if a.vnetRules > 0 {
-		ls = append(ls, Loss{Field: "properties.networkAcls.virtualNetworkRules", Why: fmt.Sprintf("%d virtual network subnet(s) were allowed; on %s none is until the networks it may come from are named (not translated)", a.vnetRules, target)})
+		ls = append(ls, Loss{Field: "properties.networkAcls.virtualNetworkRules", Why: fmt.Sprintf("%d virtual network subnet(s) were allowed by service endpoint; %s", a.vnetRules, instead)})
 	}
 	if a.resRules > 0 {
 		ls = append(ls, Loss{Field: "properties.networkAcls.resourceAccessRules", Why: fmt.Sprintf("%d Azure resource instance(s) were allowed through the firewall; they are not Azure's on the target", a.resRules)})
@@ -119,6 +133,19 @@ func stNetworkLosses(a *stAccount, target string) []Loss {
 		ls = append(ls, Loss{Field: "properties.networkAcls.bypass", Why: a.bypass + " passed the firewall; Azure's trusted services are not the target's"})
 	}
 	return ls
+}
+
+// lockAWS is how a private account's buckets are closed, or nil: when it
+// was not private, or when there is nothing to lock them to.
+func (a *stAccount) lockAWS(o *out) *awsLock {
+	if a.private == "" {
+		return nil
+	}
+	var ranges []string
+	if !a.closed {
+		ranges = a.ranges
+	}
+	return lockAWS(o, azStorage, a.group, a.name, []string{"s3"}, ranges)
 }
 
 func (awsBuckets) blob(a *stAccount, b *stBlob) []Loss {
@@ -283,9 +310,14 @@ func (d awsBuckets) bucket(a *stAccount, c *stContainer, name string, o *out) ([
 		deny = append(deny, map[string]any{"Sid": "DenyOldTLS", "Effect": "Deny", "Principal": "*", "Action": "s3:*", "Resource": res,
 			"Condition": map[string]any{"NumericLessThan": map[string]any{"s3:TlsVersion": tlsNumber(a.tls)}}})
 	}
+	// A private account's buckets answer only on its private path: the
+	// same policy, which still grants nothing.
+	if l := a.lockAWS(o); l != nil {
+		deny = append(deny, l.statement(lockS3Objects, arn+"/*", false), l.statement(lockS3Lists, arn, false), l.statement(lockS3Managed, arn, true))
+	}
 	if len(deny) > 0 {
 		targets = append(targets, o.add("aws", c.src, awsObject(awsBucketPolicy, name, map[string]any{
-			"Bucket": name, "PolicyDocument": map[string]any{"Version": "2012-10-17", "Statement": deny},
+			"Bucket": name, "PolicyDocument": awsPolicyDoc(deny...),
 		})))
 	}
 	return targets, ls

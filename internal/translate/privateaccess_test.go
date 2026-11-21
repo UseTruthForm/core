@@ -50,6 +50,12 @@ func peFixture() snapshot.Snapshot {
 			"properties": map[string]any{"publicNetworkAccess": "Disabled"}}),
 		az("Microsoft.Storage/storageAccounts", "shop", "shopfiles", map[string]any{"location": "westeurope", "kind": "StorageV2", "sku": map[string]any{"name": "Standard_LRS"},
 			"properties": map[string]any{"publicNetworkAccess": "Disabled", "minimumTlsVersion": "TLS1_2", "allowBlobPublicAccess": false}}),
+		az("Microsoft.ServiceBus/namespaces/queues", "shop", "shopbus/orders", pr(map[string]any{"lockDuration": "PT1M", "maxDeliveryCount": 10, "defaultMessageTimeToLive": "P1D"})),
+		az("Microsoft.ServiceBus/namespaces/topics", "shop", "shopbus/events", pr(map[string]any{"defaultMessageTimeToLive": "P1D"})),
+		az("Microsoft.ServiceBus/namespaces/topics/subscriptions", "shop", "shopbus/events/audit", pr(map[string]any{"lockDuration": "PT1M", "maxDeliveryCount": 10, "defaultMessageTimeToLive": "P1D"})),
+		az("Microsoft.ServiceBus/namespaces/topics/subscriptions/rules", "shop", "shopbus/events/audit/all", pr(map[string]any{"filterType": "CorrelationFilter", "correlationFilter": map[string]any{"properties": map[string]any{"type": "order"}}})),
+		az("Microsoft.KeyVault/vaults/secrets", "shop", "shopkv/db-password", pr(map[string]any{"attributes": map[string]any{"enabled": true}})),
+		az("Microsoft.Storage/storageAccounts/blobServices/containers", "shop", "shopfiles/default/docs", pr(map[string]any{"publicAccess": "None"})),
 		pe("pe-bus", "endpoints", "Microsoft.ServiceBus/namespaces", "shopbus", "namespace"),
 		pe("pe-kv", "endpoints", "Microsoft.KeyVault/vaults", "shopkv", "vault"),
 		pe("pe-acr", "endpoints", "Microsoft.ContainerRegistry/registries", "shopacr", "registry"),
@@ -214,8 +220,10 @@ func TestPrivateAccessRestores(t *testing.T) {
 			t.Errorf("aws %s: %s", res.Key, res.Detail)
 		}
 	}
-	if c := f.Count(); c[awsEndpoint] != 6 {
-		t.Errorf("aws endpoints created: %v", c)
+	// Each private service's policy is created with it: a queue's and a
+	// topic's by their queue and topic, a secret's and a bucket's listed.
+	if c := f.Count(); c[awsEndpoint] != 6 || c[awsPolicy] != 4 || c[awsTopicPolicy] != 1 || c[awsSecretPolicy] != 1 || c[awsBucketPolicy] != 1 {
+		t.Errorf("aws created: %v", c)
 	}
 	for _, res := range awscc.Restore(context.Background(), f, tg.AWS, s, awscc.RestoreOptions{}, awscc.Tuning{}) {
 		if !res.OK || res.Detail != "already present and identical" {

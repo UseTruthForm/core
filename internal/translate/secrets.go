@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/usetruthform/core/internal/awscc"
 	"github.com/usetruthform/core/internal/snapshot"
 )
 
@@ -27,10 +28,11 @@ import (
 // which is not translated (#32).
 
 const (
-	azVault       = "microsoft.keyvault/vaults"
-	azVaultSecret = azVault + "/secrets"
-	awsSecret     = "AWS::SecretsManager::Secret"
-	gcpSecret     = "secretmanager.googleapis.com/Secret"
+	azVault         = "microsoft.keyvault/vaults"
+	azVaultSecret   = azVault + "/secrets"
+	awsSecret       = "AWS::SecretsManager::Secret"
+	awsSecretPolicy = "AWS::SecretsManager::ResourcePolicy"
+	gcpSecret       = "secretmanager.googleapis.com/Secret"
 
 	kvRetention = 90 // Key Vault's soft-delete retention when unset, in days
 )
@@ -57,11 +59,17 @@ type kvVault struct {
 	tags             map[string]string
 	losses           []Loss
 	private          string // why its endpoint answered only some networks, or ""
-	softDelete       bool
-	retention        int // days
-	purgeProtection  bool
-	access           string // who it let read its secrets, when said: "3 access policies"
-	secrets          []*kvSecret
+	// ranges are the public address ranges its firewall allowed, vnets the
+	// subnets it allowed by service endpoint, and trusted whether Azure's
+	// trusted services passed it.
+	ranges          []string
+	vnets           int
+	trusted         bool
+	softDelete      bool
+	retention       int // days
+	purgeProtection bool
+	access          string // who it let read its secrets, when said: "3 access policies"
+	secrets         []*kvSecret
 }
 
 type kvSecret struct {
@@ -188,15 +196,23 @@ func readVault(o snapshot.Object) *kvVault {
 	acl := newProps(obj(p.m["networkAcls"]), "properties.networkAcls.")
 	deny := strings.EqualFold(acl.str("defaultAction"), "Deny")
 	ips, nets := len(list(acl.m["ipRules"])), len(list(acl.m["virtualNetworkRules"]))
-	// Which Azure services may pass the firewall (bypass) means nothing
-	// once it is gone; it goes with the loss below.
-	acl.quiet("ipRules", "virtualNetworkRules", "bypass")
+	// Azure's trusted services pass the firewall when bypass says so; a
+	// snapshot that does not say is read as the stricter None.
+	bypass := acl.str("bypass")
+	acl.quiet("ipRules", "virtualNetworkRules")
 	switch {
 	case strings.EqualFold(public, "Disabled"):
 		v.private = "its public network access is disabled: it answered private endpoints only"
 	case deny:
 		v.private = fmt.Sprintf("its firewall denies by default, allowing %d address range(s) and %d network(s)", ips, nets)
+		var bad []string
+		v.ranges, bad = lockRanges(list(acl.m["ipRules"]), "value")
+		for _, b := range bad {
+			acl.lose("ipRules", b+" is not an address or range this reads; it is not allowed", false)
+		}
+		v.vnets = nets
 	}
+	v.trusted = v.private != "" && strings.EqualFold(bypass, "AzureServices")
 	p.quiet("networkAcls")
 	v.losses = append(append(append(top.rest(), p.rest()...), sku.rest()...), acl.rest()...)
 	return v
@@ -273,9 +289,31 @@ func (v *kvVault) identityRequirement(o *out, grant string) {
 // <vault>/<secret>, with no value.
 func awsVault(v *kvVault, o *out) {
 	e := vaultEntry(v, "Secrets Manager")
+	var lock *awsLock
 	if v.private != "" {
-		e.Losses = append(e.Losses, Loss{Field: "properties.networkAcls", Widens: true,
-			Why: v.private + "; Secrets Manager answers on its public endpoint, guarded by IAM alone, until a VPC endpoint and a policy on aws:SourceVpce are added (not translated yet)"})
+		lock = lockAWS(o, azVault, v.group, v.name, []string{"secretsmanager"}, v.ranges)
+		switch {
+		case lock == nil:
+			e.Losses = append(e.Losses, Loss{Field: "properties.networkAcls", Widens: true,
+				Why: v.private + "; " + lockNoPath + ". Secrets Manager answers on its public endpoint, guarded by IAM alone"})
+		default:
+			// A secret's value is read by GetSecretValue, which the
+			// secret's own Cloud Control handlers call: it stays open to
+			// AWS's services acting with the caller's credentials.
+			via := "its secrets answer only " + lock.where() + ", but a value can still be read from elsewhere through an AWS service that acts with the caller's credentials (CloudFormation resolving a reference to the secret), by a principal allowed secretsmanager:GetSecretValue: Cloud Control reads a secret that way, so that path cannot be denied without locking out the restore"
+			if v.trusted {
+				e.Losses = append(e.Losses, Loss{Field: "properties.networkAcls",
+					Why: v.private + ", and Azure's trusted services passed it; " + via})
+			} else {
+				e.Losses = append(e.Losses, Loss{Field: "properties.networkAcls", Widens: true,
+					Why: v.private + ", and no Azure service passed it; " + via})
+			}
+			if v.vnets > 0 {
+				e.Losses = append(e.Losses, Loss{Field: "properties.networkAcls.virtualNetworkRules",
+					Why: fmt.Sprintf("%d subnet(s) were allowed by service endpoint; on AWS a subnet reaches the secrets through its VPC's interface endpoint, and only those written for a private endpoint are let through", v.vnets)})
+			}
+			lockRequireAWS(o, "Key Vault "+v.group+"/"+v.name+"'s secrets answer", lock)
+		}
 	}
 	switch {
 	case v.softDelete && v.purgeProtection:
@@ -312,6 +350,13 @@ func awsVault(v *kvVault, o *out) {
 			o.require(fmt.Sprintf("Secret %s was disabled on the source: restore it without a value (leave it out of --values) for as long as it should stay unreadable", name))
 		}
 		se.Targets = append(se.Targets, o.add("aws", s.src, awsObject(awsSecret, name, spec)))
+		if lock != nil {
+			// The policy is named as a capture names one: by its spec.
+			arn := awsRef(awsSecret, name, "Id")
+			pol := map[string]any{"SecretId": arn, "ResourcePolicy": awsPolicyDoc(
+				lock.statement(lockSecrets, arn, false), lock.statement(lockSecretsManaged, arn, true))}
+			se.Targets = append(se.Targets, o.add("aws", s.src, awsObject(awsSecretPolicy, awscc.SpecName(awsSecretPolicy, pol), pol)))
+		}
 		o.entries = append(o.entries, se)
 		written[s] = name
 	}
@@ -357,7 +402,7 @@ func gcpVault(v *kvVault, o *out) {
 	e := vaultEntry(v, "Secret Manager")
 	if v.private != "" {
 		e.Losses = append(e.Losses, Loss{Field: "properties.networkAcls", Widens: true,
-			Why: v.private + "; Secret Manager answers on Google's public endpoint, guarded by IAM alone, until a VPC Service Controls perimeter holds the project (not translated yet)"})
+			Why: v.private + "; " + gcpPerimeter(o, "Key Vault "+v.group+"/"+v.name, "Secret Manager", "secretmanager.googleapis.com", o.privatePathOf(azVault, v.group, v.name))})
 	}
 	if v.softDelete {
 		e.Losses = append(e.Losses, Loss{Field: "properties.enableSoftDelete", Widens: true,

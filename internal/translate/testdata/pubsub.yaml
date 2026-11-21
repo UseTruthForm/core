@@ -7,10 +7,12 @@ report:
     state: not looked at
   - losses:
     - field: properties.publicNetworkAccess
-      why: its network rule set denies by default and allows 1 address range(s) and
-        0 virtual network(s); Pub/Sub answers on Google's public endpoint, guarded
-        by IAM alone, until a VPC Service Controls perimeter holds the project (not
-        translated yet)
+      why: 'its network rule set denies by default and allows 1 address range(s) and
+        0 virtual network(s); Pub/Sub answers on Google''s public endpoint to whoever
+        IAM allows: it has no network setting of its own, and the VPC Service Controls
+        perimeter that would close it (pubsub.googleapis.com for the whole project;
+        no network of this translation reached it privately) is the organization''s
+        to create, and is not written'
       widens: true
     - field: properties.minimumTlsVersion
       why: 'TLS 1.2 at least on the source; Pub/Sub''s floor is Google''s and cannot
@@ -152,6 +154,12 @@ report:
   - Pub/Sub's service agent (service-<project-number>@gcp-sa-pubsub.iam.gserviceaccount.com)
     needs roles/pubsub.publisher on each dead-letter topic and roles/pubsub.subscriber
     on each subscription that dead-letters; no grant is written here
+  - 'To close Pub/Sub to the internet as Service Bus namespace rg/shop was: in the
+    organization''s access policy, create a VPC Service Controls perimeter (accessPolicies/<policy>/servicePerimeters)
+    whose resources are the target project (projects/<project number>) and whose restrictedServices
+    hold pubsub.googleapis.com. It closes that service for the whole project, management
+    calls included: add an ingress rule for whoever restores and captures from outside,
+    and try it first as a dry run (useExplicitDryRunSpec)'
   to: gcp
 snapshots:
   gcp:

@@ -5,17 +5,20 @@ report:
   - losses:
     - field: properties.networkAcls
       why: 'its firewall denies by default and allows 2 address range(s) and 1 virtual
-        network subnet(s); S3 answers on its public endpoint, guarded by IAM alone,
-        until a bucket policy on aws:SourceIp or aws:SourceVpce (with a VPC endpoint)
-        limits where requests come from (a resource policy: not translated, #32)'
-      widens: true
+        network subnet(s), and Azure''s trusted services passed it; its buckets''
+        objects are read, written and deleted only from 203.0.113.0/24, 198.51.100.7/32,
+        but their names can still be listed from elsewhere through an AWS service
+        that acts with the caller''s credentials (Athena), by a principal allowed
+        s3:ListBucket: Cloud Control reads a bucket with that permission, so that
+        path cannot be denied without locking out the restore'
     - field: sku.name
       why: Standard_RAGRS copies the account to a second region; an S3 bucket keeps
         its objects in at least three availability zones of one region, and a copy
         in another region (S3 Replication) is not translated
     - field: properties.networkAcls.virtualNetworkRules
-      why: 1 virtual network subnet(s) were allowed; on S3 none is until the networks
-        it may come from are named (not translated)
+      why: 1 virtual network subnet(s) were allowed by service endpoint; on S3 a subnet
+        reaches the buckets through its VPC's S3 endpoint, and only those written
+        for a private endpoint are let through
     - field: properties.networkAcls.bypass
       why: AzureServices passed the firewall; Azure's trusted services are not the
         target's
@@ -61,9 +64,9 @@ report:
         design, #32)'
     - field: properties.publicNetworkAccess
       why: 'public network access is disabled: it answers only on private endpoints;
-        S3 answers on its public endpoint, guarded by IAM alone, until a bucket policy
-        on aws:SourceIp or aws:SourceVpce (with a VPC endpoint) limits where requests
-        come from (a resource policy: not translated, #32)'
+        no private endpoint to it is translated, and it allowed no public address
+        range: there is no private path to lock it to. S3 answers on its public endpoint,
+        guarded by IAM alone'
       widens: true
     - field: properties.encryption.keySource
       why: blobs are encrypted with the customer's own key; the buckets use S3's keys
@@ -221,17 +224,19 @@ report:
     with their versions, metadata and per-blob tiers and holds, which this translation
     does not carry'
   - 'Buckets from a storage account that limited its network (Microsoft.Storage/storageAccounts
-    shop/shopassets) answer on S3''s public endpoint: add a VPC endpoint for S3 and
-    a bucket policy that denies requests not from it, or not from the allowed ranges'
-  - 'Buckets from a storage account that limited its network (Microsoft.Storage/storageAccounts
     shop/shopvault) answer on S3''s public endpoint: add a VPC endpoint for S3 and
-    a bucket policy that denies requests not from it, or not from the allowed ranges'
+    a bucket policy that denies requests not from it'
   - 'Containers under a legal hold become buckets without one: put each copied object
     under an Object Lock legal hold (S3) or a temporary hold (Cloud Storage) before
     anything else can delete it'
   - 'Local users of a storage account (SFTP, NFS) are identity and are not translated
     (#32): give each client an IAM or workload identity on the target, or a managed
     file transfer service (AWS Transfer Family)'
+  - 'Storage account shop/shopassets''s buckets answer only from 203.0.113.0/24, 198.51.100.7/32,
+    as on Azure: a resource policy denies the data actions to every other request,
+    whoever makes it. The settings can still be read and changed from anywhere IAM
+    allows, as Azure''s management plane could; apps and people that read or write
+    the data from elsewhere must come that way'
   - 'Who may read and write each bucket is IAM, which is not translated (#32): grant
     the app''s role or service account access to its bucket (Azure role assignments
     on the account are not carried over)'
@@ -266,6 +271,68 @@ snapshots:
           - '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}'
           - '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}/*'
           Sid: DenyOldTLS
+        - Action:
+          - s3:GetObject
+          - s3:GetObjectVersion
+          - s3:GetObjectAcl
+          - s3:GetObjectVersionAcl
+          - s3:GetObjectAttributes
+          - s3:GetObjectVersionAttributes
+          - s3:GetObjectTagging
+          - s3:GetObjectVersionTagging
+          - s3:GetObjectRetention
+          - s3:GetObjectLegalHold
+          - s3:PutObject
+          - s3:PutObjectTagging
+          - s3:PutObjectVersionTagging
+          - s3:PutObjectRetention
+          - s3:PutObjectLegalHold
+          - s3:DeleteObject
+          - s3:DeleteObjectVersion
+          - s3:DeleteObjectTagging
+          - s3:DeleteObjectVersionTagging
+          - s3:RestoreObject
+          - s3:AbortMultipartUpload
+          - s3:ListMultipartUploadParts
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}/*'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucketVersions
+          - s3:ListBucketMultipartUploads
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucket
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+              aws:ViaAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}'
+          Sid: DenyOutsidePrivateAccessButThroughAWS
         Version: "2012-10-17"
   - apiVersion: aws.truthform.org/v1
     kind: AWS::S3::BucketPolicy
@@ -295,6 +362,68 @@ snapshots:
           - '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}'
           - '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}/*'
           Sid: DenyOldTLS
+        - Action:
+          - s3:GetObject
+          - s3:GetObjectVersion
+          - s3:GetObjectAcl
+          - s3:GetObjectVersionAcl
+          - s3:GetObjectAttributes
+          - s3:GetObjectVersionAttributes
+          - s3:GetObjectTagging
+          - s3:GetObjectVersionTagging
+          - s3:GetObjectRetention
+          - s3:GetObjectLegalHold
+          - s3:PutObject
+          - s3:PutObjectTagging
+          - s3:PutObjectVersionTagging
+          - s3:PutObjectRetention
+          - s3:PutObjectLegalHold
+          - s3:DeleteObject
+          - s3:DeleteObjectVersion
+          - s3:DeleteObjectTagging
+          - s3:DeleteObjectVersionTagging
+          - s3:RestoreObject
+          - s3:AbortMultipartUpload
+          - s3:ListMultipartUploadParts
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}/*'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucketVersions
+          - s3:ListBucketMultipartUploads
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucket
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+              aws:ViaAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}'
+          Sid: DenyOutsidePrivateAccessButThroughAWS
         Version: "2012-10-17"
   - apiVersion: aws.truthform.org/v1
     kind: AWS::S3::BucketPolicy
@@ -324,6 +453,68 @@ snapshots:
           - '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}'
           - '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}/*'
           Sid: DenyOldTLS
+        - Action:
+          - s3:GetObject
+          - s3:GetObjectVersion
+          - s3:GetObjectAcl
+          - s3:GetObjectVersionAcl
+          - s3:GetObjectAttributes
+          - s3:GetObjectVersionAttributes
+          - s3:GetObjectTagging
+          - s3:GetObjectVersionTagging
+          - s3:GetObjectRetention
+          - s3:GetObjectLegalHold
+          - s3:PutObject
+          - s3:PutObjectTagging
+          - s3:PutObjectVersionTagging
+          - s3:PutObjectRetention
+          - s3:PutObjectLegalHold
+          - s3:DeleteObject
+          - s3:DeleteObjectVersion
+          - s3:DeleteObjectTagging
+          - s3:DeleteObjectVersionTagging
+          - s3:RestoreObject
+          - s3:AbortMultipartUpload
+          - s3:ListMultipartUploadParts
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}/*'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucketVersions
+          - s3:ListBucketMultipartUploads
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucket
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+              aws:ViaAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}'
+          Sid: DenyOutsidePrivateAccessButThroughAWS
         Version: "2012-10-17"
   - apiVersion: aws.truthform.org/v1
     kind: AWS::S3::BucketPolicy

@@ -57,12 +57,6 @@ report:
       why: 'its images were also kept and served in northeurope; the target keeps
         them in the map''s region only (ECR replication, an Artifact Registry multi-region
         location: not translated yet)'
-    - field: properties.networkRuleSet
-      why: its firewall denies by default, allowing 1 address range(s); ECR answers
-        on its public endpoint, guarded by IAM alone, until VPC endpoints (ecr.api,
-        ecr.dkr, and S3 for layers) and a registry policy on aws:SourceVpce are added
-        (not translated yet)
-      widens: true
     - field: properties.encryption
       why: 'its images were encrypted with the customer''s own key; the repositories
         use ECR''s AES-256 encryption until a KMS key is named, which needs a role
@@ -77,7 +71,8 @@ report:
         a template makes needs a role ECR assumes (CustomRoleArn): identity is not
         translated (#32)'
     reason: 'ECR has one registry per account and region: a repository creation template
-      makes each repository under shopacr/ on its first push, with these settings'
+      makes each repository under shopacr/ on its first push, with these settings;
+      they answer pulls and pushes only from 198.51.100.0/24'
     source: Microsoft.ContainerRegistry/registries rg/shopacr
     state: mapped with losses
     targets:
@@ -125,6 +120,8 @@ report:
   - 'A repository is made on push only for a principal allowed ecr:CreateRepository
     as well as to push: grant the pipelines that push images both (identity, not translated:
     #32)'
+  - 'A repository under shopacr/ made any other way than by its first push (ecr:CreateRepository
+    by hand, replication) does not get the template''s policy: give it the same one'
   - 'Images are not copied: copy each from 9lives.azurecr.io to <account>.dkr.ecr.eu-west-1.amazonaws.com/9lives/<repository>
     (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
     image references are rewritten in a later step'
@@ -138,6 +135,11 @@ report:
     such clients sign in, or the images are published on purpose'
   - 'Registry rg/shopacr had its admin user on: whoever pushed or pulled with that
     user name and password signs in with IAM on the target'
+  - 'Registry rg/shopacr''s repositories under shopacr/ answer pulls and pushes only
+    from 198.51.100.0/24, as on Azure: a resource policy denies the data actions to
+    every other request, whoever makes it. The settings can still be read and changed
+    from anywhere IAM allows, as Azure''s management plane could; apps and people
+    that read or write the data from elsewhere must come that way'
   to: aws
 snapshots:
   aws:
@@ -177,3 +179,4 @@ snapshots:
         EncryptionType: AES256
       ImageTagMutability: MUTABLE
       Prefix: shopacr
+      RepositoryPolicy: '{"Statement":[{"Action":["ecr:BatchGetImage","ecr:GetDownloadUrlForLayer","ecr:BatchCheckLayerAvailability","ecr:InitiateLayerUpload","ecr:UploadLayerPart","ecr:CompleteLayerUpload","ecr:PutImage"],"Condition":{"BoolIfExists":{"aws:PrincipalIsAWSService":"false"},"NotIpAddress":{"aws:SourceIp":["198.51.100.0/24"]}},"Effect":"Deny","Principal":"*","Sid":"DenyOutsidePrivateAccess"}],"Version":"2012-10-17"}'

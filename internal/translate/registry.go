@@ -48,10 +48,11 @@ type acr struct {
 	key              string
 	tags             map[string]string
 	losses           []Loss
-	private          string // why its endpoint answered only some networks, or ""
-	cmk              bool   // encrypted with the customer's own key
-	anonymous        bool   // anyone could pull without signing in
-	admin            bool   // the admin user was on
+	private          string   // why its endpoint answered only some networks, or ""
+	ranges           []string // the public address ranges its firewall allowed
+	cmk              bool     // encrypted with the customer's own key
+	anonymous        bool     // anyone could pull without signing in
+	admin            bool     // the admin user was on
 	quarantine       bool
 }
 
@@ -164,6 +165,11 @@ func readRegistry(o snapshot.Object) *acr {
 		r.private = "its public network access is disabled: it answered private endpoints only"
 	case deny:
 		r.private = fmt.Sprintf("its firewall denies by default, allowing %d address range(s)", ips)
+		var bad []string
+		r.ranges, bad = lockRanges(list(nrs.m["ipRules"]), "value")
+		for _, b := range bad {
+			nrs.lose("ipRules", b+" is not an address or range this reads; it is not allowed", false)
+		}
 	}
 	pol := newProps(obj(p.m["policies"]), "properties.policies.")
 	var sub []Loss
@@ -254,9 +260,20 @@ func ecrRegistry(r *acr, o *out) {
 	}
 	e := Entry{Source: r.src, State: Mapped, Losses: append([]Loss(nil), r.losses...),
 		Reason: "ECR has one registry per account and region: a repository creation template makes each repository under " + prefix + "/ on its first push, with these settings"}
+	// A private registry's repositories take a policy that denies pulls
+	// and pushes from anywhere but its private path. The template gives it
+	// to each repository it makes; the layers themselves come from S3 by a
+	// URL ecr:GetDownloadUrlForLayer hands out, which the deny covers.
+	var lock *awsLock
 	if r.private != "" {
-		e.Losses = append(e.Losses, Loss{Field: "properties.networkRuleSet", Widens: true,
-			Why: r.private + "; ECR answers on its public endpoint, guarded by IAM alone, until VPC endpoints (ecr.api, ecr.dkr, and S3 for layers) and a registry policy on aws:SourceVpce are added (not translated yet)"})
+		if lock = lockAWS(o, azRegistry, r.group, r.name, []string{"ecr.api", "ecr.dkr"}, r.ranges); lock == nil {
+			e.Losses = append(e.Losses, Loss{Field: "properties.networkRuleSet", Widens: true,
+				Why: r.private + "; " + lockNoPath + ". ECR answers on its public endpoint, guarded by IAM alone"})
+		} else {
+			e.Reason += "; they answer pulls and pushes only " + lock.where()
+			lockRequireAWS(o, "Registry "+key+"'s repositories under "+prefix+"/ answer pulls and pushes", lock)
+			o.require("A repository under " + prefix + "/ made any other way than by its first push (ecr:CreateRepository by hand, replication) does not get the template's policy: give it the same one")
+		}
 	}
 	if r.cmk {
 		e.Losses = append(e.Losses, Loss{Field: "properties.encryption", Widens: true,
@@ -273,13 +290,18 @@ func ecrRegistry(r *acr, o *out) {
 	if len(r.tags) > 0 {
 		e.Losses = append(e.Losses, Loss{Field: "tags", Why: fmt.Sprintf("%d tag(s): ECR has no registry object to hold them, and tagging the repositories a template makes needs a role ECR assumes (CustomRoleArn): identity is not translated (#32)", len(r.tags))})
 	}
-	e.Targets = append(e.Targets, o.add("aws", r.src, awsObject(awsRepoTmpl, prefix, map[string]any{
+	tmpl := map[string]any{
 		"Prefix":                  prefix,
 		"AppliedFor":              []any{"CREATE_ON_PUSH"},
 		"Description":             "From Azure Container Registry " + key,
 		"ImageTagMutability":      "MUTABLE",
 		"EncryptionConfiguration": map[string]any{"EncryptionType": "AES256"},
-	})))
+	}
+	if lock != nil {
+		// A repository policy names no resource: it is the repository's.
+		tmpl["RepositoryPolicy"] = awsPolicyJSON(awsPolicyDoc(lock.statement(lockECR, nil, false)))
+	}
+	e.Targets = append(e.Targets, o.add("aws", r.src, awsObject(awsRepoTmpl, prefix, tmpl)))
 	o.entries = append(o.entries, e)
 	r.imageRequirement(o, fmt.Sprintf("<account>.dkr.ecr.%s.amazonaws.com/%s/<repository>", o.m.Region, prefix))
 	o.require("A repository is made on push only for a principal allowed ecr:CreateRepository as well as to push: grant the pipelines that push images both (identity, not translated: #32)")
@@ -301,7 +323,7 @@ func arRegistry(r *acr, o *out) {
 	e := Entry{Source: r.src, State: Mapped, Losses: append([]Loss(nil), r.losses...)}
 	if r.private != "" {
 		e.Losses = append(e.Losses, Loss{Field: "properties.networkRuleSet", Widens: true,
-			Why: r.private + "; Artifact Registry answers on Google's public endpoint, guarded by IAM alone, until a VPC Service Controls perimeter holds the project (not translated yet)"})
+			Why: r.private + "; " + gcpPerimeter(o, "Registry "+key, "Artifact Registry", "artifactregistry.googleapis.com", o.privatePathOf(azRegistry, r.group, r.name))})
 	}
 	if r.cmk {
 		e.Losses = append(e.Losses, Loss{Field: "properties.encryption", Widens: true,

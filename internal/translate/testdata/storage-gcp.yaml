@@ -17,8 +17,9 @@ report:
         keeps its objects across that region's zones, and a dual- or multi-region
         location would be a choice the map does not make
     - field: properties.networkAcls.virtualNetworkRules
-      why: 1 virtual network subnet(s) were allowed; on Cloud Storage none is until
-        the networks it may come from are named (not translated)
+      why: 1 virtual network subnet(s) were allowed by service endpoint; on Cloud
+        Storage no network is admitted until it is named in each bucket's IP filter
+        (ipFilter.vpcNetworkSources)
     - field: properties.networkAcls.bypass
       why: AzureServices passed the firewall; Azure's trusted services are not the
         target's
@@ -75,8 +76,9 @@ report:
       widens: true
     - field: properties.publicNetworkAccess
       why: 'public network access is disabled: it answers only on private endpoints;
-        the bucket''s IP filter admits no network until vpcNetworkSources name the
-        VPC networks that may reach it (not translated)'
+        no private endpoint to it is translated, and it allowed no public address
+        range: there is no private path to lock it to, so the bucket''s IP filter
+        admits no network'
     reason: 'the account is not a bucket: its settings apply to each of its containers''
       buckets'
     source: Microsoft.Storage/storageAccounts shop/shopvault
@@ -228,6 +230,16 @@ report:
   - 'Buckets from a storage account that answered only on private endpoints (Microsoft.Storage/storageAccounts
     shop/shopvault) admit no network: add the VPC networks that may reach them to
     each bucket''s IP filter (ipFilter.vpcNetworkSources)'
+  - 'Buckets from a storage account that limited its network (Microsoft.Storage/storageAccounts
+    shop/shopassets) have an IP filter, which also refuses reading and changing the
+    bucket''s own settings from elsewhere: grant whoever restores and captures them
+    storage.buckets.exemptFromIpFilter (a custom role; it reaches the bucket''s settings,
+    never its objects), or run them from an admitted network'
+  - 'Buckets from a storage account that limited its network (Microsoft.Storage/storageAccounts
+    shop/shopvault) have an IP filter, which also refuses reading and changing the
+    bucket''s own settings from elsewhere: grant whoever restores and captures them
+    storage.buckets.exemptFromIpFilter (a custom role; it reaches the bucket''s settings,
+    never its objects), or run them from an admitted network'
   - 'Buckets whose container had a locked retention policy are written unlocked: lock
     each one (buckets.lockRetentionPolicy) once its data is copied'
   - 'Containers under a legal hold become buckets without one: put each copied object

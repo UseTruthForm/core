@@ -531,7 +531,7 @@ func name(rs []*resource, account string) {
 		for _, k := range sortedKeys(r.spec) {
 			walkStrings(deepCopy(map[string]any{k: r.spec[k]}), func(s string) string {
 				for _, v := range values {
-					if o := owners[v]; o.r != r && !seen[o.r] && refersTo(r, k, o, s, v) {
+					if o := owners[v]; o.r != r && !seen[o.r] && (refersTo(r, k, o, s, v) || inJSONText(s, v, o)) {
 						seen[o.r] = true
 						deps[r] = append(deps[r], o.r)
 					}
@@ -682,7 +682,13 @@ func tokenize(r *resource, values []string, owners map[string]refTarget) {
 		r.spec[k] = walkStrings(x, func(s string) string {
 			for _, v := range values {
 				o := owners[v]
-				if o.r == r || o.r.name == "" || !refersTo(r, k, o, s, v) {
+				if o.r == r || o.r.name == "" {
+					continue
+				}
+				if !refersTo(r, k, o, s, v) {
+					if inJSONText(s, v, o) {
+						s = strings.ReplaceAll(s, `"`+v+`"`, `"`+refToken(o.r.t.Name, o.r.name, o.attr)+`"`)
+					}
 					continue
 				}
 				s = strings.ReplaceAll(s, v, refToken(o.r.t.Name, o.r.name, o.attr))
@@ -690,6 +696,15 @@ func tokenize(r *resource, values []string, owners map[string]refTarget) {
 			return s
 		})
 	}
+}
+
+// inJSONText reports a generated identifier that is a whole string value
+// inside a document kept as JSON text (an ECR repository policy naming a
+// VPC endpoint in a condition): there it is a reference as much as in a
+// document kept as an object, and differs per account. A chosen name is
+// left alone: inside a document it is as likely a word.
+func inJSONText(s, v string, o refTarget) bool {
+	return !o.chosen && strings.Contains(s, `"`+v+`"`) && (strings.HasPrefix(s, "{") || strings.HasPrefix(s, "[")) && json.Valid([]byte(s))
 }
 
 // accountToken stands for the account a snapshot is restored into. A

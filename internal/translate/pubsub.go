@@ -70,7 +70,7 @@ func (d pubSub) namespace(ns *sbNS, o *out) {
 	e.Losses = append(e.Losses, ns.losses...)
 	if ns.private != "" {
 		e.Losses = append(e.Losses, Loss{Field: "properties.publicNetworkAccess", Widens: true,
-			Why: ns.private + "; Pub/Sub answers on Google's public endpoint, guarded by IAM alone, until a VPC Service Controls perimeter holds the project (not translated yet)"})
+			Why: ns.private + "; " + gcpPerimeter(o, "Service Bus namespace "+ns.group+"/"+ns.name, "Pub/Sub", "pubsub.googleapis.com", o.privatePathOf(sbNamespace, ns.group, ns.name))})
 	}
 	if ns.cmk {
 		e.Losses = append(e.Losses, Loss{Field: "properties.encryption", Widens: true,

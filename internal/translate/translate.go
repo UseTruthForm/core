@@ -136,6 +136,9 @@ type out struct {
 	// netSubs are the subnets the network family wrote, keyed by the Azure
 	// subnet (group/network/subnet, lower case), for what goes in them.
 	netSubs map[string]*netSub
+	// private is the private path private access wrote for each Azure
+	// service that had a private endpoint (lockdown.go).
+	private map[string]*privatePath
 }
 
 // written is the spec of an object already written for a platform, or nil.
@@ -206,8 +209,9 @@ type family interface {
 
 // The network family comes before those that use its networks: DNS
 // private zones, databases placed in its subnets, and clusters whose nodes
-// are.
-var families = []family{serviceBus{}, network{}, privateAccess{}, storage{}, keyVault{}, registry{}, dnsFamily{}, databases{}, clusters{}, decided{}}
+// are. Private access comes next, before the services it reaches: each
+// reads the private path written for it, to answer nowhere else.
+var families = []family{network{}, privateAccess{}, serviceBus{}, storage{}, keyVault{}, registry{}, dnsFamily{}, databases{}, clusters{}, decided{}}
 
 // Translate rewrites an Azure snapshot for the target the map names, with
 // the target's definitions.
@@ -224,7 +228,7 @@ func Translate(src snapshot.Snapshot, m Map, tg Targets) (Result, error) {
 	case m.NeedsGCP() && tg.GCP == nil:
 		return Result{}, fmt.Errorf("the map's destinations write GCP objects, which need GCP's Discovery documents")
 	}
-	o := &out{m: m, tg: tg, objects: map[string][]snapshot.Object{}, keys: map[string]string{}, reqs: map[string]bool{}, subnets: map[string]*subnet{}, netSubs: map[string]*netSub{}}
+	o := &out{m: m, tg: tg, objects: map[string][]snapshot.Object{}, keys: map[string]string{}, reqs: map[string]bool{}, subnets: map[string]*subnet{}, netSubs: map[string]*netSub{}, private: map[string]*privatePath{}}
 	claimed := make([][]snapshot.Object, len(families))
 	for _, obj := range src.Objects {
 		hit := false

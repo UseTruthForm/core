@@ -190,7 +190,10 @@ func TestSecretsOnGCP(t *testing.T) {
 // out of reach, is less protected on the target; the rest is not.
 func TestVaultLossesThatWiden(t *testing.T) {
 	want := map[string]map[string][]string{
-		"aws": {kvShop: {"properties.networkAcls", "properties.enablePurgeProtection"}, kvOpen: nil},
+		// On AWS the firewall is closed by the secrets' policy, and what
+		// passes it (AWS's services with the caller's credentials) passed
+		// on Azure too: bypass AzureServices.
+		"aws": {kvShop: {"properties.enablePurgeProtection"}, kvOpen: nil},
 		"gcp": {kvShop: {"properties.networkAcls", "properties.enableSoftDelete", "properties.enablePurgeProtection"}, kvOpen: nil},
 	}
 	for name, m := range kvMaps() {
@@ -276,7 +279,7 @@ func TestSecretsRefused(t *testing.T) {
 		}
 		m.Names = map[string]string{"app/shop/db-password": "db"}
 		r = runKV(t, kvFixture(), m)
-		if len(entry(t, r, kvDB).Targets) != 1 || !strings.HasSuffix(entry(t, r, kvDB).Targets[0], "db") {
+		if ts := entry(t, r, kvDB).Targets; !strings.HasSuffix(ts[len(ts)-1], "db") {
 			t.Errorf("%s: a given name: %v", name, entry(t, r, kvDB).Targets)
 		}
 	}

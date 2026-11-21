@@ -113,14 +113,35 @@ func (d gcpBuckets) account(a *stAccount, o *out) []Loss {
 		ls = append(ls, Loss{Field: "properties.immutableStorageWithVersioning", Widens: true,
 			Why: "version-level immutability: Cloud Storage's object retention lock is turned on when a bucket is created, by a request parameter the restore does not send, and a default retention would rule out versioning (not translated yet)"})
 	}
+	nets, over := a.gcsNetworks(o)
+	if over != "" {
+		ls = append(ls, Loss{Field: "properties.networkAcls", Why: over})
+	}
 	switch {
-	case a.closed:
-		ls = append(ls, Loss{Field: "properties.publicNetworkAccess", Why: a.private + "; the bucket's IP filter admits no network until vpcNetworkSources name the VPC networks that may reach it (not translated)"})
+	case a.closed && len(nets) == 0:
+		ls = append(ls, Loss{Field: "properties.publicNetworkAccess", Why: a.private + "; " + lockNoPath + ", so the bucket's IP filter admits no network"})
 		o.require("Buckets from a storage account that answered only on private endpoints (" + a.src + ") admit no network: add the VPC networks that may reach them to each bucket's IP filter (ipFilter.vpcNetworkSources)")
 	case a.private != "":
-		ls = append(ls, stNetworkLosses(a, "Cloud Storage")...)
-		if a.vnetRules > 0 {
-			o.require("Buckets from a storage account that allowed virtual network subnets (" + a.src + ") admit only its public ranges: add the VPC networks that may reach them to each bucket's IP filter (ipFilter.vpcNetworkSources)")
+		instead := "on Cloud Storage only the networks written for a private endpoint are admitted"
+		if len(nets) == 0 {
+			instead = "on Cloud Storage no network is admitted until it is named in each bucket's IP filter (ipFilter.vpcNetworkSources)"
+			if a.vnetRules > 0 {
+				o.require("Buckets from a storage account that allowed virtual network subnets (" + a.src + ") admit only its public ranges: add the VPC networks that may reach them to each bucket's IP filter (ipFilter.vpcNetworkSources)")
+			}
+		}
+		ls = append(ls, stNetworkLosses(a, instead)...)
+	}
+	if a.private != "" {
+		// The filter covers the bucket's own settings too: "Users and
+		// service accounts with administrative roles don't bypass bucket
+		// IP filtering rules by default"
+		// (https://docs.cloud.google.com/storage/docs/ip-filtering-overview),
+		// unless they hold storage.buckets.exemptFromIpFilter, which lets
+		// them get, update and delete the bucket and no object
+		// (https://docs.cloud.google.com/storage/docs/bypass-ip-filter).
+		o.require("Buckets from a storage account that limited its network (" + a.src + ") have an IP filter, which also refuses reading and changing the bucket's own settings from elsewhere: grant whoever restores and captures them storage.buckets.exemptFromIpFilter (a custom role; it reaches the bucket's settings, never its objects), or run them from an admitted network")
+		if len(nets) > 0 {
+			o.require("Buckets from " + a.src + " admit the VPC network(s) " + strings.Join(sortedKeys(nets), ", ") + " by their own address ranges, as the private endpoints' network: a peered or on-premises network that reached the private endpoints is not admitted until its ranges are added (ipFilter.vpcNetworkSources)")
 		}
 	}
 	_, tl := gcsLabels(a.tags)
@@ -130,6 +151,34 @@ func (d gcpBuckets) account(a *stAccount, o *out) []Loss {
 	}
 	o.require("Apps move from the Azure Blob SDK to the Cloud Storage client: each container is a bucket, named <account>-<container> unless the map names it")
 	return ls
+}
+
+// A bucket's IP filter takes 25 VPC networks and 200 ranges at most
+// (https://docs.cloud.google.com/storage/docs/ip-filtering-overview).
+const (
+	gcsMaxFilterNetworks = 25
+	gcsMaxFilterRanges   = 200
+)
+
+// gcsNetworks are the VPC networks a private account's buckets admit: those
+// that had a private endpoint to it, with their address ranges. over says
+// why none is admitted when they are more than a filter takes.
+func (a *stAccount) gcsNetworks(o *out) (nets map[string][]string, over string) {
+	p := o.privatePathOf(azStorage, a.group, a.name)
+	if a.private == "" || p == nil || len(p.networks) == 0 {
+		return nil, ""
+	}
+	n := 0
+	if !a.closed {
+		n = len(a.ranges)
+	}
+	for _, rs := range p.networks {
+		n += len(rs)
+	}
+	if len(p.networks) > gcsMaxFilterNetworks || n > gcsMaxFilterRanges {
+		return nil, fmt.Sprintf("%d network(s) and %d range(s) reached it; a bucket's IP filter takes %d networks and %d ranges at most, so no VPC network is admitted", len(p.networks), n, gcsMaxFilterNetworks, gcsMaxFilterRanges)
+	}
+	return p.networks, ""
 }
 
 // gcsLabels are the account's tags a bucket takes as labels, and the
@@ -255,6 +304,17 @@ func (d gcpBuckets) bucket(a *stAccount, c *stContainer, name string, o *out) ([
 		f := map[string]any{"mode": "Enabled", "allowAllServiceAgentAccess": false, "allowCrossOrgVpcs": false}
 		if !a.closed && len(a.ranges) > 0 {
 			f["publicNetworkSource"] = map[string]any{"allowedIpCidrRanges": anyStrings(a.ranges)}
+		}
+		// The networks that had a private endpoint to the account, each
+		// with the ranges a request may come from inside it: the
+		// network's own.
+		nets, _ := a.gcsNetworks(o)
+		var srcs []any
+		for _, n := range sortedKeys(nets) {
+			srcs = append(srcs, map[string]any{"network": gcpProject + "/global/networks/" + n, "allowedIpCidrRanges": anyStrings(nets[n])})
+		}
+		if len(srcs) > 0 {
+			f["vpcNetworkSources"] = srcs
 		}
 		spec["ipFilter"] = f
 	}

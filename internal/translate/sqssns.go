@@ -23,6 +23,10 @@ const (
 	awsTopic      = "AWS::SNS::Topic"
 	awsSub        = "AWS::SNS::Subscription"
 	awsPolicy     = "AWS::SQS::QueueInlinePolicy"
+	// A topic's policy, read by its topic as the queue's is by its queue.
+	// AWS::SNS::TopicPolicy has no read handler, so a restore could not
+	// tell whether one is there.
+	awsTopicPolicy = "AWS::SNS::TopicInlinePolicy"
 
 	sqsMaxRetention = 1209600 // 14 days
 	sqsMinRetention = 60
@@ -51,12 +55,44 @@ func awsRef(kind, name, attr string) string {
 	return "{{truthform|" + kind + "|" + name + "|" + attr + "}}"
 }
 
+// lock is how a private namespace's queues and topics are closed, or nil:
+// when it was not private, or when there is nothing to lock them to.
+func (d sqsSNS) lock(ns *sbNS, o *out, services ...string) *awsLock {
+	if ns == nil || ns.private == "" {
+		return nil
+	}
+	return lockAWS(o, sbNamespace, ns.group, ns.name, services, ns.ranges)
+}
+
+// queuePolicy is a queue's policy: the statements given, and the deny that
+// keeps a private namespace's queue to its private path. A queue has one
+// policy, so both are in it. It is nil when there is nothing to say.
+func (d sqsSNS) queuePolicy(ns *sbNS, o *out, qn string, statements ...any) *snapshot.Object {
+	if l := d.lock(ns, o, "sqs"); l != nil {
+		statements = append(statements, l.statement(lockSQS, awsRef(awsQueue, qn, "Arn"), false))
+	}
+	if len(statements) == 0 {
+		return nil
+	}
+	p := awsObject(awsPolicy, qn, map[string]any{"Queue": awsRef(awsQueue, qn, "QueueUrl"), "PolicyDocument": awsPolicyDoc(statements...)})
+	return &p
+}
+
 func (d sqsSNS) namespace(ns *sbNS, o *out) {
 	e := Entry{Source: ns.src, State: Mapped, Reason: "SQS and SNS have no namespace: the account and region hold its queues and topics"}
 	e.Losses = append(e.Losses, ns.losses...)
 	if ns.private != "" {
-		e.Losses = append(e.Losses, Loss{Field: "properties.publicNetworkAccess", Widens: true,
-			Why: ns.private + "; SQS and SNS answer on their public endpoints, guarded by IAM alone, until a VPC endpoint and a policy on aws:SourceVpce are added (not translated yet)"})
+		if l := d.lock(ns, o, "sqs", "sns"); l == nil {
+			e.Losses = append(e.Losses, Loss{Field: "properties.publicNetworkAccess", Widens: true,
+				Why: ns.private + "; " + lockNoPath + ". SQS and SNS answer on their public endpoints, guarded by IAM alone"})
+		} else {
+			e.Reason += "; its queues and topics answer only " + l.where()
+			if ns.vnets > 0 {
+				e.Losses = append(e.Losses, Loss{Field: "networkRuleSets.properties.virtualNetworkRules",
+					Why: fmt.Sprintf("%d subnet(s) were allowed by service endpoint; on AWS a subnet reaches the queues and topics through its VPC's interface endpoints, and only those written for a private endpoint are let through", ns.vnets)})
+			}
+			lockRequireAWS(o, "Service Bus namespace "+ns.group+"/"+ns.name+"'s queues and topics answer", l)
+		}
 	}
 	if ns.cmk {
 		e.Losses = append(e.Losses, Loss{Field: "properties.encryption", Widens: true,
@@ -165,6 +201,11 @@ func (d sqsSNS) queue(ns *sbNS, e *sbEntity, o *out) {
 		return
 	}
 	objs, losses := d.queueSpecs(e, name, e.session, nil)
+	for _, q := range objs[:2] {
+		if p := d.queuePolicy(ns, o, q.Name()); p != nil {
+			objs = append(objs, *p)
+		}
+	}
 	en := Entry{Source: e.src, State: Mapped, Losses: losses}
 	for _, obj := range objs {
 		en.Targets = append(en.Targets, o.add("aws", e.src, obj))
@@ -215,6 +256,13 @@ func (d sqsSNS) topic(ns *sbNS, e *sbEntity, o *out) {
 	}
 	en := Entry{Source: e.src, State: Mapped, Losses: losses}
 	en.Targets = append(en.Targets, o.add("aws", e.src, awsObject(awsTopic, tn, spec)))
+	if l := d.lock(ns, o, "sns"); l != nil {
+		// Publishing is closed; subscribing is the topic's configuration,
+		// which the restore itself writes from outside.
+		arn := awsRef(awsTopic, tn, "TopicArn")
+		en.Targets = append(en.Targets, o.add("aws", e.src, awsObject(awsTopicPolicy, tn, map[string]any{
+			"TopicArn": arn, "PolicyDocument": awsPolicyDoc(l.statement(lockSNS, arn, false))})))
+	}
 	o.entries = append(o.entries, en)
 }
 
@@ -257,23 +305,27 @@ func (d sqsSNS) subscription(ns *sbNS, e *sbEntity, o *out) {
 		sub["FilterPolicyScope"] = "MessageAttributes"
 		sub["FilterPolicy"] = snsFilter(f.any)
 	}
-	policy := map[string]any{"Queue": awsRef(awsQueue, qn, "QueueUrl"), "PolicyDocument": map[string]any{
-		"Version": "2012-10-17",
-		"Statement": []any{map[string]any{
-			"Effect": "Allow", "Principal": map[string]any{"Service": "sns.amazonaws.com"},
-			"Action": "sqs:SendMessage", "Resource": queueArn,
-			"Condition": map[string]any{"ArnEquals": map[string]any{"aws:SourceArn": topicArn}},
-		}},
-	}}
+	// The topic delivers as SNS itself (sns.amazonaws.com), which the deny
+	// of a private namespace's queue lets through: it is not a request of
+	// a principal of the account, and comes through no endpoint.
+	policy := d.queuePolicy(ns, o, qn, map[string]any{
+		"Effect": "Allow", "Principal": map[string]any{"Service": "sns.amazonaws.com"},
+		"Action": "sqs:SendMessage", "Resource": queueArn,
+		"Condition": map[string]any{"ArnEquals": map[string]any{"aws:SourceArn": topicArn}},
+	})
 	// A subscription has no name of its own: it is named as a capture
 	// names it, by its spec, so a second restore finds the first one's.
-	objs = append(objs, awsObject(awsSub, awscc.SpecName(awsSub, sub), sub), awsObject(awsPolicy, qn, policy))
+	subObj := awsObject(awsSub, awscc.SpecName(awsSub, sub), sub)
+	if dl := d.queuePolicy(ns, o, objs[1].Name()); dl != nil {
+		objs = append(objs, *dl)
+	}
+	objs = append(objs, subObj, *policy)
 	en := Entry{Source: e.src, State: Mapped, Losses: losses}
 	for _, obj := range objs {
 		en.Targets = append(en.Targets, o.add("aws", e.src, obj))
 	}
 	o.entries = append(o.entries, en)
-	ruleEntries(e, Mapped, "", []string{objs[len(objs)-2].Kind() + " " + objs[len(objs)-2].Name()}, o)
+	ruleEntries(e, Mapped, "", []string{subObj.Kind() + " " + subObj.Name()}, o)
 }
 
 // snsFilter is an SNS filter policy that matches when any of the rules

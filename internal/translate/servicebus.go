@@ -34,6 +34,12 @@ type sbNS struct {
 	// private is set when the namespace answers only on private endpoints
 	// or listed networks: a destination that cannot say the same widens.
 	private string
+	// closed is set when nothing but private endpoints reached it; ranges
+	// are the public address ranges its rule set allowed otherwise, and
+	// vnets the subnets it allowed by service endpoint.
+	closed bool
+	ranges []string
+	vnets  int
 	// keys is set when apps may sign in with shared access keys.
 	keys bool
 	// tls is the namespace's minimum TLS version, "" for Azure's default.
@@ -231,10 +237,7 @@ func readNamespace(obj snapshot.Object) *sbNS {
 	p.quiet("provisioningState", "status", "createdAt", "updatedAt", "serviceBusEndpoint", "metricId",
 		"premiumMessagingPartitions", "zoneRedundant", "privateEndpointConnections")
 	if pna := p.str("publicNetworkAccess"); strings.EqualFold(pna, "Disabled") {
-		ns.private = "public network access is disabled: it answers only on private endpoints"
-	}
-	if pe, _ := p.m["privateEndpointConnections"].([]any); len(pe) > 0 && ns.private == "" {
-		ns.private = fmt.Sprintf("it has %d private endpoint connection(s)", len(pe))
+		ns.private, ns.closed = "public network access is disabled: it answers only on private endpoints", true
 	}
 	ns.keys = !p.boolean("disableLocalAuth")
 	ns.tls = p.str("minimumTlsVersion")
@@ -272,11 +275,20 @@ func (ns *sbNS) readNetwork() {
 	ips, _ := p.m["ipRules"].([]any)
 	vnets, _ := p.m["virtualNetworkRules"].([]any)
 	p.quiet("ipRules", "virtualNetworkRules")
-	if strings.EqualFold(p.str("publicNetworkAccess"), "Disabled") && ns.private == "" {
-		ns.private = "its network rule set disables public network access"
+	if strings.EqualFold(p.str("publicNetworkAccess"), "Disabled") {
+		if ns.private == "" {
+			ns.private = "its network rule set disables public network access"
+		}
+		ns.closed = true
 	}
-	if strings.EqualFold(def, "Deny") && ns.private == "" {
+	if strings.EqualFold(def, "Deny") && !ns.closed {
 		ns.private = fmt.Sprintf("its network rule set denies by default and allows %d address range(s) and %d virtual network(s)", len(ips), len(vnets))
+		var bad []string
+		ns.ranges, bad = lockRanges(ips, "ipMask")
+		for _, b := range bad {
+			p.lose("ipRules", b+" is not an address or range this reads; it is not allowed", false)
+		}
+		ns.vnets = len(vnets)
 	}
 	ns.losses = append(ns.losses, p.rest()...)
 }

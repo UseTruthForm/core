@@ -270,14 +270,21 @@ func TestStates(t *testing.T) {
 	}
 }
 
-// A namespace that answers only listed networks widens on a managed
-// destination, which answers the internet; in the cluster it does not.
+// A namespace that answers only listed networks widens on Pub/Sub, which
+// answers the internet. On SQS and SNS it answers only its range, by
+// policy (lockdown_test.go); in the cluster it answers the cluster.
 func TestPrivateNamespaceWidens(t *testing.T) {
 	for name, m := range maps() {
 		r := run(t, m)
 		e := entry(t, r, "Microsoft.ServiceBus/namespaces rg/shop")
 		l := hasLoss(e, "properties.publicNetworkAccess")
-		if l == nil || l.Widens != (name != "rabbitmq") || !strings.Contains(l.Why, "denies by default") {
+		if name == "sqs-sns" {
+			if l != nil || !strings.Contains(e.Reason, "answer only from 203.0.113.0/24") {
+				t.Errorf("%s: %+v %s", name, l, e.Reason)
+			}
+			continue
+		}
+		if l == nil || l.Widens != (name == "pubsub") || !strings.Contains(l.Why, "denies by default") {
 			t.Errorf("%s: %+v", name, l)
 		}
 		if name == "rabbitmq" {
@@ -480,7 +487,7 @@ func TestCollisionsAreRefused(t *testing.T) {
 // property is in its registry schema and not read-only, and each Pub/Sub
 // field is in its Discovery schema.
 func TestTargetsMatchTheirDefinitions(t *testing.T) {
-	schemas := map[string]string{awsQueue: "aws-sqs-queue", awsTopic: "aws-sns-topic", awsSub: "aws-sns-subscription", awsPolicy: "aws-sqs-queueinlinepolicy"}
+	schemas := map[string]string{awsQueue: "aws-sqs-queue", awsTopic: "aws-sns-topic", awsSub: "aws-sns-subscription", awsPolicy: "aws-sqs-queueinlinepolicy", awsTopicPolicy: "aws-sns-topicinlinepolicy"}
 	r := run(t, maps()["sqs-sns"])
 	for _, o := range r.Snapshots["aws"].Objects {
 		var s struct {

@@ -131,6 +131,14 @@ func (privateAccess) translate(objs []snapshot.Object, o *out) {
 		var services []string
 		inVPC, google := false, false
 		refuse := ""
+		// reached is what each service this endpoint connects to needs
+		// here: the path recorded for it once the endpoint is written.
+		type peUse struct {
+			c        peConn
+			services []string
+			google   bool
+		}
+		var reached []peUse
 		for _, c := range pe.conns {
 			for _, g := range c.groups {
 				t, ok := peTargets[c.typ][strings.ToLower(g)]
@@ -149,8 +157,10 @@ func (privateAccess) translate(objs []snapshot.Object, o *out) {
 						continue
 					}
 					services = append(services, s...)
+					reached = append(reached, peUse{c: c, services: s})
 				case o.m.To == "gcp" && t.gcp(o.m):
 					google = true
+					reached = append(reached, peUse{c: c, google: true})
 				case o.m.To == "gcp":
 					e.Reason = t.what + " goes to " + t.dest(o.m) + ", in the cluster: the cluster reaches it on its own network"
 				}
@@ -166,6 +176,11 @@ func (privateAccess) translate(objs []snapshot.Object, o *out) {
 				o.entries = append(o.entries, Entry{Source: pe.src, State: Refused, Reason: why})
 				continue
 			}
+			for _, u := range reached {
+				for _, s := range u.services {
+					o.privatePathFor(u.c.typ, u.c.target).addEndpoint(s, awsEndpointName(awsNet{o.m}.vpcName(sub.vnet), s))
+				}
+			}
 			e.Reason = "an interface VPC endpoint per service in " + awsNet{o.m}.vpcName(sub.vnet) + " (" + strings.Join(uniqueSorted(services), ", ") + "), with private DNS: the AWS services' own names answer with the endpoints' addresses inside the VPC"
 		case google:
 			if ns := o.netSubs[pe.subnet]; ns == nil || ns.spec == nil {
@@ -173,6 +188,11 @@ func (privateAccess) translate(objs []snapshot.Object, o *out) {
 				continue
 			}
 			gcpNets[sub.vnet.key] = append(gcpNets[sub.vnet.key], pe)
+			for _, u := range reached {
+				if u.google {
+					o.privatePathFor(u.c.typ, u.c.target).addNetwork(gcpNet{o.m}.netName(sub.vnet), sub.vnet.prefixes)
+				}
+			}
 			e.Reason = "Private Google Access on network " + gcpNet{o.m}.netName(sub.vnet) + "'s subnetworks: its machines reach Google's APIs by their own names without leaving Google's network"
 		case inVPC:
 		}
@@ -187,11 +207,17 @@ func (privateAccess) translate(objs []snapshot.Object, o *out) {
 				}
 			}
 		}
-		o.require("Private Google Access reaches Google's APIs privately from machines with no external IP; a machine with one reaches them over the internet. As on Azure, the services still answer on the internet to principals allowed to call them, until VPC Service Controls (not translated) close that")
+		o.require("Private Google Access reaches Google's APIs privately from machines with no external IP; a machine with one reaches them over the internet")
 	}
 	if len(aws.byVPC) > 0 {
 		o.require("Interface VPC endpoints are billed per endpoint and zone by the hour, and per gigabyte: the translation writes one per service and VPC that had a private endpoint")
 	}
+}
+
+// awsEndpointName is the logical name of a VPC's interface endpoint for a
+// service.
+func awsEndpointName(vpc, service string) string {
+	return vpc + "-" + strings.ReplaceAll(service, ".", "-")
 }
 
 func uniqueSorted(ss []string) []string {
@@ -284,7 +310,7 @@ func (a *awsEndpoints) write(o *out) {
 		}
 		sort.Strings(services)
 		for _, s := range services {
-			name := ve.vpc + "-" + strings.ReplaceAll(s, ".", "-")
+			name := awsEndpointName(ve.vpc, s)
 			t, _ := awsTags(name, nil)
 			spec := map[string]any{
 				"VpcId": awsRef(awsVPC, ve.vpc, "VpcId"), "ServiceName": "com.amazonaws." + o.m.Region + "." + s,

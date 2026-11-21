@@ -207,7 +207,7 @@ type family interface {
 // The network family comes before those that use its networks: DNS
 // private zones, databases placed in its subnets, and clusters whose nodes
 // are.
-var families = []family{serviceBus{}, network{}, storage{}, keyVault{}, registry{}, dnsFamily{}, databases{}, clusters{}, decided{}}
+var families = []family{serviceBus{}, network{}, storage{}, keyVault{}, registry{}, dnsFamily{}, databases{}, clusters{}, privateAccess{}, decided{}}
 
 // Translate rewrites an Azure snapshot for the target the map names, with
 // the target's definitions.

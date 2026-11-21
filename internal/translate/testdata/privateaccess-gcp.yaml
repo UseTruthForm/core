@@ -1,0 +1,230 @@
+report:
+  destinations:
+  - 'dns: cloud-dns'
+  - 'messaging: pubsub'
+  - 'network: vpc'
+  - 'registry: artifact-registry'
+  - 'secrets: secret-manager'
+  - 'storage: buckets'
+  entries:
+  - losses:
+    - field: sku.name
+      why: 'Premium: a service tier (included storage, throughput, which features)
+        has no equivalent: the target bills by use'
+    - field: properties.networkRuleSet
+      why: 'its public network access is disabled: it answered private endpoints only;
+        Artifact Registry answers on Google''s public endpoint, guarded by IAM alone,
+        until a VPC Service Controls perimeter holds the project (not translated yet)'
+      widens: true
+    source: Microsoft.ContainerRegistry/registries shop/shopacr
+    state: mapped with losses
+    targets:
+    - artifactregistry.googleapis.com/Repository projects/{{truthform|project}}/locations/europe-west1/repositories/shopacr
+  - losses:
+    - field: properties.enableRbacAuthorization
+      why: 'who may read its secrets was set by Azure RBAC role assignments: identity
+        is not translated (#32), so on the target only those its IAM lets read them
+        can'
+    - field: properties.networkAcls
+      why: 'its public network access is disabled: it answered private endpoints only;
+        Secret Manager answers on Google''s public endpoint, guarded by IAM alone,
+        until a VPC Service Controls perimeter holds the project (not translated yet)'
+      widens: true
+    - field: properties.enableSoftDelete
+      why: 'a deleted secret was kept 90 days and could be recovered; Secret Manager
+        deletes a secret at once, with every version, until an IAM deny policy denies
+        secretmanager.secrets.delete (identity, not translated: #32)'
+      widens: true
+    reason: 'Secret Manager has no vault: its secrets are written as secrets of their
+      own, named after the vault'
+    source: Microsoft.KeyVault/vaults shop/shopkv
+    state: mapped with losses
+  - source: Microsoft.Network/privateDnsZones net/internal.shop
+    state: mapped
+    targets:
+    - dns.googleapis.com/ManagedZone projects/{{truthform|project}}/managedZones/internal-shop
+  - reason: 'Azure''s zone for its services'' private endpoints, not copied: it names
+      Azure''s services at Azure''s addresses. On GCP the networks'' subnetworks reach
+      Google''s APIs by their own names through Private Google Access, and Cloud SQL
+      answers on its private IP.'
+    source: Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net
+    state: mapped
+  - source: Microsoft.Network/privateDnsZones/A net/internal.shop/db
+    state: mapped
+    targets:
+    - dns.googleapis.com/ResourceRecordSet projects/{{truthform|project}}/managedZones/internal-shop/rrsets/db.internal.shop./A
+  - reason: 'read with its zone Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net,
+      Azure''s zone for its services'' private endpoints: not copied'
+    source: Microsoft.Network/privateDnsZones/A net/privatelink.servicebus.windows.net/shopbus
+    state: mapped
+  - reason: read with its zone Microsoft.Network/privateDnsZones net/internal.shop
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks net/internal.shop/core
+    state: mapped
+  - reason: 'read with its zone Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net,
+      Azure''s zone for its services'' private endpoints: not copied'
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks net/privatelink.servicebus.windows.net/core
+    state: mapped
+  - reason: 'Private Google Access on network core''s subnetworks: its machines reach
+      Google''s APIs by their own names without leaving Google''s network'
+    source: Microsoft.Network/privateEndpoints net/pe-acr
+    state: mapped
+  - reason: 'Private Google Access on network core''s subnetworks: its machines reach
+      Google''s APIs by their own names without leaving Google''s network'
+    source: Microsoft.Network/privateEndpoints net/pe-blob
+    state: mapped
+  - reason: 'Private Google Access on network core''s subnetworks: its machines reach
+      Google''s APIs by their own names without leaving Google''s network'
+    source: Microsoft.Network/privateEndpoints net/pe-bus
+    state: mapped
+  - reason: a private endpoint to shop/shopfiles (file), which is not translated
+    source: Microsoft.Network/privateEndpoints net/pe-file
+    state: refused
+  - reason: 'Private Google Access on network core''s subnetworks: its machines reach
+      Google''s APIs by their own names without leaving Google''s network'
+    source: Microsoft.Network/privateEndpoints net/pe-kv
+    state: mapped
+  - reason: a private endpoint to shop/shopweb (sites), which is not translated
+    source: Microsoft.Network/privateEndpoints net/pe-web
+    state: refused
+  - reason: 'read with its private endpoint: the zones it fills are Azure''s names
+      for the service, which the target answers privately by its own (On GCP the networks''
+      subnetworks reach Google''s APIs by their own names through Private Google Access,
+      and Cloud SQL answers on its private IP.)'
+    source: Microsoft.Network/privateEndpoints/privateDnsZoneGroups net/pe-bus/default
+    state: mapped
+  - source: Microsoft.Network/virtualNetworks net/core
+    state: mapped
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/core
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-endpoints
+  - losses:
+    - field: properties.publicNetworkAccess
+      why: 'public network access is disabled: it answers only on private endpoints;
+        Pub/Sub answers on Google''s public endpoint, guarded by IAM alone, until
+        a VPC Service Controls perimeter holds the project (not translated yet)'
+      widens: true
+    - field: properties.minimumTlsVersion
+      why: 'TLS 1.2 at least on the source; Pub/Sub''s floor is Google''s and cannot
+        be set per project: confirm it meets this'
+      widens: true
+    reason: 'Pub/Sub has no namespace: the project holds its topics and subscriptions'
+    source: Microsoft.ServiceBus/namespaces shop/shopbus
+    state: mapped with losses
+  - reason: 'it has no blob container in the snapshot that becomes a bucket, so nothing
+      is written: the account is not a bucket, and its settings apply only to its
+      containers'''
+    source: Microsoft.Storage/storageAccounts shop/shopfiles
+    state: mapped
+  from: azure
+  requirements:
+  - 'Apps move from the Service Bus SDK to the Pub/Sub client: a queue is a topic
+    with one subscription of its name, and a subscription''s filter matches message
+    attributes'
+  - 'Images are not copied: copy each from shopacr.azurecr.io to europe-west1-docker.pkg.dev/<project>/shopacr/<repository>
+    (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
+    image references are rewritten in a later step'
+  - 'Key Vault shop/shopkv let Azure RBAC role assignments read its secrets; identity
+    is not translated (#32): grant each app''s new identity roles/secretmanager.secretAccessor
+    on the secrets it reads'
+  - Private Google Access reaches Google's APIs privately from machines with no external
+    IP; a machine with one reaches them over the internet. As on Azure, the services
+    still answer on the internet to principals allowed to call them, until VPC Service
+    Controls (not translated) close that
+  - 'Private zone internal.shop. answers only in its VPC networks: whatever resolved
+    it through Azure from elsewhere (a DNS forwarder, on-premises conditional forwarding)
+    must forward to a Cloud DNS inbound server policy instead (not translated)'
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: artifactregistry.googleapis.com/Repository
+    metadata:
+      annotations:
+        truthform.org/collection: projects.locations.repositories
+        truthform.org/discovery: artifactregistry/v1
+        truthform.org/parent: projects/{{truthform|project}}/locations/europe-west1
+        truthform.org/schema: Repository
+      name: projects/{{truthform|project}}/locations/europe-west1/repositories/shopacr
+    spec:
+      description: From Azure Container Registry shop/shopacr
+      format: DOCKER
+      mode: STANDARD_REPOSITORY
+      name: projects/{{truthform|project}}/locations/europe-west1/repositories/shopacr
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Network
+    metadata:
+      annotations:
+        truthform.org/collection: networks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Network
+      name: projects/{{truthform|project}}/global/networks/core
+    spec:
+      autoCreateSubnetworks: false
+      mtu: 1500
+      name: core
+      routingConfig:
+        routingMode: REGIONAL
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    spec:
+      ipCidrRange: 10.30.1.0/24
+      name: core-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      privateIpGoogleAccess: true
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-endpoints
+    spec:
+      ipCidrRange: 10.30.9.0/24
+      name: core-endpoints
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      privateIpGoogleAccess: true
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ManagedZone
+    metadata:
+      annotations:
+        truthform.org/collection: managedZones
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}
+        truthform.org/schema: ManagedZone
+      name: projects/{{truthform|project}}/managedZones/internal-shop
+    spec:
+      description: From Azure DNS zone net/internal.shop
+      dnsName: internal.shop.
+      name: internal-shop
+      privateVisibilityConfig:
+        networks:
+        - networkUrl: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      visibility: private
+  - apiVersion: gcp.truthform.org/v1
+    kind: dns.googleapis.com/ResourceRecordSet
+    metadata:
+      annotations:
+        truthform.org/collection: resourceRecordSets
+        truthform.org/discovery: dns/v1
+        truthform.org/parent: projects/{{truthform|project}}/managedZones/internal-shop
+        truthform.org/schema: ResourceRecordSet
+      name: projects/{{truthform|project}}/managedZones/internal-shop/rrsets/db.internal.shop./A
+    spec:
+      name: db.internal.shop.
+      rrdatas:
+      - 10.30.1.10
+      ttl: 300
+      type: A

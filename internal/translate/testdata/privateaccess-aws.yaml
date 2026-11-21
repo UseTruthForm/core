@@ -1,0 +1,340 @@
+report:
+  destinations:
+  - 'dns: route53'
+  - 'messaging: sqs-sns'
+  - 'network: vpc'
+  - 'registry: ecr'
+  - 'secrets: secret-manager'
+  - 'storage: buckets'
+  entries:
+  - losses:
+    - field: sku.name
+      why: 'Premium: a service tier (included storage, throughput, which features)
+        has no equivalent: the target bills by use'
+    - field: properties.networkRuleSet
+      why: 'its public network access is disabled: it answered private endpoints only;
+        ECR answers on its public endpoint, guarded by IAM alone, until VPC endpoints
+        (ecr.api, ecr.dkr, and S3 for layers) and a registry policy on aws:SourceVpce
+        are added (not translated yet)'
+      widens: true
+    reason: 'ECR has one registry per account and region: a repository creation template
+      makes each repository under shopacr/ on its first push, with these settings'
+    source: Microsoft.ContainerRegistry/registries shop/shopacr
+    state: mapped with losses
+    targets:
+    - AWS::ECR::RepositoryCreationTemplate shopacr
+  - losses:
+    - field: properties.enableRbacAuthorization
+      why: 'who may read its secrets was set by Azure RBAC role assignments: identity
+        is not translated (#32), so on the target only those its IAM lets read them
+        can'
+    - field: properties.networkAcls
+      why: 'its public network access is disabled: it answered private endpoints only;
+        Secrets Manager answers on its public endpoint, guarded by IAM alone, until
+        a VPC endpoint and a policy on aws:SourceVpce are added (not translated yet)'
+      widens: true
+    - field: properties.softDeleteRetentionInDays
+      why: a deleted secret was kept 90 days unless purged; Secrets Manager keeps
+        one for the recovery window each delete chooses (7 to 30 days, 30 unless told),
+        and a delete may skip it, as a purge could
+    reason: 'Secrets Manager has no vault: its secrets are written as secrets of their
+      own, named after the vault'
+    source: Microsoft.KeyVault/vaults shop/shopkv
+    state: mapped with losses
+  - source: Microsoft.Network/privateDnsZones net/internal.shop
+    state: mapped
+    targets:
+    - AWS::Route53::HostedZone internal.shop.
+  - reason: 'Azure''s zone for its services'' private endpoints, not copied: it names
+      Azure''s services at Azure''s addresses. On AWS each private endpoint becomes
+      an interface VPC endpoint whose private DNS answers the AWS service''s own name
+      inside the VPC, and RDS answers in the VPC itself.'
+    source: Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net
+    state: mapped
+  - source: Microsoft.Network/privateDnsZones/A net/internal.shop/db
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet db.internal.shop.
+  - reason: 'read with its zone Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net,
+      Azure''s zone for its services'' private endpoints: not copied'
+    source: Microsoft.Network/privateDnsZones/A net/privatelink.servicebus.windows.net/shopbus
+    state: mapped
+  - reason: read with its zone Microsoft.Network/privateDnsZones net/internal.shop
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks net/internal.shop/core
+    state: mapped
+  - reason: 'read with its zone Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net,
+      Azure''s zone for its services'' private endpoints: not copied'
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks net/privatelink.servicebus.windows.net/core
+    state: mapped
+  - reason: 'an interface VPC endpoint per service in core (ecr.api, ecr.dkr, s3),
+      with private DNS: the AWS services'' own names answer with the endpoints'' addresses
+      inside the VPC'
+    source: Microsoft.Network/privateEndpoints net/pe-acr
+    state: mapped
+  - reason: 'an interface VPC endpoint per service in core (s3), with private DNS:
+      the AWS services'' own names answer with the endpoints'' addresses inside the
+      VPC'
+    source: Microsoft.Network/privateEndpoints net/pe-blob
+    state: mapped
+  - reason: 'an interface VPC endpoint per service in core (sns, sqs), with private
+      DNS: the AWS services'' own names answer with the endpoints'' addresses inside
+      the VPC'
+    source: Microsoft.Network/privateEndpoints net/pe-bus
+    state: mapped
+  - reason: a private endpoint to shop/shopfiles (file), which is not translated
+    source: Microsoft.Network/privateEndpoints net/pe-file
+    state: refused
+  - reason: 'an interface VPC endpoint per service in core (secretsmanager), with
+      private DNS: the AWS services'' own names answer with the endpoints'' addresses
+      inside the VPC'
+    source: Microsoft.Network/privateEndpoints net/pe-kv
+    state: mapped
+  - reason: a private endpoint to shop/shopweb (sites), which is not translated
+    source: Microsoft.Network/privateEndpoints net/pe-web
+    state: refused
+  - reason: 'read with its private endpoint: the zones it fills are Azure''s names
+      for the service, which the target answers privately by its own (On AWS each
+      private endpoint becomes an interface VPC endpoint whose private DNS answers
+      the AWS service''s own name inside the VPC, and RDS answers in the VPC itself.)'
+    source: Microsoft.Network/privateEndpoints/privateDnsZoneGroups net/pe-bus/default
+    state: mapped
+  - source: Microsoft.Network/virtualNetworks net/core
+    state: mapped
+    targets:
+    - AWS::EC2::Subnet core-app
+    - AWS::EC2::Subnet core-endpoints
+    - AWS::EC2::VPC core
+  - losses:
+    - field: properties.publicNetworkAccess
+      why: 'public network access is disabled: it answers only on private endpoints;
+        SQS and SNS answer on their public endpoints, guarded by IAM alone, until
+        a VPC endpoint and a policy on aws:SourceVpce are added (not translated yet)'
+      widens: true
+    reason: 'SQS and SNS have no namespace: the account and region hold its queues
+      and topics'
+    source: Microsoft.ServiceBus/namespaces shop/shopbus
+    state: mapped with losses
+  - reason: 'it has no blob container in the snapshot that becomes a bucket, so nothing
+      is written: the account is not a bucket, and its settings apply only to its
+      containers'''
+    source: Microsoft.Storage/storageAccounts shop/shopfiles
+    state: mapped
+  from: azure
+  requirements:
+  - 'A repository is made on push only for a principal allowed ecr:CreateRepository
+    as well as to push: grant the pipelines that push images both (identity, not translated:
+    #32)'
+  - 'Apps move from the Service Bus SDK to the AWS SDK: a queue is an SQS queue, a
+    topic an SNS topic delivering to an SQS queue per subscription, and a subscription''s
+    filter matches SNS message attributes'
+  - 'Images are not copied: copy each from shopacr.azurecr.io to <account>.dkr.ecr.eu-west-1.amazonaws.com/shopacr/<repository>
+    (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
+    image references are rewritten in a later step'
+  - 'Interface VPC endpoints are billed per endpoint and zone by the hour, and per
+    gigabyte: the translation writes one per service and VPC that had a private endpoint'
+  - 'Key Vault shop/shopkv let Azure RBAC role assignments read its secrets; identity
+    is not translated (#32): grant each app''s new identity secretsmanager:GetSecretValue
+    on the secrets it reads'
+  - 'Private hosted zone internal.shop. answers only in its VPCs: whatever resolved
+    it through Azure from elsewhere (a DNS forwarder, on-premises conditional forwarding)
+    must forward to a Route 53 Resolver inbound endpoint instead (not translated)'
+  - 'The interface endpoints in VPC core are in one availability zone (eu-west-1a),
+    as Azure''s private endpoints were in one subnet: add a subnet in another zone
+    for them to survive the loss of that one'
+  to: aws
+snapshots:
+  aws:
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: core-endpoints
+    spec:
+      GroupDescription: HTTPS from the network to its interface endpoints, for its
+        Azure private endpoints
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 10.30.0.0/16
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      Tags:
+      - Key: Name
+        Value: core-endpoints
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-app
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.1.0/24
+      Tags:
+      - Key: Name
+        Value: core-app
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-endpoints
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.9.0/24
+      Tags:
+      - Key: Name
+        Value: core-endpoints
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-ecr-api
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.ecr.api
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-ecr-api
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-ecr-dkr
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.ecr.dkr
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-ecr-dkr
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-s3
+    spec:
+      DnsOptions:
+        PrivateDnsOnlyForInboundResolverEndpoint: AllResolvers
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.s3
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-s3
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-secretsmanager
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.secretsmanager
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-secretsmanager
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-sns
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.sns
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-sns
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-sqs
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.sqs
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-sqs
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPC
+    metadata:
+      annotations:
+        truthform.org/write-only: Ipv4IpamPoolId,Ipv4NetmaskLength,VpcEncryptionControl.EgressOnlyInternetGatewayExclusion,VpcEncryptionControl.ElasticFileSystemExclusion,VpcEncryptionControl.InternetGatewayExclusion,VpcEncryptionControl.LambdaExclusion,VpcEncryptionControl.NatGatewayExclusion,VpcEncryptionControl.VirtualPrivateGatewayExclusion,VpcEncryptionControl.VpcLatticeExclusion,VpcEncryptionControl.VpcPeeringExclusion
+      name: core
+    spec:
+      CidrBlock: 10.30.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value: core
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::ECR::RepositoryCreationTemplate
+    metadata:
+      name: shopacr
+    spec:
+      AppliedFor:
+      - CREATE_ON_PUSH
+      Description: From Azure Container Registry shop/shopacr
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageTagMutability: MUTABLE
+      Prefix: shopacr
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::HostedZone
+    metadata:
+      name: internal.shop.
+    spec:
+      HostedZoneConfig:
+        Comment: From Azure DNS zone net/internal.shop
+      Name: internal.shop.
+      VPCs:
+      - VPCId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+        VPCRegion: eu-west-1
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: db.internal.shop.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|internal.shop.|Id}}'
+      Name: db.internal.shop.
+      ResourceRecords:
+      - 10.30.1.10
+      TTL: "300"
+      Type: A

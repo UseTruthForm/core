@@ -116,6 +116,7 @@ func readers() map[string]reflected {
 	}
 	rd[typPG] = reflected{version: pgVersion, name: "pg", read: func(o snapshot.Object) []Loss { return readPGServer(o).losses }}
 	rd[typSQL] = reflected{version: sqlVersion, name: "sql", read: func(o snapshot.Object) []Loss { return readSQLServer(o).losses }}
+	rd["Microsoft.Network/privateEndpoints"] = reflected{version: netVersion, name: "pe", read: func(o snapshot.Object) []Loss { return readPrivateEndpoint(o).losses }}
 	return rd
 }
 
@@ -586,5 +587,28 @@ func TestEveryClusterTypeIsDecided(t *testing.T) {
 	}
 	if e := r.Report.Entries[0]; e.State != NotLooked {
 		t.Errorf("an undecided child: %s", e.State)
+	}
+}
+
+// Every private endpoint type Azure defines is read, or named here.
+func TestEveryPrivateEndpointTypeIsDecided(t *testing.T) {
+	reg, err := azarm.LoadDefinitions("testdata/azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	decided := map[string]bool{azPE: true, azPEDNS: true}
+	n := 0
+	for _, name := range reg.Names() {
+		l := strings.ToLower(name)
+		if !(privateAccess{}).claims(l) {
+			continue
+		}
+		n++
+		if !decided[l] {
+			t.Errorf("%s has a definition and no decision", name)
+		}
+	}
+	if n != len(decided) {
+		t.Errorf("%d private endpoint types have a definition here, %d decided", n, len(decided))
 	}
 }

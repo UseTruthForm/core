@@ -172,10 +172,10 @@
    "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/75"
   },
   "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/630"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/660"
   },
   "Microsoft.Network/networkSecurityGroups/securityRules@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/618"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/623"
   },
   "Microsoft.Network/networkSecurityGroups@2026-03-01": {
    "$ref": "network/microsoft.network/2026-03-01/types.json#/609"
@@ -210,14 +210,20 @@
   "Microsoft.Network/privateDnsZones@2024-06-01": {
    "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/25"
   },
+  "Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/648"
+  },
+  "Microsoft.Network/privateEndpoints@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/614"
+  },
   "Microsoft.Network/virtualNetworks/subnets@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/622"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/652"
   },
   "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/626"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/656"
   },
   "Microsoft.Network/virtualNetworks@2026-03-01": {
-   "$ref": "network/microsoft.network/2026-03-01/types.json#/614"
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/619"
   },
   "Microsoft.ServiceBus/namespaces/AuthorizationRules@2026-01-01": {
    "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/93"

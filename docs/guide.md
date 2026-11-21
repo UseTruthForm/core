@@ -1662,6 +1662,28 @@ restore finds them. A translated zone answers nobody on the internet until
 the registrar's delegation names the target's name servers: the report
 lists that, and the DS record to take out or replace for a signed zone.
 
+Azure's own zones for its services' private endpoints (`privatelink.*`, and
+the zones of flexible servers placed in a network) are not copied: they name
+Azure's services at Azure's addresses. They need no DNS destination; the
+target answers its own services' names privately instead, as below.
+
+| Private access | aws | gcp |
+|---|---|---|
+| Private endpoint to Service Bus (sqs-sns), Key Vault, a registry, blob or Data Lake storage | an interface VPC endpoint per service and VPC (`sqs`, `sns`, `secretsmanager`, `ecr.api`, `ecr.dkr`, `s3`) in the private endpoints' subnets, private DNS on, HTTPS from the network | Private Google Access on the network's subnetworks |
+| Private endpoint to PostgreSQL or Azure SQL | nothing: RDS answers in the VPC | nothing: Cloud SQL answers on its private IP |
+| Private endpoint to messaging in the cluster (rabbitmq) | nothing: the cluster reaches it | the same |
+| Private endpoint to anything else (Azure Files, queues, tables, App Service) | refused | refused |
+| `privatelink.*` zones, their records and links | not copied | not copied |
+
+An interface endpoint takes one subnet per availability zone; private
+endpoints in one subnet make endpoints in one zone, and the report says so.
+On S3 the endpoint answers every lookup in the VPC
+(`PrivateDnsOnlyForInboundResolverEndpoint: AllResolvers`), as a private
+endpoint did, without a gateway endpoint. The services still answer on their
+public endpoints to principals allowed to call them; closing those
+(`aws:SourceVpce` policies, VPC Service Controls) is not translated yet, and
+is reported as less protected.
+
 Every source object ends in one state, and `<out>/translation.yaml` lists
 each with its reason and target objects:
 

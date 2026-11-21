@@ -115,6 +115,7 @@ func targets(t *testing.T) Targets {
 		filepath.Join("testdata", "aws", "aws-eks-cluster.json"):                                  "aws-eks-cluster.json",
 		filepath.Join("testdata", "aws", "aws-eks-nodegroup.json"):                                "aws-eks-nodegroup.json",
 		filepath.Join("testdata", "aws", "aws-eks-addon.json"):                                    "aws-eks-addon.json",
+		filepath.Join("testdata", "aws", "aws-ec2-vpcendpoint.json"):                              "aws-ec2-vpcendpoint.json",
 	} {
 		b, err := os.ReadFile(src)
 		if err != nil {

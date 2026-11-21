@@ -60,9 +60,28 @@ type dnsZone struct {
 	losses     []Loss
 	refuse     string
 	written    bool
+	service    bool // Azure's own zone for its services' private endpoints
 }
 
 func (z *dnsZone) fqdn() string { return z.name + "." }
+
+// azureServiceZone reports a private zone Azure keeps for its services'
+// private endpoints: privatelink.* (privatelink.blob.core.windows.net,
+// privatelink.servicebus.windows.net, privatelink.<region>.azmk8s.io), and
+// the zones of flexible servers placed in a network (*.postgres.database.
+// azure.com, *.mysql.database.azure.com).
+func azureServiceZone(name string) bool {
+	n := strings.ToLower(strings.TrimSuffix(name, "."))
+	return strings.HasPrefix(n, "privatelink.") || strings.HasSuffix(n, ".postgres.database.azure.com") ||
+		strings.HasSuffix(n, ".mysql.database.azure.com")
+}
+
+// serviceZoneHow says how the target answers its services' names
+// privately in place of such a zone.
+var serviceZoneHow = map[string]string{
+	"aws": "On AWS each private endpoint becomes an interface VPC endpoint whose private DNS answers the AWS service's own name inside the VPC, and RDS answers in the VPC itself.",
+	"gcp": "On GCP the networks' subnetworks reach Google's APIs by their own names through Private Google Access, and Cloud SQL answers on its private IP.",
+}
 
 type dnsLink struct {
 	src          string // "" for a network named in a legacy zone
@@ -168,11 +187,28 @@ func (dnsFamily) translate(objs []snapshot.Object, o *out) {
 		z.signed = true
 		children = append(children, child{obj: obj, zone: z})
 	}
+	// Azure's own zones for its services' private endpoints are not copied:
+	// they name Azure's services at Azure's addresses. The target answers
+	// its own services' names privately (privateaccess.go).
+	var service []*dnsZone
 	sorted := make([]*dnsZone, 0, len(zones))
 	for _, z := range zones {
+		if z.private && azureServiceZone(z.name) {
+			service = append(service, z)
+			continue
+		}
 		sorted = append(sorted, z)
 	}
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].src < sorted[j].src })
+	sort.Slice(service, func(i, j int) bool { return service[i].src < service[j].src })
+	for _, z := range service {
+		z.written, z.service = true, true
+		why := "Azure's zone for its services' private endpoints, not copied: it names Azure's services at Azure's addresses. " + serviceZoneHow[o.m.To]
+		o.entries = append(o.entries, Entry{Source: z.src, State: Mapped, Reason: why})
+		for _, r := range z.records {
+			o.entries = append(o.entries, Entry{Source: r.src, State: Mapped, Reason: "read with its zone " + z.src + ", Azure's zone for its services' private endpoints: not copied"})
+		}
+	}
 
 	if o.m.Destinations.DNS == "" {
 		for _, z := range sorted {
@@ -206,6 +242,8 @@ func (dnsFamily) translate(objs []snapshot.Object, o *out) {
 	for _, c := range children {
 		e := Entry{Source: source(c.obj), State: Mapped, Reason: "read with its zone " + c.zone.src}
 		switch {
+		case c.zone.service:
+			e.Reason += ", Azure's zone for its services' private endpoints: not copied"
 		case !c.zone.written:
 			e = Entry{Source: source(c.obj), State: Refused, Reason: "its zone " + c.zone.src + " is refused"}
 		case c.link != nil && c.link.refuse != "":

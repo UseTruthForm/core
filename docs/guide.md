@@ -1436,9 +1436,10 @@ which `plan`, `restore` and `diff` take as they are. It makes no request, so
 the capture-only build has it too. So far it translates Service Bus,
 virtual networks and network security groups, public and private DNS
 zones, storage accounts' blob containers, Key Vault secrets, container
-registries, and the configuration (never the data) of Azure Database for
-PostgreSQL flexible servers and Azure SQL servers; every other type is
-reported as not looked at (design: issue #32).
+registries, AKS clusters (their configuration: the workloads travel
+through the Kubernetes snapshot), and the configuration (never the data)
+of Azure Database for PostgreSQL flexible servers and Azure SQL servers;
+every other type is reported as not looked at (design: issue #32).
 
 ```sh
 truthform translate --from snap/azure --map map.yaml --out moved/
@@ -1461,6 +1462,7 @@ destinations:
   storage: buckets          # an S3 bucket (aws) or Cloud Storage bucket (gcp) per blob container
   dns: route53              # route53 (aws) or cloud-dns (gcp)
   databases: rds            # rds (aws) or cloud-sql (gcp)
+  clusters: eks             # eks (aws) or gke (gcp), for AKS clusters
 secrets:                    # gcp: where Secret Manager keeps each secret; it cannot change later
   replication: user-managed # automatic, or user-managed with
   locations: [europe-west1, europe-west4]
@@ -1473,6 +1475,20 @@ rabbitmq:                   # for messaging: rabbitmq
   namespace: messaging
   replicas: 3
   tlsSecret: broker-tls     # without it the brokers listen in plain text, reported as less protected
+clusters:                   # per AKS cluster, keyed group/cluster: what Azure cannot say (the other target's keys are refused)
+  rg/shop:
+    roleArn: arn:aws:iam::111111111111:role/eks-shop        # eks: identity is not translated,
+    nodeRoleArn: arn:aws:iam::111111111111:role/eks-nodes   #   so these name roles that exist
+    subnets: [net/core/spare]   # eks: more subnets, when the pools' are all in one zone
+    kmsKey: 0b2c3d4e-1111-2222-3333-444455556666           # a KMS key ID or ARN (eks), a Cloud KMS key name (gke)
+    serviceAccount: gke-nodes   # gke: the nodes' service account (an ID in the project, or an email)
+    podCidr: 10.250.0.0/16      # gke: for Azure CNI without overlay, whose pods had subnet addresses
+    pools:
+      system:
+        instanceType: m7i.xlarge    # eks; VM sizes are not translated
+        machineType: n2-standard-4  # gke
+        zones: [europe-west1-b, europe-west1-c, europe-west1-d]   # gke
+        subnet: net/core/app        # for a pool in the network AKS made itself
 names:
   rg/shop/legacy.feed: legacy-feed   # a name SQS does not allow
   rg/shopfiles/$root: shopfiles-root # a bucket name, keyed group/account/container
@@ -1555,6 +1571,28 @@ No password and no row of data is carried over. A server Azure kept after
 deletion (Azure SQL's soft delete) gets deletion protection on the target,
 which is stricter; other servers get none, since Azure's equivalent is a
 lock, which is not translated.
+
+| AKS cluster | eks | gke |
+|---|---|---|
+| Cluster | `AWS::EKS::Cluster` in the pools' translated subnets (two zones at least) | regional `Cluster` in the pools' subnetwork, its pools inline |
+| Kubernetes version | `Version` 1.N, no patch; never upgraded, EKS validates it at restore | `initialClusterVersion` 1.N, in no release channel |
+| Long-term support | `UpgradePolicy` EXTENDED (STANDARD otherwise) | EXTENDED channel |
+| API server, public | public endpoint, `PublicAccessCidrs` the authorized ranges | public endpoint, authorized networks only (not Google's ranges) |
+| API server, private | private endpoint only | private endpoint only |
+| Pod and service ranges | service range carried; pods take VPC addresses (VPC CNI) | VPC-native: both written as secondary ranges of the subnetwork |
+| Network policy | `azure`: the VPC CNI's policy enforcement (`vpc-cni` add-on); Calico, Cilium: less protected (their own kinds are not enforced) | `azure`: Dataplane V2; `calico`: Calico; `cilium`: Dataplane V2, less protected |
+| Secrets with a customer key | `EncryptionConfig` with the map's key, else less protected | `databaseEncryption` with the map's key, else less protected |
+| Node pool | `AWS::EKS::Nodegroup` per pool: count and autoscaling bounds, disk, labels, taints, spot, Windows AMI | `nodePools[]`: totals across the map's zones, disk, labels, taints, spot, Windows image, max pods, no public address |
+| Identity (managed, kubelet, Entra ID, workload identity) | not translated: roles from the map, access entries on its own | not translated: service account from the map, IAM on its own |
+| Add-ons, mesh, monitoring | not translated; Azure Policy and Istio are less protected until the target's own is installed | the same |
+
+An AKS pool's VM size has no exact equivalent, so each pool's instance or
+machine type is named in the map; a refusal prints the Azure size. A GKE
+pool without a service account would run as the Compute Engine default one,
+which holds the project's Editor role unless an organization policy
+prevents it, so the map names one. Who gets admin on an EKS cluster is not
+whoever restores it: access is by access entries alone. Maintenance
+windows, managed namespaces and trusted access bindings are refused.
 
 Azure evaluates an NSG's rules by priority, the first match deciding. A
 security group only allows, so on AWS each allow is written with every deny

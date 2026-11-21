@@ -575,6 +575,7 @@ func name(rs []*resource, account string) {
 			for _, r := range ready {
 				tokenize(r, values, owners)
 				accountize(r, account)
+				resort(r)
 			}
 		}
 		sort.SliceStable(ready, func(i, j int) bool {
@@ -604,9 +605,18 @@ func name(rs []*resource, account string) {
 			for _, r := range ready {
 				tokenize(r, values, owners)
 				accountize(r, account)
+				resort(r)
 			}
 		}
 	}
+}
+
+// resort puts sets in order again once their references are tokens: sorted
+// by the IDs one account generated, a set of references (an EKS cluster's
+// SubnetIds) came out in a different order in each account, and a restore
+// found what it had made differing from its snapshot.
+func resort(r *resource) {
+	sortSets(r.spec, map[string]any{"properties": r.t.Properties}, r.t.Definitions)
 }
 
 type refTarget struct {
@@ -680,10 +690,6 @@ func tokenize(r *resource, values []string, owners map[string]refTarget) {
 			return s
 		})
 	}
-	// Sets are put in order again: sorted by the generated IDs they held,
-	// a DB subnet group's subnets came out in a different order in every
-	// account, and a restore found its own subnet group differing.
-	sortSets(r.spec, map[string]any{"properties": r.t.Properties}, r.t.Definitions)
 }
 
 // accountToken stands for the account a snapshot is restored into. A

@@ -78,9 +78,12 @@ func (d gcpNet) vnet(v *vnet, o *out) bool {
 	region := gcpProject + "/regions/" + d.m.Region
 	for _, s := range v.subnets {
 		sn := d.m.name(v.group+"/"+v.name+"/"+s.name, gcpName(v.name, s.name))
-		e.Targets = append(e.Targets, o.add("gcp", v.src, computeObject(gcpSubnet, "Subnetwork", "subnetworks", region, sn, map[string]any{
+		obj := computeObject(gcpSubnet, "Subnetwork", "subnetworks", region, sn, map[string]any{
 			"ipCidrRange": s.prefix.String(), "network": d.netURL(v), "region": computeBase + region,
-		})))
+		})
+		e.Targets = append(e.Targets, o.add("gcp", v.src, obj))
+		o.netSubs[strings.ToLower(v.group+"/"+v.name+"/"+s.name)] = &netSub{vnet: v.key, network: gcpProject + "/global/networks/" + name,
+			subnetwork: region + "/subnetworks/" + sn, spec: obj.Body["spec"].(map[string]any)}
 	}
 	o.entries = append(o.entries, e)
 	return true
@@ -103,6 +106,9 @@ func (d gcpNet) nsg(n *nsg, o *out) {
 		for _, s := range n.subnets {
 			if s.vnet == v {
 				where = append(where, gcpName(v.name, s.name))
+				if ns := o.netSubs[strings.ToLower(v.group+"/"+v.name+"/"+s.name)]; ns != nil {
+					ns.tag = tag
+				}
 			}
 		}
 		o.require(fmt.Sprintf("Instances (and GKE nodes) in subnetwork(s) %s carry the network tag %s: an NSG applied to a whole subnet, a firewall rule applies to instances by tag", strings.Join(where, ", "), tag))

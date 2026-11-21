@@ -282,8 +282,21 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 		}
 		byID = true
 	}
+	// What AWS never returns is not compared: a snapshot that sets a
+	// write-only property (a translation's EKS cluster sets who gets admin
+	// at creation) would otherwise never be found identical.
+	mine := o
+	if len(t.WriteOnly) > 0 {
+		body := deepCopy(o.Body)
+		if sp, ok := body["spec"].(map[string]any); ok {
+			for _, ptr := range t.WriteOnly {
+				removePointer(sp, ptr)
+			}
+		}
+		mine = snapshot.Object{Body: body}
+	}
 	differs := func(ex *resource) []snapshot.Change {
-		return snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{o}}, snapshot.Snapshot{Objects: []snapshot.Object{{Body: toObject(ex)}}})
+		return snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{mine}}, snapshot.Snapshot{Objects: []snapshot.Object{{Body: toObject(ex)}}})
 	}
 	ex, exists := existing[o.Key()]
 	if exists {

@@ -1,0 +1,473 @@
+report:
+  destinations:
+  - 'clusters: gke'
+  - 'network: vpc'
+  entries:
+  - losses:
+    - field: properties.agentPoolProfiles[nodes].mode
+      why: a System pool was kept for the cluster's own pods; the target has no such
+        pool, so they schedule on any node unless the pool is tainted for them
+    - field: properties.networkProfile.outboundType
+      why: the nodes' traffic out followed the subnet's route table (to a firewall,
+        as a rule); see that subnet's routeTable loss on its network
+    - field: properties.networkProfile.podCidr
+      why: '10.245.0.0/16: the pods'' range is a secondary range of the subnetwork,
+        so pod addresses are routable in the VPC network; what reaches a pod is what
+        the firewall rules let through'
+    source: Microsoft.ContainerService/managedClusters rg/priv
+    state: mapped with losses
+    targets:
+    - container.googleapis.com/Cluster projects/{{truthform|project}}/locations/europe-west1/clusters/priv
+  - losses:
+    - field: properties.aadProfile
+      why: Entra ID sign-in, its admin groups and Azure RBAC for Kubernetes are not
+        translated (#32)
+    - field: properties.identityProfile
+      why: the kubelet's managed identity is not translated (#32)
+    - field: identity
+      why: 'the cluster''s managed identity is not translated (#32): GKE''s control
+        plane runs as Google''s own service agent'
+    - field: properties.kubernetesVersion
+      why: '1.31.2: the target runs its own patch release of 1.31; only the minor
+        version is carried over'
+    - field: properties.agentPoolProfiles[system].osSKU
+      why: 'Ubuntu: the target''s nodes run the target''s own Linux (EKS: the Amazon
+        Linux AMI it gives the instance type; GKE: Ubuntu where this was Ubuntu, Container-Optimized
+        OS otherwise)'
+    - field: properties.agentPoolProfiles[system].mode
+      why: a System pool was kept for the cluster's own pods; the target has no such
+        pool, so they schedule on any node unless the pool is tainted for them
+    - field: properties.agentPoolProfiles[user].osSKU
+      why: 'AzureLinux: the target''s nodes run the target''s own Linux (EKS: the
+        Amazon Linux AMI it gives the instance type; GKE: Ubuntu where this was Ubuntu,
+        Container-Optimized OS otherwise)'
+    - field: properties.addonProfiles.azurepolicy
+      why: the Azure Policy add-on enforced policies at admission (Gatekeeper); until
+        the target's (Gatekeeper, Kyverno or GKE Policy Controller) is installed with
+        the same policies, what it denied is let in
+      widens: true
+    - field: properties.addonProfiles.omsagent
+      why: 'Container Insights monitoring is not translated (#32): the target''s (CloudWatch
+        Container Insights, Cloud Monitoring) is set on its own'
+    - field: properties.networkProfile.dnsServiceIP
+      why: 'the target puts the cluster''s DNS at an address of its own in the service
+        range: pods resolve through it as before, and anything that names the address
+        itself (not kube-dns) is changed'
+    - field: properties.autoUpgradeProfile.upgradeChannel
+      why: 'patch: the cluster is written in no release channel, at the version the
+        source runs; GKE upgrades it itself only when that version''s support ends'
+    - field: tags
+      why: 'tag(s) Cost Centre are not GKE labels (lower case letters, digits, - and
+        _): not carried over'
+    - field: properties.networkProfile.podCidr
+      why: '10.244.0.0/16: the pods'' range is a secondary range of the subnetwork,
+        so pod addresses are routable in the VPC network; what reaches a pod is what
+        the firewall rules let through'
+    source: Microsoft.ContainerService/managedClusters rg/shop
+    state: mapped with losses
+    targets:
+    - container.googleapis.com/Cluster projects/{{truthform|project}}/locations/europe-west1/clusters/shop
+  - reason: its cluster is not in the snapshot
+    source: Microsoft.ContainerService/managedClusters/agentPools rg/gone/pool
+    state: refused
+  - reason: read with its cluster Microsoft.ContainerService/managedClusters rg/shop
+    source: Microsoft.ContainerService/managedClusters/agentPools rg/shop/batch
+    state: mapped
+  - reason: 'planned maintenance windows are not translated: EKS has none, and GKE''s
+      maintenance policy is set on its own, so upgrades would run when the target
+      schedules them'
+    source: Microsoft.ContainerService/managedClusters/maintenanceConfigurations rg/shop/default
+    state: refused
+  - reason: 'identity is not translated (#32): a trusted access binding lets another
+      Azure resource''s managed identity into the cluster; the target''s equivalent
+      (EKS access entries, GKE IAM) is set on its own'
+    source: Microsoft.ContainerService/managedClusters/trustedAccessRoleBindings rg/shop/backup
+    state: refused
+  - reason: 'Azure''s report of the upgrades open to the cluster: nothing to translate'
+    source: Microsoft.ContainerService/managedClusters/upgradeProfiles rg/shop/default
+    state: mapped
+  - source: Microsoft.Network/networkSecurityGroups net/web
+    state: mapped
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-https
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
+  - source: Microsoft.Network/virtualNetworks net/core
+    state: mapped
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/core
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-spare
+  from: azure
+  requirements:
+  - 'A cluster''s workloads are not in this translation: restore TruthForm''s Kubernetes
+    snapshot of Microsoft.ContainerService/managedClusters rg/priv into the GKE cluster
+    once it runs; persistent volumes'' data is not moved, and is copied on its own'
+  - 'A cluster''s workloads are not in this translation: restore TruthForm''s Kubernetes
+    snapshot of Microsoft.ContainerService/managedClusters rg/shop into the GKE cluster
+    once it runs; persistent volumes'' data is not moved, and is copied on its own'
+  - 'GKE cluster priv takes no one''s access from Azure: grant the people and tools
+    that use it IAM roles on the project, and RBAC in the cluster, before restoring
+    its workloads (#32)'
+  - 'GKE cluster priv''s API server answers only inside its VPC network: kubectl and
+    the restore of its workloads run from there'
+  - 'GKE cluster shop takes no one''s access from Azure: grant the people and tools
+    that use it IAM roles on the project, and RBAC in the cluster, before restoring
+    its workloads (#32)'
+  - 'GKE validates Kubernetes 1.30 at restore: if it no longer offers that version,
+    a person chooses one, as the translation never upgrades'
+  - 'GKE validates Kubernetes 1.31 at restore: if it no longer offers that version,
+    a person chooses one, as the translation never upgrades'
+  - 'Google''s load balancers check health from 35.191.0.0/16 and 130.211.0.0/22:
+    where one fronts these instances, allow those ranges (Azure''s load balancer was
+    allowed by every NSG)'
+  - 'Instances (and GKE nodes) in subnetwork(s) core-app carry the network tag web:
+    an NSG applied to a whole subnet, a firewall rule applies to instances by tag'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: the API server''s address
+    changes: kubeconfigs, CI and anything else that names the AKS address take the
+    target''s'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: the cluster had local accounts
+    (its admin kubeconfig); the target has none: tools that used them sign in through
+    the target''s IAM'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: the cluster provisioned storage
+    through Azure''s CSI drivers (diskCSIDriver): StorageClasses that name disk.csi.azure.com
+    or file.csi.azure.com are rewritten for the target''s (EBS CSI driver, which needs
+    its own IAM role, or GKE''s Persistent Disk driver), and the volumes'' data is
+    not moved'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: the cluster''s service account
+    token issuer changes: federated credentials that trusted the AKS issuer are made
+    again against the target''s (#32)'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: the nodes reached the internet
+    through Azure''s outbound (loadBalancer); the target''s subnets have no internet
+    egress until a NAT gateway (AWS) or Cloud NAT (GCP) is added, and nodes cannot
+    pull public images without it'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: what the cluster''s managed
+    identity was granted in Azure (its network, its node resources, a key vault for
+    secrets encryption) is granted to the target''s cluster role on its own (#32)'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: what the kubelet''s managed
+    identity was granted (pulling from a container registry, above all) is granted
+    to the target''s node role or service account on its own (#32)'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: who may use the cluster is
+    set on the target on its own (#32): EKS access entries, or GKE''s IAM and Google
+    Groups for RBAC, for the people and groups Entra ID let in'
+  - 'Microsoft.ContainerService/managedClusters rg/shop: workloads signed in to Azure
+    with workload identity; on the target they use EKS Pod Identity or IRSA, or GKE
+    workload identity, set up on its own: the app''s credentials change (#32)'
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allow-https
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "443"
+      direction: INGRESS
+      name: web-allow-https
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 100
+      sourceRanges:
+      - 0.0.0.0/0
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
+    spec:
+      allowed:
+      - IPProtocol: all
+      direction: INGRESS
+      name: web-allowvnetinbound
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      priority: 65000
+      sourceRanges:
+      - 10.20.0.0/16
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Network
+    metadata:
+      annotations:
+        truthform.org/collection: networks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Network
+      name: projects/{{truthform|project}}/global/networks/core
+    spec:
+      autoCreateSubnetworks: false
+      mtu: 1500
+      name: core
+      routingConfig:
+        routingMode: REGIONAL
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app
+    spec:
+      ipCidrRange: 10.20.1.0/24
+      name: core-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+      secondaryIpRanges:
+      - ipCidrRange: 10.244.0.0/16
+        rangeName: shop-pods
+      - ipCidrRange: 10.0.0.0/16
+        rangeName: shop-services
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
+    spec:
+      ipCidrRange: 10.20.2.0/24
+      name: core-data
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+      secondaryIpRanges:
+      - ipCidrRange: 10.245.0.0/16
+        rangeName: priv-pods
+      - ipCidrRange: 10.1.0.0/16
+        rangeName: priv-services
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-spare
+    spec:
+      ipCidrRange: 10.20.3.0/24
+      name: core-spare
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/core
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: container.googleapis.com/Cluster
+    metadata:
+      annotations:
+        truthform.org/collection: projects.locations.clusters
+        truthform.org/discovery: container/v1
+        truthform.org/parent: projects/{{truthform|project}}/locations/europe-west1
+        truthform.org/schema: Cluster
+      name: projects/{{truthform|project}}/locations/europe-west1/clusters/priv
+    spec:
+      addonsConfig:
+        networkPolicyConfig:
+          disabled: false
+      controlPlaneEndpointsConfig:
+        dnsEndpointConfig:
+          allowExternalTraffic: false
+        ipEndpointsConfig:
+          enablePublicEndpoint: false
+          enabled: true
+      description: From Azure Kubernetes Service cluster rg/priv
+      initialClusterVersion: "1.30"
+      ipAllocationPolicy:
+        clusterSecondaryRangeName: priv-pods
+        servicesSecondaryRangeName: priv-services
+        stackType: IPV4
+        useIpAliases: true
+      name: priv
+      network: projects/{{truthform|project}}/global/networks/core
+      networkConfig:
+        defaultEnablePrivateNodes: true
+      networkPolicy:
+        enabled: true
+        provider: CALICO
+      nodePools:
+      - config:
+          diskSizeGb: 64
+          imageType: COS_CONTAINERD
+          machineType: e2-standard-2
+          metadata:
+            block-project-ssh-keys: "true"
+          serviceAccount: gke-priv@shared-accounts.iam.gserviceaccount.com
+          shieldedInstanceConfig:
+            enableIntegrityMonitoring: true
+            enableSecureBoot: false
+        initialNodeCount: 2
+        locations:
+        - europe-west1-b
+        management:
+          autoRepair: true
+          autoUpgrade: false
+        name: nodes
+        networkConfig:
+          enablePrivateNodes: true
+      releaseChannel:
+        channel: UNSPECIFIED
+      subnetwork: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-data
+  - apiVersion: gcp.truthform.org/v1
+    kind: container.googleapis.com/Cluster
+    metadata:
+      annotations:
+        truthform.org/collection: projects.locations.clusters
+        truthform.org/discovery: container/v1
+        truthform.org/parent: projects/{{truthform|project}}/locations/europe-west1
+        truthform.org/schema: Cluster
+      name: projects/{{truthform|project}}/locations/europe-west1/clusters/shop
+    spec:
+      controlPlaneEndpointsConfig:
+        dnsEndpointConfig:
+          allowExternalTraffic: false
+        ipEndpointsConfig:
+          authorizedNetworksConfig:
+            cidrBlocks:
+            - cidrBlock: 203.0.113.0/24
+            enabled: true
+            gcpPublicCidrsAccessEnabled: false
+          enablePublicEndpoint: true
+          enabled: true
+      databaseEncryption:
+        keyName: projects/kms-project/locations/europe-west1/keyRings/r/cryptoKeys/k
+        state: ENCRYPTED
+      description: From Azure Kubernetes Service cluster rg/shop
+      initialClusterVersion: "1.31"
+      ipAllocationPolicy:
+        clusterSecondaryRangeName: shop-pods
+        servicesSecondaryRangeName: shop-services
+        stackType: IPV4
+        useIpAliases: true
+      name: shop
+      network: projects/{{truthform|project}}/global/networks/core
+      networkConfig:
+        datapathProvider: ADVANCED_DATAPATH
+        defaultEnablePrivateNodes: true
+      nodePools:
+      - config:
+          diskSizeGb: 128
+          imageType: UBUNTU_CONTAINERD
+          machineType: n2-standard-4
+          serviceAccount: gke-shop-nodes@{{truthform|project}}.iam.gserviceaccount.com
+          shieldedInstanceConfig:
+            enableIntegrityMonitoring: true
+            enableSecureBoot: false
+          tags:
+          - web
+          taints:
+          - effect: NO_SCHEDULE
+            key: CriticalAddonsOnly
+            value: "true"
+        initialNodeCount: 1
+        locations:
+        - europe-west1-b
+        - europe-west1-c
+        - europe-west1-d
+        management:
+          autoRepair: true
+          autoUpgrade: true
+        maxPodsConstraint:
+          maxPodsPerNode: "30"
+        name: system
+        networkConfig:
+          enablePrivateNodes: true
+        version: "1.31"
+      - autoscaling:
+          enabled: true
+          locationPolicy: BALANCED
+          totalMaxNodeCount: 6
+          totalMinNodeCount: 2
+        config:
+          diskSizeGb: 256
+          imageType: COS_CONTAINERD
+          labels:
+            workload: web
+          machineType: n2-standard-8
+          serviceAccount: gke-shop-nodes@{{truthform|project}}.iam.gserviceaccount.com
+          shieldedInstanceConfig:
+            enableIntegrityMonitoring: true
+            enableSecureBoot: false
+          spot: true
+          tags:
+          - web
+        initialNodeCount: 1
+        locations:
+        - europe-west1-b
+        - europe-west1-c
+        - europe-west1-d
+        management:
+          autoRepair: true
+          autoUpgrade: true
+        maxPodsConstraint:
+          maxPodsPerNode: "50"
+        name: user
+        networkConfig:
+          enablePrivateNodes: true
+        upgradeSettings:
+          maxSurge: 1
+          strategy: SURGE
+      - config:
+          diskSizeGb: 128
+          imageType: WINDOWS_LTSC_CONTAINERD
+          machineType: n2-standard-4
+          serviceAccount: gke-shop-nodes@{{truthform|project}}.iam.gserviceaccount.com
+          shieldedInstanceConfig:
+            enableIntegrityMonitoring: true
+            enableSecureBoot: false
+          tags:
+          - web
+          taints:
+          - effect: NO_SCHEDULE
+            key: os
+            value: windows
+          windowsNodeConfig:
+            osVersion: OS_VERSION_LTSC2022
+        initialNodeCount: 1
+        locations:
+        - europe-west1-b
+        - europe-west1-c
+        management:
+          autoRepair: true
+          autoUpgrade: true
+        name: win
+        networkConfig:
+          enablePrivateNodes: true
+      - config:
+          diskSizeGb: 128
+          imageType: COS_CONTAINERD
+          machineType: n2-highmem-4
+          serviceAccount: gke-shop-nodes@{{truthform|project}}.iam.gserviceaccount.com
+          shieldedInstanceConfig:
+            enableIntegrityMonitoring: true
+            enableSecureBoot: false
+          tags:
+          - web
+        initialNodeCount: 1
+        locations:
+        - europe-west1-b
+        - europe-west1-c
+        management:
+          autoRepair: true
+          autoUpgrade: true
+        name: batch
+        networkConfig:
+          enablePrivateNodes: true
+      releaseChannel:
+        channel: UNSPECIFIED
+      resourceLabels:
+        env: prod
+      subnetwork: projects/{{truthform|project}}/regions/europe-west1/subnetworks/core-app

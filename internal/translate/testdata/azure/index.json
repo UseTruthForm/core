@@ -30,6 +30,39 @@
   "Microsoft.ContainerRegistry/registries@2025-11-01": {
    "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/116"
   },
+  "Microsoft.ContainerService/managedClusters/agentPools/machines@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/684"
+  },
+  "Microsoft.ContainerService/managedClusters/agentPools/upgradeProfiles@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/671"
+  },
+  "Microsoft.ContainerService/managedClusters/agentPools@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/499"
+  },
+  "Microsoft.ContainerService/managedClusters/identityBindings@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/515"
+  },
+  "Microsoft.ContainerService/managedClusters/maintenanceConfigurations@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/571"
+  },
+  "Microsoft.ContainerService/managedClusters/managedNamespaces@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/604"
+  },
+  "Microsoft.ContainerService/managedClusters/meshUpgradeProfiles@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/645"
+  },
+  "Microsoft.ContainerService/managedClusters/privateEndpointConnections@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/622"
+  },
+  "Microsoft.ContainerService/managedClusters/trustedAccessRoleBindings@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/635"
+  },
+  "Microsoft.ContainerService/managedClusters/upgradeProfiles@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/658"
+  },
+  "Microsoft.ContainerService/managedClusters@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/438"
+  },
   "Microsoft.DBforPostgreSQL/flexibleServers/administrators@2026-10-01": {
    "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/174"
   },

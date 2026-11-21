@@ -108,6 +108,9 @@ func targets(t *testing.T) Targets {
 		filepath.Join("testdata", "aws", "aws-rds-dbinstance.json"):                               "aws-rds-dbinstance.json",
 		filepath.Join("testdata", "aws", "aws-rds-dbsubnetgroup.json"):                            "aws-rds-dbsubnetgroup.json",
 		filepath.Join("testdata", "aws", "aws-rds-dbparametergroup.json"):                         "aws-rds-dbparametergroup.json",
+		filepath.Join("testdata", "aws", "aws-eks-cluster.json"):                                  "aws-eks-cluster.json",
+		filepath.Join("testdata", "aws", "aws-eks-nodegroup.json"):                                "aws-eks-nodegroup.json",
+		filepath.Join("testdata", "aws", "aws-eks-addon.json"):                                    "aws-eks-addon.json",
 	} {
 		b, err := os.ReadFile(src)
 		if err != nil {
@@ -123,7 +126,7 @@ func targets(t *testing.T) Targets {
 	}
 	gdir := t.TempDir()
 	for _, src := range []string{filepath.Join("testdata", "gcp", "pubsub_v1.json"), filepath.Join("..", "..", "testdata", "gcp", "discovery", "compute_v1.json"),
-		filepath.Join("testdata", "gcp", "secretmanager_v1.json"), filepath.Join("testdata", "gcp", "artifactregistry_v1.json"), filepath.Join("testdata", "gcp", "storage_v1.json"), filepath.Join("testdata", "gcp", "dns_v1.json"), filepath.Join("testdata", "gcp", "sqladmin_v1.json")} {
+		filepath.Join("testdata", "gcp", "secretmanager_v1.json"), filepath.Join("testdata", "gcp", "artifactregistry_v1.json"), filepath.Join("testdata", "gcp", "storage_v1.json"), filepath.Join("testdata", "gcp", "dns_v1.json"), filepath.Join("testdata", "gcp", "sqladmin_v1.json"), filepath.Join("testdata", "gcp", "container_v1.json")} {
 		b, err := os.ReadFile(src)
 		if err != nil {
 			t.Fatal(err)

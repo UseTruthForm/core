@@ -284,7 +284,9 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	// Compute's resources, created through a template that names each
 	// segment, carry their short name and a selfLink, as Google returns
 	// them; storing the full name here hid an update that sent one.
-	if !strings.Contains(m.Path, "{+") {
+	if n, _ := res["name"].(string); !strings.Contains(m.Path, "{+") || (n == id && m.Request != nil && m.Request.Ref != schema) {
+		// So do resources a wrapped create names by the short name in
+		// their body (a GKE cluster).
 		stored["name"] = id
 	}
 	if len(item) > 2 {

@@ -90,10 +90,12 @@ func (d awsNet) vnet(v *vnet, o *out) bool {
 	for _, s := range v.subnets {
 		sn := name + "-" + s.name
 		st, _ := awsTags(sn, nil)
+		zone := d.m.zoneFor(v.group + "/" + v.name + "/" + s.name)
 		e.Targets = append(e.Targets, o.add("aws", v.src, awsObject(awsSN, sn, map[string]any{
 			"VpcId": awsRef(awsVPC, name, "VpcId"), "CidrBlock": s.prefix.String(),
-			"AvailabilityZone": d.m.zoneFor(v.group + "/" + v.name + "/" + s.name), "Tags": st,
+			"AvailabilityZone": zone, "Tags": st,
 		})))
+		o.netSubs[strings.ToLower(v.group+"/"+v.name+"/"+s.name)] = &netSub{vnet: v.key, awsName: sn, zone: zone}
 	}
 	o.entries = append(o.entries, e)
 	return true
@@ -135,6 +137,9 @@ func (d awsNet) nsg(n *nsg, o *out) {
 		for _, s := range n.subnets {
 			if s.vnet == v {
 				where = append(where, v.name+"-"+s.name)
+				if ns := o.netSubs[strings.ToLower(v.group+"/"+v.name+"/"+s.name)]; ns != nil {
+					ns.tag = name
+				}
 			}
 		}
 		o.require(fmt.Sprintf("Security group %s takes the place of an NSG on subnet(s) %s: an AWS security group applies only to what attaches it, so attach it to the instances (and node groups) in them", name, strings.Join(where, ", ")))

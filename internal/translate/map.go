@@ -43,6 +43,9 @@ type Map struct {
 		// Databases: rds (aws) or cloud-sql (gcp), for Azure Database for
 		// PostgreSQL flexible servers and Azure SQL servers.
 		Databases string `json:"databases,omitempty"`
+		// Clusters: eks (aws) or gke (gcp), for AKS clusters. Their
+		// workloads travel through the Kubernetes snapshot, not this.
+		Clusters string `json:"clusters,omitempty"`
 	} `json:"destinations"`
 	// Secrets is what GCP's Secret Manager needs that Key Vault cannot say.
 	Secrets *SecretsMap `json:"secrets,omitempty"`
@@ -52,6 +55,9 @@ type Map struct {
 	// Databases is what each database server needs on the target that
 	// Azure cannot say, keyed by its group/server.
 	Databases map[string]DatabaseMap `json:"databases,omitempty"`
+	// Clusters is what each AKS cluster needs on the target that Azure
+	// cannot say, keyed group/cluster.
+	Clusters map[string]ClusterMap `json:"clusters,omitempty"`
 	// RabbitMQ is needed when messaging goes to rabbitmq.
 	RabbitMQ *RabbitMQ `json:"rabbitmq,omitempty"`
 	// Sessions says how a Service Bus session queue is carried over: fifo
@@ -120,6 +126,67 @@ type DatabaseMap struct {
 	// KMS key name (GCP). Without it such a server is encrypted with the
 	// target's own key, and that is reported as widening.
 	KMSKey string `json:"kmsKey,omitempty"`
+}
+
+// ClusterMap is what one cluster needs on the target. Identity is not
+// translated (#32), so roles and service accounts are ones that exist,
+// named here; VM sizes are not translated either, so each pool's machine
+// is named here too.
+type ClusterMap struct {
+	// RoleARN (eks) is the IAM role the control plane uses, NodeRoleARN
+	// the one its nodes use.
+	RoleARN     string `json:"roleArn,omitempty"`
+	NodeRoleARN string `json:"nodeRoleArn,omitempty"`
+	// Subnets (eks) are more of the network's subnets, by
+	// group/network/subnet, for the control plane: EKS takes subnets in at
+	// least two availability zones, and the pools' may all be in one.
+	Subnets []string `json:"subnets,omitempty"`
+	// KMSKey encrypts the cluster's secrets with the customer's own key: a
+	// KMS key ARN (eks) or a Cloud KMS key's name (gke).
+	KMSKey string `json:"kmsKey,omitempty"`
+	// PodCIDR (gke) is the pods' range, for a cluster whose pods took
+	// addresses from the network's subnets (Azure CNI without overlay).
+	PodCIDR string `json:"podCidr,omitempty"`
+	// ServiceAccount (gke) runs the nodes of every pool that names none:
+	// an email, or an account ID in the target project.
+	ServiceAccount string `json:"serviceAccount,omitempty"`
+	// Pools are keyed by the AKS pool's name.
+	Pools map[string]PoolMap `json:"pools,omitempty"`
+}
+
+// PoolMap is what one node pool needs on the target.
+type PoolMap struct {
+	// InstanceType (eks) or MachineType (gke) is what each node runs on.
+	InstanceType string `json:"instanceType,omitempty"`
+	MachineType  string `json:"machineType,omitempty"`
+	// Zones (gke) are the zones the pool's nodes go in: a GKE pool puts
+	// the same number in each.
+	Zones []string `json:"zones,omitempty"`
+	// ServiceAccount (gke) runs this pool's nodes.
+	ServiceAccount string `json:"serviceAccount,omitempty"`
+	// Subnet is one of the network's subnets (group/network/subnet) for a
+	// pool AKS gave a network of its own, which no snapshot holds.
+	Subnet string `json:"subnet,omitempty"`
+}
+
+// clusterMap is the map's entry for a cluster (group/cluster).
+func (m Map) clusterMap(key string) ClusterMap {
+	for k, c := range m.Clusters {
+		if strings.EqualFold(k, key) {
+			return c
+		}
+	}
+	return ClusterMap{}
+}
+
+// pool is the cluster entry's pool.
+func (c ClusterMap) pool(name string) PoolMap {
+	for k, p := range c.Pools {
+		if strings.EqualFold(k, name) {
+			return p
+		}
+	}
+	return PoolMap{}
 }
 
 // RabbitMQ is what the in-cluster messaging destination needs.
@@ -256,6 +323,9 @@ func (m Map) validate() error {
 	if err := m.validateDatabases(); err != nil {
 		return err
 	}
+	if err := m.validateClusters(); err != nil {
+		return err
+	}
 	want := map[string]string{"sqs-sns": "fifo", "pubsub": "ordering", "rabbitmq": "single-active-consumer"}[m.Destinations.Messaging]
 	if m.Sessions != "" && m.Sessions != want {
 		return fmt.Errorf("map: sessions: %q does not go with messaging %s (it takes %q)", m.Sessions, m.Destinations.Messaging, want)
@@ -315,6 +385,56 @@ func (m Map) validateDatabases() error {
 	return nil
 }
 
+func (m Map) validateClusters() error {
+	switch d := m.Destinations.Clusters; d {
+	case "":
+		if len(m.Clusters) > 0 {
+			return fmt.Errorf("map: clusters is set, and destinations.clusters is not")
+		}
+		return nil
+	case "eks", "gke":
+		if want := map[string]string{"eks": "aws", "gke": "gcp"}[d]; m.To != want {
+			return fmt.Errorf("map: clusters %s is a%s destination, and to is %s", d, map[string]string{"aws": "n AWS", "gcp": " GCP"}[want], m.To)
+		}
+	default:
+		return fmt.Errorf("map: clusters: %q is not eks or gke", d)
+	}
+	for _, k := range sortedMapKeys(m.Clusters) {
+		c := m.Clusters[k]
+		var wrong []string
+		if m.Destinations.Clusters == "eks" {
+			if c.PodCIDR != "" {
+				wrong = append(wrong, "podCidr")
+			}
+			if c.ServiceAccount != "" {
+				wrong = append(wrong, "serviceAccount")
+			}
+			for _, pn := range sortedMapKeys(c.Pools) {
+				p := c.Pools[pn]
+				if p.MachineType != "" || len(p.Zones) > 0 || p.ServiceAccount != "" {
+					wrong = append(wrong, "pools."+pn+" (machineType, zones, serviceAccount)")
+				}
+			}
+		} else {
+			if c.RoleARN != "" || c.NodeRoleARN != "" {
+				wrong = append(wrong, "roleArn, nodeRoleArn")
+			}
+			if len(c.Subnets) > 0 {
+				wrong = append(wrong, "subnets")
+			}
+			for _, pn := range sortedMapKeys(c.Pools) {
+				if c.Pools[pn].InstanceType != "" {
+					wrong = append(wrong, "pools."+pn+".instanceType")
+				}
+			}
+		}
+		if len(wrong) > 0 {
+			return fmt.Errorf("map: clusters[%s]: %s do not go with clusters %s", k, strings.Join(wrong, ", "), m.Destinations.Clusters)
+		}
+	}
+	return nil
+}
+
 // database is the map's entry for a server (group/server), if any.
 func (m Map) database(key string) (DatabaseMap, bool) {
 	for k, d := range m.Databases {
@@ -323,6 +443,15 @@ func (m Map) database(key string) (DatabaseMap, bool) {
 		}
 	}
 	return DatabaseMap{}, false
+}
+
+func sortedMapKeys[V any](m map[string]V) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }
 
 func (m Map) destinationList() []string {
@@ -347,6 +476,9 @@ func (m Map) destinationList() []string {
 	}
 	if m.Destinations.Databases != "" {
 		d = append(d, "databases: "+m.Destinations.Databases)
+	}
+	if m.Destinations.Clusters != "" {
+		d = append(d, "clusters: "+m.Destinations.Clusters)
 	}
 	sort.Strings(d)
 	return d
@@ -382,13 +514,13 @@ func (m Map) zoneFor(key string) string {
 // NeedsAWS reports whether a destination the map chooses writes AWS
 // objects, which are built from the CloudFormation registry.
 func (m Map) NeedsAWS() bool {
-	return m.Destinations.Messaging == "sqs-sns" || m.Destinations.Registry == "ecr" || m.Destinations.DNS == "route53" || m.Destinations.Databases == "rds" ||
+	return m.Destinations.Messaging == "sqs-sns" || m.Destinations.Registry == "ecr" || m.Destinations.DNS == "route53" || m.Destinations.Databases == "rds" || m.Destinations.Clusters == "eks" ||
 		(m.To == "aws" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != ""))
 }
 
 // NeedsGCP reports whether a destination the map chooses writes GCP
 // objects, which are checked against Google's Discovery documents.
 func (m Map) NeedsGCP() bool {
-	return m.Destinations.Messaging == "pubsub" || m.Destinations.Registry == "artifact-registry" || m.Destinations.DNS == "cloud-dns" || m.Destinations.Databases == "cloud-sql" ||
+	return m.Destinations.Messaging == "pubsub" || m.Destinations.Registry == "artifact-registry" || m.Destinations.DNS == "cloud-dns" || m.Destinations.Databases == "cloud-sql" || m.Destinations.Clusters == "gke" ||
 		(m.To == "gcp" && (m.Destinations.Network != "" || m.Destinations.Secrets != "" || m.Destinations.Storage != ""))
 }

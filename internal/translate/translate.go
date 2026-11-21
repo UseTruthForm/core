@@ -133,6 +133,9 @@ type out struct {
 	// group/network/subnet in lower case, for a family that places what it
 	// writes in them.
 	subnets map[string]*subnet
+	// netSubs are the subnets the network family wrote, keyed by the Azure
+	// subnet (group/network/subnet, lower case), for what goes in them.
+	netSubs map[string]*netSub
 }
 
 // written is the spec of an object already written for a platform, or nil.
@@ -144,6 +147,20 @@ func (o *out) written(platform, kind, name string) map[string]any {
 		}
 	}
 	return nil
+}
+
+// netSub is what one Azure subnet became on the target.
+type netSub struct {
+	vnet string // its network's group/name, lower case
+	// AWS: the subnet's logical name and its availability zone.
+	awsName, zone string
+	// GCP: the network's and subnetwork's names, and the subnetwork's spec
+	// (a cluster adds its secondary ranges to it).
+	network, subnetwork string
+	spec                map[string]any
+	// tag is what stands for its NSG: the security group's name (AWS), the
+	// network tag of its firewall rules (GCP).
+	tag string
 }
 
 func (o *out) add(platform, source string, obj snapshot.Object) string {
@@ -188,8 +205,9 @@ type family interface {
 }
 
 // The network family comes before those that use its networks: DNS
-// private zones, and databases placed in its subnets.
-var families = []family{serviceBus{}, network{}, storage{}, keyVault{}, registry{}, dnsFamily{}, databases{}, decided{}}
+// private zones, databases placed in its subnets, and clusters whose nodes
+// are.
+var families = []family{serviceBus{}, network{}, storage{}, keyVault{}, registry{}, dnsFamily{}, databases{}, clusters{}, decided{}}
 
 // Translate rewrites an Azure snapshot for the target the map names, with
 // the target's definitions.
@@ -206,7 +224,7 @@ func Translate(src snapshot.Snapshot, m Map, tg Targets) (Result, error) {
 	case m.NeedsGCP() && tg.GCP == nil:
 		return Result{}, fmt.Errorf("the map's destinations write GCP objects, which need GCP's Discovery documents")
 	}
-	o := &out{m: m, tg: tg, objects: map[string][]snapshot.Object{}, keys: map[string]string{}, reqs: map[string]bool{}, subnets: map[string]*subnet{}}
+	o := &out{m: m, tg: tg, objects: map[string][]snapshot.Object{}, keys: map[string]string{}, reqs: map[string]bool{}, subnets: map[string]*subnet{}, netSubs: map[string]*netSub{}}
 	claimed := make([][]snapshot.Object, len(families))
 	for _, obj := range src.Objects {
 		hit := false

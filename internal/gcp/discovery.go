@@ -33,6 +33,7 @@ type Schema struct {
 	Ref                  string             `json:"$ref"`
 	Description          string             `json:"description"`
 	ReadOnly             bool               `json:"readOnly"`
+	Deprecated           bool               `json:"deprecated"`
 	Properties           map[string]*Schema `json:"properties"`
 	Items                *Schema            `json:"items"`
 	AdditionalProperties *Schema            `json:"additionalProperties"`

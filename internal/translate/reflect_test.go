@@ -24,6 +24,7 @@ const (
 	privateDNSVersion = "2024-06-01"
 	pgVersion         = "2026-10-01"
 	sqlVersion        = "2025-01-01"
+	aksVersion        = "2026-08-01"
 )
 
 // reflected is one Azure type a rule reads: its definition's version, a
@@ -537,5 +538,53 @@ func TestEveryDatabaseTypeIsDecided(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// Every AKS type Azure defines under a cluster is read, or decided here
+// with its reason in aksChildren.
+func TestEveryClusterTypeIsDecided(t *testing.T) {
+	reg, err := azarm.LoadDefinitions("testdata/azure")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, name := range reg.Names() {
+		l := strings.ToLower(name)
+		if !clusters.claims(clusters{}, l) {
+			continue
+		}
+		n++
+		if _, ok := aksChildren[l]; !ok && l != azAKS && l != azAKSPool {
+			t.Errorf("%s has a definition and no decision", name)
+		}
+	}
+	if n < 10 {
+		t.Errorf("only %d cluster types in the definitions", n)
+	}
+	m := aksMaps()["aws"]
+	for k, d := range aksChildren {
+		parts := strings.Count(k, "/")
+		name := strings.Repeat("x/", parts-1) + "x"
+		r, err := Translate(snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{az(k, "rg", name, nil)}}, m, targets(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e := r.Report.Entries[0]; e.State != d.state || e.Reason == "" {
+			t.Errorf("%s: %s, want %s", k, e.State, d.state)
+		}
+		if strings.Contains(k, "trustedaccess") || strings.Contains(k, "identitybindings") {
+			if !strings.Contains(r.Report.Entries[0].Reason, "identity is not translated") {
+				t.Errorf("%s: %s", k, r.Report.Entries[0].Reason)
+			}
+		}
+	}
+	// A child type nobody has decided is not looked at.
+	r, err := Translate(snapshot.Snapshot{Platform: "azure", Objects: []snapshot.Object{az(azAKS+"/somethingnew", "rg", "x/y", nil)}}, m, targets(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := r.Report.Entries[0]; e.State != NotLooked {
+		t.Errorf("an undecided child: %s", e.State)
 	}
 }

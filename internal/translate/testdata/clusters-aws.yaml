@@ -280,8 +280,9 @@ report:
     its own IAM role, or GKE''s Persistent Disk driver), and the volumes'' data is
     not moved'
   - 'Microsoft.ContainerService/managedClusters rg/shop: the cluster''s service account
-    token issuer changes: federated credentials that trusted the AKS issuer are made
-    again against the target''s (#32)'
+    token issuer changes: federated credentials that trusted the AKS issuer are carried
+    over with destinations.identity: workload (EKS Pod Identity, GKE workload identity),
+    and made again by hand otherwise'
   - 'Microsoft.ContainerService/managedClusters rg/shop: the nodes reached the internet
     through Azure''s outbound (loadBalancer); the target''s subnets have no internet
     egress until a NAT gateway (AWS) or Cloud NAT (GCP) is added, and nodes cannot
@@ -296,8 +297,9 @@ report:
     set on the target on its own (#32): EKS access entries, or GKE''s IAM and Google
     Groups for RBAC, for the people and groups Entra ID let in'
   - 'Microsoft.ContainerService/managedClusters rg/shop: workloads signed in to Azure
-    with workload identity; on the target they use EKS Pod Identity or IRSA, or GKE
-    workload identity, set up on its own: the app''s credentials change (#32)'
+    with workload identity; on the target they use EKS Pod Identity or GKE workload
+    identity, which destinations.identity: workload writes for each managed identity;
+    without it, set it up on its own. Either way the app''s credentials change'
   - 'Security group web takes the place of an NSG on subnet(s) core-app: an AWS security
     group applies only to what attaches it, so attach it to the instances (and node
     groups) in them'

@@ -35,7 +35,7 @@ var outOfScope = map[string]string{
 	"microsoft.logic/":                                "Logic Apps have no peer (#32); the nearest are AWS Step Functions and GCP Workflows, and a workflow is rewritten, not translated",
 	"microsoft.security/":                             "Defender for Cloud settings are not translated (#32): the target's (Security Hub, Security Command Center) is set on its own",
 	"microsoft.alertsmanagement/":                     "alerting is not translated (#32)",
-	"microsoft.network/networkwatchers":               "Azure creates a network watcher per region by itself; the target's flow logs and diagnostics are set on its own",
+	"microsoft.network/networkwatchers":               "Azure creates a network watcher per region by itself; its flow logs are translated with the networks they log, and its other diagnostics are set on the target on its own",
 	"microsoft.costmanagement/":                       "cost management is not translated (#32)",
 	"microsoft.consumption/":                          "budgets are not translated (#32)",
 	"microsoft.resources/deployments":                 "a deployment is a record of a change, not a resource",

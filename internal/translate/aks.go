@@ -282,7 +282,7 @@ func readCluster(so snapshot.Object) *aksCluster {
 	}
 	p.quiet("podIdentityProfile")
 	if truthy(obj(p.m["oidcIssuerProfile"])["enabled"]) {
-		c.reqs = append(c.reqs, "the cluster's service account token issuer changes: federated credentials that trusted the AKS issuer are made again against the target's (#32)")
+		c.reqs = append(c.reqs, "the cluster's service account token issuer changes: federated credentials that trusted the AKS issuer are carried over with destinations.identity: workload (EKS Pod Identity, GKE workload identity), and made again by hand otherwise")
 	}
 	p.quiet("oidcIssuerProfile")
 	if strings.EqualFold(fmt.Sprint(obj(p.m["nodeResourceGroupProfile"])["restrictionLevel"]), "ReadOnly") {
@@ -570,7 +570,7 @@ func readSecurityProfile(c *aksCluster, m map[string]any) {
 	}
 	p.quiet("kubernetesResourceObjectEncryptionProfile")
 	if truthy(obj(p.m["workloadIdentity"])["enabled"]) {
-		c.reqs = append(c.reqs, "workloads signed in to Azure with workload identity; on the target they use EKS Pod Identity or IRSA, or GKE workload identity, set up on its own: the app's credentials change (#32)")
+		c.reqs = append(c.reqs, "workloads signed in to Azure with workload identity; on the target they use EKS Pod Identity or GKE workload identity, which destinations.identity: workload writes for each managed identity; without it, set it up on its own. Either way the app's credentials change")
 	}
 	p.quiet("workloadIdentity")
 	if truthy(obj(p.m["imageCleaner"])["enabled"]) {

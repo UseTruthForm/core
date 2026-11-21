@@ -75,12 +75,19 @@ type Report struct {
 	// nobody should miss: operators to install, a role to grant, who now
 	// runs what the cloud ran.
 	Requirements []string `json:"requirements,omitempty"`
+	// GitOps is what the Kubernetes workloads name that the translation
+	// renamed: see gitops.go. Absent unless it was asked for.
+	GitOps *GitOpsReport `json:"gitops,omitempty"`
 }
 
 // Failed reports whether anything was refused, not looked at, lost in a
 // way that widens, or left unread: the translation is then not a rebuild of the source, and
-// a person has to look.
+// a person has to look. So does a Kubernetes manifest that names an Azure
+// thing with no translation, when the GitOps report was asked for.
 func (r Report) Failed() bool {
+	if r.GitOps != nil && r.GitOps.failed() {
+		return true
+	}
 	for _, e := range r.Entries {
 		if e.State == Refused || e.State == NotLooked {
 			return true

@@ -1,0 +1,43 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: shop
+  namespace: shop
+spec:
+  type: oci
+  interval: 10m
+  url: ${chart_registry}
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: worker
+  namespace: shop
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: worker
+      sourceRef:
+        kind: HelmRepository
+        name: shop
+  valuesFrom:
+    - kind: ConfigMap
+      name: worker-values
+  values:
+    image:
+      repository: shopacr.azurecr.io/shop/worker
+      tag: 3.1.0
+    serviceAccount:
+      annotations:
+        azure.workload.identity/client-id: 00000000-0000-0000-0000-0000000000cc
+    persistence:
+      storageClass: managed-csi-premium
+    ingress:
+      className: webapprouting.kubernetes.azure.com
+    config: |
+      [queue]
+      # where the worker reads from
+      endpoint = "sb://shop.servicebus.windows.net"
+      [store]
+      vault = "https://open.vault.azure.net/secrets/token"

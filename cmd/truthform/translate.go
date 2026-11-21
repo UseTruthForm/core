@@ -23,7 +23,9 @@ const reportFile = "translation.yaml"
 // it reads one snapshot and a map and writes snapshots, so it runs in the
 // capture-only build too. Exit 0: every object was carried over, with any
 // losses named. Exit 3: something was refused, not looked at, left unread
-// or lost in a way that widens, and the report says what.
+// or lost in a way that widens, and the report says what. So does a
+// Kubernetes manifest that names an Azure thing with no translation, when
+// --kube or --gitops has them read.
 func translateCmd(args []string) int {
 	fs := flag.NewFlagSet("translate", flag.ContinueOnError)
 	from := fs.String("from", "", "Azure snapshot directory to translate")
@@ -31,6 +33,8 @@ func translateCmd(args []string) int {
 	outDir := fs.String("out", "", "directory to write a snapshot per target platform into (aws/, gcp/, kubernetes/), and "+reportFile)
 	schemas := fs.String("schemas", "", "aws: the CloudFormation registry's schema bundle (.zip) or a directory of schemas, instead of downloading the public bundle")
 	discovery := fs.String("discovery", "", "gcp: a directory of Discovery documents (pubsub_v1.json, compute_v1.json, storage_v1.json, dns_v1.json, sqladmin_v1.json), instead of downloading them from Google")
+	kubeDir := fs.String("kube", "", "a Kubernetes snapshot of the source cluster: report what in it names an Azure thing, and which of its workloads no GitOps source applies")
+	gitops := fs.String("gitops", "", "a local checkout of the repository Flux reads: report, by file and line, what in it names an Azure thing. Nothing in it is changed")
 	if err := parseFlags(fs, args); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -56,7 +60,21 @@ func translateCmd(args []string) int {
 	if err != nil {
 		return fail(err)
 	}
-	if err := writeTranslation(*outDir, res); err != nil {
+	var variables []byte
+	if *kubeDir != "" || *gitops != "" {
+		in := translate.GitOpsInput{Dir: *gitops}
+		if *kubeDir != "" {
+			k, err := snapshot.Read(*kubeDir)
+			if err != nil {
+				return fail(fmt.Errorf("--kube: %w", err))
+			}
+			in.Kube = &k
+		}
+		if variables, err = translate.GitOps(src, m, &res, in); err != nil {
+			return fail(err)
+		}
+	}
+	if err := writeTranslation(*outDir, res, variables); err != nil {
 		return fail(err)
 	}
 	code := 0
@@ -99,7 +117,7 @@ func translateTargets(m translate.Map, schemas, discovery string) (translate.Tar
 // writeTranslation writes into an empty directory, or one an earlier
 // translation wrote. A platform the earlier one wrote and this one does
 // not is removed, so a stale snapshot cannot be restored as this one's.
-func writeTranslation(dir string, res translate.Result) error {
+func writeTranslation(dir string, res translate.Result, variables []byte) error {
 	entries, err := os.ReadDir(dir)
 	switch {
 	case os.IsNotExist(err):
@@ -130,6 +148,16 @@ func writeTranslation(dir string, res translate.Result) error {
 		if err := s.Write(filepath.Join(dir, p)); err != nil {
 			return fmt.Errorf("%s: %w", p, err)
 		}
+	}
+	// The variables file goes with the GitOps report: one an earlier run
+	// wrote and this one does not is removed, like a stale snapshot.
+	vf := filepath.Join(dir, translate.GitOpsVariablesFile)
+	if variables != nil {
+		if err := os.WriteFile(vf, variables, 0o644); err != nil {
+			return err
+		}
+	} else if err := os.Remove(vf); err != nil && !os.IsNotExist(err) {
+		return err
 	}
 	b, err := yaml.Marshal(res.Report)
 	if err != nil {
@@ -173,5 +201,78 @@ func printTranslation(r translate.Report, dir string) {
 	section("Settings no rule reads yet", unread)
 	section("Not looked at (no descriptor for the type yet)", notLooked)
 	section("Before a restore", r.Requirements)
+	if r.GitOps != nil {
+		printGitOps(*r.GitOps, dir, section)
+	}
 	fmt.Printf("\nEvery loss, object by object: %s\n", filepath.Join(dir, reportFile))
+}
+
+// printGitOps prints what the Kubernetes workloads name that the
+// translation renamed: the count line, then each reference under its
+// state, what no GitOps source applies, and what could not be seen.
+func printGitOps(g translate.GitOpsReport, dir string, section func(string, []string)) {
+	c := g.Counts()
+	fmt.Printf("\nKubernetes workloads (read: %s): %d reference(s) to change, %d to check, %d with no translation; %d source(s) not available to check.\n",
+		strings.Join(g.Read, "; "), c[translate.GitOpsChange], c[translate.GitOpsCheck], c[translate.GitOpsNone], g.NotAvailable())
+	lines := map[translate.GitOpsState][]string{}
+	for _, r := range g.References {
+		if r.NotApplied {
+			continue
+		}
+		where := "the Kubernetes snapshot"
+		if r.File != "" {
+			where = fmt.Sprintf("%s:%d", r.File, r.Line)
+		}
+		l := where
+		if r.Object != "" {
+			l += " " + r.Object
+		}
+		l += ", applied by " + r.AppliedBy + "\n    "
+		if r.Field != "" {
+			l += r.Field + " "
+		}
+		l += "names " + r.Names
+		switch {
+		case r.State == translate.GitOpsNone:
+			l += "; it has no translation: " + r.Why
+		case r.Why != "":
+			l += "; on the target it is " + r.Target + "\n    (" + r.Why + ")"
+		default:
+			l += "; on the target it is " + r.Target
+		}
+		if r.Variable != "" {
+			l += "\n    variable: ${" + r.Variable + "}"
+		}
+		lines[r.State] = append(lines[r.State], l)
+	}
+	section("Names an Azure thing with no translation (applied as it is, it would point at Azure)", lines[translate.GitOpsNone])
+	section("To change in Git, or in the object where nothing in Git applies it", lines[translate.GitOpsChange])
+	section("To check (the target has its own form, which a person chooses)", lines[translate.GitOpsCheck])
+	var loose []string
+	for _, n := range g.NotInGit {
+		ns := n.Namespace
+		if ns == "" {
+			ns = "(no namespace)"
+		}
+		loose = append(loose, ns+": "+strings.Join(n.Workloads, ", "))
+	}
+	section("Workloads no GitOps source applies, by namespace (a restore recreates them from the snapshot as they are)", loose)
+	var src []string
+	for _, s := range g.Sources {
+		l := s.Source + ": " + s.Checked
+		if s.LeftOut > 0 {
+			l += fmt.Sprintf(" (the capture left %d object(s) to it", s.LeftOut)
+			if s.Checked == "files" {
+				l += fmt.Sprintf(", %d of them in its files", s.Found)
+			}
+			l += ")"
+		}
+		if s.Why != "" {
+			l += ": " + s.Why
+		}
+		src = append(src, l)
+	}
+	section("GitOps sources, and how much of each was read", src)
+	section("Not seen", g.NotSeen)
+	fmt.Printf("\nThe same names as a ConfigMap for Flux's postBuild.substituteFrom (optional): %s\n", filepath.Join(dir, g.Variables))
 }

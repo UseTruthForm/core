@@ -78,7 +78,9 @@ As a graph (resources and their relationships, for an asset inventory or a secur
 
 To another cloud (offline: a snapshot and a map in, snapshots and a report out; exit 3 when anything is refused or less protected):
   truthform translate --from <azure-snapshot> --map <file> --out <dir> [--schemas <bundle.zip|dir>] [--discovery <dir>]
+                      [--kube <kubernetes-snapshot>] [--gitops <checkout of the repository Flux reads>]
       writes <dir>/aws/, <dir>/gcp/ or <dir>/kubernetes/ for restore, and <dir>/translation.yaml, every object's losses
+      --kube, --gitops: also lists what the cluster's workloads name that was renamed, by file and line (nothing in Git is changed)
 
 Before a rebuild (what the snapshot does not hold: what to install first, the secrets, the names):
   truthform plan rebuild --from <dir> [--scope <file>] [--leave-out <file>] [--out <file>] [--json]

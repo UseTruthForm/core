@@ -545,7 +545,7 @@ empty or denied: capture again later.
 | 0 | Success: the capture is complete, the restore fully applied, or no differences |
 | 1 | Error: bad flags, cannot connect, cannot read a snapshot |
 | 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer, or that holds something and brings, not held, a GitOps source that applies into a namespace it narrows or a Flux object that acts outside the cluster (plan scope --check) |
-| 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, a restore under a hold brought objects not held, or a translation refused something, did not look at a type, left a setting unread or made something less protected |
+| 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, a restore under a hold brought objects not held, or a translation refused something, did not look at a type, left a setting unread, made something less protected, or found a Kubernetes manifest that names an Azure thing with no translation |
 
 ## Machine-readable output
 
@@ -1447,6 +1447,10 @@ truthform translate --from snap/azure --map map.yaml --out moved/
 truthform restore --platform aws --region eu-west-1 --from moved/aws
 ```
 
+With `--kube` and `--gitops` it also lists what the cluster's workloads
+name that was renamed: see [Kubernetes workloads and
+GitOps](#kubernetes-workloads-and-gitops).
+
 The mapping is fixed. Each Azure service has a few destinations, and the map
 is the only per-customer input: which destination each service class goes
 to, the region, and names the target does not allow or that would collide.
@@ -1801,6 +1805,148 @@ Known limits:
   written: such an address is on no internet either.
 - Outbound addresses change: whoever allows the old ones by address must be
   given the new ones (listed in the report's requirements).
+
+### Kubernetes workloads and GitOps
+
+`translate` does not rewrite a Kubernetes manifest. A cluster's workloads
+are applied by Flux from Git; a Kubernetes capture leaves out what Flux
+applies and keeps where Flux starts (see [Capture](#capture)), so
+restoring that snapshot on the target cluster brings Flux back and Flux
+rebuilds the rest. But the manifests in Git still name Azure things, and
+that repository is yours to edit. Given the cluster's snapshot, a checkout
+of the repository, or both, `translate` lists every place that does, with
+what the translation made of the thing named:
+
+```sh
+truthform translate --from snap/azure --map map.yaml --out moved/ \
+  --kube snap/kubernetes --gitops ~/src/fleet
+```
+
+```
+Kubernetes workloads (read: a Kubernetes snapshot: 9 object(s), and 11 more the capture left to 6 GitOps source(s); a checkout of the repository: 25 YAML document(s) in 15 file(s), and 2 other text file(s)): 26 reference(s) to change, 17 to check, 14 with no translation; 3 source(s) not available to check.
+
+Names an Azure thing with no translation (applied as it is, it would point at Azure):
+  apps/base/shop/deployment.yaml:41 Deployment shop/web, applied by Flux Kustomization flux-system/apps
+    spec.template.spec.containers[1].image names partner.azurecr.io/tools/proxy@sha256:0123...; it has no translation: registry partner is not in the Azure snapshot
+
+To change in Git, or in the object where nothing in Git applies it:
+  apps/base/shop/deployment.yaml:20 Deployment shop/web, applied by Flux Kustomization flux-system/apps
+    spec.template.spec.containers[0].image names shopacr.azurecr.io/shop/web:1.4.2; on the target it is {{truthform|account|self|id}}.dkr.ecr.eu-west-1.amazonaws.com/shopacr/shop/web:1.4.2
+    (the account is not known offline: {{truthform|account|self|id}} stands for it, as in the AWS snapshot)
+    variable: ${registry_shopacr}
+  apps/base/shop/scaling.yaml:10 ScaledObject shop/web-orders, applied by Flux Kustomization flux-system/apps
+    spec.triggers[0] names KEDA azure-servicebus trigger on queue orders (namespace shop); on the target it is type: aws-sqs-queue; metadata: queueURL: https://sqs.eu-west-1.amazonaws.com/{{truthform|account|self|id}}/orders, awsRegion: "eu-west-1", queueLength: "20", scaleOnInFlight: "false", activationQueueLength: "2"
+    variable: ${servicebus_shop_queue_orders}
+```
+
+Each reference ends in one of three states:
+
+| State | Meaning | Exit |
+|---|---|---|
+| change | the thing has a counterpart on the target, and this is its name | 0 |
+| check | the target has a form of its own that a person chooses: the role a service account takes, a storage class, an ingress class | 0 |
+| no translation | the Azure thing was refused, not looked at, is not in the Azure snapshot, or is a service nothing here translates | 3 |
+
+A reference with no translation fails the run like a refusal: applied as it
+is, the workload would point at Azure. One that only needs editing does
+not, and neither does a source that could not be read; that is counted
+and named.
+
+What is recognised, and what it is given:
+
+| In a manifest | On AWS | On GCP |
+|---|---|---|
+| An image, chart or any value under `<registry>.azurecr.io` | `<account>.dkr.ecr.<region>.amazonaws.com/<prefix>/…`, the prefix the registry's repository creation template has | `<region>-docker.pkg.dev/<project>/<repository>/…` |
+| A KEDA `azure-servicebus` trigger (a queue, or a topic with its subscription) | `aws-sqs-queue`: `queueURL`, `awsRegion`, `queueLength`, with `scaleOnInFlight: "false"` to count as Service Bus did | `gcp-pubsub`: `subscriptionName`, `mode: SubscriptionSize`, `value` |
+| The same, with messaging in the cluster | `rabbitmq`: `queueName`, `mode: QueueLength`, `value`, on either cloud | the same |
+| `<namespace>.servicebus.windows.net`, a connection string's `EntityPath` | the queue's URL or the topic's ARN; no host of its own | the subscription's or topic's full name (RabbitMQ: the brokers' Service) |
+| A `SecretProviderClass` of provider `azure`, each of its objects | provider `aws`: `objectName`, `objectType: secretsmanager`, and an `objectAlias` that keeps the mounted file's name | provider `gcp`: `resourceName`, and a `path` that keeps it |
+| An External Secrets store of a Key Vault (`azurekv`), each `remoteRef.key` read from it; a KEDA `azureKeyVault`; `<vault>.vault.azure.net/secrets/<name>` | the secret's name in Secrets Manager (`<vault>/<secret>`) | its ID in Secret Manager (`<vault>_<secret>`) |
+| `<account>.blob.core.windows.net/<container>` (or `.dfs.`) | the container's bucket | the same |
+| `<server>.postgres.database.azure.com`, `<server>.database.windows.net` | the endpoint RDS gives the instance: named, and not known until it is created | the address Cloud SQL gives it, or its connection name |
+| `azure.workload.identity/client-id` on a service account, `azure.workload.identity/use` on a pod, KEDA's `azure-workload` provider | to check: `eks.amazonaws.com/role-arn`, or an EKS Pod Identity association and no annotation | to check: `iam.gke.io/gcp-service-account`, or roles granted to the Kubernetes service account itself |
+| `service.beta.kubernetes.io/azure-load-balancer-internal: "true"` | `service.beta.kubernetes.io/aws-load-balancer-scheme: internal` | `networking.gke.io/load-balancer-type: "Internal"` |
+| AKS's storage classes (`managed-csi`, `azurefile-csi`, …), a class of Azure's provisioners | to check: a class of the EBS or EFS CSI driver | to check: a class of the Persistent Disk or Filestore CSI driver |
+| Application Gateway's ingress class and `appgw.ingress.kubernetes.io/` annotations, the application routing class, other `azure-` load balancer annotations | to check: the target controller's own | the same |
+| Any other host under Azure's domains (`*.windows.net`, `*.azure.com`, …), a KEDA `azure-…` trigger of another type, an object of an `*.azure.com` API group, akv2k8s | no translation | no translation |
+
+A value is never repeated whole: a connection string is named by its
+host. The account and the project are not known offline, so the names
+carry the tokens the target snapshots use
+(`{{truthform|account|self|id}}`, `{{truthform|project}}`). Which role or
+service account a workload takes is the identity translation's; here only
+the form the target reads is named.
+
+**Where it reads from.** Neither input holds everything, which is why
+there are two:
+
+- `--kube`, a Kubernetes snapshot of the source cluster, holds what no
+  GitOps source applies and where Flux starts. Those objects are read like
+  any manifest, since a restore recreates them from the snapshot as they
+  are, pointing at Azure; and the workloads among them are listed by
+  namespace as **not in Git**. It does not hold what Flux applies. It names
+  it: every Kustomization and HelmRelease the cluster has, and how many
+  objects the capture left to each.
+- `--gitops`, a local checkout of the repository Flux reads, holds what is
+  in them. References are given by file and line. Which Kustomization
+  applies a file is worked out as Flux builds it: from the Kustomization's
+  `path`, through that directory's `kustomization.yaml` and what it lists,
+  or every manifest under the path when it has none. With `--kube` this
+  starts from the Kustomizations the snapshot holds, so a repository that
+  serves several clusters is read as this cluster reads it, and a
+  reference in a file it does not apply is listed and not counted.
+  Without, every Kustomization the files define is followed.
+
+Nothing is rendered and no request is made: no `kustomize build`, no `helm
+template`, no clone. So the report says, under **Not seen** and in
+`translation.yaml` (`gitops.notSeen`, and `gitops.sources` source by
+source), what that leaves out:
+
+- a source whose content was in neither input (its path is in another
+  repository, or only the snapshot was given): counted in the first line,
+  and named;
+- a HelmRelease's chart: its `spec.values` are read, not what the chart's
+  templates render, the chart's own default values, or `valuesFrom`;
+- what a kustomize patch, replacement, name prefix or generator changes,
+  resources fetched from a URL, and charts kustomize inflates;
+- objects the capture left to a Kustomization that are not in its files
+  (generated), each named under its source;
+- a value Flux substitutes (`${…}`), seen only where the variable is
+  defined in the files; image references Flux image automation has not
+  yet committed;
+- files that are not YAML as written (a chart's templates), which are
+  read line by line for Azure host names only;
+- secret values (a connection string in a Secret or in the secret
+  store), SOPS-encrypted files, other branches and other repositories,
+  what Argo CD or Crossplane apply, and what the applications' own code
+  names.
+
+**The variables file.** `moved/gitops-variables.yaml` holds the same names
+as a ConfigMap that a Flux Kustomization's `spec.postBuild.substituteFrom`
+can read, one key per Azure thing that was translated, whether or not a
+reference to it was seen. It is optional, a file to commit and not an
+object of any snapshot, and it holds names only, never a secret:
+
+```yaml
+data:
+  cloud: "aws"
+  region: "eu-west-1"
+  # on Azure: shopacr.azurecr.io
+  registry_shopacr: "{{truthform|account|self|id}}.dkr.ecr.eu-west-1.amazonaws.com/shopacr"
+  # on Azure: queue orders in Service Bus namespace shop
+  servicebus_shop_queue_orders: "https://sqs.eu-west-1.amazonaws.com/{{truthform|account|self|id}}/orders"
+```
+
+A manifest then says `${registry_shopacr}/shop/web:1.4.2`, and one
+repository serves both clouds when each cluster has such a ConfigMap with
+its own values under the same keys (the comment above each key is its
+value on Azure). Before committing it, give it the namespace of the
+Kustomization that reads it and put the account or project where its
+token stands. Flux then substitutes every `${name}` in what that
+Kustomization applies, and an undefined one becomes empty: write
+`$${name}` where a script must keep its own, or label the object
+`kustomize.toolkit.fluxcd.io/substitute: disabled`. Database addresses
+are not in the file: the target makes them up at creation.
 
 ## As a graph (Azure)
 

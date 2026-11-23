@@ -2056,6 +2056,13 @@ each with its reason and target objects:
   without it the subscription would receive every message;
 - **not looked at**: no descriptor for the type yet.
 
+Some services are refused whole, each with its reason, because moving them
+is a decision or a rewrite and not a translation: monitoring, logging and
+alerting (Azure Monitor and its workspaces, Log Analytics), Azure Policy
+and locks, Azure Backup and Site Recovery vaults, App Service and Logic
+Apps, Azure AI services (Azure OpenAI among them), and Web PubSub and
+SignalR. The reason names the target's nearest service.
+
 A loss that makes the target less protected than the source is marked
 `widens`. Examples: a namespace that answered only private endpoints
 becomes Pub/Sub topics on Google's public endpoint, guarded by IAM alone,

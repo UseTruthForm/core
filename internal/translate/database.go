@@ -185,7 +185,7 @@ var sqlChildren = map[string]dbChild{
 	"databases/automatictuning":              {state: NotLooked, reason: "no descriptor for automatic tuning yet"},
 	"databases/datamaskingpolicies":          {state: NotLooked, reason: "no descriptor for dynamic data masking yet"},
 	"databases/datamaskingpolicies/":         {state: NotLooked, reason: "no descriptor for dynamic data masking yet"},
-	"databases/ledgerdigestuploads":          {state: NotLooked, reason: "no descriptor for ledger digest uploads yet"},
+	"databases/ledgerdigestuploads":          {read: readLedgerDigest},
 	"databases/schemas":                      {state: NotLooked, reason: "no descriptor for a database's schemas and sensitivity labels yet"},
 	"databases/schemas/":                     {state: NotLooked, reason: "no descriptor for a database's schemas and sensitivity labels yet"},
 	"databases/datawarehouseuseractivities":  {state: NotLooked, reason: "no descriptor for dedicated SQL pools yet"},
@@ -679,6 +679,23 @@ func readGeoBackup(_ *dbServer, _ string, sp map[string]any) (string, []Loss) {
 		losses = append(losses, Loss{Field: "properties.state", Why: "its backups were copied to the paired region; the target keeps them in its own region (not translated)"})
 	}
 	return "", append(append(top.rest(), p.rest()...), losses...)
+}
+
+// readLedgerDigest is whether a database's ledger digests were uploaded to
+// storage outside it, which is what lets its ledger be verified against
+// tampering. Azure makes this object for every database, off.
+func readLedgerDigest(_ *dbServer, _ string, sp map[string]any) (string, []Loss) {
+	top := newProps(sp, "")
+	top.quiet("name", "properties")
+	p := newProps(obj(sp["properties"]), "properties.")
+	state, endpoint := p.str("state"), p.str("digestStorageEndpoint")
+	on := strings.EqualFold(state, "Enabled") || endpoint != ""
+	losses := append(top.rest(), p.rest()...)
+	if !on {
+		return "off on the source: nothing to carry", losses
+	}
+	return "", append(losses, Loss{Field: "properties.digestStorageEndpoint", Widens: true,
+		Why: "its ledger's digests were uploaded outside the database, so tampering with it could be shown; neither RDS nor Cloud SQL uploads them: the ledger on the target is not verifiable until digests are generated and stored on a schedule of the customer's own"})
 }
 
 func readLTR(_ *dbServer, _ string, sp map[string]any) (string, []Loss) {

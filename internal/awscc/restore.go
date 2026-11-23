@@ -164,6 +164,21 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 			}
 		}
 	}
+	// Another: a subnet in a block added to its VPC needs the block
+	// associated first, and names the VPC, not the association ("The CIDR
+	// block is ready for you to use when it's in the associated state",
+	// docs.aws.amazon.com/vpc/latest/userguide/vpc-cidr-blocks.html).
+	for i, o := range order {
+		if o.Kind() != "AWS::EC2::Subnet" {
+			continue
+		}
+		vpc, _ := specOf(o)["VpcId"].(string)
+		for j, a := range order {
+			if av, _ := specOf(a)["VpcId"].(string); a.Kind() == "AWS::EC2::VPCCidrBlock" && av == vpc && vpc != "" {
+				deps[i] = append(deps[i], j)
+			}
+		}
+	}
 	done := make([]snapshot.Result, len(order))
 	workers := tun.Parallel
 	if workers <= 0 {
@@ -667,4 +682,10 @@ func identifiedBySpec(t *TypeInfo) bool {
 		}
 	}
 	return true
+}
+
+// specOf is an object's spec, or an empty one.
+func specOf(o snapshot.Object) map[string]any {
+	m, _ := o.Body["spec"].(map[string]any)
+	return m
 }

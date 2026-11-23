@@ -68,7 +68,7 @@ func (rt *routing) awsUnnamed(o *out, src, kind string, spec map[string]any) str
 // awsEgressSubnet checks the map's public subnet for a network.
 func (rt *routing) awsEgressSubnet(v *vnet, o *out) (cidr netip.Prefix, zone, why string) {
 	key := v.group + "/" + v.name
-	need := fmt.Sprintf("the map gives network %s no public subnet for a NAT gateway (network.egress.%s: {subnet: a free /28 or wider of %s, zone: ...}): an AWS NAT gateway sits in a subnet that routes to an internet gateway, and an Azure one in none", key, key, v.prefixes[0])
+	need := fmt.Sprintf("the map gives network %s no public subnet for a NAT gateway (network.egress.%s: {subnet: a free /28 or wider of %s, zone: ...}): an AWS NAT gateway sits in a subnet that routes to an internet gateway, and an Azure one in none", key, key, prefixList(v.prefixes))
 	e, ok := o.m.egressFor(key)
 	if !ok {
 		return cidr, "", need
@@ -81,8 +81,8 @@ func (rt *routing) awsEgressSubnet(v *vnet, o *out) (cidr netip.Prefix, zone, wh
 	switch {
 	case zone == "":
 		return cidr, "", fmt.Sprintf("the map names no availability zone for network %s's public subnet (network.egress.%s.zone, or network.zone)", key, key)
-	case cidr.Bits() > minRange || !within([]netip.Prefix{cidr}, v.prefixes):
-		return cidr, "", fmt.Sprintf("network.egress.%s.subnet %s is not a /%d or wider inside %s", key, cidr, minRange, v.prefixes[0])
+	case cidr.Bits() > minRange || cidr.Bits() < maxVPC || !within([]netip.Prefix{cidr}, v.prefixes):
+		return cidr, "", fmt.Sprintf("network.egress.%s.subnet %s is not a /%d to /%d inside %s", key, cidr, maxVPC, minRange, prefixList(v.prefixes))
 	}
 	for _, s := range v.subnets {
 		if s.prefix.Overlaps(cidr) {

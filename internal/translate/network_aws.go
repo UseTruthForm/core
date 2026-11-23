@@ -2,6 +2,7 @@ package translate
 
 import (
 	"fmt"
+	"github.com/usetruthform/core/internal/awscc"
 	"net/netip"
 	"sort"
 	"strings"
@@ -50,13 +51,12 @@ func (d awsNet) vnet(v *vnet, o *out) bool {
 		o.entries = append(o.entries, Entry{Source: v.src, State: Refused, Reason: why})
 		return false
 	}
-	switch {
-	case len(v.prefixes) == 0:
+	if len(v.prefixes) == 0 {
 		return refuse("it has no IPv4 address range")
-	case len(v.prefixes) > 1:
-		return refuse(fmt.Sprintf("it has %d address ranges; a VPC with more than one is not translated yet", len(v.prefixes)))
-	case v.prefixes[0].Bits() < maxVPC || v.prefixes[0].Bits() > minRange:
-		return refuse(fmt.Sprintf("its range %s is outside what a VPC takes (/%d to /%d)", v.prefixes[0], maxVPC, minRange))
+	}
+	blocks, why := vpcBlocks(v.prefixes)
+	if why != "" {
+		return refuse(why)
 	}
 	var noZone []string
 	for _, s := range v.subnets {
@@ -71,13 +71,13 @@ func (d awsNet) vnet(v *vnet, o *out) bool {
 		if !s.prefix.IsValid() {
 			return refuse("subnet " + s.name + " has no IPv4 range")
 		}
-		if s.prefix.Bits() > minRange || !within([]netip.Prefix{s.prefix}, v.prefixes) {
-			return refuse(fmt.Sprintf("subnet %s's range %s is not a /%d or wider inside %s", s.name, s.prefix, minRange, v.prefixes[0]))
+		if _, ok := vpcBlockOf(blocks, s.prefix); s.prefix.Bits() > minRange || !ok {
+			return refuse(fmt.Sprintf("subnet %s's range %s is not a /%d to /%d inside one of the VPC's blocks (%s)", s.name, s.prefix, maxVPC, minRange, prefixList(blocks)))
 		}
 	}
 	name := d.vpcName(v)
 	tags, losses := awsTags(name, v.tags)
-	spec := map[string]any{"CidrBlock": v.prefixes[0].String(), "EnableDnsSupport": true, "EnableDnsHostnames": true, "Tags": tags}
+	spec := map[string]any{"CidrBlock": blocks[0].String(), "EnableDnsSupport": true, "EnableDnsHostnames": true, "Tags": tags}
 	switch v.encryption {
 	case "DropUnencrypted":
 		spec["VpcEncryptionControl"] = map[string]any{"Mode": "enforce"}
@@ -87,6 +87,22 @@ func (d awsNet) vnet(v *vnet, o *out) bool {
 	}
 	e := Entry{Source: v.src, State: Mapped, Losses: append(v.losses, losses...)}
 	e.Targets = append(e.Targets, o.add("aws", v.src, awsObject(awsVPC, name, spec)))
+	// The rest of its addresses, as blocks added to the VPC. A subnet in
+	// one is created once it is associated: the restore orders that, as
+	// no reference of the subnet's shows it.
+	for _, b := range blocks[1:] {
+		// It has no name of its own: it is named as a capture names
+		// it, by its spec, so a second restore finds the first one's.
+		bs := map[string]any{"VpcId": awsRef(awsVPC, name, "VpcId"), "CidrBlock": b.String()}
+		e.Targets = append(e.Targets, o.add("aws", v.src, awsObject(awsVPCBlock, awscc.SpecName(awsVPCBlock, bs), bs)))
+	}
+	if len(blocks) > 1 {
+		e.Losses = append(e.Losses, Loss{Field: "properties.addressSpace.addressPrefixes",
+			Why: fmt.Sprintf("a VPC is created with one block of /%d to /%d and given the rest: %s are written as blocks %s, the same addresses, which AWS routes to each other as one network", maxVPC, minRange, prefixList(v.prefixes), prefixList(blocks))})
+	}
+	if len(blocks) > vpcBlockQuota {
+		o.require(fmt.Sprintf("VPC %s has %d IPv4 CIDR blocks: raise the account's quota \"IPv4 CIDR blocks per VPC\" (%d by default) to at least that before the restore", name, len(blocks), vpcBlockQuota))
+	}
 	for _, s := range v.subnets {
 		sn := name + "-" + s.name
 		st, _ := awsTags(sn, nil)
@@ -491,4 +507,13 @@ func dedupeLosses(ls []Loss) []Loss {
 		}
 	}
 	return out
+}
+
+// prefixList is ranges as text, in the order given.
+func prefixList(ps []netip.Prefix) string {
+	s := make([]string, len(ps))
+	for i, p := range ps {
+		s[i] = p.String()
+	}
+	return strings.Join(s, ", ")
 }

@@ -1565,7 +1565,7 @@ names: senders set the attribute so, or the message is not delivered.
 
 | Network | aws | gcp |
 |---|---|---|
-| Virtual network | VPC (one IPv4 range, /16 to /28) | VPC network, custom mode, regional routing, MTU 1500 |
+| Virtual network | VPC. A range wider than /16 is written as its /16s and a second range as a second block: the VPC is created with one and given the rest (`AWS::EC2::VPCCidrBlock`), the same addresses. Refused where AWS takes no VPC of them (ranges of two private families, more than 50 blocks) | VPC network, custom mode, regional routing, MTU 1500 |
 | Subnet | subnet in the map's zone | subnetwork in the map's region |
 | NSG on a subnet | a security group per network, holding what the NSG allows with its denies taken out | a firewall rule per NSG rule, same priority, allow or deny, applied by a network tag per NSG |
 | NSG on a network interface, alone | a security group of its own, for what takes the machine's place | the same rules under the NSG's tag, which that machine carries |

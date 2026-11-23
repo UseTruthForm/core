@@ -180,6 +180,9 @@ func restoreSaaS(ctx context.Context, platform string, s *saasFlags, snap snapsh
 		return fail(err)
 	}
 	ad.Options.Update, ad.Options.DryRun = update, dryRun
+	if dryRun {
+		dryRunOut = &dryNotes{}
+	}
 	if valuesFile != "" {
 		b, err := os.ReadFile(valuesFile)
 		if err != nil {

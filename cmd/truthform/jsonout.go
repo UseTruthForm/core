@@ -177,6 +177,12 @@ func emitRestore(results []snapshot.Result, target string) {
 	doc := map[string]any{"schema": jsonSchema, "command": "restore", "target": target,
 		"applied": applied, "total": len(results), "complete": applied == len(results) && pending == 0, "results": out,
 		"not_sent": notSent, "pending": pending, "left_out": leftOutJSON(), "access_elsewhere": elsewhereJSON()}
+	// A dry run applied nothing: "applied" is then what would apply, and
+	// the document says so, with what it could not check.
+	if dryRunOut != nil {
+		doc["dry_run"] = true
+		doc["not_checked"] = dryRunOut.notChecked()
+	}
 	if sizeCheck != nil {
 		doc["vm_sizes"] = sizeCheck
 	}

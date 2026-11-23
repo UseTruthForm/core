@@ -220,6 +220,9 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 	ad.Options.Update, ad.Options.DryRun = update, dryRun
 	notes := dryNotes{}
 	ad.Options.Note = notes.add
+	if dryRun {
+		dryRunOut = &notes
+	}
 	if snap, err = retarget(ctx, ad, snap); err != nil {
 		return fail(err)
 	}
@@ -252,6 +255,11 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 			// same for every resource of a type: said once per type,
 			// below, and not on each of hundreds of lines.
 			detail, without, _ := strings.Cut(r.Detail, "; write-only, not supplied: ")
+			// What a second pass would then set is this resource's own,
+			// and stays on its line.
+			if w, then, ok := strings.Cut(without, "; would then set "); ok {
+				detail, without = detail+"; would then set "+then, w
+			}
 			fmt.Printf("%s: %s\n", detail, r.Key)
 			if without != "" {
 				notes.without(kindOfKey(r.Key), without)

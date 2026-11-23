@@ -120,6 +120,9 @@ func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot, update
 	ad.Options.Update, ad.Options.DryRun = update, dryRun
 	notes := dryNotes{}
 	ad.Options.Note = notes.add
+	if dryRun {
+		dryRunOut = &notes
+	}
 	results := ad.Restore(ctx, snap)
 	if jsonOut {
 		defer emitRestore(results, "gcp "+g.project)

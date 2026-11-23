@@ -260,18 +260,39 @@ func readNamespace(obj snapshot.Object) *sbNS {
 		}
 	}
 	p.unlessDefault("alternateName", "", "a geo-recovery alias has no equivalent here")
+	// Azure writes geoDataReplication on every namespace, with the one
+	// location it is in: nothing is replicated until there is a second.
 	if g, _ := p.take("geoDataReplication"); g != nil {
-		if m, _ := g.(map[string]any); len(m) > 0 {
+		m, _ := g.(map[string]any)
+		if locs, _ := m["locations"].([]any); len(locs) > 1 {
 			p.lose("geoDataReplication", "replication to other regions is not translated: the target is one region's (AWS) or Google's own replication (Pub/Sub)", false)
 		}
 	}
 	p.unlessDefault("ipAddressType", "IPv4", "the namespace answers on IPv6 too; the target's endpoints decide their own address types")
+	// Confidential compute kept the namespace's data encrypted in use.
+	// Disabled, as Azure writes it on every namespace, nothing is lost;
+	// enabled, the target is less protected. Anything else under
+	// platformCapabilities is a setting no rule reads.
 	if c, _ := p.take("platformCapabilities"); c != nil {
-		if m, _ := c.(map[string]any); len(m) > 0 {
-			p.lose("platformCapabilities", "platform capabilities (confidential compute) have no equivalent here", true)
+		m, _ := c.(map[string]any)
+		pc := newProps(m, "properties.platformCapabilities.")
+		cc, _ := pc.take("confidentialCompute")
+		ccm, _ := cc.(map[string]any)
+		ccp := newProps(ccm, "properties.platformCapabilities.confidentialCompute.")
+		if mode := ccp.str("mode"); !strings.EqualFold(mode, "Disabled") && mode != "" {
+			ns.losses = append(ns.losses, Loss{Field: "properties.platformCapabilities.confidentialCompute.mode", Widens: true,
+				Why: mode + ": confidential compute kept the namespace's data encrypted while in use; no destination here does"})
 		}
+		ns.losses = append(ns.losses, append(pc.rest(), ccp.rest()...)...)
 	}
-	ns.losses = append(top.rest(), p.rest()...)
+	// errors is what Azure reports wrong with the namespace, in no
+	// published definition. Empty, there is nothing to say; otherwise it
+	// is left for rest() to name as unread, since what it holds is not
+	// known here.
+	if e, ok := p.m["errors"].([]any); ok && len(e) == 0 {
+		p.quiet("errors")
+	}
+	ns.losses = append(ns.losses, append(top.rest(), p.rest()...)...)
 	return ns
 }
 

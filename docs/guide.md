@@ -2318,6 +2318,41 @@ anything. An agent setting up someone's access should follow
 {"mcpServers": {"truthform": {"command": "truthform", "args": ["mcp"]}}}
 ```
 
+### Skills for what a translation leaves to people
+
+A [translation to another cloud](#to-another-cloud-azure-to-aws-or-gcp)
+names what it does not do. For five of those, TruthForm carries a skill:
+instructions an AI agent loads to help a person finish the work. Each
+reads its work list from `translation.yaml`, has the agent propose and
+check, and leaves whatever writes or grants to the person.
+
+| Skill | For | Checked by |
+|---|---|---|
+| `translate-move-data` | blobs, images, secret values, databases and volumes, none of which a translation copies | counts, bytes and digests on both sides; a diff showing the copy changed no setting |
+| `translate-grant-access` | refused role assignments: people, groups, pipelines, control-plane and custom roles | a capture of the target (AWS); the platform's own read (GCP, whose capture does not read IAM policies yet) |
+| `translate-rebuild-machines` | VMs, scale sets and firewall appliances, and attaching the groups or tags the report's `attachments` list for each | a capture: each machine carries exactly what `carries` lists |
+| `translate-sql-tls` | a SQL Server minimum TLS version the target cannot match | a measured floor on the target, and an exception on record before the map accepts it |
+| `translate-flow-logs` | a parser or detections written for Azure's flow log records | the same test traffic parsed on both clouds |
+
+The folders are in the repository's `skills/`, in the open Agent Skills
+layout (`<name>/SKILL.md`), and in the binary:
+
+```sh
+truthform skills                       # list them
+truthform skills translate-move-data   # print one
+truthform skills --out .claude/skills  # write the folders where an agent loads them
+```
+
+`--out` writes only what is missing: a `SKILL.md` already there with
+other text is left as it is and named, and the command exits 1. Over MCP
+the same text comes from `list_skills` and `skill`, so an agent with the
+server needs no folders.
+
+A skill cannot make a result true. Each ends with what its checks do not
+show (that a secret's value is the right one, that the right person is in
+a group, that a rebuilt machine runs what the old one ran), for the person
+to own.
+
 ## Snapshots from before the rename
 
 TruthForm was called StackDNA up to v0.1.0-beta.20. A snapshot written then

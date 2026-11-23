@@ -90,6 +90,9 @@ Before a rebuild (what the snapshot does not hold: what to install first, the se
 
 For agents (MCP on stdin/stdout; every tool read-only, no restore tool):
   truthform mcp
+  truthform skills [<name> | --out <dir>]
+      the skills for what a translation leaves to people (data, access, machines, a TLS floor, flow logs):
+      lists them, prints one, or writes each as <dir>/<name>/SKILL.md; the MCP server serves the same text
 
 A whole environment (several targets, read-only):
   truthform capture --config <env.yaml> --out <dir>
@@ -153,6 +156,8 @@ func main() {
 		code = planCmd(args)
 	case "mcp":
 		code = mcpCmd(ctx, args)
+	case "skills":
+		code = skillsCmd(args)
 	case "check":
 		code = checkCmd(ctx, args)
 	case "permissions":

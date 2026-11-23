@@ -21,7 +21,7 @@ func TestMCPServesTheSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	all, err := skills.All()
-	if err != nil || len(all) != 5 {
+	if err != nil || len(all) != 6 {
 		t.Fatalf("%d skills, %v", len(all), err)
 	}
 	for _, s := range all {

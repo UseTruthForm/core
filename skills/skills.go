@@ -2,8 +2,8 @@
 // SKILL.md in the open Agent Skills layout (YAML front matter with a name
 // and a description, then instructions). They are for the work a
 // translation to another cloud leaves to people: moving data, granting
-// access, rebuilding machines, a TLS floor the target cannot match, and
-// reading the target's flow logs.
+// access, rebuilding machines, a TLS floor the target cannot match,
+// reading the target's flow logs, and estimating what it would cost there.
 //
 // The folders are the source. The binary embeds them, so `truthform
 // skills` can write them out and `truthform mcp` can serve the same text.

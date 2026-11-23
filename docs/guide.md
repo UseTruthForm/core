@@ -2341,7 +2341,8 @@ anything. An agent setting up someone's access should follow
 ### Skills for what a translation leaves to people
 
 A [translation to another cloud](#to-another-cloud-azure-to-aws-or-gcp)
-names what it does not do. For five of those, TruthForm carries a skill:
+names what it does not do. For five of those, and for estimating what it
+would cost, TruthForm carries a skill:
 instructions an AI agent loads to help a person finish the work. Each
 reads its work list from `translation.yaml`, has the agent propose and
 check, and leaves whatever writes or grants to the person.
@@ -2353,6 +2354,7 @@ check, and leaves whatever writes or grants to the person.
 | `translate-rebuild-machines` | VMs, scale sets and firewall appliances, and attaching the groups or tags the report's `attachments` list for each | a capture: each machine carries exactly what `carries` lists |
 | `translate-sql-tls` | a SQL Server minimum TLS version the target cannot match | a measured floor on the target, and an exception on record before the map accepts it |
 | `translate-flow-logs` | a parser or detections written for Azure's flow log records | the same test traffic parsed on both clouds |
+| `translate-estimate-cost` | what the translation would cost on the target, beside the source's bill: quantities from the translated snapshot and the source's measured usage, prices from the vendors' own pricing tools | every row has a source for its quantity and its price; the source's usage, priced the same way, comes near its real bill |
 
 The folders are in the repository's `skills/`, in the open Agent Skills
 layout (`<name>/SKILL.md`), and in the binary:

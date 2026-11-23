@@ -179,7 +179,7 @@ func (d pubSub) refuseSession(e *sbEntity) string {
 }
 
 func (d pubSub) queue(ns *sbNS, e *sbEntity, o *out) {
-	id := d.m.name(e.key, e.name)
+	id := d.m.sbName(e)
 	refuse := func(why string) { o.entries = append(o.entries, Entry{Source: e.src, State: Refused, Reason: why}) }
 	if why := d.refuseSession(e); why != "" {
 		refuse(why)
@@ -202,7 +202,7 @@ func (d pubSub) queue(ns *sbNS, e *sbEntity, o *out) {
 }
 
 func (d pubSub) topic(ns *sbNS, e *sbEntity, o *out) {
-	id := d.m.name(e.key, e.name)
+	id := d.m.sbName(e)
 	if why := psBadName(id, e.key); why != "" {
 		o.entries = append(o.entries, Entry{Source: e.src, State: Refused, Reason: why})
 		return
@@ -247,7 +247,7 @@ func (d pubSub) subscription(ns *sbNS, e *sbEntity, o *out) {
 		refuse(f.why)
 		return
 	}
-	tid := d.m.name(t.key, t.name)
+	tid := d.m.sbName(t)
 	id := d.m.name(e.key, tid+"-"+e.name)
 	if why := psBadName(id, e.key); why != "" {
 		refuse(why)

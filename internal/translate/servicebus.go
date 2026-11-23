@@ -150,6 +150,19 @@ func (serviceBus) translate(objs []snapshot.Object, o *out) {
 		}
 		return
 	}
+	// A prefix for a namespace the snapshot does not hold is a misspelt
+	// key, which would leave the names it was meant for colliding.
+	for _, k := range sortedKeys(o.m.Prefixes) {
+		found := false
+		var have []string
+		for _, ns := range sortedNS(nss) {
+			have = append(have, ns.group+"/"+ns.name)
+			found = found || strings.EqualFold(k, ns.group+"/"+ns.name)
+		}
+		if !found && o.err == nil {
+			o.err = fmt.Errorf("map: prefixes names %q, which is no Service Bus namespace of the snapshot (there are: %s)", k, strings.Join(have, ", "))
+		}
+	}
 	for _, ns := range sortedNS(nss) {
 		d.namespace(ns, o)
 	}

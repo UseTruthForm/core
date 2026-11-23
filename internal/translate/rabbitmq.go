@@ -144,7 +144,7 @@ func (d rabbit) queue(ns *sbNS, e *sbEntity, o *out) {
 		o.entries = append(o.entries, Entry{Source: e.src, State: Refused, Reason: why})
 		return
 	}
-	objs, losses := d.queueSpec(ns, e, d.m.name(e.key, e.name), nil)
+	objs, losses := d.queueSpec(ns, e, d.m.sbName(e), nil)
 	en := Entry{Source: e.src, State: Mapped, Losses: losses}
 	for _, obj := range objs {
 		en.Targets = append(en.Targets, o.add("kubernetes", e.src, obj))
@@ -153,7 +153,7 @@ func (d rabbit) queue(ns *sbNS, e *sbEntity, o *out) {
 }
 
 func (d rabbit) topic(ns *sbNS, e *sbEntity, o *out) {
-	name := d.m.name(e.key, e.name)
+	name := d.m.sbName(e)
 	losses := e.common("RabbitMQ")
 	if e.ttl != nil {
 		losses = append(losses, Loss{Field: "properties.defaultMessageTimeToLive", Why: "an exchange holds no messages; the topic's time to live is applied to its subscriptions' queues"})
@@ -192,7 +192,7 @@ func (d rabbit) subscription(ns *sbNS, e *sbEntity, o *out) {
 		refuse(f.why)
 		return
 	}
-	tname := d.m.name(t.key, t.name)
+	tname := d.m.sbName(t)
 	qname := d.m.name(e.key, tname+"."+e.name)
 	objs, losses := d.queueSpec(ns, e, qname, t.ttl)
 	losses = append(losses, f.losses...)

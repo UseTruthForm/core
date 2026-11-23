@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,9 +34,15 @@ type Schema struct {
 	Ref                  string             `json:"$ref"`
 	Description          string             `json:"description"`
 	ReadOnly             bool               `json:"readOnly"`
+	Deprecated           bool               `json:"deprecated"`
 	Properties           map[string]*Schema `json:"properties"`
 	Items                *Schema            `json:"items"`
 	AdditionalProperties *Schema            `json:"additionalProperties"`
+	Enum                 []string           `json:"enum"`
+	EnumDeprecated       []bool             `json:"enumDeprecated"`
+	// Applied marks a list the document flags output only that methods of
+	// the resource's own set (appliedFields): configuration, kept.
+	Applied bool `json:"-"`
 }
 
 // Method is a Discovery method.
@@ -151,16 +158,7 @@ func FetchDocs(cacheDir string, maxAge time.Duration) *Docs {
 		if st, err := os.Stat(path); err == nil && time.Since(st.ModTime()) < maxAge {
 			return os.ReadFile(path)
 		}
-		u := docURL(api, ver)
-		resp, err := http.Get(u) //nolint:gosec // fixed googleapis.com host; api and version come from Cloud Asset Inventory
-		if err != nil {
-			return nil, fmt.Errorf("download %s: %w", u, err)
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("download %s: HTTP %d", u, resp.StatusCode)
-		}
-		b, err := io.ReadAll(resp.Body)
+		b, err := download(docURLs(api, ver))
 		if err != nil {
 			return nil, err
 		}
@@ -169,6 +167,45 @@ func FetchDocs(cacheDir string, maxAge time.Duration) *Docs {
 		}
 		return b, os.WriteFile(path, b, 0o644)
 	}}
+}
+
+var apiName = regexp.MustCompile(`^[a-z][a-z0-9]*$`)
+
+// docURLs are where a document is published: Google's directory, then the
+// service's own endpoint. Some APIs are only at the second (Artifact
+// Registry's directory entry answers 404), so translating to them failed
+// before any object was checked.
+var docURLs = func(api, ver string) []string {
+	urls := []string{docURL(api, ver)}
+	if apiName.MatchString(api) {
+		urls = append(urls, "https://"+api+".googleapis.com/$discovery/rest?version="+neturl.QueryEscape(ver))
+	}
+	return urls
+}
+
+// download reads the first URL that answers 200; a 404 tries the next.
+func download(urls []string) ([]byte, error) {
+	var last error
+	for _, u := range urls {
+		resp, err := http.Get(u) //nolint:gosec // fixed googleapis.com hosts; api and version come from Cloud Asset Inventory or a translation
+		if err != nil {
+			return nil, fmt.Errorf("download %s: %w", u, err)
+		}
+		b, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		switch {
+		case err != nil:
+			return nil, fmt.Errorf("download %s: %w", u, err)
+		case resp.StatusCode == http.StatusOK:
+			return b, nil
+		case resp.StatusCode == http.StatusNotFound:
+			last = fmt.Errorf("download %s: HTTP 404", u)
+			continue
+		default:
+			return nil, fmt.Errorf("download %s: HTTP %d", u, resp.StatusCode)
+		}
+	}
+	return nil, last
 }
 
 // Doc returns the document an asset names.
@@ -193,8 +230,89 @@ func (ds *Docs) Doc(uri, version string) (*Doc, error) {
 	}
 	h := sha256.Sum256(b)
 	d.Digest = "sha256:" + hex.EncodeToString(h[:])
+	d.flagUndeclaredOutput()
+	d.flagApplied()
+	d.liftVersion()
 	ds.cache[key] = &d
 	return &d, nil
+}
+
+// undeclaredOutput are fields the server sets that a document flags
+// nowhere, not even in prose, by API, schema and dotted path. Cloud
+// Storage's Bucket says "The URI of this bucket" of its selfLink and "The
+// creation time" of timeCreated: kept as configuration, every bucket would
+// differ from its own snapshot on them, and a create sending them is
+// refused.
+var undeclaredOutput = map[string]map[string][]string{
+	"storage": {"Bucket": {
+		"id", "kind", "selfLink", "projectNumber", "timeCreated", "updated", "metageneration", "generation",
+		"owner", "locationType", "satisfiesPZS", "satisfiesPZI", "softDeleteTime", "hardDeleteTime",
+		"softDeletePolicy.effectiveTime", "softDeletePolicy.hardDeletePause.effectiveTime",
+		"retentionPolicy.effectiveTime", "retentionPolicy.isLocked",
+		"iamConfiguration.uniformBucketLevelAccess.lockedTime", "iamConfiguration.bucketPolicyOnly.lockedTime",
+		"autoclass.toggleTime", "autoclass.terminalStorageClassUpdateTime",
+		"encryption.googleManagedEncryptionEnforcementConfig.effectiveTime",
+		"encryption.customerManagedEncryptionEnforcementConfig.effectiveTime",
+		"encryption.customerSuppliedEncryptionEnforcementConfig.effectiveTime",
+	}},
+}
+
+// flagUndeclaredOutput marks undeclaredOutput's fields read-only in the
+// document, so capture, restore, the fake and a translation's check all
+// read them as the server's.
+func (d *Doc) flagUndeclaredOutput() {
+	for schema, paths := range undeclaredOutput[d.Name] {
+		for _, path := range paths {
+			s := d.Schemas[schema]
+			keys := strings.Split(path, ".")
+			for i, k := range keys {
+				s = d.resolve(s)
+				if s == nil || s.Properties[k] == nil {
+					break
+				}
+				if i == len(keys)-1 {
+					s.Properties[k].ReadOnly = true
+				}
+				s = s.Properties[k]
+			}
+		}
+	}
+}
+
+// liftVersion moves a version that begins every method path into the
+// service path. Cloud SQL's document has an empty servicePath and paths
+// like v1/projects/{project}/instances/{instance}: matched against a
+// resource name (projects/p/instances/i), no path matched, and an insert's
+// URL was built as if the version were a parameter's value, so its
+// instances could be neither read nor created. Every URL stays the same.
+func (d *Doc) liftVersion() {
+	if d.ServicePath != "" || d.Version == "" {
+		return
+	}
+	lead := d.Version + "/"
+	var all []*Method
+	var walk func(cs map[string]*Collection)
+	walk = func(cs map[string]*Collection) {
+		for _, c := range cs {
+			for _, m := range c.Methods {
+				all = append(all, m)
+			}
+			walk(c.Resources)
+		}
+	}
+	walk(d.Resources)
+	if len(all) == 0 {
+		return
+	}
+	for _, m := range all {
+		if !strings.HasPrefix(m.Path, lead) {
+			return
+		}
+	}
+	for _, m := range all {
+		m.Path = strings.TrimPrefix(m.Path, lead)
+	}
+	d.ServicePath = lead
 }
 
 // Kind is how a resource is read and created, found in a document.
@@ -257,6 +375,24 @@ func (d *Doc) Kind(schema, relName string) (*Kind, error) {
 
 var pathParamRE = regexp.MustCompile(`\{\+?([A-Za-z]+)\}`)
 
+// nameTemplate is the part of a segment-style template that holds the
+// resource's name: from the word before its first parameter on. Most
+// documents put their version in the service path (Compute's
+// compute/v1/), and the template is all name; Cloud DNS's service path is
+// empty and its templates start dns/v1/, which no name holds.
+func nameTemplate(tmpl string) string {
+	segs := strings.Split(tmpl, "/")
+	for i, seg := range segs {
+		if pathParamRE.MatchString(seg) {
+			if i == 0 {
+				return tmpl
+			}
+			return strings.Join(segs[i-1:], "/")
+		}
+	}
+	return tmpl
+}
+
 // segmentwise reports a template that names segments, filled one by one:
 // not reserved expansion ({+name} takes the whole name), and starting with
 // the same word as the name (projects/{project}/global/networks for
@@ -287,20 +423,45 @@ func matchesName(m *Method, relName string) bool {
 		}
 		return false
 	}
+	if p, ok := bareID(m); ok && !strings.Contains(relName, "/") {
+		re, err := regexp.Compile("^(?:" + p + ")$")
+		return err == nil && re.MatchString(relName)
+	}
+	tmpl := nameTemplate(m.Path)
 	var b strings.Builder
 	last := 0
-	for _, loc := range pathParamRE.FindAllStringSubmatchIndex(m.Path, -1) {
-		b.WriteString(regexp.QuoteMeta(m.Path[last:loc[0]]))
+	for _, loc := range pathParamRE.FindAllStringSubmatchIndex(tmpl, -1) {
+		b.WriteString(regexp.QuoteMeta(tmpl[last:loc[0]]))
 		pat := `[^/]+`
-		if p, ok := m.Parameters[m.Path[loc[2]:loc[3]]]; ok && p.Pattern != "" {
+		if p, ok := m.Parameters[tmpl[loc[2]:loc[3]]]; ok && p.Pattern != "" {
 			pat = p.Pattern
 		}
 		b.WriteString("(?:" + pat + ")")
 		last = loc[1]
 	}
-	b.WriteString(regexp.QuoteMeta(m.Path[last:]))
+	b.WriteString(regexp.QuoteMeta(tmpl[last:]))
 	re, err := regexp.Compile("^" + b.String() + "$")
 	return err == nil && re.MatchString(relName)
+}
+
+// bareID reports a get whose path is one word and the resource's ID (Cloud
+// Storage's b/{bucket}): such a resource belongs to no parent in its name,
+// and Cloud Asset Inventory names it by its ID alone (//storage.googleapis.com/b1).
+// It returns the ID's pattern.
+func bareID(m *Method) (string, bool) {
+	locs := pathParamRE.FindAllStringSubmatchIndex(m.Path, -1)
+	if len(locs) != 1 || strings.Contains(m.Path, "{+") || locs[0][1] != len(m.Path) {
+		return "", false
+	}
+	lead := m.Path[:locs[0][0]]
+	if strings.Count(lead, "/") != 1 || !strings.HasSuffix(lead, "/") || pathParamRE.MatchString(lead) {
+		return "", false
+	}
+	pat := `[^/]+`
+	if p, ok := m.Parameters[m.Path[locs[0][2]:locs[0][3]]]; ok && p.Pattern != "" {
+		pat = p.Pattern
+	}
+	return pat, true
 }
 
 // URL expands a method path with a name: the whole value into a single
@@ -310,13 +471,14 @@ func matchesName(m *Method, relName string) bool {
 // name (projects/p/global/networks/n); an insert takes its parent
 // (projects/p/global) and the template adds "networks".
 func (d *Doc) URL(m *Method, value string) string {
-	if !segmentwise(m.Path, value) {
+	tmpl := nameTemplate(m.Path)
+	if !segmentwise(tmpl, value) {
 		return d.RootURL + d.ServicePath + pathParamRE.ReplaceAllString(m.Path, value)
 	}
 	vals := strings.Split(value, "/")
 	var out []string
 	i := 0
-	for _, seg := range strings.Split(m.Path, "/") {
+	for _, seg := range strings.Split(tmpl, "/") {
 		switch {
 		case pathParamRE.MatchString(seg) && i < len(vals):
 			out = append(out, vals[i])
@@ -328,7 +490,7 @@ func (d *Doc) URL(m *Method, value string) string {
 			out = append(out, seg)
 		}
 	}
-	return d.RootURL + d.ServicePath + strings.Join(out, "/")
+	return d.RootURL + d.ServicePath + strings.TrimSuffix(m.Path, tmpl) + strings.Join(out, "/")
 }
 
 // Fields flattens a schema into dotted field paths for schema-diff.
@@ -391,7 +553,7 @@ func (d *Doc) clean(v any, s *Schema, path string, ro map[string]any) {
 			p, known := s.Properties[k]
 			full := join(path, k)
 			switch {
-			case standardOutput[k]:
+			case standardOutput[k] || (k == "selfLink" && path == ""):
 				if isScalar(c[k]) {
 					ro[full] = c[k]
 				}
@@ -399,6 +561,10 @@ func (d *Doc) clean(v any, s *Schema, path string, ro map[string]any) {
 			case !known && s.AdditionalProperties != nil:
 				d.clean(c[k], s.AdditionalProperties, join(path, "*"), ro)
 			case !known:
+			// A list set by the resource's own methods is configuration,
+			// whatever the document flags it: its items are cleaned.
+			case p.Applied:
+				d.clean(c[k], p, full, ro)
 			// The property's own flag and description decide, not those of
 			// the schema it refers to: they sit beside its $ref.
 			case outputOnly(p):
@@ -419,7 +585,10 @@ func (d *Doc) clean(v any, s *Schema, path string, ro map[string]any) {
 
 // standardOutput are the fields Google's API guidelines (AIP-148) define
 // as output only on every resource, flagged or not. An unflagged etag would
-// otherwise read as drift on every capture.
+// otherwise read as drift on every capture. A resource's own selfLink is
+// the server's too (Cloud SQL does not flag it): kept, it named the source
+// project's API path, and a translated instance, which has none, read as
+// differing from itself once restored.
 var standardOutput = map[string]bool{"createTime": true, "updateTime": true, "deleteTime": true, "uid": true, "etag": true}
 
 func isScalar(v any) bool {
@@ -487,3 +656,71 @@ func FieldsDigest(fields []string) string {
 }
 
 func canon(v any) string { b, _ := json.Marshal(v); return string(b) }
+
+// DocFor loads an API's document by name and version (pubsub, v1).
+func (ds *Docs) DocFor(api, ver string) (*Doc, error) { return ds.Doc(docURL(api, ver), "") }
+
+// Allowed are the values a schema's field takes, as the document lists
+// them, leaving out those it marks deprecated; nil when the field is not
+// an enum. A translation checks a version against these rather than a list
+// of its own, so a version Google adds or retires is known on the day.
+func (d *Doc) Allowed(schema, field string) []string {
+	s := d.resolve(d.Schemas[schema])
+	if s == nil || s.Properties[field] == nil {
+		return nil
+	}
+	f := d.resolve(s.Properties[field])
+	var out []string
+	for i, v := range f.Enum {
+		if i < len(f.EnumDeprecated) && f.EnumDeprecated[i] {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+// CheckSpec refuses a field a request cannot set: one the schema does not
+// declare, or one the server sets, by the document's flag or the prose
+// Google's API guidelines require (outputOnly). A translation checks what it
+// writes with it, so its objects are what capture would keep.
+func (d *Doc) CheckSpec(schema string, spec map[string]any) error {
+	s := d.Schemas[schema]
+	if s == nil {
+		return fmt.Errorf("%s %s declares no schema %s", d.Name, d.Version, schema)
+	}
+	for _, k := range sortedKeys(spec) {
+		p := s.Properties[k]
+		switch {
+		case p == nil:
+			return fmt.Errorf("%s: %s is not a field of %s %s", schema, k, d.Name, d.Version)
+		case p.Applied:
+			// Set by the resource's own methods, which a restore calls.
+			if err := d.checkItems(schema, k, p, spec[k]); err != nil {
+				return err
+			}
+		case outputOnly(p):
+			return fmt.Errorf("%s: %s is set by the server (%s %s)", schema, k, d.Name, d.Version)
+		}
+	}
+	return nil
+}
+
+// checkItems holds each item of an applied list to its schema, as
+// CheckSpec holds the resource.
+func (d *Doc) checkItems(schema, field string, p *Schema, v any) error {
+	list, ok := v.([]any)
+	if !ok || p.Items == nil || p.Items.Ref == "" {
+		return fmt.Errorf("%s: %s is a list of items (%s %s)", schema, field, d.Name, d.Version)
+	}
+	for _, x := range list {
+		m, ok := x.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: %s is a list of items (%s %s)", schema, field, d.Name, d.Version)
+		}
+		if err := d.CheckSpec(p.Items.Ref, m); err != nil {
+			return fmt.Errorf("%s.%s: %w", schema, field, err)
+		}
+	}
+	return nil
+}

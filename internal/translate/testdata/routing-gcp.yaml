@@ -1,0 +1,836 @@
+report:
+  attachments:
+  - attached: requirement
+    carries:
+    - web
+    nsgs:
+    - net/web
+    source: subnet net/spoke/app
+    to: every instance and GKE node in subnetwork spoke-app that no other row names
+  destinations:
+  - 'network: vpc'
+  entries:
+  - losses:
+    - field: zones
+      why: it was in zone [1]; the target's NAT is in the zone of the map's egress
+        subnet (AWS) or regional (GCP)
+    source: Microsoft.Network/natGateways net/hub-nat
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Address projects/{{truthform|project}}/regions/europe-west1/addresses/hub-nat-1
+    - compute.googleapis.com/Router projects/{{truthform|project}}/regions/europe-west1/routers/hub-nat
+  - losses:
+    - field: tags
+      why: '1 tag(s): a Cloud NAT gateway has no tags or labels to hold them'
+    source: Microsoft.Network/natGateways net/spoke-nat
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Address projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-1
+    - compute.googleapis.com/Address projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-2
+    - compute.googleapis.com/Address projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-3
+    - compute.googleapis.com/Router projects/{{truthform|project}}/regions/europe-west1/routers/spoke-nat
+  - evidence:
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-https-vnet
+      priority: 100
+      rule: allow-https-vnet
+      status: exact
+      where: network tag web
+    - access: allow
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-8080-internet
+      priority: 150
+      rule: allow-8080-internet
+      status: exact
+      where: network tag web
+    - access: deny
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-deny-rest
+      priority: 200
+      rule: deny-rest
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: inbound
+      enforcedBy:
+      - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
+      priority: 65000
+      rule: AllowVnetInBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: inbound
+      priority: 65001
+      rule: AllowAzureLoadBalancerInBound
+      status: not carried
+      where: network tag web
+      why: Azure's load balancer has no addresses on GCP; Google's check health from
+        ranges of their own, which a requirement names
+    - access: deny
+      default: true
+      direction: inbound
+      enforcedBy:
+      - GCP's implied rule, which denies ingress nothing allows
+      priority: 65500
+      rule: DenyAllInBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65000
+      rule: AllowVnetOutBound
+      status: exact
+      where: network tag web
+    - access: allow
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65001
+      rule: AllowInternetOutBound
+      status: exact
+      where: network tag web
+    - access: deny
+      default: true
+      direction: outbound
+      enforcedBy:
+      - 'GCP''s implied rule, which allows egress nothing denies: Azure''s three outbound
+        defaults allow the network, then the internet, which is every address'
+      priority: 65500
+      rule: DenyAllOutBound
+      status: exact
+      where: network tag web
+    source: Microsoft.Network/networkSecurityGroups net/web
+    state: mapped
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-8080-internet
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allow-https-vnet
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/web-deny-rest
+  - losses:
+    - field: properties.ipAddress
+      why: '198.51.100.7 is Azure''s: the target sends from an address of its own'
+    reason: 'read with its NAT gateway Microsoft.Network/natGateways net/hub-nat:
+      the target''s NAT sends from as many addresses of its own'
+    source: Microsoft.Network/publicIPAddresses net/hub-ip
+    state: mapped with losses
+  - reason: no descriptor yet for a public address that no NAT gateway in the snapshot
+      uses (one of a load balancer, a gateway or a machine)
+    source: Microsoft.Network/publicIPAddresses net/lb-ip
+    state: not looked at
+  - losses:
+    - field: properties.ipAddress
+      why: '198.51.100.8 is Azure''s: the target sends from an address of its own'
+    reason: 'read with its NAT gateway Microsoft.Network/natGateways net/spoke-nat:
+      the target''s NAT sends from as many addresses of its own'
+    source: Microsoft.Network/publicIPAddresses net/spoke-ip
+    state: mapped with losses
+  - reason: 'read with its NAT gateway Microsoft.Network/natGateways net/spoke-nat:
+      the target''s NAT sends from as many addresses of its own'
+    source: Microsoft.Network/publicIPPrefixes net/spoke-prefix
+    state: mapped
+  - source: Microsoft.Network/routeTables net/data-rt
+    state: mapped
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/spoke-data-no-peer
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/spoke-data-no-route
+  - source: Microsoft.Network/routeTables net/east-west
+    state: mapped
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/spoke-east-no-route
+  - reason: no subnet in the snapshot uses it, so there is no subnet to give its routes
+      to
+    source: Microsoft.Network/routeTables net/spare
+    state: refused
+  - losses:
+    - field: tags
+      why: a route table's routes are written into each subnet's own routes on the
+        target; its tags are not carried over
+    source: Microsoft.Network/routeTables net/to-firewall
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Firewall projects/{{truthform|project}}/global/firewalls/spoke-app-no-route
+  - reason: read with its route table Microsoft.Network/routeTables net/data-rt
+    source: Microsoft.Network/routeTables/routes net/data-rt/drop-shared
+    state: mapped
+  - source: Microsoft.Network/virtualNetworks net/hub
+    state: mapped
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/hub
+    - compute.googleapis.com/Route projects/{{truthform|project}}/global/routes/hub-internet
+    - compute.googleapis.com/Router projects/{{truthform|project}}/regions/europe-west1/routers/hub-nat
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/hub-firewall
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/hub-shared
+  - source: Microsoft.Network/virtualNetworks net/lone
+    state: mapped
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/lone
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/lone-only
+  - losses:
+    - field: properties.subnets[app].properties.natGateway
+      why: 'its route table sends every destination elsewhere, which comes before
+        its NAT gateway on Azure too: the subnet is given no route to the target''s
+        NAT'
+    - field: properties.subnets[app].properties.routeTable
+      why: 'route default (0.0.0.0/0 to virtual appliance 10.10.0.4): the appliance
+        is a machine, which is not translated, and a GCP route''s next hop must be
+        one in the network: egress deny rule spoke-app-no-route keeps these destinations
+        off the network''s default route, so that traffic goes nowhere until a route
+        through an inspection appliance on the target is added'
+    - field: properties.subnets[app].properties.routeTable
+      why: 'egress deny rule spoke-app-no-route leaves 199.36.153.8/30, 199.36.153.4/30
+        open (private.googleapis.com and restricted.googleapis.com): Private Google
+        Access reaches Google''s APIs through them, and they are not on the internet'
+    - field: properties.subnets[data].properties.routeTable
+      why: 'route storage-direct (Storage to the internet) names a service tag, which
+        has no addresses here: its traffic follows the subnet''s other routes'
+    - field: properties.subnets[data].properties.routeTable
+      why: it had no route to 10.10.1.0/24 of its network's peer(s), so what they
+        sent it went unanswered; a GCP firewall answers a connection it let in, so
+        ingress deny rule spoke-data-no-peer keeps their traffic out of this subnet
+    - field: properties.subnets[east].properties.routeTable
+      why: route inspect (10.20.0.0/16 to virtual appliance 10.20.9.4) covers 10.20.0.0/22,
+        10.20.4.0/24, 10.20.6.0/23, 10.20.8.0/21, and 4 more of the network's own
+        range; a subnet's own route cannot be overridden on GCP, so egress deny rule
+        spoke-east-no-route drops that traffic, where Azure dropped it or sent it
+        through the appliance
+    source: Microsoft.Network/virtualNetworks net/spoke
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/spoke
+    - compute.googleapis.com/Route projects/{{truthform|project}}/global/routes/spoke-internet
+    - compute.googleapis.com/Router projects/{{truthform|project}}/regions/europe-west1/routers/spoke-nat
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-app
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-batch
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-data
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-east
+    - compute.googleapis.com/Subnetwork projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-jobs
+  - losses:
+    - field: properties.allowGatewayTransit
+      why: the peer could use this network's gateway to reach on-premises; no gateway
+        is translated, and a peering on the target gives no transit through one
+    reason: peering to-spoke in network hub's own list (networks.addPeering, once
+      both networks exist); its subnets' routes to the peer are Google's, exchanged
+      while both sides are there
+    source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/hub/to-spoke
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/hub
+  - reason: 'it peers with /subscriptions/00000000-0000-0000-0000-00000000c0de/resourceGroups/central/providers/Microsoft.Network/virtualNetworks/central-hub,
+      which is not in the snapshot (a network in another subscription, or one the
+      capture left out): the target network would not reach it. A peering to a network
+      that is not translated is not written (a map entry naming an existing VPC or
+      network on the target for it does not exist yet)'
+    source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/lone/to-central
+    state: refused
+  - losses:
+    - field: properties.allowForwardedTraffic
+      why: 'it accepted traffic the peer forwarded from elsewhere (an appliance or
+        gateway in a hub); a peering on the target carries only traffic between the
+        two networks'' own ranges, so nothing reaches this network through the peer
+        from a third (AWS: a transit gateway; GCP: Network Connectivity Center; neither
+        is translated)'
+    - field: properties.useRemoteGateways
+      why: this network reached on-premises through the peer's gateway; no gateway
+        is translated, and a peering on the target gives no transit through one
+    reason: peering to-hub in network spoke's own list (networks.addPeering, once
+      both networks exist); its subnets' routes to the peer are Google's, exchanged
+      while both sides are there
+    source: Microsoft.Network/virtualNetworks/virtualNetworkPeerings net/spoke/to-hub
+    state: mapped with losses
+    targets:
+    - compute.googleapis.com/Network projects/{{truthform|project}}/global/networks/spoke
+  from: azure
+  requirements:
+  - 'Cloud NAT gateway default-outbound on router spoke-nat stands for Azure''s default
+    outbound access in network net/spoke, as the map chose (network.defaultOutbound):
+    it is billed by the hour and the gigabyte'
+  - Cloud NAT serves machines with no external address; one given an external address
+    leaves by it instead (docs.cloud.google.com/nat/docs/public-nat), as a machine
+    with a public IP did on Azure only where no NAT gateway or route came first
+  - 'Google''s load balancers check health from 35.191.0.0/16 and 130.211.0.0/22:
+    where one fronts these instances, allow those ranges (Azure''s load balancer was
+    allowed by every NSG)'
+  - 'Instances (and GKE nodes) in subnetwork(s) spoke-app carry the network tag web:
+    an NSG applied to a whole subnet, a firewall rule applies to instances by tag'
+  - 'Networks hub and spoke are peered for their subnets'' ranges only: GCP peering
+    gives no transit to a third network, a gateway or a NAT in the peer (https://docs.cloud.google.com/vpc/docs/vpc-peering),
+    and the firewall rules written from the NSGs take the peer''s ranges as part of
+    the network, as Azure''s VirtualNetwork tag did'
+  - 'Subnetwork spoke-app sent its traffic through a firewall on Azure, and reaches
+    nothing outside its network on GCP but 199.36.153.8/30, 199.36.153.4/30: where
+    its network has Private Google Access, point googleapis.com at private.googleapis.com
+    in a private DNS zone (not translated) for its machines to reach Google''s APIs'
+  - 'Traffic that left through NAT gateway hub-nat now leaves from the target''s own
+    addresses: whoever allows the old ones by address (a partner''s firewall, an allowlist)
+    must be given the new ones'
+  - 'Traffic that left through NAT gateway spoke-nat now leaves from the target''s
+    own addresses: whoever allows the old ones by address (a partner''s firewall,
+    an allowlist) must be given the new ones'
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Address
+    metadata:
+      annotations:
+        truthform.org/collection: addresses
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Address
+      name: projects/{{truthform|project}}/regions/europe-west1/addresses/hub-nat-1
+    spec:
+      addressType: EXTERNAL
+      name: hub-nat-1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Address
+    metadata:
+      annotations:
+        truthform.org/collection: addresses
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Address
+      name: projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-1
+    spec:
+      addressType: EXTERNAL
+      name: spoke-nat-1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Address
+    metadata:
+      annotations:
+        truthform.org/collection: addresses
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Address
+      name: projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-2
+    spec:
+      addressType: EXTERNAL
+      name: spoke-nat-2
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Address
+    metadata:
+      annotations:
+        truthform.org/collection: addresses
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Address
+      name: projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-3
+    spec:
+      addressType: EXTERNAL
+      name: spoke-nat-3
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/spoke-app-no-route
+    spec:
+      denied:
+      - IPProtocol: all
+      destinationRanges:
+      - 0.0.0.0/5
+      - 8.0.0.0/7
+      - 10.0.0.0/13
+      - 10.8.0.0/15
+      - 10.11.0.0/16
+      - 10.12.0.0/14
+      - 10.16.0.0/14
+      - 10.21.0.0/16
+      - 10.22.0.0/15
+      - 10.24.0.0/13
+      - 10.32.0.0/11
+      - 10.64.0.0/10
+      - 10.128.0.0/9
+      - 11.0.0.0/8
+      - 12.0.0.0/6
+      - 16.0.0.0/4
+      - 32.0.0.0/3
+      - 64.0.0.0/2
+      - 128.0.0.0/2
+      - 192.0.0.0/6
+      - 196.0.0.0/7
+      - 198.0.0.0/8
+      - 199.0.0.0/11
+      - 199.32.0.0/14
+      - 199.36.0.0/17
+      - 199.36.128.0/20
+      - 199.36.144.0/21
+      - 199.36.152.0/24
+      - 199.36.153.0/30
+      - 199.36.153.12/30
+      - 199.36.153.16/28
+      - 199.36.153.32/27
+      - 199.36.153.64/26
+      - 199.36.153.128/25
+      - 199.36.154.0/23
+      - 199.36.156.0/22
+      - 199.36.160.0/19
+      - 199.36.192.0/18
+      - 199.37.0.0/16
+      - 199.38.0.0/15
+      - 199.40.0.0/13
+      - 199.48.0.0/12
+      - 199.64.0.0/10
+      - 199.128.0.0/9
+      - 200.0.0.0/5
+      - 208.0.0.0/4
+      - 224.0.0.0/3
+      direction: EGRESS
+      name: spoke-app-no-route
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      priority: 50
+      sourceRanges:
+      - 10.20.1.0/24
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/spoke-data-no-peer
+    spec:
+      denied:
+      - IPProtocol: all
+      destinationRanges:
+      - 10.20.2.0/24
+      direction: INGRESS
+      name: spoke-data-no-peer
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      priority: 50
+      sourceRanges:
+      - 10.10.1.0/24
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/spoke-data-no-route
+    spec:
+      denied:
+      - IPProtocol: all
+      destinationRanges:
+      - 10.10.1.0/24
+      - 203.0.113.0/24
+      direction: EGRESS
+      name: spoke-data-no-route
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      priority: 50
+      sourceRanges:
+      - 10.20.2.0/24
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/spoke-east-no-route
+    spec:
+      denied:
+      - IPProtocol: all
+      destinationRanges:
+      - 10.20.0.0/22
+      - 10.20.4.0/24
+      - 10.20.6.0/23
+      - 10.20.8.0/21
+      - 10.20.16.0/20
+      - 10.20.32.0/19
+      - 10.20.64.0/18
+      - 10.20.128.0/17
+      direction: EGRESS
+      name: spoke-east-no-route
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      priority: 50
+      sourceRanges:
+      - 10.20.5.0/24
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allow-8080-internet
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "8080"
+      direction: INGRESS
+      name: web-allow-8080-internet
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      priority: 150
+      sourceRanges:
+      - 0.0.0.0/5
+      - 8.0.0.0/7
+      - 10.0.0.0/13
+      - 10.8.0.0/15
+      - 10.11.0.0/16
+      - 10.12.0.0/14
+      - 10.16.0.0/14
+      - 10.21.0.0/16
+      - 10.22.0.0/15
+      - 10.24.0.0/13
+      - 10.32.0.0/11
+      - 10.64.0.0/10
+      - 10.128.0.0/9
+      - 11.0.0.0/8
+      - 12.0.0.0/6
+      - 16.0.0.0/4
+      - 32.0.0.0/3
+      - 64.0.0.0/2
+      - 128.0.0.0/1
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allow-https-vnet
+    spec:
+      allowed:
+      - IPProtocol: tcp
+        ports:
+        - "443"
+      direction: INGRESS
+      name: web-allow-https-vnet
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      priority: 100
+      sourceRanges:
+      - 10.10.0.0/16
+      - 10.20.0.0/16
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-allowvnetinbound
+    spec:
+      allowed:
+      - IPProtocol: all
+      direction: INGRESS
+      name: web-allowvnetinbound
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      priority: 65000
+      sourceRanges:
+      - 10.10.0.0/16
+      - 10.20.0.0/16
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Firewall
+    metadata:
+      annotations:
+        truthform.org/collection: firewalls
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Firewall
+      name: projects/{{truthform|project}}/global/firewalls/web-deny-rest
+    spec:
+      denied:
+      - IPProtocol: all
+      direction: INGRESS
+      name: web-deny-rest
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      priority: 200
+      sourceRanges:
+      - 0.0.0.0/0
+      targetTags:
+      - web
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Network
+    metadata:
+      annotations:
+        truthform.org/collection: networks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Network
+      name: projects/{{truthform|project}}/global/networks/hub
+    spec:
+      autoCreateSubnetworks: false
+      mtu: 1500
+      name: hub
+      peerings:
+      - autoCreateRoutes: true
+        exchangeSubnetRoutes: true
+        exportCustomRoutes: false
+        exportSubnetRoutesWithPublicIp: true
+        importCustomRoutes: false
+        importSubnetRoutesWithPublicIp: true
+        name: to-spoke
+        network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+        stackType: IPV4_ONLY
+        updateStrategy: INDEPENDENT
+      routingConfig:
+        routingMode: REGIONAL
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Network
+    metadata:
+      annotations:
+        truthform.org/collection: networks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Network
+      name: projects/{{truthform|project}}/global/networks/lone
+    spec:
+      autoCreateSubnetworks: false
+      mtu: 1500
+      name: lone
+      routingConfig:
+        routingMode: REGIONAL
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Network
+    metadata:
+      annotations:
+        truthform.org/collection: networks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Network
+      name: projects/{{truthform|project}}/global/networks/spoke
+    spec:
+      autoCreateSubnetworks: false
+      mtu: 1500
+      name: spoke
+      peerings:
+      - autoCreateRoutes: true
+        exchangeSubnetRoutes: true
+        exportCustomRoutes: false
+        exportSubnetRoutesWithPublicIp: true
+        importCustomRoutes: false
+        importSubnetRoutesWithPublicIp: true
+        name: to-hub
+        network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/hub
+        stackType: IPV4_ONLY
+        updateStrategy: INDEPENDENT
+      routingConfig:
+        routingMode: REGIONAL
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Router
+    metadata:
+      annotations:
+        truthform.org/collection: routers
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Router
+      name: projects/{{truthform|project}}/regions/europe-west1/routers/hub-nat
+    spec:
+      name: hub-nat
+      nats:
+      - name: hub-nat
+        natIpAllocateOption: MANUAL_ONLY
+        natIps:
+        - https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1/addresses/hub-nat-1
+        sourceSubnetworkIpRangesToNat: LIST_OF_SUBNETWORKS
+        subnetworks:
+        - name: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1/subnetworks/hub-firewall
+          sourceIpRangesToNat:
+          - ALL_IP_RANGES
+        tcpEstablishedIdleTimeoutSec: 600
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/hub
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Router
+    metadata:
+      annotations:
+        truthform.org/collection: routers
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Router
+      name: projects/{{truthform|project}}/regions/europe-west1/routers/spoke-nat
+    spec:
+      name: spoke-nat
+      nats:
+      - name: spoke-nat
+        natIpAllocateOption: MANUAL_ONLY
+        natIps:
+        - https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-1
+        - https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-2
+        - https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1/addresses/spoke-nat-3
+        sourceSubnetworkIpRangesToNat: LIST_OF_SUBNETWORKS
+        subnetworks:
+        - name: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-data
+          sourceIpRangesToNat:
+          - ALL_IP_RANGES
+        tcpEstablishedIdleTimeoutSec: 240
+      - name: default-outbound
+        natIpAllocateOption: AUTO_ONLY
+        sourceSubnetworkIpRangesToNat: LIST_OF_SUBNETWORKS
+        subnetworks:
+        - name: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-jobs
+          sourceIpRangesToNat:
+          - ALL_IP_RANGES
+        - name: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-batch
+          sourceIpRangesToNat:
+          - ALL_IP_RANGES
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Route
+    metadata:
+      annotations:
+        truthform.org/collection: routes
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Route
+      name: projects/{{truthform|project}}/global/routes/hub-internet
+    spec:
+      destRange: 0.0.0.0/0
+      name: hub-internet
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/hub
+      nextHopGateway: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/gateways/default-internet-gateway
+      priority: 1000
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Route
+    metadata:
+      annotations:
+        truthform.org/collection: routes
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/global
+        truthform.org/schema: Route
+      name: projects/{{truthform|project}}/global/routes/spoke-internet
+    spec:
+      destRange: 0.0.0.0/0
+      name: spoke-internet
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      nextHopGateway: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/gateways/default-internet-gateway
+      priority: 1000
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/hub-firewall
+    spec:
+      ipCidrRange: 10.10.0.0/26
+      name: hub-firewall
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/hub
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/hub-shared
+    spec:
+      ipCidrRange: 10.10.1.0/24
+      name: hub-shared
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/hub
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/lone-only
+    spec:
+      ipCidrRange: 10.30.1.0/24
+      name: lone-only
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/lone
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-app
+    spec:
+      ipCidrRange: 10.20.1.0/24
+      name: spoke-app
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-batch
+    spec:
+      ipCidrRange: 10.20.4.0/24
+      name: spoke-batch
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-data
+    spec:
+      ipCidrRange: 10.20.2.0/24
+      name: spoke-data
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-east
+    spec:
+      ipCidrRange: 10.20.5.0/24
+      name: spoke-east
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1
+  - apiVersion: gcp.truthform.org/v1
+    kind: compute.googleapis.com/Subnetwork
+    metadata:
+      annotations:
+        truthform.org/collection: subnetworks
+        truthform.org/discovery: compute/v1
+        truthform.org/parent: projects/{{truthform|project}}/regions/europe-west1
+        truthform.org/schema: Subnetwork
+      name: projects/{{truthform|project}}/regions/europe-west1/subnetworks/spoke-jobs
+    spec:
+      ipCidrRange: 10.20.3.0/24
+      name: spoke-jobs
+      network: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/global/networks/spoke
+      region: https://www.googleapis.com/compute/v1/projects/{{truthform|project}}/regions/europe-west1

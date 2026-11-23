@@ -1,0 +1,808 @@
+report:
+  attachments:
+  - attached: written
+    carries:
+    - core-endpoints
+    source: Microsoft.Network/privateEndpoints net/pe-acr
+    to: the interface endpoints of VPC core
+  - attached: written
+    carries:
+    - core-endpoints
+    source: Microsoft.Network/privateEndpoints net/pe-blob
+    to: the interface endpoints of VPC core
+  - attached: written
+    carries:
+    - core-endpoints
+    source: Microsoft.Network/privateEndpoints net/pe-bus
+    to: the interface endpoints of VPC core
+  - attached: written
+    carries:
+    - core-endpoints
+    source: Microsoft.Network/privateEndpoints net/pe-kv
+    to: the interface endpoints of VPC core
+  destinations:
+  - 'dns: route53'
+  - 'messaging: sqs-sns'
+  - 'network: vpc'
+  - 'registry: ecr'
+  - 'secrets: secret-manager'
+  - 'storage: buckets'
+  entries:
+  - losses:
+    - field: sku.name
+      why: 'Premium: a service tier (included storage, throughput, which features)
+        has no equivalent: the target bills by use'
+    reason: 'ECR has one registry per account and region: a repository creation template
+      makes each repository under shopacr/ on its first push, with these settings;
+      they answer pulls and pushes only through the interface endpoint(s) core-ecr-api,
+      core-ecr-dkr'
+    source: Microsoft.ContainerRegistry/registries shop/shopacr
+    state: mapped with losses
+    targets:
+    - AWS::ECR::RepositoryCreationTemplate shopacr
+  - losses:
+    - field: properties.enableRbacAuthorization
+      why: 'who may read its secrets was set by Azure RBAC role assignments: a managed
+        identity''s Key Vault Secrets role is carried over with destinations.identity:
+        workload, and any other assignment is not, so on the target only those its
+        IAM lets read them can'
+    - field: properties.networkAcls
+      why: 'its public network access is disabled: it answered private endpoints only,
+        and no Azure service passed it; its secrets answer only through the interface
+        endpoint(s) core-secretsmanager, but a value can still be read from elsewhere
+        through an AWS service that acts with the caller''s credentials (CloudFormation
+        resolving a reference to the secret), by a principal allowed secretsmanager:GetSecretValue:
+        Cloud Control reads a secret that way, so that path cannot be denied without
+        locking out the restore'
+      widens: true
+    - field: properties.softDeleteRetentionInDays
+      why: a deleted secret was kept 90 days unless purged; Secrets Manager keeps
+        one for the recovery window each delete chooses (7 to 30 days, 30 unless told),
+        and a delete may skip it, as a purge could
+    reason: 'Secrets Manager has no vault: its secrets are written as secrets of their
+      own, named after the vault'
+    source: Microsoft.KeyVault/vaults shop/shopkv
+    state: mapped with losses
+  - source: Microsoft.KeyVault/vaults/secrets shop/shopkv/db-password
+    state: mapped
+    targets:
+    - AWS::SecretsManager::ResourcePolicy h-28069999b1b9
+    - AWS::SecretsManager::Secret shopkv/db-password
+  - source: Microsoft.Network/privateDnsZones net/internal.shop
+    state: mapped
+    targets:
+    - AWS::Route53::HostedZone internal.shop.
+  - reason: 'Azure''s zone for its services'' private endpoints, not copied: it names
+      Azure''s services at Azure''s addresses. On AWS each private endpoint becomes
+      an interface VPC endpoint whose private DNS answers the AWS service''s own name
+      inside the VPC, and RDS answers in the VPC itself.'
+    source: Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net
+    state: mapped
+  - source: Microsoft.Network/privateDnsZones/A net/internal.shop/db
+    state: mapped
+    targets:
+    - AWS::Route53::RecordSet db.internal.shop.
+  - reason: 'read with its zone Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net,
+      Azure''s zone for its services'' private endpoints: not copied'
+    source: Microsoft.Network/privateDnsZones/A net/privatelink.servicebus.windows.net/shopbus
+    state: mapped
+  - reason: read with its zone Microsoft.Network/privateDnsZones net/internal.shop
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks net/internal.shop/core
+    state: mapped
+  - reason: 'read with its zone Microsoft.Network/privateDnsZones net/privatelink.servicebus.windows.net,
+      Azure''s zone for its services'' private endpoints: not copied'
+    source: Microsoft.Network/privateDnsZones/virtualNetworkLinks net/privatelink.servicebus.windows.net/core
+    state: mapped
+  - reason: 'an interface VPC endpoint per service in core (ecr.api, ecr.dkr, s3),
+      with private DNS: the AWS services'' own names answer with the endpoints'' addresses
+      inside the VPC'
+    source: Microsoft.Network/privateEndpoints net/pe-acr
+    state: mapped
+  - reason: 'an interface VPC endpoint per service in core (s3), with private DNS:
+      the AWS services'' own names answer with the endpoints'' addresses inside the
+      VPC'
+    source: Microsoft.Network/privateEndpoints net/pe-blob
+    state: mapped
+  - reason: 'an interface VPC endpoint per service in core (sns, sqs), with private
+      DNS: the AWS services'' own names answer with the endpoints'' addresses inside
+      the VPC'
+    source: Microsoft.Network/privateEndpoints net/pe-bus
+    state: mapped
+  - reason: a private endpoint to shop/shopfiles (file), which is not translated
+    source: Microsoft.Network/privateEndpoints net/pe-file
+    state: refused
+  - reason: 'an interface VPC endpoint per service in core (secretsmanager), with
+      private DNS: the AWS services'' own names answer with the endpoints'' addresses
+      inside the VPC'
+    source: Microsoft.Network/privateEndpoints net/pe-kv
+    state: mapped
+  - reason: a private endpoint to shop/shopweb (sites), which is not translated
+    source: Microsoft.Network/privateEndpoints net/pe-web
+    state: refused
+  - reason: 'read with its private endpoint: the zones it fills are Azure''s names
+      for the service, which the target answers privately by its own (On AWS each
+      private endpoint becomes an interface VPC endpoint whose private DNS answers
+      the AWS service''s own name inside the VPC, and RDS answers in the VPC itself.)'
+    source: Microsoft.Network/privateEndpoints/privateDnsZoneGroups net/pe-bus/default
+    state: mapped
+  - source: Microsoft.Network/virtualNetworks net/core
+    state: mapped
+    targets:
+    - AWS::EC2::Subnet core-app
+    - AWS::EC2::Subnet core-endpoints
+    - AWS::EC2::VPC core
+  - reason: 'SQS and SNS have no namespace: the account and region hold its queues
+      and topics; its queues and topics answer only through the interface endpoint(s)
+      core-sqs, core-sns'
+    source: Microsoft.ServiceBus/namespaces shop/shopbus
+    state: mapped
+  - losses:
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    source: Microsoft.ServiceBus/namespaces/queues shop/shopbus/orders
+    state: mapped with losses
+    targets:
+    - AWS::SQS::Queue orders
+    - AWS::SQS::Queue orders-dlq
+    - AWS::SQS::QueueInlinePolicy orders
+    - AWS::SQS::QueueInlinePolicy orders-dlq
+  - losses:
+    - field: properties.defaultMessageTimeToLive
+      why: SNS holds no messages; the topic's time to live is applied to its subscriptions'
+        queues
+    source: Microsoft.ServiceBus/namespaces/topics shop/shopbus/events
+    state: mapped with losses
+    targets:
+    - AWS::SNS::Topic events
+    - AWS::SNS::TopicInlinePolicy events
+  - losses:
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions shop/shopbus/events/audit
+    state: mapped with losses
+    targets:
+    - AWS::SNS::Subscription h-3d227a697b16
+    - AWS::SQS::Queue events-audit
+    - AWS::SQS::Queue events-audit-dlq
+    - AWS::SQS::QueueInlinePolicy events-audit
+    - AWS::SQS::QueueInlinePolicy events-audit-dlq
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules shop/shopbus/events/audit/all
+    state: mapped
+    targets:
+    - AWS::SNS::Subscription h-3d227a697b16
+  - losses:
+    - field: properties.publicNetworkAccess
+      why: 'public network access is disabled: it answers only on private endpoints,
+        and no Azure service passed it; its buckets'' objects are read, written and
+        deleted only through the interface endpoint(s) core-s3, but their names can
+        still be listed from elsewhere through an AWS service that acts with the caller''s
+        credentials (Athena), by a principal allowed s3:ListBucket: Cloud Control
+        reads a bucket with that permission, so that path cannot be denied without
+        locking out the restore'
+      widens: true
+    reason: 'the account is not a bucket: its settings apply to each of its containers''
+      buckets'
+    source: Microsoft.Storage/storageAccounts shop/shopfiles
+    state: mapped with losses
+    targets:
+    - AWS::S3::Bucket shopfiles-docs
+    - AWS::S3::BucketPolicy shopfiles-docs
+  - source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopfiles/default/docs
+    state: mapped
+    targets:
+    - AWS::S3::Bucket shopfiles-docs
+    - AWS::S3::BucketPolicy shopfiles-docs
+  from: azure
+  requirements:
+  - 'A repository is made on push only for a principal allowed ecr:CreateRepository
+    as well as to push: grant the pipelines that push images both (identity, not translated:
+    #32)'
+  - 'A repository under shopacr/ made any other way than by its first push (ecr:CreateRepository
+    by hand, replication) does not get the template''s policy: give it the same one'
+  - 'Apps move from the Azure Blob SDK to the S3 API: each container is a bucket,
+    named <account>-<container> unless the map names it'
+  - 'Apps move from the Service Bus SDK to the AWS SDK: a queue is an SQS queue, a
+    topic an SNS topic delivering to an SQS queue per subscription, and a subscription''s
+    filter matches SNS message attributes'
+  - Apps that read Key Vault shop/shopkv (its SDK, Key Vault references, the Secrets
+    Store CSI driver) read Secrets Manager instead, by the new names (<vault>/<secret>)
+  - Apps that sign in to Azure Storage with account keys, SAS tokens or connection
+    strings must move to the target's identity (IAM roles, workload identity); no
+    key or SAS is carried over
+  - 'Blobs are not copied: each bucket is written empty. Copy each container''s blobs
+    into its bucket (AWS DataSync or S3 Batch Operations; the Storage Transfer Service),
+    with their versions, metadata and per-blob tiers and holds, which this translation
+    does not carry'
+  - 'Images are not copied: copy each from shopacr.azurecr.io to <account>.dkr.ecr.eu-west-1.amazonaws.com/shopacr/<repository>
+    (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
+    image references are not rewritten: the translation''s Kubernetes change list
+    names each one and what it becomes, for the repository''s owner to change'
+  - 'Interface VPC endpoints are billed per endpoint and zone by the hour, and per
+    gigabyte: the translation writes one per service and VPC that had a private endpoint'
+  - 'Key Vault shop/shopkv let Azure RBAC role assignments read its secrets; a managed
+    identity''s Key Vault Secrets role is carried over with destinations.identity:
+    workload; for anyone else (people, pipelines, access policies) grant secretsmanager:GetSecretValue
+    on the secrets they read'
+  - 'Key Vault shop/shopkv''s secrets (shopkv/db-password) hold no value: a capture
+    never reads one, and a translation writes none. Supply each at restore with --values
+    (AWS::SecretsManager::Secret/<name>: {SecretString: ...}), read from where its
+    value is kept; the restore lists each one created without it'
+  - 'Key Vault shop/shopkv''s secrets answer only through the interface endpoint(s)
+    core-secretsmanager, as on Azure: a resource policy denies the data actions to
+    every other request, whoever makes it. The settings can still be read and changed
+    from anywhere IAM allows, as Azure''s management plane could; apps and people
+    that read or write the data from elsewhere must come that way'
+  - 'Private hosted zone internal.shop. answers only in its VPCs: whatever resolved
+    it through Azure from elsewhere (a DNS forwarder, on-premises conditional forwarding)
+    must forward to a Route 53 Resolver inbound endpoint instead (not translated)'
+  - 'Registry shop/shopacr''s repositories under shopacr/ answer pulls and pushes
+    only through the interface endpoint(s) core-ecr-api, core-ecr-dkr, as on Azure:
+    a resource policy denies the data actions to every other request, whoever makes
+    it. The settings can still be read and changed from anywhere IAM allows, as Azure''s
+    management plane could; apps and people that read or write the data from elsewhere
+    must come that way'
+  - 'Service Bus namespace shop/shopbus''s queues and topics answer only through the
+    interface endpoint(s) core-sqs, core-sns, as on Azure: a resource policy denies
+    the data actions to every other request, whoever makes it. The settings can still
+    be read and changed from anywhere IAM allows, as Azure''s management plane could;
+    apps and people that read or write the data from elsewhere must come that way'
+  - 'Storage account shop/shopfiles''s buckets answer only through the interface endpoint(s)
+    core-s3, as on Azure: a resource policy denies the data actions to every other
+    request, whoever makes it. The settings can still be read and changed from anywhere
+    IAM allows, as Azure''s management plane could; apps and people that read or write
+    the data from elsewhere must come that way'
+  - 'The interface endpoints in VPC core are in one availability zone (eu-west-1a),
+    as Azure''s private endpoints were in one subnet: add a subnet in another zone
+    for them to survive the loss of that one'
+  - 'Who may read and write each bucket is IAM. With destinations.identity: workload,
+    a managed identity''s Storage Blob Data role on the account or a container is
+    carried to its bucket; a person''s, a pipeline''s or a custom role''s is not:
+    grant those on the target'
+  to: aws
+snapshots:
+  aws:
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::SecurityGroup
+    metadata:
+      annotations:
+        truthform.org/write-only: SecurityGroupIngress[].SourceSecurityGroupName
+      name: core-endpoints
+    spec:
+      GroupDescription: HTTPS from the network to its interface endpoints, for its
+        Azure private endpoints
+      SecurityGroupEgress:
+      - CidrIp: 0.0.0.0/0
+        IpProtocol: "-1"
+      SecurityGroupIngress:
+      - CidrIp: 10.30.0.0/16
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      Tags:
+      - Key: Name
+        Value: core-endpoints
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-app
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.1.0/24
+      Tags:
+      - Key: Name
+        Value: core-app
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::Subnet
+    metadata:
+      annotations:
+        truthform.org/write-only: EnableLniAtDeviceIndex,Ipv4IpamPoolId,Ipv4NetmaskLength,Ipv6IpamPoolId,Ipv6NetmaskLength
+      name: core-endpoints
+    spec:
+      AvailabilityZone: eu-west-1a
+      CidrBlock: 10.30.9.0/24
+      Tags:
+      - Key: Name
+        Value: core-endpoints
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-ecr-api
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.ecr.api
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-ecr-api
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-ecr-dkr
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.ecr.dkr
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-ecr-dkr
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-s3
+    spec:
+      DnsOptions:
+        PrivateDnsOnlyForInboundResolverEndpoint: AllResolvers
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.s3
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-s3
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-secretsmanager
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.secretsmanager
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-secretsmanager
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-sns
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.sns
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-sns
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPCEndpoint
+    metadata:
+      name: core-sqs
+    spec:
+      PrivateDnsEnabled: true
+      SecurityGroupIds:
+      - '{{truthform|AWS::EC2::SecurityGroup|core-endpoints|GroupId}}'
+      ServiceName: com.amazonaws.eu-west-1.sqs
+      SubnetIds:
+      - '{{truthform|AWS::EC2::Subnet|core-endpoints|SubnetId}}'
+      Tags:
+      - Key: Name
+        Value: core-sqs
+      VpcEndpointType: Interface
+      VpcId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::EC2::VPC
+    metadata:
+      annotations:
+        truthform.org/write-only: Ipv4IpamPoolId,Ipv4NetmaskLength,VpcEncryptionControl.EgressOnlyInternetGatewayExclusion,VpcEncryptionControl.ElasticFileSystemExclusion,VpcEncryptionControl.InternetGatewayExclusion,VpcEncryptionControl.LambdaExclusion,VpcEncryptionControl.NatGatewayExclusion,VpcEncryptionControl.VirtualPrivateGatewayExclusion,VpcEncryptionControl.VpcLatticeExclusion,VpcEncryptionControl.VpcPeeringExclusion
+      name: core
+    spec:
+      CidrBlock: 10.30.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+      - Key: Name
+        Value: core
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::ECR::RepositoryCreationTemplate
+    metadata:
+      name: shopacr
+    spec:
+      AppliedFor:
+      - CREATE_ON_PUSH
+      Description: From Azure Container Registry shop/shopacr
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageTagMutability: MUTABLE
+      Prefix: shopacr
+      RepositoryPolicy: '{"Statement":[{"Action":["ecr:BatchGetImage","ecr:GetDownloadUrlForLayer","ecr:BatchCheckLayerAvailability","ecr:InitiateLayerUpload","ecr:UploadLayerPart","ecr:CompleteLayerUpload","ecr:PutImage"],"Condition":{"BoolIfExists":{"aws:PrincipalIsAWSService":"false"},"StringNotEquals":{"aws:SourceVpce":["{{truthform|AWS::EC2::VPCEndpoint|core-ecr-api|Id}}","{{truthform|AWS::EC2::VPCEndpoint|core-ecr-dkr|Id}}"]}},"Effect":"Deny","Principal":"*","Sid":"DenyOutsidePrivateAccess"}],"Version":"2012-10-17"}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::HostedZone
+    metadata:
+      name: internal.shop.
+    spec:
+      HostedZoneConfig:
+        Comment: From Azure DNS zone net/internal.shop
+      Name: internal.shop.
+      VPCs:
+      - VPCId: '{{truthform|AWS::EC2::VPC|core|VpcId}}'
+        VPCRegion: eu-west-1
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::Route53::RecordSet
+    metadata:
+      annotations:
+        truthform.org/write-only: Comment,HostedZoneName
+      name: db.internal.shop.
+    spec:
+      HostedZoneId: '{{truthform|AWS::Route53::HostedZone|internal.shop.|Id}}'
+      Name: db.internal.shop.
+      ResourceRecords:
+      - 10.30.1.10
+      TTL: "300"
+      Type: A
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::BucketPolicy
+    metadata:
+      name: shopfiles-docs
+    spec:
+      Bucket: shopfiles-docs
+      PolicyDocument:
+        Statement:
+        - Action: s3:*
+          Condition:
+            Bool:
+              aws:SecureTransport: "false"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopfiles-docs|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopfiles-docs|Arn}}/*'
+          Sid: DenyPlainHTTP
+        - Action: s3:*
+          Condition:
+            NumericLessThan:
+              s3:TlsVersion: "1.2"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopfiles-docs|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopfiles-docs|Arn}}/*'
+          Sid: DenyOldTLS
+        - Action:
+          - s3:GetObject
+          - s3:GetObjectVersion
+          - s3:GetObjectAcl
+          - s3:GetObjectVersionAcl
+          - s3:GetObjectAttributes
+          - s3:GetObjectVersionAttributes
+          - s3:GetObjectTagging
+          - s3:GetObjectVersionTagging
+          - s3:GetObjectRetention
+          - s3:GetObjectLegalHold
+          - s3:PutObject
+          - s3:PutObjectTagging
+          - s3:PutObjectVersionTagging
+          - s3:PutObjectRetention
+          - s3:PutObjectLegalHold
+          - s3:DeleteObject
+          - s3:DeleteObjectVersion
+          - s3:DeleteObjectTagging
+          - s3:DeleteObjectVersionTagging
+          - s3:RestoreObject
+          - s3:AbortMultipartUpload
+          - s3:ListMultipartUploadParts
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            StringNotEquals:
+              aws:SourceVpce:
+              - '{{truthform|AWS::EC2::VPCEndpoint|core-s3|Id}}'
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopfiles-docs|Arn}}/*'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucketVersions
+          - s3:ListBucketMultipartUploads
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            StringNotEquals:
+              aws:SourceVpce:
+              - '{{truthform|AWS::EC2::VPCEndpoint|core-s3|Id}}'
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopfiles-docs|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucket
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+              aws:ViaAWSService: "false"
+            StringNotEquals:
+              aws:SourceVpce:
+              - '{{truthform|AWS::EC2::VPCEndpoint|core-s3|Id}}'
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopfiles-docs|Arn}}'
+          Sid: DenyOutsidePrivateAccessButThroughAWS
+        Version: "2012-10-17"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::Bucket
+    metadata:
+      annotations:
+        truthform.org/write-only: AccessControl,BucketNamePrefix,BucketNamespace,LifecycleConfiguration.Rules[].ExpiredObjectDeleteMarker,LifecycleConfiguration.Rules[].NoncurrentVersionExpirationInDays,LifecycleConfiguration.Rules[].NoncurrentVersionTransition,LifecycleConfiguration.Rules[].Transition,MetadataConfiguration.AnnotationTableConfiguration.EncryptionConfiguration,MetadataConfiguration.InventoryTableConfiguration.EncryptionConfiguration,MetadataConfiguration.JournalTableConfiguration.EncryptionConfiguration,ReplicationConfiguration.Rules[].Prefix
+      name: shopfiles-docs
+    spec:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      BucketName: shopfiles-docs
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SNS::Subscription
+    metadata:
+      annotations:
+        truthform.org/write-only: Region
+      name: h-3d227a697b16
+    spec:
+      Endpoint: '{{truthform|AWS::SQS::Queue|events-audit|Arn}}'
+      FilterPolicy:
+        type:
+        - order
+      FilterPolicyScope: MessageAttributes
+      Protocol: sqs
+      RawMessageDelivery: true
+      TopicArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SNS::TopicInlinePolicy
+    metadata:
+      name: events
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - sns:Publish
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            StringNotEquals:
+              aws:SourceVpce:
+              - '{{truthform|AWS::EC2::VPCEndpoint|core-sns|Id}}'
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+          Sid: DenyOutsidePrivateAccess
+        Version: "2012-10-17"
+      TopicArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SNS::Topic
+    metadata:
+      name: events
+    spec:
+      TopicName: events
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
+      name: events-audit
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action: sqs:SendMessage
+          Condition:
+            ArnEquals:
+              aws:SourceArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+          Effect: Allow
+          Principal:
+            Service: sns.amazonaws.com
+          Resource: '{{truthform|AWS::SQS::Queue|events-audit|Arn}}'
+        - Action:
+          - sqs:SendMessage
+          - sqs:ReceiveMessage
+          - sqs:DeleteMessage
+          - sqs:ChangeMessageVisibility
+          - sqs:PurgeQueue
+          - sqs:StartMessageMoveTask
+          - sqs:CancelMessageMoveTask
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            StringNotEquals:
+              aws:SourceVpce:
+              - '{{truthform|AWS::EC2::VPCEndpoint|core-sqs|Id}}'
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SQS::Queue|events-audit|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|events-audit|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
+      name: events-audit-dlq
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - sqs:SendMessage
+          - sqs:ReceiveMessage
+          - sqs:DeleteMessage
+          - sqs:ChangeMessageVisibility
+          - sqs:PurgeQueue
+          - sqs:StartMessageMoveTask
+          - sqs:CancelMessageMoveTask
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            StringNotEquals:
+              aws:SourceVpce:
+              - '{{truthform|AWS::EC2::VPCEndpoint|core-sqs|Id}}'
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SQS::Queue|events-audit-dlq|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|events-audit-dlq|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
+      name: orders
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - sqs:SendMessage
+          - sqs:ReceiveMessage
+          - sqs:DeleteMessage
+          - sqs:ChangeMessageVisibility
+          - sqs:PurgeQueue
+          - sqs:StartMessageMoveTask
+          - sqs:CancelMessageMoveTask
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            StringNotEquals:
+              aws:SourceVpce:
+              - '{{truthform|AWS::EC2::VPCEndpoint|core-sqs|Id}}'
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SQS::Queue|orders|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|orders|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
+      name: orders-dlq
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - sqs:SendMessage
+          - sqs:ReceiveMessage
+          - sqs:DeleteMessage
+          - sqs:ChangeMessageVisibility
+          - sqs:PurgeQueue
+          - sqs:StartMessageMoveTask
+          - sqs:CancelMessageMoveTask
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            StringNotEquals:
+              aws:SourceVpce:
+              - '{{truthform|AWS::EC2::VPCEndpoint|core-sqs|Id}}'
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SQS::Queue|orders-dlq|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|orders-dlq|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-audit
+    spec:
+      MessageRetentionPeriod: 86400
+      QueueName: events-audit
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|events-audit-dlq|Arn}}'
+        maxReceiveCount: 10
+      VisibilityTimeout: 60
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-audit-dlq
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: events-audit-dlq
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: orders
+    spec:
+      MessageRetentionPeriod: 86400
+      QueueName: orders
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|orders-dlq|Arn}}'
+        maxReceiveCount: 10
+      VisibilityTimeout: 60
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: orders-dlq
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: orders-dlq
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SecretsManager::ResourcePolicy
+    metadata:
+      annotations:
+        truthform.org/write-only: BlockPublicPolicy
+      name: h-28069999b1b9
+    spec:
+      ResourcePolicy:
+        Statement:
+        - Action:
+          - secretsmanager:PutSecretValue
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            StringNotEquals:
+              aws:SourceVpce:
+              - '{{truthform|AWS::EC2::VPCEndpoint|core-secretsmanager|Id}}'
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SecretsManager::Secret|shopkv/db-password|Id}}'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - secretsmanager:GetSecretValue
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+              aws:ViaAWSService: "false"
+            StringNotEquals:
+              aws:SourceVpce:
+              - '{{truthform|AWS::EC2::VPCEndpoint|core-secretsmanager|Id}}'
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SecretsManager::Secret|shopkv/db-password|Id}}'
+          Sid: DenyOutsidePrivateAccessButThroughAWS
+        Version: "2012-10-17"
+      SecretId: '{{truthform|AWS::SecretsManager::Secret|shopkv/db-password|Id}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SecretsManager::Secret
+    metadata:
+      annotations:
+        truthform.org/write-only: GenerateSecretString,SecretString
+      name: shopkv/db-password
+    spec:
+      Description: From Azure Key Vault shop/shopkv, secret db-password
+      Name: shopkv/db-password

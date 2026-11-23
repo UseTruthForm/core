@@ -391,6 +391,19 @@ truthform restore --platform aws --region us-east-2 --from snap/aws --values sec
   `--zone-map use2-az1=use1-az4` overrides a pair.
 - **Several at once (AWS, Azure, GCP):** resources that do not depend on
   each other are created together (`--parallel`, 8 by default).
+- **VPC Network Peering (GCP):** a peering is not a resource but an entry
+  in each network's `peerings`, which a capture keeps in the network's spec
+  (its `state` goes to the status). A restore creates the networks, then
+  adds each entry with `networks.addPeering`, one at a time; the peering is
+  `ACTIVE` once both networks have theirs. With `--update` an entry that
+  differs is changed with `networks.updatePeering` and a missing one added.
+  An entry only the target has is reported and left: a restore removes
+  nothing.
+- **Outside the project (GCP):** a VPC Service Controls perimeter belongs
+  to an access policy, and no project's inventory lists it. A restore looks
+  for it by its own name, creates it under the policy when it is not there,
+  and with `--update` patches one that differs. One it cannot read is not
+  created over. A capture of the project does not hold it.
 - **Secrets** come from a YAML file given with `--values`, keyed by
   resource. A restore says which secrets it was not given. The same file can
   set any other property; a list it sets is replaced whole. Give `diff` the
@@ -545,11 +558,11 @@ empty or denied: capture again later.
 | 0 | Success: the capture is complete, the restore fully applied, or no differences |
 | 1 | Error: bad flags, cannot connect, cannot read a snapshot |
 | 2 | Differences found (diff, compare), a secret sources file that does not cover its snapshot (plan secrets --check), or a scope whose hold would bring objects it does not know how to hold, or that brings an admission webhook failing closed whose Service will not answer, or that holds something and brings, not held, a GitOps source that applies into a namespace it narrows or a Flux object that acts outside the cluster (plan scope --check) |
-| 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, or a restore under a hold brought objects not held |
+| 3 | Incomplete: the snapshot was written but some types could not be read, a restore applied only some resources, a restore under a hold brought objects not held, or a translation refused something, did not look at a type, left a setting unread, made something less protected, or found a Kubernetes manifest that names an Azure thing with no translation |
 
 ## Machine-readable output
 
-Add `--json` to `capture`, `diff`, `restore`, `compare` or `plan` (an
+Add `--json` to `capture`, `diff`, `restore`, `compare`, `plan` or `translate` (an
 environment `--config` too). Stdout is then one JSON document, named by its `schema`
 field (`truthform.org/output/v1`), and everything meant for a person goes
 to stderr. The exit code is the same as without it. A capture's document
@@ -1428,6 +1441,818 @@ written to hold back, or leave the new environment reading the old one's
 secrets. Leaving out is not checked against what stays: an object left in
 that needs one left out fails, or waits, in the cluster.
 
+## To another cloud (Azure to AWS or GCP)
+
+`translate` rewrites an Azure snapshot as snapshots for another cloud, offline.
+It reads one snapshot and a map, and writes a snapshot per target platform,
+which `plan`, `restore` and `diff` take as they are. It makes no request, so
+the capture-only build has it too. So far it translates Service Bus,
+virtual networks, network security groups wherever they are attached
+(subnets, network interfaces, both at once), application security groups,
+flow logs, what routes the subnets' traffic (route tables, NAT gateways,
+peerings), public and private DNS
+zones, storage accounts' blob containers, Key Vault secrets, container
+registries, AKS clusters (their configuration: the workloads travel
+through the Kubernetes snapshot), the configuration (never the data)
+of Azure Database for PostgreSQL flexible servers and Azure SQL servers,
+and workload identity (the managed identities a cluster's service accounts
+use, with what their data roles let them reach); every other type is
+reported as not looked at (design: issue #32).
+
+```sh
+truthform translate --from snap/azure --map map.yaml --out moved/
+truthform restore --platform aws --region eu-west-1 --from moved/aws
+```
+
+With `--kube` and `--gitops` it also lists what the cluster's workloads
+name that was renamed: see [Kubernetes workloads and
+GitOps](#kubernetes-workloads-and-gitops).
+
+The mapping is fixed. Each Azure service has a few destinations, and the map
+is the only per-customer input: which destination each service class goes
+to, the region, and names the target does not allow or that would collide.
+Nothing the map leaves out gets a default.
+
+```yaml
+to: aws                     # or gcp
+region: eu-west-1           # aws; gcp where something regional is written (a subnetwork, a bucket)
+destinations:
+  messaging: sqs-sns        # sqs-sns (aws), pubsub (gcp), or rabbitmq (in the cluster, on either)
+  network: vpc              # a VPC (aws) or VPC network (gcp)
+  secrets: secret-manager   # Key Vault secrets: Secrets Manager (aws) or Secret Manager (gcp)
+  registry: ecr             # ecr (aws) or artifact-registry (gcp)
+  storage: buckets          # an S3 bucket (aws) or Cloud Storage bucket (gcp) per blob container
+  dns: route53              # route53 (aws) or cloud-dns (gcp)
+  databases: rds            # rds (aws) or cloud-sql (gcp)
+  clusters: eks             # eks (aws) or gke (gcp), for AKS clusters
+  identity: workload        # managed identities of the clusters' service accounts, and their data roles
+secrets:                    # gcp: where Secret Manager keeps each secret; it cannot change later
+  replication: user-managed # automatic, or user-managed with
+  locations: [europe-west1, europe-west4]
+network:                    # aws: an Azure subnet spans the region's zones, an AWS one is in one
+  zone: eu-west-1a          # every subnet, or
+  zones:
+    net/core/data: eu-west-1b   # one per subnet, keyed group/network/subnet
+  egress:                   # aws: the public subnet a network's NAT gateways sit in
+    net/core:               # keyed group/network
+      subnet: 10.20.255.0/28    # a free /28 or wider of the network's range
+      zone: eu-west-1a          # network.zone when left out
+  defaultOutbound: nat      # Azure's default outbound access becomes a NAT (billed); without it, no egress
+  nsgs:                     # the network an NSG is written in when nothing in the snapshot uses it
+    net/spare-nsg: net/core     # keyed group/nsg: group/network; without it such an NSG is refused
+  flowLogs:
+    destination: arn:aws:s3:::shop-flow-logs/azure/   # aws: the bucket (and folder) flow logs are delivered to
+    everywhere: true            # log every translated network, not only those the source logged (billed)
+privateAccess:              # gcp: the service perimeter for Pub/Sub, Secret Manager, Artifact Registry (see Private access)
+  accessPolicy: accessPolicies/123456789
+  perimeter: shop_prod
+  restoreIdentity: serviceAccount:truthform@ops.iam.gserviceaccount.com   # or restoreFromInside: true
+sessions: fifo              # how a session queue is carried: fifo, ordering or single-active-consumer
+rabbitmq:                   # for messaging: rabbitmq
+  namespace: messaging
+  replicas: 3
+  tlsSecret: broker-tls     # without it the brokers listen in plain text, reported as less protected
+clusters:                   # per AKS cluster, keyed group/cluster: what Azure cannot say (the other target's keys are refused)
+  rg/shop:
+    roleArn: arn:aws:iam::111111111111:role/eks-shop        # eks: identity is not translated,
+    nodeRoleArn: arn:aws:iam::111111111111:role/eks-nodes   #   so these name roles that exist
+    subnets: [net/core/spare]   # eks: more subnets, when the pools' are all in one zone
+    kmsKey: 0b2c3d4e-1111-2222-3333-444455556666           # a KMS key ID or ARN (eks), a Cloud KMS key name (gke)
+    serviceAccount: gke-nodes   # gke: the nodes' service account (an ID in the project, or an email)
+    podCidr: 10.250.0.0/16      # gke: for Azure CNI without overlay, whose pods had subnet addresses
+    pools:
+      system:
+        instanceType: m7i.xlarge    # eks; VM sizes are not translated
+        machineType: n2-standard-4  # gke
+        zones: [europe-west1-b, europe-west1-c, europe-west1-d]   # gke
+        subnet: net/core/app        # for a pool in the network AKS made itself
+prefixes:                   # a prefix for every queue and topic of one Service Bus namespace,
+  rg/shop-test: test-       # keyed group/namespace: two namespaces that share names collide
+booleans: text              # a boolean application property is sent as the word true or false;
+                            # without it a SQL filter that compares one with TRUE or FALSE is refused
+names:
+  rg/shop/legacy.feed: legacy-feed   # a name SQS does not allow
+  rg/shopfiles/$root: shopfiles-root # a bucket name, keyed group/account/container
+databases:                  # per server, keyed group/server: what Azure cannot say
+  data/shop-pg:
+    instanceClass: db.m6g.large      # aws; gcp: tier: db-custom-2-8192. No default, and no SKU translation
+    subnets: [net/core/db2]          # more subnets of a translated network; RDS needs two zones
+    kmsKey: arn:aws:kms:...          # for a server encrypted with its own key; gcp: a Cloud KMS key name
+  data/shop-sql:
+    instanceClass: db.m6i.xlarge
+    edition: sqlserver-se            # aws: sqlserver-ex, -web, -se or -ee
+    licenseModel: license-included   # aws: or bring-your-own-media
+    version: 16.00.4185.3.v1         # aws: an RDS engine version; gcp: SQLSERVER_2022_STANDARD
+    subnets: [net/core/app, net/core/db2]
+    storageGB: 300                   # only when its databases give no maximum size
+    acceptTlsFloor: true             # only after checking the target: see below
+```
+
+| Service Bus | sqs-sns | pubsub | rabbitmq |
+|---|---|---|---|
+| Namespace | (none: the account and region) | (none: the project) | `RabbitmqCluster` |
+| Queue | SQS queue + dead-letter queue | topic + subscription of its name, + dead-letter topic | quorum `Queue` + dead-letter queue |
+| Topic | SNS topic | topic | headers `Exchange` |
+| Subscription | SQS queue subscribed with raw delivery, a queue policy for that topic only | subscription | quorum `Queue`, a `Binding` per rule |
+| Correlation rule | filter policy on message attributes (`$or` for several) | filter on attributes (`OR` for several) | headers binding |
+| SQL rule that compares text for equality (`=`, `IN`, `AND`, `OR`) | the same filter policy: one key with its values, or `$or`. Five keys and 150 alternatives at most | the same filter | a headers binding per alternative |
+| SQL rule with `EXISTS(property)` or `NOT EXISTS(property)` | `{"exists": true}` or `{"exists": false}` on the key | `attributes:property`, `NOT attributes:property` | refused: a headers binding matches a value |
+| SQL rule that compares a property with `TRUE` or `FALSE` | with `booleans: text` in the map: a match on the word `true` or `false`, which senders then send. Refused without it | the same | the same |
+| Any other SQL rule (any other `NOT`, `LIKE`, `IS NULL`, `<>`, an ordering, a number, a system property, a function) | refused, with what was met | refused | refused |
+| Rule action | refused | refused | refused |
+| Rule set default deny, public access disabled | a policy on every queue and topic denies sending, receiving and publishing to requests that come neither through the namespace's SQS and SNS endpoints nor from the rule set's public ranges (see Private access) | no network setting per topic: the project's service perimeter (`privateAccess` in the map; see Private access), or less protected without one | the brokers' Service answers inside the cluster only |
+| Session queue | FIFO (`sessions: fifo`) | ordered delivery (`sessions: ordering`) | single active consumer |
+| Shared access keys | refused: identity is a change to the app | refused | refused |
+
+A SQL filter matched a property whatever the case of its name's letters
+(`Area`, `area`); no target does. A translated filter names each property
+as the subscription's first rule wrote it, and the report lists those
+names: senders set the attribute so, or the message is not delivered.
+
+| Network | aws | gcp |
+|---|---|---|
+| Virtual network | VPC. A range wider than /16 is written as its /16s and a second range as a second block: the VPC is created with one and given the rest (`AWS::EC2::VPCCidrBlock`), the same addresses. Refused where AWS takes no VPC of them (ranges of two private families, more than 50 blocks) | VPC network, custom mode, regional routing, MTU 1500 |
+| Subnet | subnet in the map's zone | subnetwork in the map's region |
+| NSG on a subnet | a security group per network, holding what the NSG allows with its denies taken out | a firewall rule per NSG rule, same priority, allow or deny, applied by a network tag per NSG |
+| NSG on a network interface, alone | a security group of its own, for what takes the machine's place | the same rules under the NSG's tag, which that machine carries |
+| NSG on a subnet and another on an interface in it | one security group holding only what both allow; never the two groups side by side, which would add up | one tag of allow rules (priority 1000) for what both allow, and a deny of all other egress (1001); never the two tags side by side |
+| Application security group | a security group with no rules (its only egress rule is to 127.0.0.1/32, so it adds nothing), which rules name as source or destination and members carry | a network tag `asg-<name>`: `sourceTags` in ingress rules; an egress allow to a group is not carried over, an egress deny denies the members' subnets whole |
+| Rule that applies to a group's members only | written in a security group only those members carry (`<nsg>-as-<group>`) | written under a tag only those members carry (`<nsg>-as-<group>`) |
+| Deny that names a group, before an allow of address ranges | the subnets the group's members are in are taken out of the allow whole (stricter) | exact: a deny with `sourceTags` |
+| NSG on a subnet whose `privateEndpointNetworkPolicies` lets it filter private endpoints | the interface endpoints' security group lets in HTTPS from what every private endpoint behind them let in | Private Google Access only on the subnetworks all of whose addresses every such endpoint took HTTPS from |
+| NSG nothing uses | written in the network the map names (`network.nsgs`), attached to nothing; refused without it | the same |
+| Flow log of a virtual network or subnet (or interface: its subnet) | a VPC flow log on the VPC or subnet, to the map's S3 bucket, every minute, in a fixed format | VPC Flow Logs on the subnetworks: every flow, every minute, all metadata, to Cloud Logging |
+| Flow log of an NSG (retiring) | a VPC flow log on each VPC the NSG is used in | VPC Flow Logs on those networks' subnetworks |
+| Azure's default rules | written as their effect (the network allowed in, all allowed out) | the network's allow at 65000; GCP's own rules match the rest |
+| NAT gateway on a subnet | internet gateway, a public subnet from the map (`network.egress.<group/network>`), a NAT gateway there with as many Elastic IPs (8 at most), and a route table per subnet with a route to it | Cloud NAT on a Cloud Router listing those subnetworks, sending from as many reserved addresses, with the same idle timeout |
+| Default outbound access (set, or left unset) | no egress, unless the map says `network.defaultOutbound: nat`: then a NAT gateway per network | the same: then a Cloud NAT gateway with Google's addresses |
+| Route to a virtual appliance or gateway | no route for those destinations (they go nowhere; the appliance is a machine, and machines are not translated); it comes before a NAT gateway, as on Azure | an egress deny firewall rule for the subnet's range, priority 50, leaving `private.googleapis.com` and `restricted.googleapis.com` open |
+| Route that drops (`None`) | no route for those destinations: the internet route is then written range by range around them | an egress deny firewall rule for the subnet's range |
+| Route to `Internet`, `VnetLocal` | part of what the subnet reaches as before | the same |
+| Route over the network's own range | less protected: a VPC's local route always delivers | the egress deny rule: dropped |
+| Route to a service tag | not carried over; less protected where it kept traffic from the internet and the subnet has egress | the same |
+| Peering, both networks in the snapshot, connected | one VPC peering connection, a route to the peer in each subnet's route table; `VirtualNetwork` in the NSG rules takes in the peer's ranges | an entry in each network's own `peerings` (a GCP peering is no resource: a restore adds it with `networks.addPeering` once both networks exist), every setting said, subnet routes of any range imported as Azure carried them; the firewall rules take in the peer's ranges |
+| Peer ranges a subnet had no peering route to (a route came first, or `disablePeeringRoute`) | no route to them in that subnet's route table | a GCP peering gives every subnet the peer's routes: an egress deny rule, and an ingress deny rule (`<network>-<subnet>-no-peer`) for the answers Azure could not route |
+| Peering to a network outside the snapshot, of some subnets, out of sync | refused | refused |
+| Peering with access off, one-sided or not connected | nothing written: it carried nothing | the same |
+| Forwarded traffic, gateway transit, remote gateways | reported: a peering on the target gives no transit | the same |
+
+| Storage | aws | gcp |
+|---|---|---|
+| Storage account | no bucket of its own: its settings go into each of its containers' buckets | the same |
+| Blob container | S3 bucket `<account>-<container>` (or the map's name), public access blocked, no ACLs | Cloud Storage bucket in the map's region, uniform access, public access prevention enforced |
+| Public container, static website (`$web`) | refused: public read is an access grant, which is identity | refused |
+| Encryption (Microsoft keys; twice) | SSE-S3; DSSE-KMS with AWS's key | Google's keys (layered by Google) |
+| Customer-managed key, a key's encryption scope | the managed keys, reported as less protected | the same |
+| HTTPS only, minimum TLS 1.2 or 1.3 | a bucket policy that only denies plain HTTP and older TLS | HTTPS only; no TLS minimum per bucket: less protected |
+| Firewall, private endpoints only | the bucket policy also denies object reads, writes, deletes and listings to requests that come neither through the account's S3 interface endpoint nor from the firewall's public ranges. Object names stay listable through AWS's own services (see Private access): less protected unless Azure's trusted services passed the firewall | the bucket's IP filter: the firewall's public ranges, and the VPC networks that had a private endpoint to the account |
+| Versioning, soft delete | versioning; soft delete as versioning with noncurrent versions expired (an early permanent delete is reported as less protected) | versioning, soft delete policy (7 to 90 days) |
+| Time-based retention, version-level immutability | Object Lock (locked: compliance, unlocked: governance) | retention policy, written unlocked; version-level: less protected |
+| Legal hold | less protected: holds are per object | the same |
+| Access tier, redundancy | no class per bucket; one region | storage class (Hot, Cool, Cold, Smart as Autoclass); one region |
+| Data Lake (hierarchical namespace) | flat namespace | hierarchical namespace |
+| CORS | rules, GET PUT HEAD POST DELETE | rules, one header list |
+| Lifecycle, inventory, replication, files, queues, tables | not looked at yet (the nearest equivalent named) | the same |
+| Local users, account keys, SAS | refused, or listed as a change to the app: identity | the same |
+
+Blobs are never copied: each bucket is written empty, and the report says
+so. An account with no blob container writes nothing.
+
+| Databases | rds | cloud-sql |
+|---|---|---|
+| PostgreSQL flexible server | `AWS::RDS::DBInstance` (postgres, its major version; 13 to 17), a DB subnet group, a security group | Cloud SQL instance (`POSTGRES_<n>`) |
+| Azure SQL server | one `AWS::RDS::DBInstance` (the map's edition, license and version) for all its databases | one Cloud SQL instance (the map's `SQLSERVER_<year>_<EDITION>`) |
+| Size (SKU) | the map's `instanceClass`; none: refused | the map's `tier` (its edition follows) |
+| Storage, autogrow | `AllocatedStorage`; autogrow: `MaxAllocatedStorage` 32 TiB, Azure's ceiling | `dataDiskSizeGb`, `storageAutoResize` |
+| SQL database sizes | storage is the sum of their maximum sizes | the same |
+| Backup retention | `BackupRetentionPeriod` | daily backups kept as long; point in time 7 days at most (Enterprise) |
+| Zone-redundant HA | `MultiAZ` | `availabilityType: REGIONAL` |
+| Private (delegated subnet, or the map's subnets) | in the network's subnets, reached from the network on its port, or through the NSG of its subnet | private IP in the VPC network, no public IP; private services access is a requirement |
+| Public, firewall rules | `PubliclyAccessible`, a security group allowing exactly those ranges on its port | public IP, the ranges as authorized networks |
+| Firewall rule 0.0.0.0 (all Azure services) | not carried over (less than the source) | the same |
+| Encrypted connections only | `rds.force_ssl` and the TLS floor in a parameter group | `sslMode: ENCRYPTED_ONLY` |
+| Oldest TLS version | PostgreSQL: `ssl_min_protocol_version`; SQL Server: `rds.tls10`/`rds.tls11` disabled. TLS 1.3 only cannot be set (RDS always takes 1.2): less protected unless accepted | PostgreSQL: the `ssl_min_protocol_version` database flag; SQL Server: Cloud SQL has no such setting: less protected unless accepted |
+| Engine version | PostgreSQL 14 to 18 under standard support; 11 to 13 run under paid RDS Extended Support (named in the report); older refused | the versions Cloud SQL's own definition lists and does not mark deprecated |
+| Server parameters set by a person | the parameter group, where RDS has the parameter | database flags, where Cloud SQL has the flag |
+| Customer-managed key | the map's `kmsKey`; without it, less protected | the same |
+| Admin login | `MasterUsername`, the password kept by RDS in Secrets Manager | a requirement: create the user, with a password from a secret source |
+| Databases | a requirement: create them, then move the data | the same |
+| Entra ID admins, Entra-only sign-in | refused: identity (#32) | refused |
+| Auditing, threat detection, vulnerability assessment | lost, reported as less protected | the same |
+| Elastic pools, replicas, failover groups, backups | refused | refused |
+
+Where the target cannot set the source's oldest TLS version (SQL Server on
+Cloud SQL; TLS 1.3 only on RDS for SQL Server), the loss is reported as less
+protected and the run fails. Once the target's floor has been checked,
+`databases.<group/server>.acceptTlsFloor: true` accepts it: the loss is still
+named, and no longer fails the run. RDS's PostgreSQL versions come from AWS's
+release calendar; Cloud SQL's are read from its definition each run.
+
+No password and no row of data is carried over. A server Azure kept after
+deletion (Azure SQL's soft delete) gets deletion protection on the target,
+which is stricter; other servers get none, since Azure's equivalent is a
+lock, which is not translated.
+
+| AKS cluster | eks | gke |
+|---|---|---|
+| Cluster | `AWS::EKS::Cluster` in the pools' translated subnets (two zones at least) | regional `Cluster` in the pools' subnetwork, its pools inline |
+| Kubernetes version | `Version` 1.N, no patch; never upgraded, EKS validates it at restore | `initialClusterVersion` 1.N, in no release channel |
+| Long-term support | `UpgradePolicy` EXTENDED (STANDARD otherwise) | EXTENDED channel |
+| API server, public | public endpoint, `PublicAccessCidrs` the authorized ranges | public endpoint, authorized networks only (not Google's ranges) |
+| API server, private | private endpoint only | private endpoint only |
+| Pod and service ranges | service range carried; pods take VPC addresses (VPC CNI) | VPC-native: both written as secondary ranges of the subnetwork |
+| Network policy | `azure`: the VPC CNI's policy enforcement (`vpc-cni` add-on); Calico, Cilium: less protected (their own kinds are not enforced) | `azure`: Dataplane V2; `calico`: Calico; `cilium`: Dataplane V2, less protected |
+| Secrets with a customer key | `EncryptionConfig` with the map's key, else less protected | `databaseEncryption` with the map's key, else less protected |
+| Node pool | `AWS::EKS::Nodegroup` per pool: count and autoscaling bounds, disk, labels, taints, spot, Windows AMI | `nodePools[]`: totals across the map's zones, disk, labels, taints, spot, Windows image, max pods, no public address |
+| The cluster's and the nodes' own identity, Entra ID sign-in | not translated: roles from the map, access entries on its own | not translated: service account from the map, IAM on its own |
+| Workload identity | with `identity: workload`: the EKS Pod Identity agent add-on, and a role per managed identity (see Workload identity) | the project's workload identity pool, the GKE metadata server on every pool, and a service account per managed identity |
+| Add-ons, mesh, monitoring | not translated; Azure Policy and Istio are less protected until the target's own is installed | the same |
+
+An AKS pool's VM size has no exact equivalent, so each pool's instance or
+machine type is named in the map; a refusal prints the Azure size. A GKE
+pool without a service account would run as the Compute Engine default one,
+which holds the project's Editor role unless an organization policy
+prevents it, so the map names one. Who gets admin on an EKS cluster is not
+whoever restores it: access is by access entries alone. Maintenance
+windows, managed namespaces and trusted access bindings are refused.
+
+Azure evaluates an NSG's rules by priority, the first match deciding. A
+security group only allows, so on AWS each allow is written with every deny
+before it taken out, worked out as address ranges, ports and protocols.
+What cannot be written exactly is dropped and named: a rule that names a
+service tag, a source port, or part of the subnet's addresses. A
+translation may let through less than the source, never more.
+
+An NSG can sit on a subnet, on a network interface, or one on each. Azure
+then asks both, each a list of its own, and lets a packet through only when
+both do: an allow at priority 100 on the interface does not answer a deny
+at 200 on the subnet. AWS adds up the security groups on an interface, and
+GCP puts every rule that applies to an instance in one list, so neither can
+hold the two NSGs side by side. The translation works out what both allow
+and writes that once: one security group, or one network tag whose rules
+only allow, closed by a deny. An NSG alone on an interface, or on a subnet,
+is written by itself as before.
+
+An application security group is a set of interfaces. On AWS it becomes a
+security group with no rules that its members carry beside their own, and
+that other groups' rules name as their source or destination; on GCP a
+network tag. Who is a member is read from the network interfaces, private
+endpoints and scale sets in the snapshot. Where a rule would need "the
+members of a group, except some addresses" or "these addresses, except the
+members of a group", no target can say it: the allow is narrowed (the
+subnets the group's members are in are taken out whole) or left out, and
+the report says which. An NSG whose interfaces fall into more than 16
+different combinations of groups and other NSGs is refused.
+
+Machines are not translated, so nothing attaches what is written for an
+interface: the report's `attachments` list says, for every subnet,
+interface, scale set and private endpoint an NSG filtered, which security
+groups or tags it must carry on the target (all of them, and no other one
+translated from an NSG), and whether the translation attached them
+(`written`: the interface endpoints that stand for private endpoints) or a
+person must (`requirement`). A GKE node pool is given its subnet's tag by
+the translation. An EKS managed node group takes a custom
+security group only through a launch template, which then replaces the
+cluster's own security group instead of adding to it; the translation
+writes none, and names the security group the node group's subnet stands
+for.
+
+### Evidence for an audit
+
+Each network security group's entry in `translation.yaml` has an `evidence`
+list: one row per rule (Azure's six default rules included) for every place
+the NSG is written (`where`: a security group, or a network tag).
+
+```yaml
+- source: Microsoft.Network/networkSecurityGroups sec/app-nsg
+  state: mapped with losses
+  evidence:
+  - where: AWS::EC2::SecurityGroup app-nsg
+    rule: deny-ssh
+    priority: 200
+    direction: inbound
+    access: deny
+    status: exact
+    enforcedBy:
+    - 'AWS::EC2::SecurityGroup app-nsg: security groups only allow, and no rule of it allows what this denies'
+```
+
+`status` is one of:
+
+| Status | Meaning |
+|---|---|
+| `exact` | the target lets through, and keeps out, what the rule did. `enforcedBy` names the target rules: the security group rules that carry an allow, the firewall rule of the same name, or, for a deny where the target only allows, the group none of whose rules allows what it denies |
+| `stricter` | the target lets through less than the rule did; `why` says what and for which reason |
+| `not carried` | an allow that is not written: nothing it allowed is let through. Never a deny: a deny that cannot be written exactly is widened (`stricter`), and one that cannot be read refuses the NSG |
+| `does not apply` | the rule names addresses, or an application security group, that are not in this place: Azure did not apply it there either |
+
+The rows are in a fixed order (place, direction, priority), so two runs
+can be compared line by line. The claim behind them, that the target never
+lets through what Azure denied, is tested by putting the same packets to
+Azure's rules and to each target's rules as that cloud evaluates them.
+
+### Flow logs
+
+Azure's NSG flow logs retire on September 30, 2027, and new ones can no
+longer be created; virtual network flow logs replace them. Both are a
+`Microsoft.Network/networkWatchers/flowLogs` object, told apart by what
+`targetResourceId` names. A virtual network flow log is the fully mapped
+case; an NSG flow log is mapped to the networks its NSG is used in, and the
+report says it is the retiring kind. The network watcher itself is Azure's
+own and is not translated.
+
+| Flow log setting | aws | gcp |
+|---|---|---|
+| Target: a virtual network | exact: `AWS::EC2::FlowLog` on the VPC (`ResourceType: VPC`) | exact: `logConfig.enable` on every subnetwork of the network |
+| Target: a subnet | exact: a flow log on the subnet; none when its VPC is logged already | exact: `logConfig` on that subnetwork |
+| Target: a network interface | more is logged: its subnet (the machine is not translated) | the same |
+| Target: an NSG (retiring) | more is logged: each VPC the NSG is used in | more is logged: those networks' subnetworks |
+| `enabled: false` | exact: nothing is written | exact |
+| `storageId` (a storage account; Azure makes the container `insights-logs-flowlogflowevent`) | the map's choice: `network.flowLogs.destination`, an S3 bucket ARN; refused without it. The bucket's policy must let `delivery.logs.amazonaws.com` write (a requirement) | lost: records go to Cloud Logging (`compute.googleapis.com/vpc_flows`); a Logging sink carries them on (a requirement) |
+| `retentionPolicy` | lost: the bucket's lifecycle rules expire them (a requirement names the days) | lost: the Cloud Logging bucket's retention (a requirement names the days) |
+| Collected every minute | exact: `MaxAggregationInterval: 60` | exact: `aggregationInterval: INTERVAL_1_MIN`, `flowSampling: 1` |
+| `format.version` | lost: the record is AWS's, in the format below | lost: the record is GCP's |
+| `enabledFilteringCriteria`, `recordTypes` | lost: every flow is recorded (`TrafficType: ALL`), which is more | lost: every flow is recorded; `filterExpr` is not written |
+| `flowAnalyticsConfiguration` (traffic analytics) | lost: analysed with AWS's own tools | lost: analysed with GCP's own tools |
+| `identity` | lost: delivery is by the bucket's policy | lost: Google writes to Cloud Logging itself |
+| No flow log on the source | none, unless `network.flowLogs.everywhere: true` | the same |
+
+On AWS every flow log is written with one format, so that a parser can rely
+on the order of its fields (space-separated, one line per record):
+
+```
+${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status} ${vpc-id} ${subnet-id} ${instance-id} ${tcp-flags} ${type} ${pkt-srcaddr} ${pkt-dstaddr} ${region} ${az-id} ${flow-direction} ${traffic-path} ${reject-reason} ${encryption-status}
+```
+
+The first fourteen are AWS's default record in its order. What a record
+holds on each cloud, for a parser that normalises all three:
+
+| Azure virtual network flow log (`flowTuples`, comma-separated, in this order) | AWS (field of the format above) | GCP (`jsonPayload` of a `vpc_flows` entry) |
+|---|---|---|
+| 1. Time stamp, Unix epoch in milliseconds | `start` and `end`, in seconds: the window the record adds up | `start_time`, `end_time` (RFC 3339) |
+| 2. Source IP | `srcaddr`; `pkt-srcaddr` is the packet's own where a NAT or a pod stands between | `connection.src_ip` |
+| 3. Destination IP | `dstaddr`; `pkt-dstaddr` | `connection.dest_ip` |
+| 4. Source port | `srcport` | `connection.src_port` |
+| 5. Destination port | `dstport` | `connection.dest_port` |
+| 6. Protocol, IANA number | `protocol`, IANA number | `connection.protocol`, IANA number |
+| 7. Direction, `I` or `O` | `flow-direction`, `ingress` or `egress` | `reporter`: `DEST` for inbound, `SRC` for outbound (a flow between two logged machines is reported by both) |
+| 8. Flow state: `B` begin, `C` continuing, `E` end, `D` denied | no state. `action` is `ACCEPT` or `REJECT` (Azure's `D` is `REJECT`); `tcp-flags` is the OR of the TCP flags seen in the window (SYN 2, SYN-ACK 18, FIN 1, RST 4), from which begin and end are read for TCP only | no state and no verdict. A packet an ingress rule denied is not recorded at all; one an egress rule denied can be. Denied flows are seen only with firewall rule logging |
+| 9. Encryption: `X`, or `NX` with a reason | `encryption-status` | none: Google encrypts traffic between VMs itself and records nothing of it |
+| 10. Packets, source to destination | `packets`: one direction per record; the reply is a record of its own with the addresses swapped | `packets_sent`, source to destination only, an estimate when sampled |
+| 11. Bytes, source to destination | `bytes` | `bytes_sent`: payload bytes only |
+| 12. Packets, destination to source | the reply's own record | the reply's own entry |
+| 13. Bytes, destination to source | the reply's own record | the reply's own entry |
+| Outside the tuple: the rule that decided (`flowGroups[].rule`), `aclID` | none: `reject-reason` says only why AWS itself rejected | none; firewall rule logging names the rule |
+| Outside the tuple: `macAddress`, `targetResourceID` | `interface-id`, `instance-id`, `subnet-id`, `vpc-id` | `src_instance`, `dest_instance`, `src_vpc`, `dest_vpc` (all metadata is on) |
+| (none) | `log-status`: `OK`, `NODATA`, `SKIPDATA` | `rtt_msec` for TCP |
+
+An NSG flow log's version 2 tuple differs from the above: seconds, not
+milliseconds; `T` or `U` for the protocol; a verdict field (`A` or `D`)
+before the state, which is only `B`, `C` or `E`; no encryption field.
+
+Flow logs are billed by volume on both targets, so none is written where
+the source had none unless the map asks (`network.flowLogs.everywhere`).
+
+| Key Vault | aws | gcp |
+|---|---|---|
+| Vault | (none: the account and region) | (none: the project) |
+| Secret | Secrets Manager secret `<vault>/<secret>`, no value; content type in its description, tags as tags | Secret Manager secret `<vault>_<secret>`, no version, replicated as `secrets.replication` says; content type as an annotation, tags that fit as labels |
+| Firewall default deny, public access disabled | a resource policy on each secret denies writing its value, and reading it, to requests that come neither through the vault's Secrets Manager endpoint nor from the firewall's public ranges. A value stays readable through AWS's own services (see Private access): less protected unless Azure's trusted services passed the firewall | no network setting per secret: the project's service perimeter (`privateAccess`), or less protected without one |
+| Soft delete | the recovery window each delete chooses | less protected: a delete is immediate |
+| Purge protection | less protected: a delete may skip the window | less protected |
+| Disabled secret, `exp`, `nbf` | written with no value; the dates are named (Key Vault only records them) | the same; `expireTime` would delete the secret, so it is not written |
+| Access policies | identity, not translated: named, and listed as grants to make | the same |
+| Azure RBAC | the secret roles of a workload's managed identity are translated (see Workload identity); every other assignment is refused | the same |
+| `accessPolicies` child | refused: identity | refused |
+| Key | refused: its material never leaves the vault (make one in AWS KMS) | refused (Cloud KMS) |
+
+A capture never holds a secret's value and a translation writes none. On
+AWS the restore takes each from `--values`
+(`AWS::SecretsManager::Secret/<vault>/<secret>: {SecretString: ...}`) and
+lists those created without one; on GCP add each value as a version after
+the restore. A disabled secret is restored without one.
+
+| Container registry | aws | gcp |
+|---|---|---|
+| Registry | a repository creation template for prefix `<registry>`: ECR makes each repository on its first push, AES-256, mutable tags | an Artifact Registry repository of Docker images in the map's region |
+| Images | not copied: copy them; image references are listed with what each becomes (Kubernetes workloads and GitOps), not rewritten | the same |
+| Firewall default deny, public access disabled | the template's repository policy denies pulls and pushes to requests that come neither through the registry's ECR endpoints nor from the firewall's public ranges | no network setting per repository: the project's service perimeter (`privateAccess`), or less protected without one |
+| Customer-managed key, quarantine | less protected | less protected |
+| Anonymous pull | not written: the repositories are private | the same |
+| Admin user | not written: named, with who signed in with it | the same |
+| Tokens, scope maps, credential sets | refused: identity | refused |
+| Geo-replication, retention, content trust, export policy | named: kept in the map's region, untagged images kept, signatures and export settings not carried | the same |
+| Tasks, connected registries, transfer pipelines | refused | refused |
+| Webhooks, cache rules | not translated yet | not translated yet |
+
+| DNS | route53 | cloud-dns |
+|---|---|---|
+| Public zone | public hosted zone, tags as hosted zone tags | public managed zone (global), tags that are labels as labels |
+| Private zone (or a legacy `zoneType: Private` zone) | private hosted zone associated with the VPC each link's network became | private managed zone visible to the VPC network each link's network became |
+| A, AAAA, CAA, CNAME, MX, NS, PTR, SRV, TXT, DS, TLSA, NAPTR record set | record set of its name and type, TTL and records as they are | resource record set of its name and type |
+| SOA, the zone's own NS | not written: the target makes them | the same |
+| Alias to an Azure resource (`targetResource`) | refused: it must point at that resource's translation | refused |
+| Link to a network not in the snapshot, or refused | refused; a zone left with no network is refused | the same |
+| Auto-registration of a network's machines | named: Route 53 registers nothing | named: Cloud DNS registers nothing |
+| DNSSEC (`dnssecConfigs`) | less protected: Route 53 signs only with a KMS key, and keys are not translated | signed (`dnssecConfig.state: on`) with Cloud DNS's own keys |
+
+A TXT string longer than 255 characters is written as consecutive strings.
+Host names in records are written with their final dot. On AWS a hosted
+zone and a record set are named as a capture of the account names them (by
+their DNS name, then `-2`, `-3` for a name's other record sets), so a second
+restore finds them. A translated zone answers nobody on the internet until
+the registrar's delegation names the target's name servers: the report
+lists that, and the DS record to take out or replace for a signed zone.
+
+Azure's own zones for its services' private endpoints (`privatelink.*`, and
+the zones of flexible servers placed in a network) are not copied: they name
+Azure's services at Azure's addresses. They need no DNS destination; the
+target answers its own services' names privately instead, as below.
+
+| Private access | aws | gcp |
+|---|---|---|
+| Private endpoint to Service Bus (sqs-sns), Key Vault, a registry, blob or Data Lake storage | an interface VPC endpoint per service and VPC (`sqs`, `sns`, `secretsmanager`, `ecr.api`, `ecr.dkr`, `s3`) in the private endpoints' subnets, private DNS on, HTTPS from the network (or from what the subnet's NSG let in, where it applied to them) | Private Google Access on the network's subnetworks (only those an NSG that applied to the endpoints let in) |
+| Private endpoint to PostgreSQL or Azure SQL | nothing: RDS answers in the VPC | nothing: Cloud SQL answers on its private IP |
+| Private endpoint to messaging in the cluster (rabbitmq) | nothing: the cluster reaches it | the same |
+| Private endpoint to anything else (Azure Files, queues, tables, App Service) | refused | refused |
+| `privatelink.*` zones, their records and links | not copied | not copied |
+
+An interface endpoint takes one subnet per availability zone; private
+endpoints in one subnet make endpoints in one zone, and the report says so.
+On S3 the endpoint answers every lookup in the VPC
+(`PrivateDnsOnlyForInboundResolverEndpoint: AllResolvers`), as a private
+endpoint did, without a gateway endpoint.
+
+### Workload identity
+
+With `identity: workload`, an app that reached a queue, a blob, a secret or
+an image on Azure through its pod's managed identity reaches the translated
+one, and nothing else. It is the narrowest part of the translation: a grant
+is written only when it is no more than the source's, and in doubt the role
+assignment is refused and says why.
+
+| Identity | aws | gcp |
+|---|---|---|
+| User-assigned identity with a federated credential for a translated cluster's service account | `AWS::IAM::Role`, trusted by EKS Pod Identity for those service accounts only | IAM service account |
+| Federated credential (issuer a translated AKS cluster, subject `system:serviceaccount:<namespace>:<name>`) | `AWS::EKS::PodIdentityAssociation` (cluster, namespace, service account, role); the role's trust policy names the same three | `roles/iam.workloadIdentityUser` on the service account for `<project>.svc.id.goog[<namespace>/<name>]` |
+| Any other credential (a pipeline's issuer, a cluster that is not translated, a subject that is not one service account, a matching expression) | refused | refused |
+| An identity no translated cluster's service account uses (a VM's, an app service's) | refused, with its role assignments | refused |
+| Two identities federated to one service account | both credentials refused: a service account takes one role | refused: one annotation |
+| The kubelet identity's AcrPull | not written: the nodes run as the map's role; the report asks that it may pull | not written: the report gives the `gcloud` command for the node service account |
+| Role assignment of such an identity, one of the roles below | statements in the role's inline policy, each on the ARNs of the objects by name | a binding on each object's own allow policy |
+| Scope wider than one object (a namespace, an account, a vault, a resource group, the subscription) | narrowed to the translated objects in it, each by name; named as a loss | the same |
+| Control-plane roles (Owner, Contributor, Reader, User Access Administrator), custom roles, any role not below | refused | refused |
+| An assignment with a condition, or to a user, a group or a service principal | refused: people and pipelines are the customer's directory | refused |
+| A Key Vault role on a vault with access policies; AcrPull or AcrPush on a registry with repository permissions | refused: Azure gave nothing there either | refused |
+| Messaging to RabbitMQ | refused: a user's password is a Secret any pod of its namespace can mount, and sending to a queue needs write on the default exchange, which is every queue | refused |
+
+The roles are a fixed table, by role definition ID, from each role's
+published actions and data actions:
+
+| Azure role | aws | gcp |
+|---|---|---|
+| Azure Service Bus Data Sender | `sqs:SendMessage`, `GetQueueAttributes`, `GetQueueUrl` on each queue; `sns:Publish` on each topic | `roles/pubsub.publisher` on each topic |
+| Azure Service Bus Data Receiver | `sqs:ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`, `GetQueueAttributes`, `GetQueueUrl` on each queue and subscription queue and its dead-letter queue | `roles/pubsub.subscriber` on each subscription and its dead-letter subscription |
+| Azure Service Bus Data Owner | both of the above; managing the namespace is not granted | the same |
+| Storage Blob Data Reader | `s3:ListBucket`, `ListBucketVersions` on the bucket; `s3:GetObject`, `GetObjectVersion` on its objects | `roles/storage.objectViewer` on the bucket |
+| Storage Blob Data Contributor | the Reader's, and `s3:PutObject`, `AbortMultipartUpload`, `ListMultipartUploadParts`, `DeleteObject` on its objects | `roles/storage.objectUser` on a bucket without versioning; on one that keeps versions `roles/storage.objectViewer` and `roles/storage.objectCreator` (no overwrite, no delete: `objectUser` would also delete versions for good) |
+| Storage Blob Data Owner | the Contributor's, and `s3:DeleteObjectVersion` | `roles/storage.objectUser` |
+| Key Vault Secrets User | `secretsmanager:GetSecretValue`, `DescribeSecret` on each secret | `roles/secretmanager.secretAccessor` on each secret |
+| Key Vault Secrets Officer | the User's, and `secretsmanager:PutSecretValue` | `secretAccessor`, `roles/secretmanager.secretVersionAdder`, `roles/secretmanager.viewer` |
+| Key Vault Reader | `secretsmanager:DescribeSecret` | `roles/secretmanager.viewer` |
+| AcrPull | `ecr:GetAuthorizationToken` (on `*`: it takes no resource), and `ecr:BatchGetImage`, `GetDownloadUrlForLayer`, `BatchCheckLayerAvailability` on `repository/<registry>/*` | `roles/artifactregistry.reader` on the repository |
+| AcrPush | AcrPull's, and `ecr:InitiateLayerUpload`, `UploadLayerPart`, `CompleteLayerUpload`, `PutImage`; not `ecr:CreateRepository` | `roles/artifactregistry.reader` only: `writer` would also delete what is attached to an image |
+
+What a role allowed that has no line here is not granted and is named: a
+receiver dead-lettering a message itself, creating and deleting containers
+and secrets, a user delegation SAS, and on GCP reading a secret's properties
+with Key Vault Secrets User (the role that does also reads who may read it).
+
+On AWS no statement names a wildcard but three: `*` for
+`ecr:GetAuthorizationToken`, a translated bucket's objects (`<bucket>/*`),
+and the repositories a translated registry's template makes
+(`repository/<registry>/*`), which do not exist yet. A service that answers
+only on its private path still denies these roles from anywhere else, as it
+did on Azure.
+
+EKS Pod Identity is used, not IAM roles for service accounts: a role for the
+latter names the cluster's OIDC issuer, which EKS gives only when it makes
+the cluster. The service accounts need no annotation; the node role must
+allow `eks-auth:AssumeRoleForPodIdentity`; a pod on a Windows node gets no
+role. On GKE each service account carries
+`iam.gke.io/gcp-service-account: <account>@<project>.iam.gserviceaccount.com`,
+which the report lists one by one. A GKE cluster's workload identity pool is
+its project's: a service account of the same namespace and name in another
+cluster of the project is the same principal. Where the translation writes
+two clusters and a credential named one, that is reported as less protected.
+
+On GCP a grant is an object of kind `iam.googleapis.com/Binding`. Restoring
+it reads the object's allow policy, adds the member to its role, and writes
+the policy back with the etag it was read with; nothing already in the
+policy is removed, and a policy that already holds the member is left
+alone. A capture does not read allow policies: a capture of the rebuilt
+project holds none of these objects, and a diff against the translation
+says so.
+
+A service that answered only on its private endpoints (public network access
+disabled), or only its firewall's ranges, answers only there on the target:
+
+| Private only | aws | gcp |
+|---|---|---|
+| Service Bus (sqs-sns, pubsub) | `AWS::SQS::QueueInlinePolicy` on every queue and dead-letter queue (a subscription's holds SNS's delivery too), `AWS::SNS::TopicInlinePolicy` on every topic | the project's service perimeter, where the map names an access policy (`privateAccess`); less protected without |
+| Storage | statements in the bucket policy | the bucket's IP filter (`vpcNetworkSources`: each network, with its own address ranges) |
+| Key Vault | `AWS::SecretsManager::ResourcePolicy` on every secret | the project's service perimeter, where the map names an access policy (`privateAccess`); less protected without |
+| Registry | `RepositoryPolicy` in the repository creation template | the project's service perimeter, where the map names an access policy (`privateAccess`); less protected without |
+| A private service with no private endpoint in the snapshot and no public range | less protected: there is no private path to lock it to | the same (a bucket admits no network) |
+| PostgreSQL, Azure SQL, AKS | already private: RDS not publicly accessible, the EKS endpoint | Cloud SQL's private IP, GKE's private endpoint |
+
+On AWS the policy only denies, so it grants nobody anything and is not
+identity. It denies the service's data actions (sending and receiving
+messages, publishing, object reads and writes, a secret's value, image pulls
+and pushes) to a request that comes neither through the interface endpoints
+written for the service's private endpoints (`aws:SourceVpce`) nor from an
+allowed public range (`aws:SourceIp`). Three things pass, on purpose:
+
+- **Management actions.** Reading and changing a queue's, bucket's or
+  secret's settings works from anywhere IAM allows, as Azure's management
+  plane did with public network access disabled. Denying them would lock out
+  the restore, a later capture and the console.
+- **AWS's services acting as themselves** (`aws:PrincipalIsAWSService`):
+  SNS delivering to a subscription's queue does not come through an endpoint.
+  Such a service still needs an allow of its own; the only one written is
+  that delivery.
+- **Two actions, through AWS's services acting with the caller's
+  credentials** (`aws:ViaAWSService`): `s3:ListBucket` and
+  `secretsmanager:GetSecretValue`. The bucket's and the secret's own Cloud
+  Control handlers call them, never through an endpoint, so a restore could
+  not read what it wrote without that. It leaves a bucket's object names
+  (through Athena, say) and a secret's value (through a CloudFormation
+  reference) reachable from outside the network by a principal IAM allows.
+  Where Azure's trusted services passed the source's firewall
+  (`bypass: AzureServices`) that is what the source did; otherwise it is
+  reported as less protected.
+
+A repository gets the template's policy when its first push makes it; one
+made any other way needs the same policy by hand.
+
+On GCP, Pub/Sub, Secret Manager and Artifact Registry have no setting for
+where a request comes from. A VPC Service Controls perimeter closes them. It
+belongs to an access policy, which is the organization's to create (scoped
+to the project or not), so the map names an existing one:
+
+```yaml
+privateAccess:              # gcp
+  accessPolicy: accessPolicies/123456789   # gcloud access-context-manager policies list
+  perimeter: shop_prod      # its ID in the policy: your choice, one per target project
+  restoreIdentity: serviceAccount:truthform@ops.iam.gserviceaccount.com   # or user:<email>
+  # restoreFromInside: true # instead: restores and captures run from one of the project's networks
+```
+
+One perimeter is then written for the target project. It restricts exactly
+the services that had a private source, and a restore creates it in the
+policy (`accesscontextmanager.servicePerimeters.create`, `get` and `update`
+on the policy). What it does that the Azure source did not is reported:
+
+- It restricts a service for the whole project. A namespace, vault or
+  registry that answered the internet is closed with the private one of its
+  service, and says so. A service with no private source is left out.
+- It refuses management calls from outside too, the restore's own. So the
+  map must say how restores and captures pass, or it is refused:
+  `restoreIdentity` writes an ingress rule for that principal from
+  anywhere, `restoreFromInside` writes none. The rule names Pub/Sub's
+  management methods alone. Secret Manager takes no method restriction and
+  an Artifact Registry create must be polled, so there the principal is
+  admitted for the whole API, which stays reported as less protected;
+  `restoreFromInside` closes that.
+- Every network of the project is inside it. A translated network with no
+  private endpoint to the service, and no peering with one that had,
+  reaches it: reported as less protected.
+- A public range the source's firewall allowed is not admitted (that takes
+  an access level): narrower, and named.
+
+A project can be in one perimeter only; where the target already is in
+one, the restore is refused, and the services and rule go into that one by
+hand. A perimeter takes up to 30 minutes to take effect. A capture of the
+project does not hold it (it is the policy's), so a `diff` against the
+translation lists it as missing; a restore finds it by its name. Without
+`privateAccess` nothing is written, and these services stay reported as
+less protected.
+
+Cloud Storage is not put in the perimeter: a bucket's IP filter names the
+networks per bucket, where the perimeter would close every bucket of the
+project. The filter also covers the bucket's own settings: whoever restores
+and captures from outside the admitted networks needs
+`storage.buckets.exemptFromIpFilter`.
+
+Every source object ends in one state, and `<out>/translation.yaml` lists
+each with its reason and target objects:
+
+- **mapped**, or **mapped with losses**: each setting with no equivalent is
+  named with why (SQS keeps a message 14 days at most; Pub/Sub has no
+  duplicate detection);
+- **refused**: looked at, and there is no equivalent, or carrying it over
+  would change what it does in a way nobody chose. A SQL filter that says
+  more than equality on text is refused with its subscription, because
+  without it the subscription would receive every message;
+- **not looked at**: no descriptor for the type yet.
+
+Some services are refused whole, each with its reason, because moving them
+is a decision or a rewrite and not a translation: monitoring, logging and
+alerting (Azure Monitor and its workspaces, Log Analytics), Azure Policy
+and locks, Azure Backup and Site Recovery vaults, App Service and Logic
+Apps, Azure AI services (Azure OpenAI among them), and Web PubSub and
+SignalR. The reason names the target's nearest service.
+
+A loss that makes the target less protected than the source is marked
+`widens`. Examples: a namespace that answered only private endpoints
+becomes Pub/Sub topics on Google's public endpoint, guarded by IAM alone,
+where the map names no access policy for a perimeter; a customer-managed
+key becomes the platform's.
+
+A setting no rule reads is marked `unread`. Each reader is checked in
+the tests against Azure's published definition of its type, so a setting
+Azure adds fails there first.
+
+Anything refused, not looked at, widened or unread exits 3. The report also
+lists what to do before a restore: the operators to install, the grants
+Pub/Sub's service agent needs for dead-lettering, and the move from the
+Service Bus SDK.
+
+`--out` must be empty or an earlier translation's; a platform the earlier
+one wrote and this one does not is removed.
+
+Known limits:
+
+- A restore of the translated objects works as any restore does, and a
+  second one finds what the first made. A diff of the rebuilt target
+  against them still shows differences: a capture holds every default the
+  target fills in that the translation does not set.
+- Each target object is built from, or checked against, the target's own
+  published definition (the CloudFormation registry, the Pub/Sub, Compute,
+  Cloud Storage, Secret Manager, Artifact Registry, Cloud DNS, Cloud SQL,
+  GKE and IAM Discovery documents): downloaded and cached like `aws-coverage`, or read
+  from `--schemas` and `--discovery`.
+- Public addresses of anything but a NAT gateway, gateways, load balancers
+  and firewalls are not translated yet. Machines are not either: what an
+  NSG on a network interface comes to is written, and the report says what
+  must carry it.
+- Who is in an application security group is read from the network
+  interfaces, private endpoints and scale sets in the snapshot. A member
+  the snapshot does not hold (in a resource group left out of the capture)
+  is not known, and a deny of the group does not reach its subnet on AWS.
+- On GCP an Azure outbound rule that named a private endpoint's address is
+  not carried to Google's API addresses, which Private Google Access
+  reaches instead.
+- Routing is translated as what each subnet's traffic can do, not object
+  for object: Azure's routes are worked out per subnet (longest prefix, a
+  route table's before Azure's own), and the target subnet is given the
+  same reach or less. Azure's own drop of unused private ranges is not
+  written: such an address is on no internet either.
+- Outbound addresses change: whoever allows the old ones by address must be
+  given the new ones (listed in the report's requirements).
+
+### Kubernetes workloads and GitOps
+
+`translate` does not rewrite a Kubernetes manifest. A cluster's workloads
+are applied by Flux from Git; a Kubernetes capture leaves out what Flux
+applies and keeps where Flux starts (see [Capture](#capture)), so
+restoring that snapshot on the target cluster brings Flux back and Flux
+rebuilds the rest. But the manifests in Git still name Azure things, and
+that repository is yours to edit. Given the cluster's snapshot, a checkout
+of the repository, or both, `translate` lists every place that does, with
+what the translation made of the thing named:
+
+```sh
+truthform translate --from snap/azure --map map.yaml --out moved/ \
+  --kube snap/kubernetes --gitops ~/src/fleet
+```
+
+```
+Kubernetes workloads (read: a Kubernetes snapshot: 9 object(s), and 11 more the capture left to 6 GitOps source(s); a checkout of the repository: 25 YAML document(s) in 15 file(s), and 2 other text file(s)): 26 reference(s) to change, 17 to check, 14 with no translation; 3 source(s) not available to check.
+
+Names an Azure thing with no translation (applied as it is, it would point at Azure):
+  apps/base/shop/deployment.yaml:41 Deployment shop/web, applied by Flux Kustomization flux-system/apps
+    spec.template.spec.containers[1].image names partner.azurecr.io/tools/proxy@sha256:0123...; it has no translation: registry partner is not in the Azure snapshot
+
+To change in Git, or in the object where nothing in Git applies it:
+  apps/base/shop/deployment.yaml:20 Deployment shop/web, applied by Flux Kustomization flux-system/apps
+    spec.template.spec.containers[0].image names shopacr.azurecr.io/shop/web:1.4.2; on the target it is {{truthform|account|self|id}}.dkr.ecr.eu-west-1.amazonaws.com/shopacr/shop/web:1.4.2
+    (the account is not known offline: {{truthform|account|self|id}} stands for it, as in the AWS snapshot)
+    variable: ${registry_shopacr}
+  apps/base/shop/scaling.yaml:10 ScaledObject shop/web-orders, applied by Flux Kustomization flux-system/apps
+    spec.triggers[0] names KEDA azure-servicebus trigger on queue orders (namespace shop); on the target it is type: aws-sqs-queue; metadata: queueURL: https://sqs.eu-west-1.amazonaws.com/{{truthform|account|self|id}}/orders, awsRegion: "eu-west-1", queueLength: "20", scaleOnInFlight: "false", activationQueueLength: "2"
+    variable: ${servicebus_shop_queue_orders}
+```
+
+Each reference ends in one of three states:
+
+| State | Meaning | Exit |
+|---|---|---|
+| change | the thing has a counterpart on the target, and this is its name | 0 |
+| check | the target has a form of its own that a person chooses: the role a service account takes, a storage class, an ingress class | 0 |
+| no translation | the Azure thing was refused, not looked at, is not in the Azure snapshot, or is a service nothing here translates | 3 |
+
+A reference with no translation fails the run like a refusal: applied as it
+is, the workload would point at Azure. One that only needs editing does
+not, and neither does a source that could not be read; that is counted
+and named.
+
+What is recognised, and what it is given:
+
+| In a manifest | On AWS | On GCP |
+|---|---|---|
+| An image, chart or any value under `<registry>.azurecr.io` | `<account>.dkr.ecr.<region>.amazonaws.com/<prefix>/…`, the prefix the registry's repository creation template has | `<region>-docker.pkg.dev/<project>/<repository>/…` |
+| A KEDA `azure-servicebus` trigger (a queue, or a topic with its subscription) | `aws-sqs-queue`: `queueURL`, `awsRegion`, `queueLength`, with `scaleOnInFlight: "false"` to count as Service Bus did | `gcp-pubsub`: `subscriptionName`, `mode: SubscriptionSize`, `value` |
+| The same, with messaging in the cluster | `rabbitmq`: `queueName`, `mode: QueueLength`, `value`, on either cloud | the same |
+| `<namespace>.servicebus.windows.net`, a connection string's `EntityPath` | the queue's URL or the topic's ARN; no host of its own | the subscription's or topic's full name (RabbitMQ: the brokers' Service) |
+| A `SecretProviderClass` of provider `azure`, each of its objects | provider `aws`: `objectName`, `objectType: secretsmanager`, and an `objectAlias` that keeps the mounted file's name | provider `gcp`: `resourceName`, and a `path` that keeps it |
+| An External Secrets store of a Key Vault (`azurekv`), each `remoteRef.key` read from it; a KEDA `azureKeyVault`; `<vault>.vault.azure.net/secrets/<name>` | the secret's name in Secrets Manager (`<vault>/<secret>`) | its ID in Secret Manager (`<vault>_<secret>`) |
+| `<account>.blob.core.windows.net/<container>` (or `.dfs.`) | the container's bucket | the same |
+| `<server>.postgres.database.azure.com`, `<server>.database.windows.net` | the endpoint RDS gives the instance: named, and not known until it is created | the address Cloud SQL gives it, or its connection name |
+| `azure.workload.identity/client-id` on a service account, `azure.workload.identity/use` on a pod, KEDA's `azure-workload` provider | to check: `eks.amazonaws.com/role-arn`, or an EKS Pod Identity association and no annotation | to check: `iam.gke.io/gcp-service-account`, or roles granted to the Kubernetes service account itself |
+| `service.beta.kubernetes.io/azure-load-balancer-internal: "true"` | `service.beta.kubernetes.io/aws-load-balancer-scheme: internal` | `networking.gke.io/load-balancer-type: "Internal"` |
+| AKS's storage classes (`managed-csi`, `azurefile-csi`, …), a class of Azure's provisioners | to check: a class of the EBS or EFS CSI driver | to check: a class of the Persistent Disk or Filestore CSI driver |
+| Application Gateway's ingress class and `appgw.ingress.kubernetes.io/` annotations, the application routing class, other `azure-` load balancer annotations | to check: the target controller's own | the same |
+| Any other host under Azure's domains (`*.windows.net`, `*.azure.com`, …), a KEDA `azure-…` trigger of another type, an object of an `*.azure.com` API group, akv2k8s | no translation | no translation |
+
+A value is never repeated whole: a connection string is named by its
+host. The account and the project are not known offline, so the names
+carry the tokens the target snapshots use
+(`{{truthform|account|self|id}}`, `{{truthform|project}}`). Which role or
+service account a workload takes is the identity translation's; here only
+the form the target reads is named.
+
+**Where it reads from.** Neither input holds everything, which is why
+there are two:
+
+- `--kube`, a Kubernetes snapshot of the source cluster, holds what no
+  GitOps source applies and where Flux starts. Those objects are read like
+  any manifest, since a restore recreates them from the snapshot as they
+  are, pointing at Azure; and the workloads among them are listed by
+  namespace as **not in Git**. It does not hold what Flux applies. It names
+  it: every Kustomization and HelmRelease the cluster has, and how many
+  objects the capture left to each.
+- `--gitops`, a local checkout of the repository Flux reads, holds what is
+  in them. References are given by file and line. Which Kustomization
+  applies a file is worked out as Flux builds it: from the Kustomization's
+  `path`, through that directory's `kustomization.yaml` and what it lists,
+  or every manifest under the path when it has none. With `--kube` this
+  starts from the Kustomizations the snapshot holds, so a repository that
+  serves several clusters is read as this cluster reads it, and a
+  reference in a file it does not apply is listed and not counted.
+  Without, every Kustomization the files define is followed.
+
+Nothing is rendered and no request is made: no `kustomize build`, no `helm
+template`, no clone. So the report says, under **Not seen** and in
+`translation.yaml` (`gitops.notSeen`, and `gitops.sources` source by
+source), what that leaves out:
+
+- a source whose content was in neither input (its path is in another
+  repository, or only the snapshot was given): counted in the first line,
+  and named;
+- a HelmRelease's chart: its `spec.values` are read, not what the chart's
+  templates render, the chart's own default values, or `valuesFrom`;
+- what a kustomize patch, replacement, name prefix or generator changes,
+  resources fetched from a URL, and charts kustomize inflates;
+- objects the capture left to a Kustomization that are not in its files
+  (generated), each named under its source;
+- a value Flux substitutes (`${…}`), seen only where the variable is
+  defined in the files; image references Flux image automation has not
+  yet committed;
+- files that are not YAML as written (a chart's templates), which are
+  read line by line for Azure host names only;
+- secret values (a connection string in a Secret or in the secret
+  store), SOPS-encrypted files, other branches and other repositories,
+  what Argo CD or Crossplane apply, and what the applications' own code
+  names.
+
+**The variables file.** `moved/gitops-variables.yaml` holds the same names
+as a ConfigMap that a Flux Kustomization's `spec.postBuild.substituteFrom`
+can read, one key per Azure thing that was translated, whether or not a
+reference to it was seen. It is optional, a file to commit and not an
+object of any snapshot, and it holds names only, never a secret:
+
+```yaml
+data:
+  cloud: "aws"
+  region: "eu-west-1"
+  # on Azure: shopacr.azurecr.io
+  registry_shopacr: "{{truthform|account|self|id}}.dkr.ecr.eu-west-1.amazonaws.com/shopacr"
+  # on Azure: queue orders in Service Bus namespace shop
+  servicebus_shop_queue_orders: "https://sqs.eu-west-1.amazonaws.com/{{truthform|account|self|id}}/orders"
+```
+
+A manifest then says `${registry_shopacr}/shop/web:1.4.2`, and one
+repository serves both clouds when each cluster has such a ConfigMap with
+its own values under the same keys (the comment above each key is its
+value on Azure). Before committing it, give it the namespace of the
+Kustomization that reads it and put the account or project where its
+token stands. Flux then substitutes every `${name}` in what that
+Kustomization applies, and an undefined one becomes empty: write
+`$${name}` where a script must keep its own, or label the object
+`kustomize.toolkit.fluxcd.io/substitute: disabled`. Database addresses
+are not in the file: the target makes them up at creation.
+
 ## As a graph (Azure)
 
 `truthform graph --from <snapshot>` writes an Azure snapshot as resources
@@ -1512,6 +2337,43 @@ anything. An agent setting up someone's access should follow
 ```json
 {"mcpServers": {"truthform": {"command": "truthform", "args": ["mcp"]}}}
 ```
+
+### Skills for what a translation leaves to people
+
+A [translation to another cloud](#to-another-cloud-azure-to-aws-or-gcp)
+names what it does not do. For five of those, and for estimating what it
+would cost, TruthForm carries a skill:
+instructions an AI agent loads to help a person finish the work. Each
+reads its work list from `translation.yaml`, has the agent propose and
+check, and leaves whatever writes or grants to the person.
+
+| Skill | For | Checked by |
+|---|---|---|
+| `translate-move-data` | blobs, images, secret values, databases and volumes, none of which a translation copies | counts, bytes and digests on both sides; a diff showing the copy changed no setting |
+| `translate-grant-access` | refused role assignments: people, groups, pipelines, control-plane and custom roles | a capture of the target (AWS); the platform's own read (GCP, whose capture does not read IAM policies yet) |
+| `translate-rebuild-machines` | VMs, scale sets and firewall appliances, and attaching the groups or tags the report's `attachments` list for each | a capture: each machine carries exactly what `carries` lists |
+| `translate-sql-tls` | a SQL Server minimum TLS version the target cannot match | a measured floor on the target, and an exception on record before the map accepts it |
+| `translate-flow-logs` | a parser or detections written for Azure's flow log records | the same test traffic parsed on both clouds |
+| `translate-estimate-cost` | what the translation would cost on the target, beside the source's bill: quantities from the translated snapshot and the source's measured usage, prices from the vendors' own pricing tools | every row has a source for its quantity and its price; the source's usage, priced the same way, comes near its real bill |
+
+The folders are in the repository's `skills/`, in the open Agent Skills
+layout (`<name>/SKILL.md`), and in the binary:
+
+```sh
+truthform skills                       # list them
+truthform skills translate-move-data   # print one
+truthform skills --out .claude/skills  # write the folders where an agent loads them
+```
+
+`--out` writes only what is missing: a `SKILL.md` already there with
+other text is left as it is and named, and the command exits 1. Over MCP
+the same text comes from `list_skills` and `skill`, so an agent with the
+server needs no folders.
+
+A skill cannot make a result true. Each ends with what its checks do not
+show (that a secret's value is the right one, that the right person is in
+a group, that a rebuilt machine runs what the old one ran), for the person
+to own.
 
 ## Snapshots from before the rename
 

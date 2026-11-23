@@ -54,6 +54,8 @@ Setting up access: permissions gives the template and every command to grant Tru
 
 Planning a restore: report and a diff into the target, with --json, say what it needs. Read the report's sections on what will not come back, references to other subscriptions and access a restore needs outside its target (access_elsewhere in the diff document), and follow "Planning a restore" in docs/agents.md. The person decides each grant, each object left out and when the restore runs.
 
+After a translation to another cloud (truthform translate), its translation.yaml names what it left to people: data that is not moved, access for people and pipelines, machines and firewall appliances, a SQL Server TLS floor the target cannot match, and flow logs in the target's own format. list_skills names a skill for each, and one for estimating what the translation would cost on the target and skill returns it: read the skill before starting that work. Each has the agent propose and check, and a person approve whatever writes or grants.
+
 For building and changing resources, use the platform's own MCP server alongside this one; platforms lists them.`
 
 // companions are the platforms' own MCP servers, checked 2026-10-22 on
@@ -92,7 +94,7 @@ func mcpTools() []mcp.Tool {
 		}
 		return m
 	}
-	return []mcp.Tool{
+	return append([]mcp.Tool{
 		{Name: "platforms", ReadOnly: true, Schema: obj(nil, map[string]any{}),
 			Description: "What TruthForm covers on each platform, and each platform's own MCP server to use alongside it.",
 			Call:        func(context.Context, map[string]any) (string, error) { return platformsText(), nil }},
@@ -153,7 +155,7 @@ func mcpTools() []mcp.Tool {
 			Description: "Read a snapshot's REPORT.md: what was captured, what was not and why, what a restore needs.",
 			Schema:      obj([]string{"from"}, map[string]any{"from": str("the snapshot directory")}),
 			Call:        readReport},
-	}
+	}, skillTools()...)
 }
 
 func platformsText() string {

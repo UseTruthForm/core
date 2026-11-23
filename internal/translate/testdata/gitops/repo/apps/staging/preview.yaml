@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: preview
+  namespace: shop
+spec:
+  selector:
+    matchLabels:
+      app: preview
+  template:
+    metadata:
+      labels:
+        app: preview
+    spec:
+      containers:
+        - name: preview
+          image: stagingonly.azurecr.io/shop/preview:0.1

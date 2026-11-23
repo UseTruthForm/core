@@ -1,0 +1,613 @@
+{
+ "resources": {
+  "Microsoft.Authorization/roleAssignments@2022-04-01": {
+   "$ref": "authorization/microsoft.authorization/2022-04-01/types.json#/24"
+  },
+  "Microsoft.Authorization/roleDefinitions@2022-04-01": {
+   "$ref": "authorization/microsoft.authorization/2022-04-01/types.json#/36"
+  },
+  "Microsoft.ContainerRegistry/registries/cacheRules@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/129"
+  },
+  "Microsoft.ContainerRegistry/registries/connectedRegistries@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/180"
+  },
+  "Microsoft.ContainerRegistry/registries/credentialSets@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/200"
+  },
+  "Microsoft.ContainerRegistry/registries/privateEndpointConnections@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/204"
+  },
+  "Microsoft.ContainerRegistry/registries/privateLinkResources@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/292"
+  },
+  "Microsoft.ContainerRegistry/registries/replications@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/220"
+  },
+  "Microsoft.ContainerRegistry/registries/scopeMaps@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/234"
+  },
+  "Microsoft.ContainerRegistry/registries/tokens@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/260"
+  },
+  "Microsoft.ContainerRegistry/registries/webhooks@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/285"
+  },
+  "Microsoft.ContainerRegistry/registries@2025-11-01": {
+   "$ref": "containerregistry_0/microsoft.containerregistry/2025-11-01/types.json#/116"
+  },
+  "Microsoft.ContainerService/managedClusters/agentPools/machines@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/684"
+  },
+  "Microsoft.ContainerService/managedClusters/agentPools/upgradeProfiles@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/671"
+  },
+  "Microsoft.ContainerService/managedClusters/agentPools@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/499"
+  },
+  "Microsoft.ContainerService/managedClusters/identityBindings@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/515"
+  },
+  "Microsoft.ContainerService/managedClusters/maintenanceConfigurations@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/571"
+  },
+  "Microsoft.ContainerService/managedClusters/managedNamespaces@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/604"
+  },
+  "Microsoft.ContainerService/managedClusters/meshUpgradeProfiles@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/645"
+  },
+  "Microsoft.ContainerService/managedClusters/privateEndpointConnections@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/622"
+  },
+  "Microsoft.ContainerService/managedClusters/trustedAccessRoleBindings@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/635"
+  },
+  "Microsoft.ContainerService/managedClusters/upgradeProfiles@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/658"
+  },
+  "Microsoft.ContainerService/managedClusters@2026-08-01": {
+   "$ref": "containerservice_1/microsoft.containerservice/2026-08-01/types.json#/438"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/administrators@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/174"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/advancedThreatProtectionSettings@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/184"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/backups@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/193"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/configurations@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/332"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/databases@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/340"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/347"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/ltrBackupOperations@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/372"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/maintenanceEvents@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/386"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/majorVersionUpgradePrecheck@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/403"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/migrations@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/318"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/privateEndpointConnections@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/351"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/privateLinkResources@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/411"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/tuningOptions@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/419"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers/virtualendpoints@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/361"
+  },
+  "Microsoft.DBforPostgreSQL/flexibleServers@2026-10-01": {
+   "$ref": "postgresql/microsoft.dbforpostgresql/2026-10-01/types.json#/164"
+  },
+  "Microsoft.KeyVault/vaults/accessPolicies@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/145"
+  },
+  "Microsoft.KeyVault/vaults/keys/versions@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/207"
+  },
+  "Microsoft.KeyVault/vaults/keys@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/189"
+  },
+  "Microsoft.KeyVault/vaults/privateEndpointConnections@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/194"
+  },
+  "Microsoft.KeyVault/vaults/secrets@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/201"
+  },
+  "Microsoft.KeyVault/vaults@2026-05-15": {
+   "$ref": "keyvault/microsoft.keyvault/2026-05-15/types.json#/135"
+  },
+  "Microsoft.ManagedIdentity/identities@2024-11-30": {
+   "$ref": "msi/microsoft.managedidentity/2024-11-30/types.json#/35"
+  },
+  "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2024-11-30": {
+   "$ref": "msi/microsoft.managedidentity/2024-11-30/types.json#/28"
+  },
+  "Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30": {
+   "$ref": "msi/microsoft.managedidentity/2024-11-30/types.json#/21"
+  },
+  "Microsoft.Network/applicationSecurityGroups/addressPrefixSets@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/692"
+  },
+  "Microsoft.Network/applicationSecurityGroups@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/614"
+  },
+  "Microsoft.Network/dnsZones/A@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/27"
+  },
+  "Microsoft.Network/dnsZones/AAAA@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/31"
+  },
+  "Microsoft.Network/dnsZones/CAA@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/35"
+  },
+  "Microsoft.Network/dnsZones/CNAME@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/39"
+  },
+  "Microsoft.Network/dnsZones/DS@2023-07-01-preview": {
+   "$ref": "_tsp/dns/microsoft.network/2023-07-01-preview/types.json#/52"
+  },
+  "Microsoft.Network/dnsZones/MX@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/43"
+  },
+  "Microsoft.Network/dnsZones/NAPTR@2023-07-01-preview": {
+   "$ref": "_tsp/dns/microsoft.network/2023-07-01-preview/types.json#/56"
+  },
+  "Microsoft.Network/dnsZones/NS@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/47"
+  },
+  "Microsoft.Network/dnsZones/PTR@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/51"
+  },
+  "Microsoft.Network/dnsZones/SOA@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/55"
+  },
+  "Microsoft.Network/dnsZones/SRV@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/59"
+  },
+  "Microsoft.Network/dnsZones/TLSA@2023-07-01-preview": {
+   "$ref": "_tsp/dns/microsoft.network/2023-07-01-preview/types.json#/48"
+  },
+  "Microsoft.Network/dnsZones/TXT@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/63"
+  },
+  "Microsoft.Network/dnsZones/dnssecConfigs@2023-07-01-preview": {
+   "$ref": "_tsp/dns/microsoft.network/2023-07-01-preview/types.json#/63"
+  },
+  "Microsoft.Network/dnsZones@2018-05-01": {
+   "$ref": "_legacy/dns/microsoft.network/2018-05-01/types.json#/75"
+  },
+  "Microsoft.Network/natGateways@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/620"
+  },
+  "Microsoft.Network/networkInterfaces/ipConfigurations@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/741"
+  },
+  "Microsoft.Network/networkInterfaces/tapConfigurations@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/696"
+  },
+  "Microsoft.Network/networkInterfaces@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/625"
+  },
+  "Microsoft.Network/networkSecurityGroups/defaultSecurityRules@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/745"
+  },
+  "Microsoft.Network/networkSecurityGroups/securityRules@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/700"
+  },
+  "Microsoft.Network/networkSecurityGroups@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/630"
+  },
+  "Microsoft.Network/networkWatchers/flowLogs@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/567"
+  },
+  "Microsoft.Network/privateDnsZones/A@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/47"
+  },
+  "Microsoft.Network/privateDnsZones/AAAA@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/51"
+  },
+  "Microsoft.Network/privateDnsZones/CNAME@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/55"
+  },
+  "Microsoft.Network/privateDnsZones/MX@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/59"
+  },
+  "Microsoft.Network/privateDnsZones/PTR@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/63"
+  },
+  "Microsoft.Network/privateDnsZones/SOA@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/67"
+  },
+  "Microsoft.Network/privateDnsZones/SRV@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/71"
+  },
+  "Microsoft.Network/privateDnsZones/TXT@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/75"
+  },
+  "Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/95"
+  },
+  "Microsoft.Network/privateDnsZones@2024-06-01": {
+   "$ref": "privatedns/microsoft.network/2024-06-01/types.json#/25"
+  },
+  "Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/725"
+  },
+  "Microsoft.Network/privateEndpoints@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/635"
+  },
+  "Microsoft.Network/publicIPAddresses@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/641"
+  },
+  "Microsoft.Network/publicIPPrefixes@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/668"
+  },
+  "Microsoft.Network/routeTables/routes@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/729"
+  },
+  "Microsoft.Network/routeTables@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/673"
+  },
+  "Microsoft.Network/virtualNetworks/subnets@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/733"
+  },
+  "Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/737"
+  },
+  "Microsoft.Network/virtualNetworks@2026-03-01": {
+   "$ref": "network/microsoft.network/2026-03-01/types.json#/678"
+  },
+  "Microsoft.ServiceBus/namespaces/AuthorizationRules@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/93"
+  },
+  "Microsoft.ServiceBus/namespaces/disasterRecoveryConfigs/authorizationRules@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/208"
+  },
+  "Microsoft.ServiceBus/namespaces/disasterRecoveryConfigs@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/125"
+  },
+  "Microsoft.ServiceBus/namespaces/migrationConfigurations@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/132"
+  },
+  "Microsoft.ServiceBus/namespaces/networkRuleSets@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/112"
+  },
+  "Microsoft.ServiceBus/namespaces/networkSecurityPerimeterConfigurations@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/249"
+  },
+  "Microsoft.ServiceBus/namespaces/privateEndpointConnections@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/136"
+  },
+  "Microsoft.ServiceBus/namespaces/queues/authorizationRules@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/157"
+  },
+  "Microsoft.ServiceBus/namespaces/queues@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/153"
+  },
+  "Microsoft.ServiceBus/namespaces/topics/authorizationRules@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/176"
+  },
+  "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/204"
+  },
+  "Microsoft.ServiceBus/namespaces/topics/subscriptions@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/192"
+  },
+  "Microsoft.ServiceBus/namespaces/topics@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/172"
+  },
+  "Microsoft.ServiceBus/namespaces@2026-01-01": {
+   "$ref": "servicebus/microsoft.servicebus/2026-01-01/types.json#/82"
+  },
+  "Microsoft.Sql/servers/administrators@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/545"
+  },
+  "Microsoft.Sql/servers/advancedThreatProtectionSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/536"
+  },
+  "Microsoft.Sql/servers/advisors@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1067"
+  },
+  "Microsoft.Sql/servers/auditingSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/32"
+  },
+  "Microsoft.Sql/servers/automaticTuning@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1094"
+  },
+  "Microsoft.Sql/servers/azureADOnlyAuthentications@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/552"
+  },
+  "Microsoft.Sql/servers/connectionPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/563"
+  },
+  "Microsoft.Sql/servers/databases/advancedThreatProtectionSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/73"
+  },
+  "Microsoft.Sql/servers/databases/advisors/recommendedActions@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/893"
+  },
+  "Microsoft.Sql/servers/databases/advisors@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/812"
+  },
+  "Microsoft.Sql/servers/databases/auditingSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/42"
+  },
+  "Microsoft.Sql/servers/databases/automaticTuning@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/845"
+  },
+  "Microsoft.Sql/servers/databases/backupLongTermRetentionPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/451"
+  },
+  "Microsoft.Sql/servers/databases/backupShortTermRetentionPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/19"
+  },
+  "Microsoft.Sql/servers/databases/dataMaskingPolicies/rules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/252"
+  },
+  "Microsoft.Sql/servers/databases/dataMaskingPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/237"
+  },
+  "Microsoft.Sql/servers/databases/dataWarehouseUserActivities@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/992"
+  },
+  "Microsoft.Sql/servers/databases/extendedAuditingSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/52"
+  },
+  "Microsoft.Sql/servers/databases/extensions@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/87"
+  },
+  "Microsoft.Sql/servers/databases/geoBackupPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/325"
+  },
+  "Microsoft.Sql/servers/databases/ledgerDigestUploads@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/438"
+  },
+  "Microsoft.Sql/servers/databases/replicationLinks@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/523"
+  },
+  "Microsoft.Sql/servers/databases/restorePoints@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1063"
+  },
+  "Microsoft.Sql/servers/databases/schemas/tables/columns/sensitivityLabels@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/530"
+  },
+  "Microsoft.Sql/servers/databases/schemas/tables/columns@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/889"
+  },
+  "Microsoft.Sql/servers/databases/schemas/tables@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/970"
+  },
+  "Microsoft.Sql/servers/databases/schemas@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/897"
+  },
+  "Microsoft.Sql/servers/databases/securityAlertPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/190"
+  },
+  "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments/baselines/rules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/207"
+  },
+  "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments/baselines@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/200"
+  },
+  "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments/scans/scanResults@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/940"
+  },
+  "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments/scans@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/955"
+  },
+  "Microsoft.Sql/servers/databases/sqlVulnerabilityAssessments@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/961"
+  },
+  "Microsoft.Sql/servers/databases/syncGroups/syncMembers@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/710"
+  },
+  "Microsoft.Sql/servers/databases/syncGroups@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/679"
+  },
+  "Microsoft.Sql/servers/databases/transparentDataEncryption@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/727"
+  },
+  "Microsoft.Sql/servers/databases/vulnerabilityAssessments/rules/baselines@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/218"
+  },
+  "Microsoft.Sql/servers/databases/vulnerabilityAssessments/scans@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/985"
+  },
+  "Microsoft.Sql/servers/databases/vulnerabilityAssessments@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/227"
+  },
+  "Microsoft.Sql/servers/databases/workloadGroups/workloadClassifiers@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/744"
+  },
+  "Microsoft.Sql/servers/databases/workloadGroups@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/749"
+  },
+  "Microsoft.Sql/servers/databases@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/178"
+  },
+  "Microsoft.Sql/servers/devOpsAuditingSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/573"
+  },
+  "Microsoft.Sql/servers/dnsAliases@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/578"
+  },
+  "Microsoft.Sql/servers/elasticPools@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/274"
+  },
+  "Microsoft.Sql/servers/encryptionProtector@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/284"
+  },
+  "Microsoft.Sql/servers/extendedAuditingSettings@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/62"
+  },
+  "Microsoft.Sql/servers/failoverGroups@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/310"
+  },
+  "Microsoft.Sql/servers/firewallRules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/315"
+  },
+  "Microsoft.Sql/servers/ipv6FirewallRules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/330"
+  },
+  "Microsoft.Sql/servers/jobAgents/credentials@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/355"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/executions/steps/targets@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1004"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/executions/steps@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/996"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/executions@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/384"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/steps@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/412"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/versions/steps@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1000"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs/versions@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1008"
+  },
+  "Microsoft.Sql/servers/jobAgents/jobs@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/398"
+  },
+  "Microsoft.Sql/servers/jobAgents/privateEndpoints@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/389"
+  },
+  "Microsoft.Sql/servers/jobAgents/targetGroups@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/428"
+  },
+  "Microsoft.Sql/servers/jobAgents@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/350"
+  },
+  "Microsoft.Sql/servers/keys@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/586"
+  },
+  "Microsoft.Sql/servers/networkSecurityPerimeterConfigurations@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1030"
+  },
+  "Microsoft.Sql/servers/outboundFirewallRules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/476"
+  },
+  "Microsoft.Sql/servers/privateEndpointConnections@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/497"
+  },
+  "Microsoft.Sql/servers/privateLinkResources@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1037"
+  },
+  "Microsoft.Sql/servers/recoverableDatabases@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1043"
+  },
+  "Microsoft.Sql/servers/restorableDroppedDatabases@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/1055"
+  },
+  "Microsoft.Sql/servers/securityAlertPolicies@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/634"
+  },
+  "Microsoft.Sql/servers/sqlVulnerabilityAssessments@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/651"
+  },
+  "Microsoft.Sql/servers/syncAgents@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/660"
+  },
+  "Microsoft.Sql/servers/virtualNetworkRules@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/739"
+  },
+  "Microsoft.Sql/servers/vulnerabilityAssessments@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/641"
+  },
+  "Microsoft.Sql/servers@2025-01-01": {
+   "$ref": "sql_1/microsoft.sql/2025-01-01/types.json#/628"
+  },
+  "Microsoft.Storage/storageAccounts/accountMigrations@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/673"
+  },
+  "Microsoft.Storage/storageAccounts/advancedPlatformMetrics@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/259"
+  },
+  "Microsoft.Storage/storageAccounts/blobAccessPointConfigurations@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/310"
+  },
+  "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/391"
+  },
+  "Microsoft.Storage/storageAccounts/blobServices/containers@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/386"
+  },
+  "Microsoft.Storage/storageAccounts/blobServices@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/343"
+  },
+  "Microsoft.Storage/storageAccounts/connectors@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/420"
+  },
+  "Microsoft.Storage/storageAccounts/dataShares@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/440"
+  },
+  "Microsoft.Storage/storageAccounts/encryptionScopes@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/452"
+  },
+  "Microsoft.Storage/storageAccounts/fileServices/shares@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/497"
+  },
+  "Microsoft.Storage/storageAccounts/fileServices/usages@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/685"
+  },
+  "Microsoft.Storage/storageAccounts/fileServices@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/463"
+  },
+  "Microsoft.Storage/storageAccounts/inventoryPolicies@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/526"
+  },
+  "Microsoft.Storage/storageAccounts/localUsers@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/537"
+  },
+  "Microsoft.Storage/storageAccounts/managementPolicies@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/564"
+  },
+  "Microsoft.Storage/storageAccounts/networkSecurityPerimeterConfigurations@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/726"
+  },
+  "Microsoft.Storage/storageAccounts/objectReplicationPolicies@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/577"
+  },
+  "Microsoft.Storage/storageAccounts/privateEndpointConnections@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/581"
+  },
+  "Microsoft.Storage/storageAccounts/queueServices/queues@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/594"
+  },
+  "Microsoft.Storage/storageAccounts/queueServices@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/587"
+  },
+  "Microsoft.Storage/storageAccounts/storageTaskAssignments@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/630"
+  },
+  "Microsoft.Storage/storageAccounts/tableServices/tables@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/645"
+  },
+  "Microsoft.Storage/storageAccounts/tableServices@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/636"
+  },
+  "Microsoft.Storage/storageAccounts@2026-09-01": {
+   "$ref": "storage_0/microsoft.storage/2026-09-01/types.json#/238"
+  }
+ }
+}

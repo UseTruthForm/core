@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  template:
+    spec:
+      containers:
+        - name: main
+          image: {{ .Values.registry | default "shopacr.azurecr.io" }}/shop/{{ .Chart.Name }}:{{ .Values.tag }}
+{{- if .Values.extra }}
+{{ toYaml .Values.extra | indent 8 }}
+{{- end }}

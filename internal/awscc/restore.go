@@ -33,6 +33,10 @@ type RestoreOptions struct {
 // become readable. Variables so tests need not wait.
 var readBackStep, readBackLimit = 5 * time.Second, 2 * time.Minute
 
+// afterGatewayAttachment are the types a restore creates only once the
+// snapshot's gateway attachments are made.
+var afterGatewayAttachment = map[string]bool{"AWS::EC2::Route": true, "AWS::EC2::EIP": true, "AWS::EC2::NatGateway": true}
+
 var tokenRE = regexp.MustCompile(`\{\{truthform\|([^|{}]+)\|([^|{}]+)\|([^|{}]+)\}\}`)
 
 // Restore creates every snapshot object that is missing from the target, in
@@ -140,6 +144,38 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 		for _, m := range tokenRE.FindAllStringSubmatch(canon(o.Body["spec"]), -1) {
 			if d, ok := at[m[1]+"/"+m[2]]; ok && d != i {
 				deps[i] = append(deps[i], d)
+			}
+		}
+	}
+	// A dependency no reference shows: what leaves through an internet
+	// gateway needs it attached to its VPC first, and names the gateway,
+	// not the attachment. CloudFormation asks for a DependsOn there
+	// ("Elastic IP addresses ... Amazon VPC routes that include the
+	// Internet gateway",
+	// docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-attribute-dependson.html);
+	// a NAT gateway "must be created in a VPC with an internet gateway".
+	for i, o := range order {
+		if !afterGatewayAttachment[o.Kind()] {
+			continue
+		}
+		for j, a := range order {
+			if a.Kind() == "AWS::EC2::VPCGatewayAttachment" {
+				deps[i] = append(deps[i], j)
+			}
+		}
+	}
+	// Another: a subnet in a block added to its VPC needs the block
+	// associated first, and names the VPC, not the association ("The CIDR
+	// block is ready for you to use when it's in the associated state",
+	// docs.aws.amazon.com/vpc/latest/userguide/vpc-cidr-blocks.html).
+	for i, o := range order {
+		if o.Kind() != "AWS::EC2::Subnet" {
+			continue
+		}
+		vpc, _ := specOf(o)["VpcId"].(string)
+		for j, a := range order {
+			if av, _ := specOf(a)["VpcId"].(string); a.Kind() == "AWS::EC2::VPCCidrBlock" && av == vpc && vpc != "" {
+				deps[i] = append(deps[i], j)
 			}
 		}
 	}
@@ -271,11 +307,32 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 	if t == nil {
 		return false, "type " + kind + " is not in the schema registry"
 	}
+	// A type Cloud Control reads and cannot list (an SQS queue's inline
+	// policy, named by its queue) is looked for by the identifier the
+	// snapshot gives, once its references resolve. Any other type that
+	// cannot be listed is refused: a restore must know whether one exists.
+	byID := false
 	if c := in.cov[kind]; c != nil && c.NotCaptured != "" {
-		return false, "cannot check the target for an existing one: " + c.NotCaptured
+		if !t.Handlers["read"] || !t.Handlers["create"] || !identifiedBySpec(t) {
+			return false, "cannot check the target for an existing one: " + c.NotCaptured
+		}
+		byID = true
+	}
+	// What AWS never returns is not compared: a snapshot that sets a
+	// write-only property (a translation's EKS cluster sets who gets admin
+	// at creation) would otherwise never be found identical.
+	mine := o
+	if len(t.WriteOnly) > 0 {
+		body := deepCopy(o.Body)
+		if sp, ok := body["spec"].(map[string]any); ok {
+			for _, ptr := range t.WriteOnly {
+				removePointer(sp, ptr)
+			}
+		}
+		mine = snapshot.Object{Body: body}
 	}
 	differs := func(ex *resource) []snapshot.Change {
-		return snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{o}}, snapshot.Snapshot{Objects: []snapshot.Object{{Body: toObject(ex)}}})
+		return snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{mine}}, snapshot.Snapshot{Objects: []snapshot.Object{{Body: toObject(ex)}}})
 	}
 	ex, exists := existing[o.Key()]
 	if exists {
@@ -315,6 +372,30 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 			why = "was not restored"
 		}
 		return false, "depends on " + missing[0] + ", which " + why
+	}
+
+	if byID {
+		id, ok := Identifier(t, desired)
+		if !ok {
+			return false, "cannot check the target for an existing one: Cloud Control cannot list this type, and the snapshot does not give its identifier (" + strings.Join(t.PrimaryIdentifier, ", ") + ")"
+		}
+		got, err := api.Get(ctx, kind, id)
+		switch {
+		case err == nil:
+			var fields []string
+			for _, k := range sortedKeys(desired) {
+				if canon(desired[k]) != canon(got[k]) {
+					fields = append(fields, k)
+				}
+			}
+			if len(fields) == 0 {
+				resolved.set(ref, withID(got, id))
+				return true, "already present and identical"
+			}
+			return false, "already exists in the target and differs (" + strings.Join(fields, ", ") + "); not modified: Cloud Control cannot list this type, so --update does not reach it"
+		case !errors.Is(err, ErrNotFound):
+			return false, "cannot check the target for an existing one: " + err.Error()
+		}
 	}
 
 	vals := opt.Values[ref]
@@ -587,4 +668,24 @@ func createOnlyChanges(t *TypeInfo, a, b map[string]any) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// identifiedBySpec reports a type whose primary identifier the user gives
+// (an inline policy's Queue), so a snapshot names it before it exists.
+func identifiedBySpec(t *TypeInfo) bool {
+	if len(t.PrimaryIdentifier) == 0 {
+		return false
+	}
+	for _, p := range t.PrimaryIdentifier {
+		if t.IsReadOnly(p) {
+			return false
+		}
+	}
+	return true
+}
+
+// specOf is an object's spec, or an empty one.
+func specOf(o snapshot.Object) map[string]any {
+	m, _ := o.Body["spec"].(map[string]any)
+	return m
 }

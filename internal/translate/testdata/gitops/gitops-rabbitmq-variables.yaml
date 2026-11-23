@@ -43,8 +43,12 @@ data:
   servicebus_shop_queue_payments: "payments"
   # on Azure: subscription events/audit in Service Bus namespace shop
   servicebus_shop_subscription_events_audit: "events.audit"
+  # on Azure: subscription events/north in Service Bus namespace shop
+  servicebus_shop_subscription_events_north: "events.north"
   # on Azure: subscription events/shipping in Service Bus namespace shop
   servicebus_shop_subscription_events_shipping: "events.shipping"
+  # on Azure: subscription events/urgent in Service Bus namespace shop
+  servicebus_shop_subscription_events_urgent: "events.urgent"
   # on Azure: topic events in Service Bus namespace shop
   servicebus_shop_topic_events: "events"
   # on Azure: https://shopassets.blob.core.windows.net/images

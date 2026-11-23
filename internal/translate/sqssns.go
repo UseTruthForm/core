@@ -302,6 +302,10 @@ func (d sqsSNS) subscription(ns *sbNS, e *sbEntity, o *out) {
 	queueArn := awsRef(awsQueue, qn, "Arn")
 	sub := map[string]any{"TopicArn": topicArn, "Protocol": "sqs", "Endpoint": queueArn, "RawMessageDelivery": true}
 	if !f.all {
+		if why := snsFilterLimits(f.any); why != "" {
+			refuse(why)
+			return
+		}
 		sub["FilterPolicyScope"] = "MessageAttributes"
 		sub["FilterPolicy"] = snsFilter(f.any)
 	}
@@ -341,12 +345,72 @@ func snsFilter(rules []map[string]string) map[string]any {
 	if len(rules) == 1 {
 		return one(rules[0])
 	}
+	// Rules that each match one and the same property are one key with
+	// their values, any of which matches.
+	if key, vals := snsOneKey(rules); key != "" {
+		return map[string]any{key: vals}
+	}
 	sort.Slice(rules, func(i, j int) bool { return fmt.Sprint(rules[i]) < fmt.Sprint(rules[j]) })
 	ors := make([]any, len(rules))
 	for i, m := range rules {
 		ors[i] = one(m)
 	}
 	return map[string]any{"$or": ors}
+}
+
+// snsOneKey is the property every rule matches alone, with the rules'
+// values in order, or "" when the rules are not of that shape.
+func snsOneKey(rules []map[string]string) (string, []any) {
+	key, seen := "", map[string]bool{}
+	for _, m := range rules {
+		if len(m) != 1 {
+			return "", nil
+		}
+		for k, v := range m {
+			if key != "" && k != key {
+				return "", nil
+			}
+			key, seen[v] = k, true
+		}
+	}
+	vals := make([]any, 0, len(seen))
+	for _, v := range sortedKeys(seen) {
+		vals = append(vals, v)
+	}
+	return key, vals
+}
+
+// snsAttr is a message attribute's name as SNS takes one: letters, digits,
+// _, - and ., not starting or ending with a period nor with two in a row,
+// and not AWS's own (AWS., Amazon.).
+// https://docs.aws.amazon.com/sns/latest/dg/sns-message-attributes.html
+var snsAttr = regexp.MustCompile(`^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$`)
+
+// snsFilterLimits says why SNS would not take the rules as a filter
+// policy: a policy has at most five keys and 150 combinations of values,
+// and matches attributes it can name.
+// https://docs.aws.amazon.com/sns/latest/dg/subscription-filter-policy-constraints.html
+// How SNS counts the branches of an $or is not in that page: every key of
+// every rule is counted here, which may refuse a policy SNS would take,
+// and never writes one it would not.
+func snsFilterLimits(rules []map[string]string) string {
+	keys := map[string]bool{}
+	for _, m := range rules {
+		for k := range m {
+			low := strings.ToLower(k)
+			if !snsAttr.MatchString(k) || len(k) > 256 || strings.HasPrefix(low, "aws.") || strings.HasPrefix(low, "amazon.") {
+				return fmt.Sprintf("the property %q is not a name an SNS message attribute can have", k)
+			}
+			keys[k] = true
+		}
+	}
+	if len(keys) > 5 {
+		return fmt.Sprintf("its rules match %d properties (%s); an SNS filter policy takes five keys at most", len(keys), strings.Join(sortedKeys(keys), ", "))
+	}
+	if len(rules) > 150 {
+		return fmt.Sprintf("its rules make %d alternatives; an SNS filter policy takes 150 combinations at most", len(rules))
+	}
+	return ""
 }
 
 // badName says why a name is not one the target allows, and how to give one.

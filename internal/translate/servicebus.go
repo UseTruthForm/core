@@ -387,7 +387,7 @@ func readRule(obj snapshot.Object) sbRule {
 			}
 		}
 	default:
-		r.kind, r.sql = "sql", fmt.Sprintf("(filter type %q)", ft)
+		r.kind, r.sql = "other", fmt.Sprintf("filter type %q", ft)
 	}
 	r.losses = append(top.rest(), p.rest()...)
 	return r
@@ -433,6 +433,8 @@ func filterOf(e *sbEntity, systemOK func(string) bool) filter {
 		f.why = "it has no rules, so Service Bus delivers it nothing; give it a rule or leave it out"
 		return f
 	}
+	sqlNames := map[string]string{}
+	var sqlAlts []map[string]string
 	for _, r := range e.rules {
 		f.losses = append(f.losses, r.losses...)
 		if r.action != "" {
@@ -443,9 +445,32 @@ func filterOf(e *sbEntity, systemOK func(string) bool) filter {
 		case "all":
 			f.all = true
 		case "none":
-		case "sql":
-			f.why = fmt.Sprintf("rule %s is a SQL filter (%s); it is not translated, and dropping it would deliver more", r.name, r.sql)
+		case "other":
+			f.why = fmt.Sprintf("rule %s has a filter this does not read (%s); dropping it would deliver more", r.name, r.sql)
 			return f
+		case "sql":
+			alts, why := parseSQLFilter(r.sql)
+			if why != "" {
+				f.why = fmt.Sprintf("rule %s is a SQL filter (%s) that is not translated: %s. Dropping it would deliver more", r.name, r.sql, why)
+				return f
+			}
+			// No alternative left: the filter asks one property to be
+			// two values, so it is never true, like 1=0.
+			// A property is one whatever its letters' case, in every SQL
+			// rule of the subscription: it is written as the first rule
+			// that names it does, so a sender has one name to set.
+			for _, m := range alts {
+				one := map[string]string{}
+				for k, v := range m {
+					low := strings.ToLower(k)
+					if sqlNames[low] == "" {
+						sqlNames[low] = k
+					}
+					one[sqlNames[low]] = v
+				}
+				f.any = append(f.any, one)
+				sqlAlts = append(sqlAlts, one)
+			}
 		case "correlation":
 			for k := range r.system {
 				if systemOK == nil || !systemOK(k) {
@@ -469,6 +494,8 @@ func filterOf(e *sbEntity, systemOK func(string) bool) filter {
 	}
 	if f.all {
 		f.any = nil
+	} else if len(sqlAlts) > 0 {
+		f.losses = append(f.losses, sqlFilterCaseLoss(sqlAlts))
 	}
 	if !f.all && len(f.any) == 0 {
 		f.why = "every rule matches nothing, so Service Bus delivers it nothing; leave it out"

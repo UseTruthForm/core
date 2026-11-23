@@ -110,12 +110,14 @@ func captureGCP(ctx context.Context, g *gcpFlags, out string) int {
 	return 3
 }
 
-func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot, update bool) int {
-	ad, err := g.connect(ctx, captureOnly)
+// restoreGCP restores into the project. A dry run's client is the read-only
+// one, which refuses every write, whatever the restore would do.
+func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot, update, dryRun bool) int {
+	ad, err := g.connect(ctx, captureOnly || dryRun)
 	if err != nil {
 		return fail(err)
 	}
-	ad.Options.Update = update
+	ad.Options.Update, ad.Options.DryRun = update, dryRun
 	results := ad.Restore(ctx, snap)
 	if jsonOut {
 		defer emitRestore(results, "gcp "+g.project)
@@ -124,6 +126,10 @@ func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot, update
 	for _, r := range results {
 		if r.OK {
 			ok++
+			if dryRun {
+				fmt.Printf("%s: %s\n", r.Detail, r.Key)
+				continue
+			}
 			// An update changed something live; each one is said.
 			if strings.HasPrefix(r.Detail, "updated") {
 				fmt.Printf("UPDATED %s: %s\n", r.Key, r.Detail)
@@ -132,7 +138,11 @@ func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot, update
 		}
 		fmt.Printf("NOT APPLIED %s: %s\n", r.Key, r.Detail)
 	}
-	fmt.Printf("applied %d of %d resources to project %s\n", ok, len(results), g.project)
+	if dryRun {
+		fmt.Printf("dry run: %d of %d resources would apply to project %s; nothing was written\n", ok, len(results), g.project)
+	} else {
+		fmt.Printf("applied %d of %d resources to project %s\n", ok, len(results), g.project)
+	}
 	if ok != len(results) {
 		return 3
 	}

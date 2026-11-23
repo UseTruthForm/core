@@ -37,7 +37,7 @@ Kubernetes:
 
 AWS (Cloud Control, every type in the CloudFormation registry):
   truthform capture --platform aws --region <r> [--profile <p>] --out <dir> [--types <patterns>] [--baseline <dir>]
-  truthform restore --platform aws --region <r> [--profile <p>] --from <dir> [--values <file>] [--update]
+  truthform restore --platform aws --region <r> [--profile <p>] --from <dir> [--values <file>] [--update] [--dry-run]
   truthform diff    --platform aws --region <r> [--profile <p>] --from <dir> [--types <patterns>] [--baseline <dir>]
   truthform aws-coverage [--schemas <bundle.zip>]
 
@@ -48,7 +48,7 @@ Azure (ARM, every type with a published definition):
 
 GCP (Cloud Asset Inventory and each API's Discovery document):
   truthform capture --platform gcp --project <id> --out <dir> [--types <patterns>] [--baseline <dir>]
-  truthform restore --platform gcp --project <id> --from <dir> [--update]
+  truthform restore --platform gcp --project <id> --from <dir> [--update] [--dry-run]
   truthform diff    --platform gcp --project <id> --from <dir> [--types <patterns>] [--baseline <dir>]
 
 SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN, or Cloudflare's sign-in):
@@ -283,7 +283,7 @@ func restore(ctx context.Context, args []string) int {
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
 	scope := fs.String("scope", "", scopeHelp)
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
-	dryRun := fs.Bool("dry-run", false, "github, cloudflare: read the target and print every write the restore would make; make none")
+	dryRun := fs.Bool("dry-run", false, "aws, gcp, github, cloudflare: read the target and print every write the restore would make; make none")
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
@@ -366,13 +366,13 @@ func restore(ctx context.Context, args []string) int {
 	warnOtherSubscriptions(snap, *platform, az.subscription)
 	switch *platform {
 	case "aws":
-		return restoreAWS(ctx, &aws, snap, *values, *update)
+		return restoreAWS(ctx, &aws, snap, *values, *update, *dryRun)
 	case "azure":
 		az.from(&aws, "")
 		return restoreAzure(ctx, &az, snap, *values, *update, names)
 	case "gcp":
 		g.from(&aws, "")
-		return restoreGCP(ctx, &g, snap, *update)
+		return restoreGCP(ctx, &g, snap, *update, *dryRun)
 	case "github", "cloudflare":
 		return restoreSaaS(ctx, *platform, &sf, snap, *values, *update, *dryRun)
 	}
@@ -756,8 +756,12 @@ func warnGaps(s snapshot.Snapshot) {
 // dryRunAccepted refuses --dry-run where the restore would not honour it:
 // elsewhere it would apply everything it was meant to only list.
 func dryRunAccepted(platform string, dryRun bool) error {
-	if dryRun && platform != "github" && platform != "cloudflare" {
-		return fmt.Errorf("--dry-run is for --platform github or cloudflare; nothing was restored")
+	switch platform {
+	case "aws", "gcp", "github", "cloudflare":
+		return nil
+	}
+	if dryRun {
+		return fmt.Errorf("--dry-run is for --platform aws, gcp, github or cloudflare; nothing was restored")
 	}
 	return nil
 }

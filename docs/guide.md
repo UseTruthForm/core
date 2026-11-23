@@ -456,9 +456,17 @@ truthform restore --platform aws --region us-east-2 --from snap/aws --values sec
   beside whatever is there, since such a name holds unrelated values, and
   the restore names what it is beside. A CNAME beside a record of another
   type is left to Cloudflare, which refuses it.
-- **`--dry-run` (GitHub, Cloudflare)** reads the target and prints each
-  write the restore would make (`would create`, `would update`), and makes
-  none: its client refuses every write.
+- **`--dry-run` (AWS, GCP, GitHub, Cloudflare)** reads the target and prints
+  each write the restore would make (`would create`, `would update`, on GCP
+  `would add` for a grant), and makes none: its client refuses every write.
+  On AWS and GCP it shows what is already there, what differs, what a
+  reference cannot find, and the order of the rest. It does not show whether
+  the cloud would accept each request: neither has a way to ask without
+  making it, so a quota, a name taken in another account or a value the
+  service refuses is found only by the restore. On AWS, what a resource
+  takes from one not yet created (an ARN, an ID) is not known, and a
+  resource AWS makes as a side effect of another is listed as `would
+  create`.
 
 ### A second environment's DNS in the same zone (Cloudflare)
 

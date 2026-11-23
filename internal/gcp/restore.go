@@ -20,6 +20,9 @@ type RestoreOptions struct {
 	// Update patches an existing resource that differs, through the
 	// type's own patch (or update) method. Off, a restore only creates.
 	Update bool
+	// DryRun reads the target and reports each write the restore would
+	// make ("would create", "would update", "would add"), and makes none.
+	DryRun bool
 }
 
 // Restore creates every snapshot object missing from the project, after
@@ -55,7 +58,7 @@ func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, 
 		return fail("cannot read the target: " + err.Error())
 	}
 	existing := map[string]*res{}
-	resolved := &names{m: map[string]string{}} // ref token -> name in the target
+	resolved := &names{m: map[string]string{}, planned: map[string]bool{}} // ref token -> name in the target
 	for _, r := range have {
 		existing[r.asset.Type+"|"+r.logical] = r
 		resolved.set(refToken(r.asset.Type, r.logical), detok(r.rel, project, number))
@@ -97,7 +100,7 @@ func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, 
 		}
 		if order[i].Kind() == BindingKind {
 			// A grant on a resource's allow policy: added, never created.
-			ok, detail := restoreBinding(ctx, api, docs, order[i], project, number, resolved, locks)
+			ok, detail := restoreBinding(ctx, api, docs, order[i], project, number, resolved, locks, opt.DryRun)
 			done[i] = snapshot.Result{Key: order[i].Key(), OK: ok, Detail: detail}
 			return
 		}
@@ -156,6 +159,31 @@ func readNamed(ctx context.Context, api API, docs *Docs, o snapshot.Object, proj
 type names struct {
 	mu sync.Mutex
 	m  map[string]string
+	// planned are the names of what a dry run would create: nothing can
+	// be read at them.
+	planned map[string]bool
+}
+
+// plan records what a dry run would create under the name its references
+// would be sent with.
+func (n *names) plan(k, v string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.m[k] = v
+	n.planned[v] = true
+}
+
+// isPlanned reports a resource a dry run would create, by its name or the
+// name's path under the API's root.
+func (n *names) isPlanned(resource string) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for p := range n.planned {
+		if p == resource || strings.HasSuffix(resource, "/"+p) || strings.HasSuffix(p, "/"+resource) {
+			return true
+		}
+	}
+	return false
 }
 
 func (n *names) get(k string) (string, bool) {
@@ -197,10 +225,17 @@ func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, pro
 		if len(applied) > 0 {
 			apply = &pendingApply{name: detok(ex.rel, project, number), current: ex.spec}
 		}
+		if opt.DryRun {
+			// The lists a resource's own methods set are not applied.
+			apply = nil
+		}
 		if !differsOutsideApplied(spec, ex.spec, applied) {
+			if opt.DryRun {
+				return true, "would update " + detok(ex.rel, project, number) + " (" + strings.Join(fields, ", ") + ")", nil
+			}
 			return true, "updated " + apply.name, apply
 		}
-		ok, detail := update(ctx, api, docs, o, ex, project, number, resolved)
+		ok, detail := update(ctx, api, docs, o, ex, project, number, resolved, opt.DryRun)
 		return ok, detail, apply
 	}
 
@@ -231,6 +266,21 @@ func restoreOne(ctx context.Context, api API, docs *Docs, o snapshot.Object, pro
 		if i := strings.Index(id, "@"); i > 0 {
 			id = id[:i]
 		}
+	}
+	if opt.DryRun {
+		if create.HTTPMethod != "PUT" {
+			if _, _, werr := wrap(doc, str(annSchema), create, desired, id); werr != nil {
+				return false, werr.Error(), nil
+			}
+		}
+		// Its name is the snapshot's unless Google assigns it; either
+		// way it is what the references to it would be sent as.
+		n := detok(o.Name(), project, number)
+		resolved.plan(self, n)
+		if strings.Contains(o.Name(), "/~") {
+			return true, "would create (Google names it)", nil
+		}
+		return true, "would create " + n, nil
 	}
 	var got map[string]any
 	if create.HTTPMethod == "PUT" {
@@ -301,7 +351,7 @@ func resolveSpec(spec map[string]any, resolved *names, project, number string) (
 // holding it), and the mask, where it takes one, names exactly the
 // top-level fields that differ, removed ones included, so a field nobody
 // captured is never touched and one the snapshot lacks is cleared.
-func update(ctx context.Context, api API, docs *Docs, o snapshot.Object, ex *res, project, number string, resolved *names) (bool, string) {
+func update(ctx context.Context, api API, docs *Docs, o snapshot.Object, ex *res, project, number string, resolved *names, dryRun bool) (bool, string) {
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	str := func(k string) string { s, _ := ann[k].(string); return s }
 	apiName, ver, _ := strings.Cut(str(annDiscovery), "/")
@@ -383,6 +433,9 @@ func update(ctx context.Context, api API, docs *Docs, o snapshot.Object, ex *res
 	u := doc.URL(m, name)
 	if len(q) > 0 {
 		u += "?" + q.Encode()
+	}
+	if dryRun {
+		return true, "would update " + name + " (" + strings.Join(mask, ", ") + ")"
 	}
 	if _, err := api.Call(ctx, m.HTTPMethod, u, body); err != nil {
 		return false, err.Error()

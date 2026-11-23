@@ -210,13 +210,14 @@ func captureAWS(ctx context.Context, a *awsFlags, out string) int {
 }
 
 // restoreAWS reads write-only values from a file the operator controls; they
-// go to AWS and nowhere else.
-func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, valuesFile string, update bool) int {
-	ad, err := a.connect(ctx, captureOnly)
+// go to AWS and nowhere else. A dry run's client is the read-only one, which
+// refuses every write, whatever the restore would do.
+func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, valuesFile string, update, dryRun bool) int {
+	ad, err := a.connect(ctx, captureOnly || dryRun)
 	if err != nil {
 		return fail(err)
 	}
-	ad.Options.Update = update
+	ad.Options.Update, ad.Options.DryRun = update, dryRun
 	if snap, err = retarget(ctx, ad, snap); err != nil {
 		return fail(err)
 	}
@@ -241,6 +242,10 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 			continue
 		}
 		ok++
+		if dryRun {
+			fmt.Printf("%s: %s\n", r.Detail, r.Key)
+			continue
+		}
 		// An update changed something live; each one is said.
 		if strings.HasPrefix(r.Detail, "updated") {
 			fmt.Printf("UPDATED %s: %s\n", r.Key, r.Detail)
@@ -259,7 +264,11 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 			fmt.Println("  ", p)
 		}
 	}
-	fmt.Printf("applied %d of %d resources to aws %s\n", ok, len(results), a.region)
+	if dryRun {
+		fmt.Printf("dry run: %d of %d resources would apply to aws %s; nothing was written\n", ok, len(results), a.region)
+	} else {
+		fmt.Printf("applied %d of %d resources to aws %s\n", ok, len(results), a.region)
+	}
 	if ok != len(results) {
 		return 3
 	}

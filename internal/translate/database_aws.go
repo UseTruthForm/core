@@ -88,7 +88,7 @@ func (d rdsWriter) server(s *dbServer, o *out) (Entry, string) {
 	key := s.mapKey()
 	dm, _ := d.m.database(key)
 	if dm.InstanceClass == "" {
-		return Entry{}, fmt.Sprintf("the map gives no instance class for it (databases.%s.instanceClass): its Azure SKU, %s, names Azure's hardware, not an RDS size", key, s.sku)
+		return Entry{}, fmt.Sprintf("the map gives no instance class for it (databases.%s.instanceClass): %s, not an RDS size", key, s.skuHint())
 	}
 	name := d.m.name(s.src, strings.ToLower(s.name))
 	if !rdsName.MatchString(name) || len(name) > 63 {

@@ -326,6 +326,15 @@ func (s *dbServer) port() int {
 	return pgPort
 }
 
+// skuHint says what Azure sized, for a refusal that asks the map for a
+// size. An Azure SQL server has no size: each of its databases has one.
+func (s *dbServer) skuHint() string {
+	if s.sku == "" {
+		return "Azure sizes each of its databases and not the server (their entries name each size), and those name Azure's hardware"
+	}
+	return "its Azure SKU, " + s.sku + ", names Azure's hardware"
+}
+
 // readTop reads what both kinds of server have outside properties.
 func (s *dbServer) readTop(top *props) {
 	top.quiet("location", "properties", "name")

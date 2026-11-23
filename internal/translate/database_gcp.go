@@ -52,7 +52,7 @@ func (d cloudSQLWriter) server(s *dbServer, o *out) (Entry, string) {
 	key := s.mapKey()
 	dm, _ := d.m.database(key)
 	if dm.Tier == "" {
-		return Entry{}, fmt.Sprintf("the map gives no tier for it (databases.%s.tier): its Azure SKU, %s, names Azure's hardware, not a Cloud SQL tier", key, s.sku)
+		return Entry{}, fmt.Sprintf("the map gives no tier for it (databases.%s.tier): %s, not a Cloud SQL tier", key, s.skuHint())
 	}
 	if d.m.Region == "" {
 		return Entry{}, "the map names no region (region): a Cloud SQL instance is regional"

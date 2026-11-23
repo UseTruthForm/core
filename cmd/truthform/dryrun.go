@@ -14,6 +14,8 @@ type dryNotes struct {
 	mu        sync.Mutex
 	unchecked []string
 	writeOnly map[string]*writeOnlyNote
+	// counts is how many resources of each type got each outcome.
+	counts map[string]map[string]int
 }
 
 type writeOnlyNote struct {
@@ -41,7 +43,50 @@ func (n *dryNotes) without(kind, fields string) {
 	w.count++
 }
 
+// count records one result: its type, and what the dry run said of it,
+// without the names and fields that follow.
+func (n *dryNotes) count(key string, ok bool, detail string) {
+	what := "would not apply"
+	if ok {
+		what = detail
+		for _, known := range []string{"would create", "would update", "would add", "already present"} {
+			if strings.HasPrefix(detail, known) {
+				what = known
+			}
+		}
+	}
+	if n.counts == nil {
+		n.counts = map[string]map[string]int{}
+	}
+	kind := kindOfKey(key)
+	if n.counts[kind] == nil {
+		n.counts[kind] = map[string]int{}
+	}
+	n.counts[kind][what]++
+}
+
 func (n *dryNotes) print() {
+	if len(n.counts) > 0 {
+		fmt.Println("by type:")
+		kinds := make([]string, 0, len(n.counts))
+		for k := range n.counts {
+			kinds = append(kinds, k)
+		}
+		sort.Strings(kinds)
+		for _, k := range kinds {
+			var parts []string
+			for _, what := range []string{"would create", "would update", "would add", "already present", "would not apply"} {
+				if c := n.counts[k][what]; c > 0 {
+					parts = append(parts, fmt.Sprintf("%d %s", c, what))
+					delete(n.counts[k], what)
+				}
+			}
+			for what, c := range n.counts[k] {
+				parts = append(parts, fmt.Sprintf("%d %s", c, what))
+			}
+			fmt.Printf("   %s: %s\n", k, strings.Join(parts, ", "))
+		}
+	}
 	if len(n.writeOnly) > 0 {
 		fmt.Println("write-only values the snapshot does not hold (AWS never returns them); a restore creates these without them unless --values supplies them:")
 		kinds := make([]string, 0, len(n.writeOnly))

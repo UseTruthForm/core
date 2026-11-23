@@ -126,6 +126,9 @@ func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot, update
 	}
 	ok := 0
 	for _, r := range results {
+		if dryRun {
+			notes.count(r.Key, r.OK, r.Detail)
+		}
 		if r.OK {
 			ok++
 			if dryRun {

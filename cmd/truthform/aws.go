@@ -239,6 +239,9 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 	ok := 0
 	var partial []string
 	for _, r := range results {
+		if dryRun {
+			notes.count(r.Key, r.OK, r.Detail)
+		}
 		if !r.OK {
 			fmt.Printf("NOT APPLIED %s: %s\n", r.Key, r.Detail)
 			continue

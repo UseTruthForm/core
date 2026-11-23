@@ -16,8 +16,13 @@ func TestDryNotesAreSaidOncePerTypeAndPerCheck(t *testing.T) {
 		n.add("could not check that role r exists: denied")
 	}
 	n.without("AWS::RDS::DBInstance", "MasterUserPassword")
+	n.count("aws.truthform.org/v1|AWS::SQS::Queue||a", true, "would create; write-only, not supplied: X")
+	n.count("aws.truthform.org/v1|AWS::SQS::Queue||b", true, "would create")
+	n.count("aws.truthform.org/v1|AWS::SQS::Queue||c", true, "already present and identical")
+	n.count("aws.truthform.org/v1|AWS::EKS::Cluster||d", false, "names role r, which is neither")
 	out := captureStdout(t, n.print)
-	for _, want := range []string{"AWS::SNS::Subscription (3): Region", "AWS::RDS::DBInstance (1): MasterUserPassword", "NOT CHECKED: could not check that role r exists: denied"} {
+	for _, want := range []string{"AWS::SNS::Subscription (3): Region", "AWS::RDS::DBInstance (1): MasterUserPassword", "NOT CHECKED: could not check that role r exists: denied",
+		"AWS::SQS::Queue: 2 would create, 1 already present", "AWS::EKS::Cluster: 1 would not apply"} {
 		if strings.Count(out, want) != 1 {
 			t.Errorf("%q is in the output %d times:\n%s", want, strings.Count(out, want), out)
 		}

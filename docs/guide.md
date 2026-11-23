@@ -471,13 +471,14 @@ truthform restore --platform aws --region us-east-2 --from snap/aws --values sec
     that enables it.
 
   One refused takes with it what refers to it, and a check that could not
-  be made is printed as `NOT CHECKED`. It exits 3 when anything would not
-  apply. It does not show whether the cloud would accept each request:
-  neither has a way to ask without making it, so a quota or a value the
-  service refuses is found only by the restore. On AWS, what a resource
-  takes from one not yet created (an ARN, an ID) is not known, a resource
-  AWS makes as a side effect of another is listed as `would create`, and
-  the write-only values a create would go without are listed once per type.
+  be made is printed as `NOT CHECKED`. It ends with a count by type, and
+  exits 3 when anything would not apply. It does not show whether the cloud
+  would accept each request: neither has a way to ask without making it, so
+  a quota or a value the service refuses is found only by the restore. On
+  AWS, what a resource takes from one not yet created (an ARN, an ID) is
+  not known, a resource AWS makes as a side effect of another is listed as
+  `would create`, and the write-only values a create would go without are
+  listed once per type.
 
 ### A second environment's DNS in the same zone (Cloudflare)
 

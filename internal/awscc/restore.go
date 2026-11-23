@@ -33,6 +33,8 @@ type RestoreOptions struct {
 	// is not known yet, so they are reported as they would be sent, with
 	// that value named and not filled in.
 	DryRun bool
+	// Note is told what a dry run could not check. Nil, it is not told.
+	Note func(string)
 }
 
 // plannedKey marks, among what a restore has learned about the target, a
@@ -274,7 +276,15 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 			break
 		}
 	}
-	return append(results, done...)
+	results = append(results, done...)
+	if opt.DryRun {
+		note := opt.Note
+		if note == nil {
+			note = func(string) {}
+		}
+		dryChecks(ctx, api, s, results, in.account, note)
+	}
+	return results
 }
 
 // values is what a restore has learned about the target (each restored or
@@ -356,15 +366,18 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 		return snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{mine}}, snapshot.Snapshot{Objects: []snapshot.Object{{Body: toObject(ex)}}})
 	}
 	ex, exists := existing[o.Key()]
+	// differing is what to say of one that exists and differs when it is
+	// not to be modified; said once its references are resolved, since the
+	// difference can be only in how one is written.
+	differing := ""
 	if exists {
 		ch := differs(ex)
 		if len(ch) == 0 {
 			return true, "already present and identical"
 		}
 		if !opt.Update {
-			return false, "already exists in the target and differs (" + strings.Join(ch[0].Fields, ", ") + "); not modified (--update modifies it)"
-		}
-		if !t.Handlers["update"] {
+			differing = "already exists in the target and differs (" + strings.Join(ch[0].Fields, ", ") + "); not modified (--update modifies it)"
+		} else if !t.Handlers["update"] {
 			return false, "already exists in the target and differs (" + strings.Join(ch[0].Fields, ", ") + "); Cloud Control cannot update this type"
 		}
 	} else if !t.Handlers["create"] {
@@ -393,6 +406,19 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 			return v
 		})
 	})
+	if differing != "" {
+		// A snapshot can name by its ARN what the target's inventory
+		// knows by name (a translation's cluster names its role as the
+		// map gave it; read back beside the snapshot's own roles, it is a
+		// reference). Resolved, the two are the same, and nothing is to
+		// change: reported as differing, every later restore and dry run
+		// said so of a cluster that was as the snapshot has it.
+		if len(missing) == 0 && sameResolved(t, ex, desired) {
+			resolved.set(ref, withID(ex.props, ex.id))
+			return true, "already present; it differs only in how references are named"
+		}
+		return false, differing
+	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
 		why := "is not in the target"
@@ -653,6 +679,19 @@ func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *
 	}
 	resolved.set(ref, withID(props, ex.id))
 	return true, "updated " + ex.id + " (" + strings.Join(paths, ", ") + ")"
+}
+
+// sameResolved reports an existing resource that an update to the
+// snapshot's spec, its references resolved, would not change. What AWS
+// never returns is not compared.
+func sameResolved(t *TypeInfo, ex *resource, desired map[string]any) bool {
+	d := deepCopy(desired)
+	for _, ptr := range t.WriteOnly {
+		removePointer(d, ptr)
+	}
+	sortSets(d, map[string]any{"properties": t.Properties}, t.Definitions)
+	ops, replace := planUpdate(t, normalize(t, ex.id, ex.props).spec, d)
+	return len(ops) == 0 && len(replace) == 0
 }
 
 // planUpdate returns the JSON Patch that turns live into desired, one

@@ -460,13 +460,24 @@ truthform restore --platform aws --region us-east-2 --from snap/aws --values sec
   each write the restore would make (`would create`, `would update`, on GCP
   `would add` for a grant), and makes none: its client refuses every write.
   On AWS and GCP it shows what is already there, what differs, what a
-  reference cannot find, and the order of the rest. It does not show whether
-  the cloud would accept each request: neither has a way to ask without
-  making it, so a quota, a name taken in another account or a value the
+  reference cannot find, and the order of the rest. It also reads for what
+  the target's inventory does not show and would refuse a write:
+  - a bucket name another account or project holds (S3 and Cloud Storage
+    names are shared by everyone);
+  - an IAM role of the account (AWS) or a service account of the project
+    (GCP) that a resource names and neither the target nor the snapshot
+    holds;
+  - on GCP, an API that is not enabled in the project, with the command
+    that enables it.
+
+  One refused takes with it what refers to it, and a check that could not
+  be made is printed as `NOT CHECKED`. It exits 3 when anything would not
+  apply. It does not show whether the cloud would accept each request:
+  neither has a way to ask without making it, so a quota or a value the
   service refuses is found only by the restore. On AWS, what a resource
-  takes from one not yet created (an ARN, an ID) is not known, and a
-  resource AWS makes as a side effect of another is listed as `would
-  create`.
+  takes from one not yet created (an ARN, an ID) is not known, a resource
+  AWS makes as a side effect of another is listed as `would create`, and
+  the write-only values a create would go without are listed once per type.
 
 ### A second environment's DNS in the same zone (Cloudflare)
 

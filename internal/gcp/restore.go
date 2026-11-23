@@ -23,6 +23,8 @@ type RestoreOptions struct {
 	// DryRun reads the target and reports each write the restore would
 	// make ("would create", "would update", "would add"), and makes none.
 	DryRun bool
+	// Note is told what a dry run could not check. Nil, it is not told.
+	Note func(string)
 }
 
 // Restore creates every snapshot object missing from the project, after
@@ -126,7 +128,15 @@ func restoreWith(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, 
 			done[i].Detail += "; not finished: " + err.Error()
 		}
 	}
-	return append(results, done...)
+	results = append(results, done...)
+	if opt.DryRun {
+		note := opt.Note
+		if note == nil {
+			note = func(string) {}
+		}
+		dryChecks(ctx, api, docs, s, results, project, number, resolved, note)
+	}
+	return results
 }
 
 // pendingApply is a resource whose applied fields are still to be set: its

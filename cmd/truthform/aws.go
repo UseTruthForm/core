@@ -218,6 +218,8 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 		return fail(err)
 	}
 	ad.Options.Update, ad.Options.DryRun = update, dryRun
+	notes := dryNotes{}
+	ad.Options.Note = notes.add
 	if snap, err = retarget(ctx, ad, snap); err != nil {
 		return fail(err)
 	}
@@ -243,7 +245,14 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 		}
 		ok++
 		if dryRun {
-			fmt.Printf("%s: %s\n", r.Detail, r.Key)
+			// Which write-only values a create would go without is the
+			// same for every resource of a type: said once per type,
+			// below, and not on each of hundreds of lines.
+			detail, without, _ := strings.Cut(r.Detail, "; write-only, not supplied: ")
+			fmt.Printf("%s: %s\n", detail, r.Key)
+			if without != "" {
+				notes.without(kindOfKey(r.Key), without)
+			}
 			continue
 		}
 		// An update changed something live; each one is said.
@@ -265,6 +274,7 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 		}
 	}
 	if dryRun {
+		notes.print()
 		fmt.Printf("dry run: %d of %d resources would apply to aws %s; nothing was written\n", ok, len(results), a.region)
 	} else {
 		fmt.Printf("applied %d of %d resources to aws %s\n", ok, len(results), a.region)

@@ -118,6 +118,8 @@ func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot, update
 		return fail(err)
 	}
 	ad.Options.Update, ad.Options.DryRun = update, dryRun
+	notes := dryNotes{}
+	ad.Options.Note = notes.add
 	results := ad.Restore(ctx, snap)
 	if jsonOut {
 		defer emitRestore(results, "gcp "+g.project)
@@ -139,6 +141,7 @@ func restoreGCP(ctx context.Context, g *gcpFlags, snap snapshot.Snapshot, update
 		fmt.Printf("NOT APPLIED %s: %s\n", r.Key, r.Detail)
 	}
 	if dryRun {
+		notes.print()
 		fmt.Printf("dry run: %d of %d resources would apply to project %s; nothing was written\n", ok, len(results), g.project)
 	} else {
 		fmt.Printf("applied %d of %d resources to project %s\n", ok, len(results), g.project)

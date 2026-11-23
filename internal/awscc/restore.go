@@ -27,7 +27,19 @@ type RestoreOptions struct {
 	// what differs; that stays the default because an update changes a
 	// resource someone may depend on as it is.
 	Update bool
+	// DryRun reads the target and reports each write the restore would
+	// make ("would create", "would update"), and makes none. What a
+	// would-be-created resource's dependents take from it (an ARN, an ID)
+	// is not known yet, so they are reported as they would be sent, with
+	// that value named and not filled in.
+	DryRun bool
+	// Note is told what a dry run could not check. Nil, it is not told.
+	Note func(string)
 }
+
+// plannedKey marks, among what a restore has learned about the target, a
+// resource a dry run would create: it has no properties to resolve yet.
+const plannedKey = "\x00planned"
 
 // readBackStep and readBackLimit bound the wait for a created resource to
 // become readable. Variables so tests need not wait.
@@ -198,6 +210,17 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 	// --update would. One reread for all of them, of only their types and
 	// the types they name (the same set the first inventory used for
 	// them), rather than a full reread per deferred object.
+	if opt.DryRun {
+		// Nothing was created to read back and bring in line.
+		for _, d := range defs {
+			for i := range done {
+				if done[i].Key == d.full.Key() && done[i].OK {
+					done[i].Detail += "; would then set " + strings.Join(d.props, ", ")
+				}
+			}
+		}
+		defs = nil
+	}
 	var again map[string]*resource
 	var rereadErr error
 	rereadFailed := map[string]string{} // type -> why it was not read again
@@ -253,7 +276,15 @@ func Restore(ctx context.Context, api CloudControl, reg *Registry, s snapshot.Sn
 			break
 		}
 	}
-	return append(results, done...)
+	results = append(results, done...)
+	if opt.DryRun {
+		note := opt.Note
+		if note == nil {
+			note = func(string) {}
+		}
+		dryChecks(ctx, api, s, results, in.account, note)
+	}
+	return results
 }
 
 // values is what a restore has learned about the target (each restored or
@@ -335,15 +366,18 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 		return snapshot.Compare(snapshot.Snapshot{Objects: []snapshot.Object{mine}}, snapshot.Snapshot{Objects: []snapshot.Object{{Body: toObject(ex)}}})
 	}
 	ex, exists := existing[o.Key()]
+	// differing is what to say of one that exists and differs when it is
+	// not to be modified; said once its references are resolved, since the
+	// difference can be only in how one is written.
+	differing := ""
 	if exists {
 		ch := differs(ex)
 		if len(ch) == 0 {
 			return true, "already present and identical"
 		}
 		if !opt.Update {
-			return false, "already exists in the target and differs (" + strings.Join(ch[0].Fields, ", ") + "); not modified (--update modifies it)"
-		}
-		if !t.Handlers["update"] {
+			differing = "already exists in the target and differs (" + strings.Join(ch[0].Fields, ", ") + "); not modified (--update modifies it)"
+		} else if !t.Handlers["update"] {
 			return false, "already exists in the target and differs (" + strings.Join(ch[0].Fields, ", ") + "); Cloud Control cannot update this type"
 		}
 	} else if !t.Handlers["create"] {
@@ -353,11 +387,18 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 	spec, _ := o.Body["spec"].(map[string]any)
 	desired := deepCopy(spec)
 	var missing []string
+	// unknown: a dry run left a value to the resource it would create.
+	unknown := false
 	walkStrings(desired, func(s string) string {
 		return tokenRE.ReplaceAllStringFunc(s, func(tok string) string {
 			m := tokenRE.FindStringSubmatch(tok)
 			target := m[1] + "/" + m[2]
-			v, ok := resolved.get(target)[m[3]].(string)
+			p := resolved.get(target)
+			v, ok := p[m[3]].(string)
+			if !ok && p[plannedKey] == true {
+				unknown = true
+				return "(" + m[3] + " of " + target + ", known once created)"
+			}
 			if !ok {
 				missing = append(missing, target)
 				return tok
@@ -365,6 +406,19 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 			return v
 		})
 	})
+	if differing != "" {
+		// A snapshot can name by its ARN what the target's inventory
+		// knows by name (a translation's cluster names its role as the
+		// map gave it; read back beside the snapshot's own roles, it is a
+		// reference). Resolved, the two are the same, and nothing is to
+		// change: reported as differing, every later restore and dry run
+		// said so of a cluster that was as the snapshot has it.
+		if len(missing) == 0 && sameResolved(t, ex, desired) {
+			resolved.set(ref, withID(ex.props, ex.id))
+			return true, "already present; it differs only in how references are named"
+		}
+		return false, differing
+	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
 		why := "is not in the target"
@@ -374,7 +428,9 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 		return false, "depends on " + missing[0] + ", which " + why
 	}
 
-	if byID {
+	// One named by a resource a dry run would create cannot be there yet,
+	// and its identifier is not known to ask with.
+	if byID && !unknown {
 		id, ok := Identifier(t, desired)
 		if !ok {
 			return false, "cannot check the target for an existing one: Cloud Control cannot list this type, and the snapshot does not give its identifier (" + strings.Join(t.PrimaryIdentifier, ", ") + ")"
@@ -401,7 +457,7 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 	vals := opt.Values[ref]
 	merge(desired, deepCopy(vals))
 	if exists {
-		return update(ctx, api, t, ref, ex, desired, resolved)
+		return update(ctx, api, t, ref, ex, desired, resolved, opt.DryRun)
 	}
 	for _, r := range t.Required {
 		if _, ok := desired[r]; !ok {
@@ -410,6 +466,21 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 			}
 			return false, "required property " + r + " is missing from the snapshot"
 		}
+	}
+
+	var without []string
+	for _, w := range writeOnlyFields(t) {
+		if _, ok := vals[strings.FieldsFunc(w, func(r rune) bool { return r == '.' || r == '[' })[0]]; !ok {
+			without = append(without, w)
+		}
+	}
+	if opt.DryRun {
+		resolved.set(ref, map[string]any{plannedKey: true})
+		detail := "would create"
+		if len(without) > 0 {
+			detail += "; write-only, not supplied: " + strings.Join(without, ", ")
+		}
+		return true, detail
 	}
 
 	var id string
@@ -428,12 +499,6 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 	resolved.set(ref, withID(props, id))
 
 	detail := "created " + id
-	var without []string
-	for _, w := range writeOnlyFields(t) {
-		if _, ok := vals[strings.FieldsFunc(w, func(r rune) bool { return r == '.' || r == '[' })[0]]; !ok {
-			without = append(without, w)
-		}
-	}
 	if len(without) > 0 {
 		detail += "; write-only, not supplied: " + strings.Join(without, ", ")
 	}
@@ -584,7 +649,7 @@ func readBack(ctx context.Context, api CloudControl, kind, id string) (map[strin
 // references tokenized and desired has them resolved, so only raw values
 // compare. A change to a create-only property is refused, not made: AWS
 // would replace the resource, deleting what depends on it.
-func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *resource, desired map[string]any, resolved *values) (bool, string) {
+func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *resource, desired map[string]any, resolved *values, dryRun bool) (bool, string) {
 	live := normalize(t, ex.id, ex.props).spec
 	// The snapshot sorted its sets by the tokens in them; resolved, they
 	// can be out of order, and the reordered subnet list of a node group
@@ -598,6 +663,13 @@ func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *
 	if len(ops) == 0 {
 		return true, "already present; it differs only in how references are named"
 	}
+	paths := make([]string, len(ops))
+	for i, op := range ops {
+		paths[i] = strings.TrimPrefix(op.Path, "/")
+	}
+	if dryRun {
+		return true, "would update " + ex.id + " (" + strings.Join(paths, ", ") + ")"
+	}
 	if err := submitted(ctx, func() error { return api.Update(ctx, t.Name, ex.id, ops) }); err != nil {
 		return false, err.Error()
 	}
@@ -606,11 +678,20 @@ func update(ctx context.Context, api CloudControl, t *TypeInfo, ref string, ex *
 		return false, "updated " + ex.id + " but could not read it back: " + err.Error()
 	}
 	resolved.set(ref, withID(props, ex.id))
-	paths := make([]string, len(ops))
-	for i, op := range ops {
-		paths[i] = strings.TrimPrefix(op.Path, "/")
-	}
 	return true, "updated " + ex.id + " (" + strings.Join(paths, ", ") + ")"
+}
+
+// sameResolved reports an existing resource that an update to the
+// snapshot's spec, its references resolved, would not change. What AWS
+// never returns is not compared.
+func sameResolved(t *TypeInfo, ex *resource, desired map[string]any) bool {
+	d := deepCopy(desired)
+	for _, ptr := range t.WriteOnly {
+		removePointer(d, ptr)
+	}
+	sortSets(d, map[string]any{"properties": t.Properties}, t.Definitions)
+	ops, replace := planUpdate(t, normalize(t, ex.id, ex.props).spec, d)
+	return len(ops) == 0 && len(replace) == 0
 }
 
 // planUpdate returns the JSON Patch that turns live into desired, one

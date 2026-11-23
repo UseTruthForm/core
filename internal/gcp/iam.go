@@ -158,7 +158,7 @@ func addMembers(policy map[string]any, want map[string][]string) []string {
 }
 
 // restoreBinding adds a binding object's members to its resource's policy.
-func restoreBinding(ctx context.Context, api API, docs *Docs, o snapshot.Object, project, number string, resolved *names, locks *policyLocks) (bool, string) {
+func restoreBinding(ctx context.Context, api API, docs *Docs, o snapshot.Object, project, number string, resolved *names, locks *policyLocks, dryRun bool) (bool, string) {
 	ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 	str := func(k string) string { s, _ := ann[k].(string); return s }
 	apiName, ver, _ := strings.Cut(str(annDiscovery), "/")
@@ -179,6 +179,10 @@ func restoreBinding(ctx context.Context, api API, docs *Docs, o snapshot.Object,
 	resource := detok(str(annParent), project, number)
 	if resource == "" {
 		return false, "it names no resource (" + annParent + ")"
+	}
+	if dryRun && resolved.isPlanned(resource) {
+		// Its resource is not there to read a policy from.
+		return true, "would add " + strings.Join(addMembers(map[string]any{}, want), ", ") + " on " + resource + " (once created)"
 	}
 	l := locks.of(resource)
 	l.Lock()
@@ -216,6 +220,9 @@ func restoreBinding(ctx context.Context, api API, docs *Docs, o snapshot.Object,
 		added := addMembers(policy, want)
 		if len(added) == 0 {
 			return true, "already present and identical"
+		}
+		if dryRun {
+			return true, "would add " + strings.Join(added, ", ") + " on " + resource
 		}
 		if etag == "" {
 			// Without an etag the write would replace whatever anyone

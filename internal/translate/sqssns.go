@@ -281,7 +281,7 @@ func (d sqsSNS) subscription(ns *sbNS, e *sbEntity, o *out) {
 		refuse(why)
 		return
 	}
-	f := filterOf(e, nil)
+	f := filterOf(e, nil, d.m)
 	if f.why != "" {
 		refuse(f.why)
 		return
@@ -338,7 +338,7 @@ func snsFilter(rules []map[string]string) map[string]any {
 	one := func(m map[string]string) map[string]any {
 		out := map[string]any{}
 		for k, v := range m {
-			out[k] = []any{v}
+			out[k] = []any{snsValue(v)}
 		}
 		return out
 	}
@@ -358,6 +358,19 @@ func snsFilter(rules []map[string]string) map[string]any {
 	return map[string]any{"$or": ors}
 }
 
+// snsValue is what a filter policy matches a key against: a text value,
+// or that the attribute is there at all ("exists": true,
+// https://docs.aws.amazon.com/sns/latest/dg/attribute-key-matching.html).
+func snsValue(v string) any {
+	switch v {
+	case sqlExists:
+		return map[string]any{"exists": true}
+	case sqlAbsent:
+		return map[string]any{"exists": false}
+	}
+	return v
+}
+
 // snsOneKey is the property every rule matches alone, with the rules'
 // values in order, or "" when the rules are not of that shape.
 func snsOneKey(rules []map[string]string) (string, []any) {
@@ -375,7 +388,7 @@ func snsOneKey(rules []map[string]string) (string, []any) {
 	}
 	vals := make([]any, 0, len(seen))
 	for _, v := range sortedKeys(seen) {
-		vals = append(vals, v)
+		vals = append(vals, snsValue(v))
 	}
 	return key, vals
 }

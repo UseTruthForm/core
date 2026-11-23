@@ -187,10 +187,20 @@ func (d rabbit) subscription(ns *sbNS, e *sbEntity, o *out) {
 		refuse(why)
 		return
 	}
-	f := filterOf(e, nil)
+	f := filterOf(e, nil, d.m)
 	if f.why != "" {
 		refuse(f.why)
 		return
+	}
+	// A headers binding matches a header's value; it has no way to ask
+	// only that a header is there.
+	for _, m := range f.any {
+		for _, k := range sortedKeys(m) {
+			if v := m[k]; v == sqlExists || v == sqlAbsent {
+				refuse(fmt.Sprintf("a rule delivers when the property %s is present, or when it is absent, whatever its value (EXISTS), which a headers binding cannot say", k))
+				return
+			}
+		}
 	}
 	tname := d.m.sbName(t)
 	qname := d.m.name(e.key, tname+"."+e.name)

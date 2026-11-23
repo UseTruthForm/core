@@ -11,9 +11,11 @@ import (
 // than a correlation filter does: text values compared for equality, joined
 // with AND, OR and IN. That is what an SNS filter policy, a Pub/Sub filter
 // and a RabbitMQ headers binding can each say exactly, and nearly all of
-// what filters in use say. Everything else (NOT, LIKE, EXISTS, IS NULL,
-// <>, ordering, arithmetic, numbers and booleans, system properties,
-// functions) is refused with what was met: a filter half-carried delivers
+// what filters in use say. EXISTS and NOT EXISTS are read too, for the destinations that
+// can ask whether an attribute is there, and a comparison with TRUE or
+// FALSE, when the map says how a boolean is sent (booleans). Everything
+// else (NOT, LIKE, IS NULL, <>, ordering, arithmetic, numbers, system
+// properties, functions) is refused with what was met: a filter half-carried delivers
 // more than the source did, or less, and nobody chose either.
 //
 // The grammar and its meaning are Microsoft's:
@@ -30,6 +32,16 @@ import (
 // takes a filter policy of at most 150 combinations
 // (https://docs.aws.amazon.com/sns/latest/dg/subscription-filter-policy-constraints.html).
 const sqlFilterMax = 150
+
+// What a property is asked to be, beside a text value: only present, or
+// the boolean true or false. No text value starts with a NUL, so these
+// stand in the place of one.
+const (
+	sqlExists = "\x00exists"
+	sqlAbsent = "\x00absent" // NOT EXISTS
+	sqlTrue   = "\x00true"
+	sqlFalse  = "\x00false"
+)
 
 type sqlTok struct {
 	kind string // id, str, op, end
@@ -206,7 +218,15 @@ func sqlBoth(a, b map[string]string) (map[string]string, bool) {
 				same = have
 			}
 		}
-		if old, ok := m[same]; ok && old != v {
+		old, ok := m[same]
+		switch {
+		case ok && (old == sqlAbsent) != (v == sqlAbsent):
+			// Absent, and present or equal to something: never.
+			return nil, false
+		case ok && v == sqlExists:
+			// Present and equal to something is equal to it.
+			continue
+		case ok && old != sqlExists && old != v:
 			return nil, false
 		}
 		m[same] = v
@@ -239,7 +259,31 @@ func (p *sqlParser) term() []map[string]string {
 		return []map[string]string{{name: t.text}}
 	case t.kind == "id" || t.kind == "name":
 		if t.kind == "id" {
-			for _, kw := range []string{"NOT", "EXISTS", "TRUE", "FALSE", "NULL"} {
+			// NOT EXISTS(property) is the one NOT read: EXISTS is never
+			// unknown, so its NOT is simply that the property is absent.
+			absent := false
+			if strings.EqualFold(t.text, "NOT") && p.pos+1 < len(p.toks) && p.toks[p.pos+1].kind == "id" && strings.EqualFold(p.toks[p.pos+1].text, "EXISTS") {
+				p.pos++
+				t, absent = p.peek(), true
+			}
+			if strings.EqualFold(t.text, "EXISTS") {
+				p.pos++
+				if !p.op("(") {
+					return p.fail("EXISTS is not followed by a property in brackets")
+				}
+				name := p.property()
+				if p.why == "" && !p.op(")") {
+					return p.fail("EXISTS takes one property")
+				}
+				if p.why != "" {
+					return nil
+				}
+				if absent {
+					return []map[string]string{{name: sqlAbsent}}
+				}
+				return []map[string]string{{name: sqlExists}}
+			}
+			for _, kw := range []string{"NOT", "TRUE", "FALSE", "NULL"} {
 				if strings.EqualFold(t.text, kw) {
 					return p.fail("it uses %s, and only =, IN, AND and OR on text values are translated", kw)
 				}
@@ -252,6 +296,10 @@ func (p *sqlParser) term() []map[string]string {
 		switch {
 		case p.op("="):
 			v := p.peek()
+			if v.kind == "id" && (strings.EqualFold(v.text, "TRUE") || strings.EqualFold(v.text, "FALSE")) {
+				p.pos++
+				return []map[string]string{{name: map[bool]string{true: sqlTrue, false: sqlFalse}[strings.EqualFold(v.text, "TRUE")]}}
+			}
 			if v.kind != "str" {
 				return p.fail("it compares %s with %s, and only a text value in single quotation marks is translated", name, p.show(v))
 			}

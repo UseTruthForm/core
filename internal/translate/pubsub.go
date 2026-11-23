@@ -242,7 +242,7 @@ func (d pubSub) subscription(ns *sbNS, e *sbEntity, o *out) {
 		refuse(why)
 		return
 	}
-	f := filterOf(e, nil)
+	f := filterOf(e, nil, d.m)
 	if f.why != "" {
 		refuse(f.why)
 		return
@@ -281,6 +281,12 @@ func psFilter(rules []map[string]string) (string, string) {
 		for _, k := range ks {
 			if !psAttrID.MatchString(k) {
 				return "", fmt.Sprintf("the property %q is not a name a Pub/Sub filter can match", k)
+			}
+			// attributes:key is true when the message has the attribute
+			// (https://docs.cloud.google.com/pubsub/docs/subscription-message-filter).
+			if m[k] == sqlExists || m[k] == sqlAbsent {
+				ands = append(ands, map[bool]string{true: "NOT ", false: ""}[m[k] == sqlAbsent]+"attributes:"+k)
+				continue
 			}
 			ands = append(ands, "attributes."+k+" = "+strconv.Quote(m[k]))
 		}

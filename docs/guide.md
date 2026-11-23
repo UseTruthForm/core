@@ -1528,6 +1528,8 @@ clusters:                   # per AKS cluster, keyed group/cluster: what Azure c
         subnet: net/core/app        # for a pool in the network AKS made itself
 prefixes:                   # a prefix for every queue and topic of one Service Bus namespace,
   rg/shop-test: test-       # keyed group/namespace: two namespaces that share names collide
+booleans: text              # a boolean application property is sent as the word true or false;
+                            # without it a SQL filter that compares one with TRUE or FALSE is refused
 names:
   rg/shop/legacy.feed: legacy-feed   # a name SQS does not allow
   rg/shopfiles/$root: shopfiles-root # a bucket name, keyed group/account/container
@@ -1554,7 +1556,9 @@ databases:                  # per server, keyed group/server: what Azure cannot 
 | Subscription | SQS queue subscribed with raw delivery, a queue policy for that topic only | subscription | quorum `Queue`, a `Binding` per rule |
 | Correlation rule | filter policy on message attributes (`$or` for several) | filter on attributes (`OR` for several) | headers binding |
 | SQL rule that compares text for equality (`=`, `IN`, `AND`, `OR`) | the same filter policy: one key with its values, or `$or`. Five keys and 150 alternatives at most | the same filter | a headers binding per alternative |
-| Any other SQL rule (`NOT`, `LIKE`, `EXISTS`, `IS NULL`, `<>`, an ordering, a number or boolean, a system property, a function) | refused, with what was met | refused | refused |
+| SQL rule with `EXISTS(property)` or `NOT EXISTS(property)` | `{"exists": true}` or `{"exists": false}` on the key | `attributes:property`, `NOT attributes:property` | refused: a headers binding matches a value |
+| SQL rule that compares a property with `TRUE` or `FALSE` | with `booleans: text` in the map: a match on the word `true` or `false`, which senders then send. Refused without it | the same | the same |
+| Any other SQL rule (any other `NOT`, `LIKE`, `IS NULL`, `<>`, an ordering, a number, a system property, a function) | refused, with what was met | refused | refused |
 | Rule action | refused | refused | refused |
 | Rule set default deny, public access disabled | a policy on every queue and topic denies sending, receiving and publishing to requests that come neither through the namespace's SQS and SNS endpoints nor from the rule set's public ranges (see Private access) | no network setting per topic: the project's service perimeter (`privateAccess` in the map; see Private access), or less protected without one | the brokers' Service answers inside the cluster only |
 | Session queue | FIFO (`sessions: fifo`) | ordered delivery (`sessions: ordering`) | single active consumer |

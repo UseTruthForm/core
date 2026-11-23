@@ -43,8 +43,12 @@ data:
   servicebus_shop_queue_payments: "https://sqs.eu-west-1.amazonaws.com/{{truthform|account|self|id}}/payments.fifo"
   # on Azure: subscription events/audit in Service Bus namespace shop
   servicebus_shop_subscription_events_audit: "https://sqs.eu-west-1.amazonaws.com/{{truthform|account|self|id}}/events-audit"
+  # on Azure: subscription events/north in Service Bus namespace shop
+  servicebus_shop_subscription_events_north: "https://sqs.eu-west-1.amazonaws.com/{{truthform|account|self|id}}/events-north"
   # on Azure: subscription events/shipping in Service Bus namespace shop
   servicebus_shop_subscription_events_shipping: "https://sqs.eu-west-1.amazonaws.com/{{truthform|account|self|id}}/events-shipping"
+  # on Azure: subscription events/urgent in Service Bus namespace shop
+  servicebus_shop_subscription_events_urgent: "https://sqs.eu-west-1.amazonaws.com/{{truthform|account|self|id}}/events-urgent"
   # on Azure: topic events in Service Bus namespace shop
   servicebus_shop_topic_events: "arn:aws:sns:eu-west-1:{{truthform|account|self|id}}:events"
   # on Azure: https://shopassets.blob.core.windows.net/images

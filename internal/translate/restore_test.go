@@ -31,9 +31,9 @@ func TestTheAWSTranslationRestores(t *testing.T) {
 	}
 	counts := f.Count()
 	// The namespace answered only its firewall's range, so every queue
-	// has a policy (the two subscriptions' hold SNS's allow too), and the
+	// has a policy (the four subscriptions' hold SNS's allow too), and the
 	// topic one.
-	if counts[awsQueue] != 10 || counts[awsTopic] != 1 || counts[awsSub] != 2 || counts[awsPolicy] != 10 || counts[awsTopicPolicy] != 1 {
+	if counts[awsQueue] != 14 || counts[awsTopic] != 1 || counts[awsSub] != 4 || counts[awsPolicy] != 14 || counts[awsTopicPolicy] != 1 {
 		t.Errorf("created: %v", counts)
 	}
 	// A second restore finds everything, the inline policies included,
@@ -43,7 +43,7 @@ func TestTheAWSTranslationRestores(t *testing.T) {
 			t.Errorf("again: %s: %v %s", res.Key, res.OK, res.Detail)
 		}
 	}
-	if after := f.Count(); after[awsQueue] != 10 || after[awsPolicy] != 10 || after[awsTopicPolicy] != 1 {
+	if after := f.Count(); after[awsQueue] != 14 || after[awsPolicy] != 14 || after[awsTopicPolicy] != 1 {
 		t.Errorf("a second restore created more: %v", after)
 	}
 	// The subscription points at what the account made, not a token.

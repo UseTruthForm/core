@@ -380,8 +380,9 @@ gitops:
     state: no translation
     what: scaler
     why: 'Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/fraud
-      was refused: rule big is a SQL filter (amount > 1000); it is not translated,
-      and dropping it would deliver more'
+      was refused: rule big is a SQL filter (amount > 1000) that is not translated:
+      it uses >, and only =, IN, AND and OR are translated. Dropping it would deliver
+      more'
   - appliedBy: Flux Kustomization flux-system/apps
     field: spec.triggers[3]
     file: apps/base/shop/scaling.yaml

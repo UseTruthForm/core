@@ -1551,10 +1551,17 @@ databases:                  # per server, keyed group/server: what Azure cannot 
 | Topic | SNS topic | topic | headers `Exchange` |
 | Subscription | SQS queue subscribed with raw delivery, a queue policy for that topic only | subscription | quorum `Queue`, a `Binding` per rule |
 | Correlation rule | filter policy on message attributes (`$or` for several) | filter on attributes (`OR` for several) | headers binding |
-| SQL rule, rule action | refused | refused | refused |
+| SQL rule that compares text for equality (`=`, `IN`, `AND`, `OR`) | the same filter policy: one key with its values, or `$or`. Five keys and 150 alternatives at most | the same filter | a headers binding per alternative |
+| Any other SQL rule (`NOT`, `LIKE`, `EXISTS`, `IS NULL`, `<>`, an ordering, a number or boolean, a system property, a function) | refused, with what was met | refused | refused |
+| Rule action | refused | refused | refused |
 | Rule set default deny, public access disabled | a policy on every queue and topic denies sending, receiving and publishing to requests that come neither through the namespace's SQS and SNS endpoints nor from the rule set's public ranges (see Private access) | no network setting per topic: the project's service perimeter (`privateAccess` in the map; see Private access), or less protected without one | the brokers' Service answers inside the cluster only |
 | Session queue | FIFO (`sessions: fifo`) | ordered delivery (`sessions: ordering`) | single active consumer |
 | Shared access keys | refused: identity is a change to the app | refused | refused |
+
+A SQL filter matched a property whatever the case of its name's letters
+(`Area`, `area`); no target does. A translated filter names each property
+as the subscription's first rule wrote it, and the report lists those
+names: senders set the attribute so, or the message is not delivered.
 
 | Network | aws | gcp |
 |---|---|---|
@@ -2038,9 +2045,9 @@ each with its reason and target objects:
   named with why (SQS keeps a message 14 days at most; Pub/Sub has no
   duplicate detection);
 - **refused**: looked at, and there is no equivalent, or carrying it over
-  would change what it does in a way nobody chose. A SQL filter is refused
-  with its subscription, because without it the subscription would
-  receive every message;
+  would change what it does in a way nobody chose. A SQL filter that says
+  more than equality on text is refused with its subscription, because
+  without it the subscription would receive every message;
 - **not looked at**: no descriptor for the type yet.
 
 A loss that makes the target less protected than the source is marked

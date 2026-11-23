@@ -70,6 +70,17 @@ func fixture() snapshot.Snapshot {
 			"lockDuration": "PT1M", "maxDeliveryCount": 10, "status": "Active"})),
 		az("Microsoft.ServiceBus/namespaces/topics/subscriptions/rules", "rg", "shop/events/fraud/big", pr(map[string]any{
 			"filterType": "SqlFilter", "sqlFilter": map[string]any{"sqlExpression": "amount > 1000"}})),
+		// SQL filters that say no more than equality on text: carried.
+		az("Microsoft.ServiceBus/namespaces/topics/subscriptions", "rg", "shop/events/north", pr(map[string]any{
+			"lockDuration": "PT1M", "maxDeliveryCount": 10, "status": "Active"})),
+		az("Microsoft.ServiceBus/namespaces/topics/subscriptions/rules", "rg", "shop/events/north/area", pr(map[string]any{
+			"filterType": "SqlFilter", "sqlFilter": map[string]any{"sqlExpression": "Area = 'north'"}})),
+		az("Microsoft.ServiceBus/namespaces/topics/subscriptions/rules", "rg", "shop/events/north/coast", pr(map[string]any{
+			"filterType": "SqlFilter", "sqlFilter": map[string]any{"sqlExpression": "area IN ('coast', 'isle')"}})),
+		az("Microsoft.ServiceBus/namespaces/topics/subscriptions", "rg", "shop/events/urgent", pr(map[string]any{
+			"lockDuration": "PT1M", "maxDeliveryCount": 10, "status": "Active"})),
+		az("Microsoft.ServiceBus/namespaces/topics/subscriptions/rules", "rg", "shop/events/urgent/both", pr(map[string]any{
+			"filterType": "SqlFilter", "sqlFilter": map[string]any{"sqlExpression": "Area = 'north' AND\n(kind = 'order' OR user.kind = 'it''s late')"}})),
 		az("Microsoft.Storage/storageAccounts", "rg", "shopfiles", map[string]any{"location": "westeurope"}),
 		az("Microsoft.Maps/accounts", "rg", "shopmaps", map[string]any{"location": "westeurope"}),
 	}

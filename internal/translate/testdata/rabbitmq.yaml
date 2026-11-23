@@ -91,10 +91,29 @@ report:
     - Binding shop.b.events.audit.0
     - Queue shop.events.audit
     - Queue shop.events.audit-dlq
-  - reason: rule big is a SQL filter (amount > 1000); it is not translated, and dropping
-      it would deliver more
+  - reason: 'rule big is a SQL filter (amount > 1000) that is not translated: it uses
+      >, and only =, IN, AND and OR are translated. Dropping it would deliver more'
     source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/fraud
     state: refused
+  - losses:
+    - field: properties.deadLetteringOnMessageExpiration
+      why: off on the source, so an expired message was dropped; RabbitMQ dead-letters
+        expired messages too
+    - field: properties.lockDuration
+      why: a consumer that does not acknowledge in time has its channel closed and
+        the message redelivered; there is no lock to renew
+    - field: properties.sqlFilter.sqlExpression
+      why: 'a SQL filter matched a property whatever the case of its name''s letters;
+        the target matches an attribute''s name exactly, so a message is delivered
+        only when its sender names it as the filter does: Area'
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/north
+    state: mapped with losses
+    targets:
+    - Binding shop.b.events.north.0
+    - Binding shop.b.events.north.1
+    - Binding shop.b.events.north.2
+    - Queue shop.events.north
+    - Queue shop.events.north-dlq
   - losses:
     - field: properties.deadLetteringOnMessageExpiration
       why: off on the source, so an expired message was dropped; RabbitMQ dead-letters
@@ -109,15 +128,48 @@ report:
     - Binding shop.b.events.shipping.1
     - Queue shop.events.shipping
     - Queue shop.events.shipping-dlq
+  - losses:
+    - field: properties.deadLetteringOnMessageExpiration
+      why: off on the source, so an expired message was dropped; RabbitMQ dead-letters
+        expired messages too
+    - field: properties.lockDuration
+      why: a consumer that does not acknowledge in time has its channel closed and
+        the message redelivered; there is no lock to renew
+    - field: properties.sqlFilter.sqlExpression
+      why: 'a SQL filter matched a property whatever the case of its name''s letters;
+        the target matches an attribute''s name exactly, so a message is delivered
+        only when its sender names it as the filter does: Area, kind'
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/urgent
+    state: mapped with losses
+    targets:
+    - Binding shop.b.events.urgent.0
+    - Binding shop.b.events.urgent.1
+    - Queue shop.events.urgent
+    - Queue shop.events.urgent-dlq
   - reason: carried in its subscription's filter
     source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/audit/$Default
     state: mapped
     targets:
     - Binding shop.b.events.audit.0
-  - reason: 'its subscription is refused: rule big is a SQL filter (amount > 1000);
-      it is not translated, and dropping it would deliver more'
+  - reason: 'its subscription is refused: rule big is a SQL filter (amount > 1000)
+      that is not translated: it uses >, and only =, IN, AND and OR are translated.
+      Dropping it would deliver more'
     source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/fraud/big
     state: refused
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/north/area
+    state: mapped
+    targets:
+    - Binding shop.b.events.north.0
+    - Binding shop.b.events.north.1
+    - Binding shop.b.events.north.2
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/north/coast
+    state: mapped
+    targets:
+    - Binding shop.b.events.north.0
+    - Binding shop.b.events.north.1
+    - Binding shop.b.events.north.2
   - reason: carried in its subscription's filter
     source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/shipping/returned
     state: mapped
@@ -130,6 +182,12 @@ report:
     targets:
     - Binding shop.b.events.shipping.0
     - Binding shop.b.events.shipping.1
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/urgent/both
+    state: mapped
+    targets:
+    - Binding shop.b.events.urgent.0
+    - Binding shop.b.events.urgent.1
   - reason: the map chooses no destination for storage (destinations.storage)
     source: Microsoft.Storage/storageAccounts rg/shopfiles
     state: refused
@@ -164,6 +222,48 @@ snapshots:
   - apiVersion: rabbitmq.com/v1beta1
     kind: Binding
     metadata:
+      name: shop.b.events.north.0
+      namespace: messaging
+    spec:
+      arguments:
+        Area: north
+        x-match: all
+      destination: events.north
+      destinationType: queue
+      rabbitmqClusterReference:
+        name: shop
+      source: events
+  - apiVersion: rabbitmq.com/v1beta1
+    kind: Binding
+    metadata:
+      name: shop.b.events.north.1
+      namespace: messaging
+    spec:
+      arguments:
+        Area: coast
+        x-match: all
+      destination: events.north
+      destinationType: queue
+      rabbitmqClusterReference:
+        name: shop
+      source: events
+  - apiVersion: rabbitmq.com/v1beta1
+    kind: Binding
+    metadata:
+      name: shop.b.events.north.2
+      namespace: messaging
+    spec:
+      arguments:
+        Area: isle
+        x-match: all
+      destination: events.north
+      destinationType: queue
+      rabbitmqClusterReference:
+        name: shop
+      source: events
+  - apiVersion: rabbitmq.com/v1beta1
+    kind: Binding
+    metadata:
       name: shop.b.events.shipping.0
       namespace: messaging
     spec:
@@ -186,6 +286,36 @@ snapshots:
         type: order.returned
         x-match: all
       destination: events.shipping
+      destinationType: queue
+      rabbitmqClusterReference:
+        name: shop
+      source: events
+  - apiVersion: rabbitmq.com/v1beta1
+    kind: Binding
+    metadata:
+      name: shop.b.events.urgent.0
+      namespace: messaging
+    spec:
+      arguments:
+        Area: north
+        kind: order
+        x-match: all
+      destination: events.urgent
+      destinationType: queue
+      rabbitmqClusterReference:
+        name: shop
+      source: events
+  - apiVersion: rabbitmq.com/v1beta1
+    kind: Binding
+    metadata:
+      name: shop.b.events.urgent.1
+      namespace: messaging
+    spec:
+      arguments:
+        Area: north
+        kind: it's late
+        x-match: all
+      destination: events.urgent
       destinationType: queue
       rabbitmqClusterReference:
         name: shop
@@ -237,6 +367,38 @@ snapshots:
   - apiVersion: rabbitmq.com/v1beta1
     kind: Queue
     metadata:
+      name: shop.events.north
+      namespace: messaging
+    spec:
+      arguments:
+        x-consumer-timeout: 60000
+        x-dead-letter-exchange: ""
+        x-dead-letter-routing-key: events.north-dlq
+        x-dead-letter-strategy: at-least-once
+        x-delivery-limit: 10
+        x-message-ttl: 604800000
+        x-overflow: reject-publish
+      autoDelete: false
+      durable: true
+      name: events.north
+      rabbitmqClusterReference:
+        name: shop
+      type: quorum
+  - apiVersion: rabbitmq.com/v1beta1
+    kind: Queue
+    metadata:
+      name: shop.events.north-dlq
+      namespace: messaging
+    spec:
+      autoDelete: false
+      durable: true
+      name: events.north-dlq
+      rabbitmqClusterReference:
+        name: shop
+      type: quorum
+  - apiVersion: rabbitmq.com/v1beta1
+    kind: Queue
+    metadata:
       name: shop.events.shipping
       namespace: messaging
     spec:
@@ -263,6 +425,38 @@ snapshots:
       autoDelete: false
       durable: true
       name: events.shipping-dlq
+      rabbitmqClusterReference:
+        name: shop
+      type: quorum
+  - apiVersion: rabbitmq.com/v1beta1
+    kind: Queue
+    metadata:
+      name: shop.events.urgent
+      namespace: messaging
+    spec:
+      arguments:
+        x-consumer-timeout: 60000
+        x-dead-letter-exchange: ""
+        x-dead-letter-routing-key: events.urgent-dlq
+        x-dead-letter-strategy: at-least-once
+        x-delivery-limit: 10
+        x-message-ttl: 604800000
+        x-overflow: reject-publish
+      autoDelete: false
+      durable: true
+      name: events.urgent
+      rabbitmqClusterReference:
+        name: shop
+      type: quorum
+  - apiVersion: rabbitmq.com/v1beta1
+    kind: Queue
+    metadata:
+      name: shop.events.urgent-dlq
+      namespace: messaging
+    spec:
+      autoDelete: false
+      durable: true
+      name: events.urgent-dlq
       rabbitmqClusterReference:
         name: shop
       type: quorum

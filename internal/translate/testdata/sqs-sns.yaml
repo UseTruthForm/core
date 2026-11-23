@@ -93,10 +93,26 @@ report:
     - AWS::SQS::Queue events-audit-dlq
     - AWS::SQS::QueueInlinePolicy events-audit
     - AWS::SQS::QueueInlinePolicy events-audit-dlq
-  - reason: rule big is a SQL filter (amount > 1000); it is not translated, and dropping
-      it would deliver more
+  - reason: 'rule big is a SQL filter (amount > 1000) that is not translated: it uses
+      >, and only =, IN, AND and OR are translated. Dropping it would deliver more'
     source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/fraud
     state: refused
+  - losses:
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    - field: properties.sqlFilter.sqlExpression
+      why: 'a SQL filter matched a property whatever the case of its name''s letters;
+        the target matches an attribute''s name exactly, so a message is delivered
+        only when its sender names it as the filter does: Area'
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/north
+    state: mapped with losses
+    targets:
+    - AWS::SNS::Subscription h-6155810319fd
+    - AWS::SQS::Queue events-north
+    - AWS::SQS::Queue events-north-dlq
+    - AWS::SQS::QueueInlinePolicy events-north
+    - AWS::SQS::QueueInlinePolicy events-north-dlq
   - losses:
     - field: (dead-letter queue)
       why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
@@ -109,15 +125,42 @@ report:
     - AWS::SQS::Queue events-shipping-dlq
     - AWS::SQS::QueueInlinePolicy events-shipping
     - AWS::SQS::QueueInlinePolicy events-shipping-dlq
+  - losses:
+    - field: (dead-letter queue)
+      why: dead-lettered messages are kept 14 days at most on SQS; Service Bus keeps
+        them until they are read
+    - field: properties.sqlFilter.sqlExpression
+      why: 'a SQL filter matched a property whatever the case of its name''s letters;
+        the target matches an attribute''s name exactly, so a message is delivered
+        only when its sender names it as the filter does: Area, kind'
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/urgent
+    state: mapped with losses
+    targets:
+    - AWS::SNS::Subscription h-3bf257c7adf2
+    - AWS::SQS::Queue events-urgent
+    - AWS::SQS::Queue events-urgent-dlq
+    - AWS::SQS::QueueInlinePolicy events-urgent
+    - AWS::SQS::QueueInlinePolicy events-urgent-dlq
   - reason: carried in its subscription's filter
     source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/audit/$Default
     state: mapped
     targets:
     - AWS::SNS::Subscription h-c9fb16ede81e
-  - reason: 'its subscription is refused: rule big is a SQL filter (amount > 1000);
-      it is not translated, and dropping it would deliver more'
+  - reason: 'its subscription is refused: rule big is a SQL filter (amount > 1000)
+      that is not translated: it uses >, and only =, IN, AND and OR are translated.
+      Dropping it would deliver more'
     source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/fraud/big
     state: refused
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/north/area
+    state: mapped
+    targets:
+    - AWS::SNS::Subscription h-6155810319fd
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/north/coast
+    state: mapped
+    targets:
+    - AWS::SNS::Subscription h-6155810319fd
   - reason: carried in its subscription's filter
     source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/shipping/returned
     state: mapped
@@ -128,6 +171,11 @@ report:
     state: mapped
     targets:
     - AWS::SNS::Subscription h-2f94f8346827
+  - reason: carried in its subscription's filter
+    source: Microsoft.ServiceBus/namespaces/topics/subscriptions/rules rg/shop/events/urgent/both
+    state: mapped
+    targets:
+    - AWS::SNS::Subscription h-3bf257c7adf2
   - reason: the map chooses no destination for storage (destinations.storage)
     source: Microsoft.Storage/storageAccounts rg/shopfiles
     state: refused
@@ -163,6 +211,45 @@ snapshots:
           - order.returned
         - type:
           - order.shipped
+      FilterPolicyScope: MessageAttributes
+      Protocol: sqs
+      RawMessageDelivery: true
+      TopicArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SNS::Subscription
+    metadata:
+      annotations:
+        truthform.org/write-only: Region
+      name: h-3bf257c7adf2
+    spec:
+      Endpoint: '{{truthform|AWS::SQS::Queue|events-urgent|Arn}}'
+      FilterPolicy:
+        $or:
+        - Area:
+          - north
+          kind:
+          - it's late
+        - Area:
+          - north
+          kind:
+          - order
+      FilterPolicyScope: MessageAttributes
+      Protocol: sqs
+      RawMessageDelivery: true
+      TopicArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SNS::Subscription
+    metadata:
+      annotations:
+        truthform.org/write-only: Region
+      name: h-6155810319fd
+    spec:
+      Endpoint: '{{truthform|AWS::SQS::Queue|events-north|Arn}}'
+      FilterPolicy:
+        Area:
+        - coast
+        - isle
+        - north
       FilterPolicyScope: MessageAttributes
       Protocol: sqs
       RawMessageDelivery: true
@@ -270,6 +357,68 @@ snapshots:
   - apiVersion: aws.truthform.org/v1
     kind: AWS::SQS::QueueInlinePolicy
     metadata:
+      name: events-north
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action: sqs:SendMessage
+          Condition:
+            ArnEquals:
+              aws:SourceArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+          Effect: Allow
+          Principal:
+            Service: sns.amazonaws.com
+          Resource: '{{truthform|AWS::SQS::Queue|events-north|Arn}}'
+        - Action:
+          - sqs:SendMessage
+          - sqs:ReceiveMessage
+          - sqs:DeleteMessage
+          - sqs:ChangeMessageVisibility
+          - sqs:PurgeQueue
+          - sqs:StartMessageMoveTask
+          - sqs:CancelMessageMoveTask
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SQS::Queue|events-north|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|events-north|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
+      name: events-north-dlq
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - sqs:SendMessage
+          - sqs:ReceiveMessage
+          - sqs:DeleteMessage
+          - sqs:ChangeMessageVisibility
+          - sqs:PurgeQueue
+          - sqs:StartMessageMoveTask
+          - sqs:CancelMessageMoveTask
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SQS::Queue|events-north-dlq|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|events-north-dlq|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
       name: events-shipping
     spec:
       PolicyDocument:
@@ -329,6 +478,68 @@ snapshots:
           Sid: DenyOutsidePrivateAccess
         Version: "2012-10-17"
       Queue: '{{truthform|AWS::SQS::Queue|events-shipping-dlq|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
+      name: events-urgent
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action: sqs:SendMessage
+          Condition:
+            ArnEquals:
+              aws:SourceArn: '{{truthform|AWS::SNS::Topic|events|TopicArn}}'
+          Effect: Allow
+          Principal:
+            Service: sns.amazonaws.com
+          Resource: '{{truthform|AWS::SQS::Queue|events-urgent|Arn}}'
+        - Action:
+          - sqs:SendMessage
+          - sqs:ReceiveMessage
+          - sqs:DeleteMessage
+          - sqs:ChangeMessageVisibility
+          - sqs:PurgeQueue
+          - sqs:StartMessageMoveTask
+          - sqs:CancelMessageMoveTask
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SQS::Queue|events-urgent|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|events-urgent|QueueUrl}}'
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::QueueInlinePolicy
+    metadata:
+      name: events-urgent-dlq
+    spec:
+      PolicyDocument:
+        Statement:
+        - Action:
+          - sqs:SendMessage
+          - sqs:ReceiveMessage
+          - sqs:DeleteMessage
+          - sqs:ChangeMessageVisibility
+          - sqs:PurgeQueue
+          - sqs:StartMessageMoveTask
+          - sqs:CancelMessageMoveTask
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::SQS::Queue|events-urgent-dlq|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        Version: "2012-10-17"
+      Queue: '{{truthform|AWS::SQS::Queue|events-urgent-dlq|QueueUrl}}'
   - apiVersion: aws.truthform.org/v1
     kind: AWS::SQS::QueueInlinePolicy
     metadata:
@@ -512,6 +723,24 @@ snapshots:
   - apiVersion: aws.truthform.org/v1
     kind: AWS::SQS::Queue
     metadata:
+      name: events-north
+    spec:
+      MessageRetentionPeriod: 604800
+      QueueName: events-north
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|events-north-dlq|Arn}}'
+        maxReceiveCount: 10
+      VisibilityTimeout: 60
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-north-dlq
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: events-north-dlq
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
       name: events-shipping
     spec:
       MessageRetentionPeriod: 86400
@@ -527,6 +756,24 @@ snapshots:
     spec:
       MessageRetentionPeriod: 1209600
       QueueName: events-shipping-dlq
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-urgent
+    spec:
+      MessageRetentionPeriod: 604800
+      QueueName: events-urgent
+      RedrivePolicy:
+        deadLetterTargetArn: '{{truthform|AWS::SQS::Queue|events-urgent-dlq|Arn}}'
+        maxReceiveCount: 10
+      VisibilityTimeout: 60
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::SQS::Queue
+    metadata:
+      name: events-urgent-dlq
+    spec:
+      MessageRetentionPeriod: 1209600
+      QueueName: events-urgent-dlq
   - apiVersion: aws.truthform.org/v1
     kind: AWS::SQS::Queue
     metadata:

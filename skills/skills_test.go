@@ -94,6 +94,8 @@ func TestSkillsQuoteWhatTheTranslationWrites(t *testing.T) {
 			"canIpForward", "not looked at"},
 		"translate-sql-tls":   {"properties.minimalTlsVersion", "acceptTlsFloor", "rds.force_ssl", "ENCRYPTED_ONLY"},
 		"translate-flow-logs": {"AWS::EC2::FlowLog", "logConfig", "tcp-flags", "vpc_flows"},
+		"translate-estimate-cost": {"AWS::RDS::DBInstance", "DBInstanceClass", "AllocatedStorage", "AWS::EKS::Nodegroup", "InstanceTypes", "ScalingConfig",
+			"AWS::EC2::NatGateway", "AWS::EC2::VPCEndpoint", "AWS::SQS::Queue", "AWS::SNS::Topic", "AWS::S3::Bucket", "AWS::SecretsManager::Secret", "machineType", "not looked at"},
 	} {
 		s, err := Get(skill)
 		if err != nil {

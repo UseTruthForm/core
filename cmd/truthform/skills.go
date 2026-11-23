@@ -78,7 +78,7 @@ func skillsList(all []skills.Skill) string {
 func skillTools() []mcp.Tool {
 	return []mcp.Tool{
 		{Name: "list_skills", ReadOnly: true,
-			Description: "The skills TruthForm carries for the work a translation to another cloud leaves to people (moving data, granting access, rebuilding machines, a TLS floor the target cannot match, reading the target's flow logs): each name, and when to use it.",
+			Description: "The skills TruthForm carries for the work a translation to another cloud leaves to people (moving data, granting access, rebuilding machines, a TLS floor the target cannot match, reading the target's flow logs, estimating the target's bill): each name, and when to use it.",
 			Schema:      map[string]any{"type": "object", "properties": map[string]any{}},
 			Call: func(context.Context, map[string]any) (string, error) {
 				all, err := skills.All()

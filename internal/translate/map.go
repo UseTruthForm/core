@@ -76,6 +76,12 @@ type Map struct {
 	// names its source ("<group>/<namespace>/<queue>"): for a name the
 	// target does not allow, or two that would collide.
 	Names map[string]string `json:"names,omitempty"`
+	// Prefixes gives every queue and topic of a Service Bus namespace
+	// (keyed group/namespace) a prefix on the target. Two namespaces are
+	// one account, project or cluster there, so the names they share
+	// collide: a prefix for one of them tells them all apart at once. A
+	// name under names is used as it is.
+	Prefixes map[string]string `json:"prefixes,omitempty"`
 }
 
 // NetworkMap is what networks need on the target.
@@ -522,15 +528,37 @@ func (m Map) destinationList() []string {
 
 // name is the map's name for a source, or the one given.
 func (m Map) name(src, given string) string {
-	if n, ok := m.Names[src]; ok {
+	if n, ok := m.named(src); ok {
 		return n
+	}
+	return given
+}
+
+// named is the name the map gives a source, if it gives one.
+func (m Map) named(src string) (string, bool) {
+	if n, ok := m.Names[src]; ok {
+		return n, true
 	}
 	for k, n := range m.Names {
 		if strings.EqualFold(k, src) {
-			return n
+			return n, true
 		}
 	}
-	return given
+	return "", false
+}
+
+// sbName is the target name of a queue or topic: the map's own for it,
+// or its name behind its namespace's prefix, if the map gives one.
+func (m Map) sbName(e *sbEntity) string {
+	if n, ok := m.named(e.key); ok {
+		return n
+	}
+	for k, p := range m.Prefixes {
+		if strings.EqualFold(k, e.group+"/"+e.ns) {
+			return p + e.name
+		}
+	}
+	return e.name
 }
 
 // zoneFor is the AWS availability zone the map gives a subnet

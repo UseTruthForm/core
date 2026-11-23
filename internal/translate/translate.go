@@ -140,9 +140,11 @@ type out struct {
 	tg      Targets
 	objects map[string][]snapshot.Object // platform -> objects
 	keys    map[string]string            // platform|key -> source that made it
-	entries []Entry
-	reqs    map[string]bool
-	err     error
+	// collisions are the target names two sources made, each told once.
+	collisions []string
+	entries    []Entry
+	reqs       map[string]bool
+	err        error
 	// subnets are the Azure subnets the network family read, by
 	// group/network/subnet in lower case, for a family that places what it
 	// writes in them.
@@ -215,8 +217,19 @@ func (o *out) add(platform, source string, obj snapshot.Object) string {
 		}
 	}
 	k := platform + "|" + obj.Key()
-	if prev, ok := o.keys[k]; ok && o.err == nil {
-		o.err = fmt.Errorf("%s and %s both translate to %s %s: name one of them in the map's names", prev, source, obj.Kind(), obj.Name())
+	if prev, ok := o.keys[k]; ok {
+		// Every collision is told at once: a snapshot of two namespaces
+		// with the same queues has one per queue.
+		// Once per pair of sources: a queue's dead-letter queue and its
+		// policies collide with it, and say nothing more.
+		pair := prev + " and " + source + " both translate to "
+		told := false
+		for _, c := range o.collisions {
+			told = told || strings.HasPrefix(c, pair)
+		}
+		if !told {
+			o.collisions = append(o.collisions, pair+obj.Kind()+" "+obj.Name())
+		}
 	}
 	o.keys[k] = source
 	o.objects[platform] = append(o.objects[platform], obj)
@@ -300,6 +313,9 @@ func Translate(src snapshot.Snapshot, m Map, tg Targets) (Result, error) {
 	}
 	if o.err != nil {
 		return Result{}, o.err
+	}
+	if n := len(o.collisions); n > 0 {
+		return Result{}, fmt.Errorf("%d pair(s) of sources translate to one name. Name one source of each under the map's names (keyed as below, without the type), or give one Service Bus namespace's queues and topics a prefix under prefixes (keyed group/namespace):\n  %s", n, strings.Join(o.collisions, "\n  "))
 	}
 	res := Result{Snapshots: map[string]snapshot.Snapshot{}}
 	for p, objs := range o.objects {

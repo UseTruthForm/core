@@ -1526,6 +1526,8 @@ clusters:                   # per AKS cluster, keyed group/cluster: what Azure c
         machineType: n2-standard-4  # gke
         zones: [europe-west1-b, europe-west1-c, europe-west1-d]   # gke
         subnet: net/core/app        # for a pool in the network AKS made itself
+prefixes:                   # a prefix for every queue and topic of one Service Bus namespace,
+  rg/shop-test: test-       # keyed group/namespace: two namespaces that share names collide
 names:
   rg/shop/legacy.feed: legacy-feed   # a name SQS does not allow
   rg/shopfiles/$root: shopfiles-root # a bucket name, keyed group/account/container

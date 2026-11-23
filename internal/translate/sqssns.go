@@ -191,7 +191,7 @@ func (d sqsSNS) refuseSession(e *sbEntity) string {
 }
 
 func (d sqsSNS) queue(ns *sbNS, e *sbEntity, o *out) {
-	name := d.m.name(e.key, e.name)
+	name := d.m.sbName(e)
 	if why := d.refuseSession(e); why != "" {
 		o.entries = append(o.entries, Entry{Source: e.src, State: Refused, Reason: why})
 		return
@@ -214,7 +214,7 @@ func (d sqsSNS) queue(ns *sbNS, e *sbEntity, o *out) {
 }
 
 func (d sqsSNS) topic(ns *sbNS, e *sbEntity, o *out) {
-	name := d.m.name(e.key, e.name)
+	name := d.m.sbName(e)
 	fifo := e.subSession && d.m.Sessions == "fifo"
 	if why := badName(snsName, "an SNS topic", name, fifo, e.key); why != "" {
 		o.entries = append(o.entries, Entry{Source: e.src, State: Refused, Reason: why})
@@ -286,7 +286,7 @@ func (d sqsSNS) subscription(ns *sbNS, e *sbEntity, o *out) {
 		refuse(f.why)
 		return
 	}
-	name := d.m.name(e.key, d.m.name(t.key, t.name)+"-"+e.name)
+	name := d.m.name(e.key, d.m.sbName(t)+"-"+e.name)
 	if why := badName(sqsName, "an SQS queue", name, fifo, e.key); why != "" {
 		refuse(why)
 		return
@@ -294,7 +294,7 @@ func (d sqsSNS) subscription(ns *sbNS, e *sbEntity, o *out) {
 	objs, losses := d.queueSpecs(e, name, fifo, t.ttl)
 	losses = append(losses, f.losses...)
 	qn := objs[0].Name()
-	tn := d.m.name(t.key, t.name)
+	tn := d.m.sbName(t)
 	if fifo {
 		tn += ".fifo"
 	}

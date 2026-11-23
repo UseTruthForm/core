@@ -37,6 +37,29 @@ func TestSQLFilterReadsEqualityOnText(t *testing.T) {
 		"a = '' ":                                      {{"a": ""}},
 		"a IN ('x','y') AND b IN ('1','2')":            {{"a": "x", "b": "1"}, {"a": "x", "b": "2"}, {"a": "y", "b": "1"}, {"a": "y", "b": "2"}},
 		"Area = 'north' AND (Area = 'south' OR k='v')": {{"Area": "north", "k": "v"}},
+		"EXISTS(Area)":                                 {{"Area": sqlExists}},
+		"exists ( [Area code] )":                       {{"Area code": sqlExists}},
+		"EXISTS(user.Area) AND kind = 'x'":             {{"Area": sqlExists, "kind": "x"}},
+		// Present and equal to something is equal to it, either way round.
+		"EXISTS(Area) AND area = 'n'":     {{"Area": "n"}},
+		"Area = 'n' AND EXISTS(AREA)":     {{"Area": "n"}},
+		"EXISTS(a) AND EXISTS(A)":         {{"a": sqlExists}},
+		"EXISTS(a) OR b = 'x'":            {{"a": sqlExists}, {"b": "x"}},
+		"NOT EXISTS(Area)":                {{"Area": sqlAbsent}},
+		"not exists(a) AND b = 'x'":       {{"a": sqlAbsent, "b": "x"}},
+		"NOT EXISTS(a) AND NOT EXISTS(A)": {{"a": sqlAbsent}},
+		// Absent, and present or equal to something: never.
+		"NOT EXISTS(a) AND a = 'x'":               nil,
+		"a = 'x' AND NOT EXISTS(a)":               nil,
+		"EXISTS(a) AND NOT EXISTS(A)":             nil,
+		"EXISTS(a) AND a = 'x' AND NOT EXISTS(b)": {{"a": "x", "b": sqlAbsent}},
+		"paid = TRUE":                             {{"paid": sqlTrue}},
+		"paid = false":                            {{"paid": sqlFalse}},
+		"paid = true OR Area = 'n'":               {{"paid": sqlTrue}, {"Area": "n"}},
+		"paid = TRUE AND paid = FALSE":            nil,
+		"paid = TRUE AND PAID = true":             {{"paid": sqlTrue}},
+		// The word in quotation marks is text, and not the boolean.
+		"paid = 'true' AND paid = TRUE": nil,
 	} {
 		got, why := parseSQLFilter(expr)
 		if why != "" || !reflect.DeepEqual(got, want) {
@@ -57,14 +80,21 @@ func TestSQLFilterRefusesTheRest(t *testing.T) {
 		"NOT Area = 'north'":           "uses NOT",
 		"not (Area = 'north')":         "uses NOT",
 		"Area = 'north' AND NOT b='c'": "uses NOT",
-		"EXISTS(Area)":                 "uses EXISTS",
+		"EXISTS Area":                  "EXISTS is not followed",
+		"EXISTS(Area, kind)":           "EXISTS takes one property",
+		"EXISTS('x')":                  "where a property's name is expected",
+		"EXISTS(sys.Label)":            "system property sys.Label",
+		"paid = TRUE = 'x'":            "not expected",
+		"TRUE = paid":                  "uses TRUE",
+		"paid IN (TRUE)":               "the list after paid IN",
+		"NOT EXISTS Area":              "EXISTS is not followed",
+		"NOT (EXISTS(Area))":           "uses NOT",
+		"NOT NOT EXISTS(Area)":         "uses NOT",
 		"Area IS NULL":                 "uses IS after Area",
 		"Area IS NOT NULL":             "uses IS after Area",
 		"Area LIKE 'n%'":               "uses LIKE after Area",
 		"Area NOT IN ('a')":            "uses NOT after Area",
 		"Area NOT LIKE 'a'":            "uses NOT after Area",
-		"paid = TRUE":                  "compares paid with TRUE",
-		"paid = true OR Area = 'n'":    "compares paid with true",
 		"TRUE":                         "uses TRUE",
 		"Area = kind":                  "compares Area with kind",
 		"Area = NULL":                  "compares Area with NULL",
@@ -221,5 +251,105 @@ func TestSQLFilterOverSNSLimitsIsRefused(t *testing.T) {
 		if e.State != want || (want == Refused && !strings.Contains(e.Reason, "five keys")) {
 			t.Errorf("%s: %s %q", name, e.State, e.Reason)
 		}
+	}
+}
+
+// EXISTS is carried where the destination can ask whether an attribute
+// is there, and refused where it cannot. A comparison with a boolean is
+// carried only when the map says how a boolean is sent.
+func TestSQLFilterExistsAndBooleans(t *testing.T) {
+	s := fixture()
+	sub := func(name, expr string) {
+		s.Objects = append(s.Objects,
+			az("Microsoft.ServiceBus/namespaces/topics/subscriptions", "rg", "shop/events/"+name, pr(map[string]any{
+				"lockDuration": "PT1M", "maxDeliveryCount": 10, "status": "Active"})),
+			az("Microsoft.ServiceBus/namespaces/topics/subscriptions/rules", "rg", "shop/events/"+name+"/r", pr(map[string]any{
+				"filterType": "SqlFilter", "sqlFilter": map[string]any{"sqlExpression": expr}})))
+	}
+	sub("has", "EXISTS(Trace) OR Area = 'north'")
+	sub("hasnot", "Area = 'north' AND NOT EXISTS(Trace)")
+	sub("paid", "Paid = TRUE AND Late = false")
+	const has, paid = "Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/has", "Microsoft.ServiceBus/namespaces/topics/subscriptions rg/shop/events/paid"
+	text := func(r Result) string {
+		var b []string
+		for _, snap := range r.Snapshots {
+			for _, obj := range snap.Objects {
+				b = append(b, canonJSON(obj.Body))
+			}
+		}
+		return strings.Join(b, "\n")
+	}
+	for name, m := range maps() {
+		r, err := translateFixture(t, s, m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Without the map's word, a boolean is refused, with the key.
+		if e := entry(t, r, paid); e.State != Refused || !strings.Contains(e.Reason, "booleans: text") || !strings.Contains(e.Reason, "with a boolean") {
+			t.Errorf("%s: a boolean with no word from the map: %s %q", name, e.State, e.Reason)
+		}
+		e := entry(t, r, has)
+		all := text(r)
+		switch name {
+		case "sqs-sns":
+			if e.State != WithLosses || !strings.Contains(all, `"Trace":[{"exists":true}]`) {
+				t.Errorf("sqs-sns: EXISTS: %s %q", e.State, e.Reason)
+			}
+		case "pubsub":
+			if e.State != WithLosses || !strings.Contains(all, `(attributes.Area = \"north\") OR (attributes:Trace)`) {
+				t.Errorf("pubsub: EXISTS: %s %q", e.State, e.Reason)
+			}
+		case "rabbitmq":
+			if e.State != Refused || !strings.Contains(e.Reason, "property Trace is present") {
+				t.Errorf("rabbitmq: EXISTS: %s %q", e.State, e.Reason)
+			}
+		default:
+			t.Fatalf("a destination this test does not know: %s", name)
+		}
+		hn := entry(t, r, strings.Replace(has, "/has", "/hasnot", 1))
+		wantNot := map[string]string{"sqs-sns": `"Trace":[{"exists":false}]`, "pubsub": `NOT attributes:Trace`}[name]
+		if name == "rabbitmq" {
+			if hn.State != Refused || !strings.Contains(hn.Reason, "or when it is absent") {
+				t.Errorf("rabbitmq: NOT EXISTS: %s %q", hn.State, hn.Reason)
+			}
+		} else if hn.State != WithLosses || !strings.Contains(all, wantNot) {
+			t.Errorf("%s: NOT EXISTS: %s %q, want %s", name, hn.State, hn.Reason, wantNot)
+		}
+		if strings.Contains(all, `\u0000`) {
+			t.Errorf("%s: a marker was written as a value", name)
+		}
+		// With it, the words true and false, and the loss says so.
+		m.Booleans = "text"
+		r, err = translateFixture(t, s, m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e = entry(t, r, paid)
+		if e.State != WithLosses {
+			t.Fatalf("%s: booleans: text: %s %q", name, e.State, e.Reason)
+		}
+		said := false
+		for _, l := range e.Losses {
+			said = said || (strings.Contains(l.Why, "word true or false") && strings.HasSuffix(l.Why, ": Late, Paid") && !l.Widens)
+		}
+		all = text(r)
+		want := map[string][]string{
+			"sqs-sns":  {`"Late":["false"]`, `"Paid":["true"]`},
+			"pubsub":   {`attributes.Late = \"false\" AND attributes.Paid = \"true\"`},
+			"rabbitmq": {`"Late":"false"`, `"Paid":"true"`},
+		}[name]
+		for _, w := range want {
+			if !strings.Contains(all, w) {
+				t.Errorf("%s: booleans as text: no %s", name, w)
+			}
+		}
+		if !said || len(want) == 0 || strings.Contains(all, `\u0000`) {
+			t.Errorf("%s: booleans as text: said %v: %+v", name, said, e.Losses)
+		}
+	}
+	m := maps()["sqs-sns"]
+	m.Booleans = "number"
+	if err := m.validate(); err == nil || !strings.Contains(err.Error(), "booleans") {
+		t.Errorf("a way to send a boolean nobody knows: %v", err)
 	}
 }

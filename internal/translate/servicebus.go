@@ -461,13 +461,14 @@ type filter struct {
 // delivers a message if any rule matches it. A rule that cannot be carried
 // over refuses the subscription: dropping it would deliver more than the
 // source did, or less, and nobody chose either.
-func filterOf(e *sbEntity, systemOK func(string) bool) filter {
+func filterOf(e *sbEntity, systemOK func(string) bool, m Map) filter {
 	var f filter
 	if len(e.rules) == 0 {
 		f.why = "it has no rules, so Service Bus delivers it nothing; give it a rule or leave it out"
 		return f
 	}
 	sqlNames := map[string]string{}
+	bools := map[string]bool{}
 	var sqlAlts []map[string]string
 	for _, r := range e.rules {
 		f.losses = append(f.losses, r.losses...)
@@ -493,9 +494,17 @@ func filterOf(e *sbEntity, systemOK func(string) bool) filter {
 			// A property is one whatever its letters' case, in every SQL
 			// rule of the subscription: it is written as the first rule
 			// that names it does, so a sender has one name to set.
-			for _, m := range alts {
+			for _, alt := range alts {
 				one := map[string]string{}
-				for k, v := range m {
+				for k, v := range alt {
+					if v == sqlTrue || v == sqlFalse {
+						if m.Booleans != "text" {
+							f.why = fmt.Sprintf("rule %s is a SQL filter (%s) that compares %s with a boolean. A message attribute on the target is text: booleans: text in the map carries it as a match on the word true or false, which senders then send. Dropping it would deliver more", r.name, r.sql, k)
+							return f
+						}
+						v = strings.TrimPrefix(v, "\x00")
+						bools[k] = true
+					}
 					low := strings.ToLower(k)
 					if sqlNames[low] == "" {
 						sqlNames[low] = k
@@ -530,6 +539,10 @@ func filterOf(e *sbEntity, systemOK func(string) bool) filter {
 		f.any = nil
 	} else if len(sqlAlts) > 0 {
 		f.losses = append(f.losses, sqlFilterCaseLoss(sqlAlts))
+		if len(bools) > 0 {
+			f.losses = append(f.losses, Loss{Field: "properties.sqlFilter.sqlExpression",
+				Why: "a boolean property is matched as the word true or false (booleans: text in the map), in lower case: senders set these attributes so: " + strings.Join(sortedKeys(bools), ", ")})
+		}
 	}
 	if !f.all && len(f.any) == 0 {
 		f.why = "every rule matches nothing, so Service Bus delivers it nothing; leave it out"

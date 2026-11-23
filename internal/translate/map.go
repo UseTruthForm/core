@@ -72,6 +72,12 @@ type Map struct {
 	// which keeps order but not per-session parallelism). Without it a
 	// session queue is refused: each of these changes how the app sends.
 	Sessions string `json:"sessions,omitempty"`
+	// Booleans says how a boolean application property is sent on the
+	// target, whose message attributes are text: "text" for the words
+	// true and false. A SQL filter that compares a property with TRUE or
+	// FALSE is carried as a match on that text. Without it such a filter
+	// is refused: it changes what senders send.
+	Booleans string `json:"booleans,omitempty"`
 	// Names gives a target name to a source object, keyed as the report
 	// names its source ("<group>/<namespace>/<queue>"): for a name the
 	// target does not allow, or two that would collide.
@@ -368,6 +374,9 @@ func (m Map) validate() error {
 		return err
 	}
 	want := map[string]string{"sqs-sns": "fifo", "pubsub": "ordering", "rabbitmq": "single-active-consumer"}[m.Destinations.Messaging]
+	if m.Booleans != "" && m.Booleans != "text" {
+		return fmt.Errorf("map: booleans: %q is not a way to send a boolean (it takes \"text\": the words true and false)", m.Booleans)
+	}
 	if m.Sessions != "" && m.Sessions != want {
 		return fmt.Errorf("map: sessions: %q does not go with messaging %s (it takes %q)", m.Sessions, m.Destinations.Messaging, want)
 	}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/netip"
 	"sort"
 	"strings"
 	"sync"
@@ -113,6 +114,9 @@ func (f *Fake) Create(_ context.Context, typeName string, desired map[string]any
 	defer f.w.mu.Unlock()
 	props := deepCopy(desired)
 	if err := f.check(t, props); err != nil {
+		return "", err
+	}
+	if err := f.subnetInVPC(typeName, props); err != nil {
 		return "", err
 	}
 	f.generate(t, props)
@@ -457,4 +461,39 @@ func sortedKeys[M ~map[string]V, V any](m M) []string {
 	}
 	sort.Strings(k)
 	return k
+}
+
+// subnetInVPC refuses a subnet whose range is in none of its VPC's blocks:
+// the one the VPC was created with, and those associated since. So a
+// subnet created before its block is associated fails here as on AWS
+// (InvalidSubnet.Range). A VPC this account does not hold is not checked.
+func (f *Fake) subnetInVPC(typeName string, props map[string]any) error {
+	if typeName != "AWS::EC2::Subnet" {
+		return nil
+	}
+	vpc, _ := props["VpcId"].(string)
+	sub, err := netip.ParsePrefix(fmt.Sprint(props["CidrBlock"]))
+	if err != nil {
+		return nil
+	}
+	var blocks []string
+	for _, v := range f.res["AWS::EC2::VPC"] {
+		if v["VpcId"] == vpc {
+			blocks = append(blocks, fmt.Sprint(v["CidrBlock"]))
+		}
+	}
+	if len(blocks) == 0 {
+		return nil
+	}
+	for _, b := range f.res["AWS::EC2::VPCCidrBlock"] {
+		if b["VpcId"] == vpc {
+			blocks = append(blocks, fmt.Sprint(b["CidrBlock"]))
+		}
+	}
+	for _, b := range blocks {
+		if p, err := netip.ParsePrefix(b); err == nil && p.Bits() <= sub.Bits() && p.Contains(sub.Addr()) {
+			return nil
+		}
+	}
+	return fmt.Errorf("InvalidSubnet.Range: The CIDR '%s' is invalid: it is in none of the VPC's blocks (%s)", sub, strings.Join(blocks, ", "))
 }

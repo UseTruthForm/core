@@ -19,6 +19,11 @@ import (
 // made; its presence is what lets translate rewrite the directory.
 const reportFile = "translation.yaml"
 
+// translateProof says how far a translation has been proven, wherever the
+// command describes itself.
+const translateProof = "Beta: no translated snapshot has been restored into a real AWS account or GCP project yet. " +
+	"Run restore --dry-run on what translate writes before any restore."
+
 // translateCmd rewrites an Azure snapshot for another cloud. It is offline:
 // it reads one snapshot and a map and writes snapshots, so it runs in the
 // capture-only build too. Exit 0: every object was carried over, with any
@@ -35,6 +40,11 @@ func translateCmd(args []string) int {
 	discovery := fs.String("discovery", "", "gcp: a directory of Discovery documents (pubsub_v1.json, compute_v1.json, storage_v1.json, dns_v1.json, sqladmin_v1.json), instead of downloading them from Google")
 	kubeDir := fs.String("kube", "", "a Kubernetes snapshot of the source cluster: report what in it names an Azure thing, and which of its workloads no GitOps source applies")
 	gitops := fs.String("gitops", "", "a local checkout of the repository Flux reads: report, by file and line, what in it names an Azure thing. Nothing in it is changed")
+	fs.Usage = func() {
+		fmt.Fprintln(fs.Output(), "Usage of translate:")
+		fs.PrintDefaults()
+		fmt.Fprintln(fs.Output(), translateProof)
+	}
 	if err := parseFlags(fs, args); err != nil {
 		if err == flag.ErrHelp {
 			return 0

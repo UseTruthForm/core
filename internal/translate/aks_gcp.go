@@ -263,7 +263,14 @@ func (d gke) nodePool(c *aksCluster, p *aksPool, cm ClusterMap, ns *netSub, e *E
 	zones := len(pm.Zones)
 	if p.auto {
 		np["autoscaling"] = map[string]any{"enabled": true, "totalMinNodeCount": *p.min, "totalMaxNodeCount": *p.max, "locationPolicy": "BALANCED"}
-		np["initialNodeCount"] = (*p.count + zones - 1) / zones
+		// GKE starts this many in each zone. Rounded up to hold the
+		// source's count, but never past the pool's own maximum: five
+		// nodes over three zones start as one in each, not two.
+		per := (*p.count + zones - 1) / zones
+		if most := *p.max / zones; per > most {
+			per = most
+		}
+		np["initialNodeCount"] = per
 	} else {
 		np["initialNodeCount"] = *p.count / zones
 	}

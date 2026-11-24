@@ -221,13 +221,13 @@ func restoreBinding(ctx context.Context, api API, docs *Docs, o snapshot.Object,
 		if len(added) == 0 {
 			return true, "already present and identical"
 		}
-		if dryRun {
-			return true, "would add " + strings.Join(added, ", ") + " on " + resource
-		}
 		if etag == "" {
 			// Without an etag the write would replace whatever anyone
-			// wrote since the read.
+			// wrote since the read. A dry run says the same.
 			return false, "the policy of " + resource + " came without an etag: not written, as a write without one can undo another's"
+		}
+		if dryRun {
+			return true, "would add " + strings.Join(added, ", ") + " on " + resource
 		}
 		if versioned {
 			policy["version"] = 3

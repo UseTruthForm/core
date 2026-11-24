@@ -298,6 +298,21 @@ func TestClustersToEKS(t *testing.T) {
 	}
 }
 
+// A pool that autoscales starts within its own range: five nodes over
+// three zones, with five the most, start as one in each and not two.
+func TestAGKEPoolStartsWithinItsMaximum(t *testing.T) {
+	for _, c := range []struct{ count, min, max, want int }{{5, 1, 5, 1}, {5, 1, 6, 2}, {2, 2, 6, 1}, {4, 0, 2, 0}} {
+		s := aksSpec(t, "shop", func(p map[string]any) {
+			u := pool(p, "user")
+			u["count"], u["minCount"], u["maxCount"] = c.count, c.min, c.max
+		})
+		user := gkePool(t, gkeSpec(t, runAKS(t, s, aksMaps()["gcp"]), "shop"), "user")
+		if user["initialNodeCount"] != c.want || len(list(user["locations"])) != 3 {
+			t.Errorf("%d nodes, %d to %d: starts with %v in each of %v", c.count, c.min, c.max, user["initialNodeCount"], user["locations"])
+		}
+	}
+}
+
 func TestClustersToGKE(t *testing.T) {
 	r := runAKS(t, aksFixture(), aksMaps()["gcp"])
 	shop := gkeSpec(t, r, "shop")

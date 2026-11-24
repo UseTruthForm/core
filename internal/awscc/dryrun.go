@@ -2,6 +2,7 @@ package awscc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"sort"
@@ -39,9 +40,11 @@ func dryChecks(ctx context.Context, api CloudControl, s snapshot.Snapshot, resul
 			}
 		}
 	}
+	// planned is one the dry run would write: an update that names a
+	// missing role, or one that would not be created, fails as a create does.
 	planned := func(o snapshot.Object) (int, bool) {
 		i, ok := at[o.Key()]
-		return i, ok && results[i].OK && strings.HasPrefix(results[i].Detail, "would create")
+		return i, ok && results[i].OK && strings.HasPrefix(results[i].Detail, "would ")
 	}
 	roles := map[string]string{} // role name -> "" when there, else why not
 	refused := map[string]string{}
@@ -54,7 +57,7 @@ func dryChecks(ctx context.Context, api CloudControl, s snapshot.Snapshot, resul
 			results[i].OK, results[i].Detail = false, why
 			refused[o.Kind()+"/"+o.Name()] = why
 		}
-		if prop := globalNames[o.Kind()]; prop != "" {
+		if prop := globalNames[o.Kind()]; prop != "" && strings.HasPrefix(results[i].Detail, "would create") {
 			if name, _ := specOf(o)[prop].(string); name != "" && !strings.Contains(name, "{{") {
 				switch _, err := api.Get(ctx, o.Kind(), name); {
 				case err == nil:
@@ -66,9 +69,9 @@ func dryChecks(ctx context.Context, api CloudControl, s snapshot.Snapshot, resul
 			}
 		}
 		var missing []string
-		for _, m := range roleARNRE.FindAllStringSubmatch(strings.ReplaceAll(canon(o.Body["spec"]), "{{truthform|account|self|id}}", account), -1) {
+		for _, m := range rolesNamed(o.Body["spec"], account) {
 			name := m[2][strings.LastIndex(m[2], "/")+1:]
-			if m[1] != account || strings.HasPrefix(m[2], "aws-service-role/") || inSnap[name] {
+			if m[1] != account || strings.HasPrefix(m[2], "aws-service-role/") || inSnap[name] || name == "" {
 				continue
 			}
 			why, seen := roles[name]
@@ -109,6 +112,47 @@ func dryChecks(ctx context.Context, api CloudControl, s snapshot.Snapshot, resul
 			}
 		}
 	}
+}
+
+// rolesNamed are the role ARNs a spec names where AWS looks the role up:
+// a property that takes a role, or a policy's principal. What a policy
+// allows on (its Resource) is a pattern AWS never resolves, and so is any
+// ARN with a wildcard or a policy variable. A policy held as JSON text is
+// read as the policy it is.
+func rolesNamed(v any, account string) [][]string {
+	var out [][]string
+	var walk func(v any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, e := range x {
+				if k != "Resource" && k != "NotResource" {
+					walk(e)
+				}
+			}
+		case []any:
+			for _, e := range x {
+				walk(e)
+			}
+		case string:
+			if t := strings.TrimSpace(x); strings.HasPrefix(t, "{") {
+				var doc map[string]any
+				if json.Unmarshal([]byte(t), &doc) == nil {
+					walk(doc)
+					return
+				}
+			}
+			x = strings.ReplaceAll(x, "{{truthform|account|self|id}}", account)
+			for _, loc := range roleARNRE.FindAllStringSubmatchIndex(x, -1) {
+				if loc[1] < len(x) && strings.ContainsRune("*?$", rune(x[loc[1]])) {
+					continue
+				}
+				out = append(out, []string{x[loc[0]:loc[1]], x[loc[2]:loc[3]], x[loc[4]:loc[5]]})
+			}
+		}
+	}
+	walk(v)
+	return out
 }
 
 func dedupeSorted(in []string) []string {

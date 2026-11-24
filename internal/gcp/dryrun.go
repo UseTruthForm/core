@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -55,8 +56,11 @@ func dryChecks(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, re
 	}
 	accounts := map[string]string{} // email -> "" when there
 	refused := map[string]bool{}
-	// A grant names its resource in an annotation, not by a reference.
+	// A grant names its resource in an annotation, not by a reference,
+	// and most resources name another by its name: both are followed as
+	// the restore's own order follows them.
 	refusedNames := map[string]bool{}
+	refusedObjs := map[string]bool{}
 	for _, o := range s.Objects {
 		i, ok := planned(o)
 		if !ok {
@@ -66,6 +70,7 @@ func dryChecks(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, re
 			results[i].OK, results[i].Detail = false, why
 			refused[refToken(o.Kind(), o.Name())] = true
 			refusedNames[detok(o.Name(), project, number)] = true
+			refusedObjs[o.Name()] = true
 		}
 		ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
 		disc, _ := ann[annDiscovery].(string)
@@ -81,7 +86,10 @@ func dryChecks(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, re
 		if base := globalNames[o.Kind()]; base != "" && strings.HasPrefix(results[i].Detail, "would create") {
 			name := detok(o.Name()[strings.LastIndex(o.Name(), "/")+1:], project, number)
 			switch _, err := api.Call(ctx, "GET", base+name, nil); {
-			case err == nil, err != nil && !errors.Is(err, ErrNotFound) && strings.Contains(err.Error(), "403"):
+			// Cloud Storage answers 403, not 404, for a bucket another
+			// project holds. The status is looked for as the client
+			// writes it, not anywhere in a text that holds the name.
+			case err == nil, err != nil && !errors.Is(err, ErrNotFound) && strings.Contains(err.Error(), ": HTTP 403: "):
 				fail("the name " + name + " is taken by one this project does not hold (these names are shared by every project): the create would be refused")
 				continue
 			case !errors.Is(err, ErrNotFound):
@@ -127,18 +135,35 @@ func dryChecks(ctx context.Context, api API, docs *Docs, s snapshot.Snapshot, re
 			if !ok {
 				continue
 			}
-			ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
-			if parent, _ := ann[annParent].(string); o.Kind() == BindingKind && refusedNames[detok(parent, project, number)] {
-				results[i].OK, results[i].Detail = false, "is a grant on "+detok(parent, project, number)+", which would not be created"
+			take := func(why string) {
+				results[i].OK, results[i].Detail = false, why
+				refused[refToken(o.Kind(), o.Name())] = true
+				refusedNames[detok(o.Name(), project, number)] = true
+				refusedObjs[o.Name()] = true
+				changed = true
+			}
+			if parent := parentOfObject(o); o.Kind() == BindingKind && refusedNames[detok(parent, project, number)] {
+				take("is a grant on " + detok(parent, project, number) + ", which would not be created")
 				continue
 			}
+			taken := false
 			for _, tok := range refRE.FindAllString(canon(o.Body), -1) {
 				if refused[tok] && tok != refToken(o.Kind(), o.Name()) {
 					m := refRE.FindStringSubmatch(tok)
-					results[i].OK, results[i].Detail = false, "depends on "+m[1]+" "+m[2]+", which would not be created"
-					refused[refToken(o.Kind(), o.Name())] = true
-					refusedNames[detok(o.Name(), project, number)] = true
-					changed = true
+					take("depends on " + m[1] + " " + m[2] + ", which would not be created")
+					taken = true
+					break
+				}
+			}
+			if taken {
+				continue
+			}
+			// By name, by parent and by what a grant waits for: what
+			// decides the restore's order decides this too.
+			spec, waits := orderSpec(o), after(o)
+			for _, name := range sortedKeys(refusedObjs) {
+				if name != o.Name() && (namedIn(spec, name) || slices.Contains(waits, name)) {
+					take("depends on " + detok(name, project, number) + ", which would not be created")
 					break
 				}
 			}

@@ -430,7 +430,12 @@ func restoreOne(ctx context.Context, api CloudControl, reg *Registry, in *inv, o
 
 	// One named by a resource a dry run would create cannot be there yet,
 	// and its identifier is not known to ask with.
-	if byID && !unknown {
+	idKnown := true
+	if unknown {
+		id, ok := Identifier(t, desired)
+		idKnown = ok && !strings.Contains(id, ", known once created)")
+	}
+	if byID && idKnown {
 		id, ok := Identifier(t, desired)
 		if !ok {
 			return false, "cannot check the target for an existing one: Cloud Control cannot list this type, and the snapshot does not give its identifier (" + strings.Join(t.PrimaryIdentifier, ", ") + ")"

@@ -31,16 +31,37 @@ func (n *dryNotes) add(s string) {
 	n.unchecked = append(n.unchecked, s)
 }
 
+// without counts the resources of a type that would go without the same
+// values: --values can supply them for some of a type and not others.
 func (n *dryNotes) without(kind, fields string) {
 	if n.writeOnly == nil {
 		n.writeOnly = map[string]*writeOnlyNote{}
 	}
-	w := n.writeOnly[kind]
+	key := kind + "\x00" + fields
+	w := n.writeOnly[key]
 	if w == nil {
 		w = &writeOnlyNote{fields: fields}
-		n.writeOnly[kind] = w
+		n.writeOnly[key] = w
 	}
 	w.count++
+}
+
+// dryRunOut is the dry run in progress, for the JSON document to say it is
+// one and what it could not check. Nil on a real restore.
+var dryRunOut *dryNotes
+
+// notChecked is what the dry run could not check, each once, in order.
+func (n *dryNotes) notChecked() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	out := []string{}
+	sort.Strings(n.unchecked)
+	for i, s := range n.unchecked {
+		if i == 0 || s != n.unchecked[i-1] {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // count records one result: its type, and what the dry run said of it,
@@ -95,14 +116,12 @@ func (n *dryNotes) print() {
 		}
 		sort.Strings(kinds)
 		for _, k := range kinds {
-			fmt.Printf("   %s (%d): %s\n", k, n.writeOnly[k].count, n.writeOnly[k].fields)
+			kind, _, _ := strings.Cut(k, "\x00")
+			fmt.Printf("   %s (%d): %s\n", kind, n.writeOnly[k].count, n.writeOnly[k].fields)
 		}
 	}
-	sort.Strings(n.unchecked)
-	for i, s := range n.unchecked {
-		if i == 0 || s != n.unchecked[i-1] {
-			fmt.Println("NOT CHECKED:", s)
-		}
+	for _, s := range n.notChecked() {
+		fmt.Println("NOT CHECKED:", s)
 	}
 }
 

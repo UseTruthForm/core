@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/usetruthform/core/internal/snapshot"
 )
 
 // What a dry run says once: each type's write-only values with how many
@@ -42,4 +44,38 @@ func captureStdout(t *testing.T, f func()) string {
 	os.Stdout = old
 	b, _ := io.ReadAll(r)
 	return string(b)
+}
+
+// The JSON document of a dry run says it is one, and what it could not
+// check; a real restore's says neither.
+func TestADryRunsDocumentSaysItIsOne(t *testing.T) {
+	results := []snapshot.Result{{Key: "a", OK: true, Detail: "would create"}}
+	real := asJSON(t, func() { emitRestore(results, "aws us-east-1") })
+	if _, ok := real["dry_run"]; ok {
+		t.Errorf("a real restore: %v", real)
+	}
+	n := &dryNotes{}
+	n.add("could not check that role r exists: denied")
+	n.add("could not check that role r exists: denied")
+	dryRunOut = n
+	defer func() { dryRunOut = nil }()
+	dry := asJSON(t, func() { emitRestore(results, "aws us-east-1") })
+	if nc, _ := dry["not_checked"].([]any); dry["dry_run"] != true || len(nc) != 1 {
+		t.Errorf("a dry run: %v", dry)
+	}
+}
+
+// Resources of one type that would go without different values are
+// counted apart.
+func TestDryNotesKeepDifferentValuesApart(t *testing.T) {
+	var n dryNotes
+	n.without("AWS::RDS::DBInstance", "MasterUserPassword")
+	n.without("AWS::RDS::DBInstance", "MasterUserPassword")
+	n.without("AWS::RDS::DBInstance", "MasterUserPassword, TdeCredentialPassword")
+	out := captureStdout(t, n.print)
+	for _, want := range []string{"AWS::RDS::DBInstance (2): MasterUserPassword\n", "AWS::RDS::DBInstance (1): MasterUserPassword, TdeCredentialPassword\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q is not in:\n%s", want, out)
+		}
+	}
 }

@@ -466,13 +466,16 @@ truthform restore --platform aws --region us-east-2 --from snap/aws --values sec
     names are shared by everyone);
   - an IAM role of the account (AWS) or a service account of the project
     (GCP) that a resource names and neither the target nor the snapshot
-    holds;
+    holds. On AWS a role named in what a policy allows on (its `Resource`),
+    or with a wildcard, is not looked up: AWS does not look it up either;
   - on GCP, an API that is not enabled in the project, with the command
     that enables it.
 
   One refused takes with it what refers to it, and a check that could not
   be made is printed as `NOT CHECKED`. It ends with a count by type, and
-  exits 3 when anything would not apply. It does not show whether the cloud
+  exits 3 when anything would not apply. With `--json` the document carries
+  `"dry_run": true` and the checks not made under `not_checked`; its
+  `applied` is then what would apply. It does not show whether the cloud
   would accept each request: neither has a way to ask without making it, so
   a quota or a value the service refuses is found only by the restore. On
   AWS, what a resource takes from one not yet created (an ARN, an ID) is

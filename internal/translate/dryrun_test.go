@@ -431,3 +431,113 @@ func TestAnAWSDryRunKnowsTheSnapshotsOwnRoles(t *testing.T) {
 		}
 	}
 }
+
+// What a policy allows on is a pattern AWS never looks up: a role named
+// there, with a wildcard or whole, refuses nothing. A role a property
+// takes, missing, still does.
+func TestAnAWSDryRunDoesNotLookUpWhatAPolicyAllowsOn(t *testing.T) {
+	reg := targets(t).AWS
+	s := runIdentity(t, identityFixture(), identityMaps()["aws"]).Snapshots["aws"]
+	edited := false
+	for i, o := range s.Objects {
+		if o.Kind() == awsRole && !edited {
+			body := deepCopyAny(o.Body).(map[string]any)
+			acct := "arn:aws:iam::{{truthform|account|self|id}}:role/"
+			body["spec"].(map[string]any)["Policies"] = []any{map[string]any{"PolicyName": "pass", "PolicyDocument": map[string]any{
+				"Version": "2012-10-17", "Statement": []any{
+					map[string]any{"Effect": "Allow", "Action": "iam:PassRole", "Resource": acct + "app-*"},
+					map[string]any{"Effect": "Allow", "Action": "iam:PassRole", "Resource": []any{acct + "not-there", acct + "path/*"}}}}}}
+			s.Objects[i] = snapshot.Object{Body: body}
+			edited = true
+		}
+	}
+	if !edited {
+		t.Fatal("no role in the fixture")
+	}
+	f := awscc.NewWorld(reg).Account("111111111111", "eu-west-1")
+	f.Seed("AWS::IAM::Role", map[string]any{"RoleName": "eks-shop", "AssumeRolePolicyDocument": map[string]any{}})
+	refused := map[string]string{}
+	for _, r := range awscc.Restore(context.Background(), awsNoWrites{CloudControl: f, t: t}, reg, s, awscc.RestoreOptions{DryRun: true, Note: noNotes(t)}, awscc.Tuning{}) {
+		if !r.OK {
+			refused[strings.Split(r.Key, "|")[1]] += r.Detail + "\n"
+		}
+	}
+	// Only the node role is missing: the node group, and nothing for the
+	// policy's sake.
+	if !strings.Contains(refused["AWS::EKS::Nodegroup"], "names role eks-shop-nodes") || refused[awsRole] != "" || refused[awsPodAssociation] != "" {
+		t.Errorf("refused: %q", refused)
+	}
+	for kind, why := range refused {
+		for _, name := range []string{"app-", "not-there", "path"} {
+			if strings.Contains(why, "role "+name) {
+				t.Errorf("%s: %s", kind, why)
+			}
+		}
+	}
+}
+
+// gcpBucketsFail answers every bucket read with a failure that is not a
+// refusal, in a text that holds the digits 403.
+type gcpBucketsFail struct{ gcp.API }
+
+func (g gcpBucketsFail) Call(ctx context.Context, method, url string, body any) (map[string]any, error) {
+	if strings.HasPrefix(url, "https://storage.googleapis.com/storage/v1/b/") && method == "GET" && !strings.Contains(url[len("https://storage.googleapis.com/storage/v1/b/"):], "/") {
+		return nil, fmt.Errorf("GET %s: HTTP 503: backend unavailable (request 14037)", url)
+	}
+	return g.API.Call(ctx, method, url, body)
+}
+
+// A bucket read that failed is not a name taken: it is said as not
+// checked, and the bucket stays planned.
+func TestAGCPDryRunDoesNotTakeAFailedReadForATakenName(t *testing.T) {
+	docs := targets(t).GCP
+	s := runIdentity(t, identityFixture(), identityMaps()["gcp"]).Snapshots["gcp"]
+	f := gcp.NewWorld(docs).Project("target-project", "123456789")
+	f.EmailNames = true
+	api := gcpBucketsFail{gcpNoWrites{API: f, t: t, accounts: gcpNodeAccounts}}
+	var notes []string
+	buckets := 0
+	for _, r := range gcp.Restore(context.Background(), api, docs, s, gcp.RestoreOptions{DryRun: true, Note: func(n string) { notes = append(notes, n) }}) {
+		if !r.OK {
+			t.Errorf("%s: %s", r.Key, r.Detail)
+		}
+		if strings.Split(r.Key, "|")[1] == "storage.googleapis.com/Bucket" {
+			buckets++
+		}
+	}
+	unchecked := 0
+	for _, n := range notes {
+		if strings.Contains(n, "could not check whether the name") {
+			unchecked++
+		}
+	}
+	if buckets == 0 || unchecked != buckets {
+		t.Errorf("%d buckets, %d said as not checked: %q", buckets, unchecked, notes)
+	}
+}
+
+// One that would not be created takes with it what waits for it, however
+// that is said: a grant that lists the cluster among what it comes after
+// holds no reference to it.
+func TestAGCPDryRunFollowsWhatAGrantWaitsFor(t *testing.T) {
+	docs := targets(t).GCP
+	s := runIdentity(t, identityFixture(), identityMaps()["gcp"]).Snapshots["gcp"]
+	waits := map[string]bool{}
+	for _, o := range s.Objects {
+		ann, _ := o.Body["metadata"].(map[string]any)["annotations"].(map[string]any)
+		if after, _ := ann["truthform.org/after"].(string); o.Kind() == gcp.BindingKind && strings.Contains(after, "/clusters/") {
+			waits[o.Key()] = true
+		}
+	}
+	if len(waits) == 0 {
+		t.Fatal("no grant in the fixture waits for a cluster")
+	}
+	f := gcp.NewWorld(docs).Project("target-project", "123456789")
+	f.EmailNames = true
+	// The node service account is nowhere: the cluster would be refused.
+	for _, r := range gcp.Restore(context.Background(), gcpNoWrites{API: f, t: t}, docs, s, gcp.RestoreOptions{DryRun: true, Note: noNotes(t)}) {
+		if waits[r.Key] && (r.OK || !strings.Contains(r.Detail, "which would not be created")) {
+			t.Errorf("%s: %v %s", r.Key, r.OK, r.Detail)
+		}
+	}
+}

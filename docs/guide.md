@@ -1482,8 +1482,18 @@ and workload identity (the managed identities a cluster's service accounts
 use, with what their data roles let them reach); every other type is
 reported as not looked at (design: issue #32).
 
+**This is a beta, and no translated snapshot has been restored into a real
+AWS account or GCP project yet.** What it writes restores into TruthForm's
+test doubles of both clouds, which refuse what the clouds' own definitions
+refuse. A translation of more than a thousand objects has also been through
+`restore --dry-run` against a real AWS account and a real GCP project. A
+dry run shows what would be asked for, not whether the cloud accepts it:
+expect a first real restore to find values a service refuses. Run the dry
+run first, and restore into an account you can empty.
+
 ```sh
 truthform translate --from snap/azure --map map.yaml --out moved/
+truthform restore --platform aws --region eu-west-1 --from moved/aws --dry-run   # reads, writes nothing; exit 3 if anything would not apply
 truthform restore --platform aws --region eu-west-1 --from moved/aws
 ```
 
@@ -2492,4 +2502,6 @@ Kept in git:
 - Proven against real systems so far: AWS (21 resources across 17 types,
   IAM and Lambda included; restore, update, another region), Azure, Google Cloud, Kubernetes and
   GitHub capture. Cloudflare and Google Compute are proven against
-  simulated APIs only.
+  simulated APIs only. A translated snapshot (`translate`) has been
+  restored into simulated APIs and dry-run against a real AWS account and
+  GCP project, and never restored into a real one.

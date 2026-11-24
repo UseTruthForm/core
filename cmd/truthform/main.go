@@ -63,7 +63,7 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN, or C
       checks the zone first and stops on any conflict, before it writes
   truthform diff    --platform cloudflare --account <account-id> --from <dir> [--subdomain test.example.com [--address ...] [--target ...]]
 
-Machine-readable: add --json to capture, diff, restore, compare, check, permissions or plan; stdout is then
+Machine-readable: add --json to capture, diff, restore, compare, check, permissions, plan or translate; stdout is then
 one JSON document (everything else goes to stderr) and the exit code is unchanged.
 
 Access (what to grant, and what a grant can read):
@@ -81,6 +81,7 @@ To another cloud (offline: a snapshot and a map in, snapshots and a report out; 
                       [--kube <kubernetes-snapshot>] [--gitops <checkout of the repository Flux reads>]
       writes <dir>/aws/, <dir>/gcp/ or <dir>/kubernetes/ for restore, and <dir>/translation.yaml, every object's losses
       --kube, --gitops: also lists what the cluster's workloads name that was renamed, by file and line (nothing in Git is changed)
+      beta: no translated snapshot has been restored into a real account or project yet; run restore --dry-run on what it writes first
 
 Before a rebuild (what the snapshot does not hold: what to install first, the secrets, the names):
   truthform plan rebuild --from <dir> [--scope <file>] [--leave-out <file>] [--out <file>] [--json]

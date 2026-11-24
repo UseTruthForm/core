@@ -14,6 +14,8 @@ package drilltest
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -55,6 +57,8 @@ func Run(t *testing.T, s Spec) snapshot.Snapshot {
 	if da != db {
 		t.Fatalf("two captures of an unchanged source differ:\n%v", snapshot.Compare(first, second))
 	}
+
+	keep(t, first)
 
 	// Restore from what was written to disk, not the in-memory value, so the
 	// file format is part of what the drill proves.
@@ -99,4 +103,20 @@ func Run(t *testing.T, s Spec) snapshot.Snapshot {
 	}
 	t.Logf("drill passed: %d objects captured deterministically (%s), restored and diffed clean", len(snap.Objects), da)
 	return snap
+}
+
+// KeepEnv names a directory every drill also writes its snapshot into, one
+// directory per test. scripts/compat.sh sets it in two builds' trees and
+// has each build read what the other wrote.
+const KeepEnv = "TRUTHFORM_KEEP_SNAPSHOTS"
+
+func keep(t *testing.T, s snapshot.Snapshot) {
+	t.Helper()
+	dir := os.Getenv(KeepEnv)
+	if dir == "" {
+		return
+	}
+	if err := s.Write(filepath.Join(dir, strings.ReplaceAll(t.Name(), "/", "_"))); err != nil {
+		t.Fatalf("keep snapshot: %v", err)
+	}
 }

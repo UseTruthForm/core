@@ -541,3 +541,95 @@ func TestAGCPDryRunFollowsWhatAGrantWaitsFor(t *testing.T) {
 		}
 	}
 }
+
+// An update is checked as a create is: a role whose trust is changed to
+// name, as a principal, a role that is nowhere would be refused by AWS, and
+// the dry run says so of the update and of what depends on it.
+func TestAnAWSDryRunChecksWhatAnUpdateNames(t *testing.T) {
+	reg := targets(t).AWS
+	s := runIdentity(t, identityFixture(), identityMaps()["aws"]).Snapshots["aws"]
+	f := awscc.NewWorld(reg).Account("111111111111", "eu-west-1")
+	for _, role := range []string{"eks-shop", "eks-shop-nodes"} {
+		f.Seed("AWS::IAM::Role", map[string]any{"RoleName": role, "AssumeRolePolicyDocument": map[string]any{}})
+	}
+	for _, r := range awscc.Restore(context.Background(), f, reg, s, awscc.RestoreOptions{}, awscc.Tuning{}) {
+		if !r.OK {
+			t.Fatalf("%s: %s", r.Key, r.Detail)
+		}
+	}
+	var changed string
+	for i, o := range s.Objects {
+		if o.Kind() == awsRole && changed == "" {
+			body := deepCopyAny(o.Body).(map[string]any)
+			doc := body["spec"].(map[string]any)["AssumeRolePolicyDocument"].(map[string]any)
+			doc["Statement"] = append(doc["Statement"].([]any), map[string]any{"Effect": "Allow", "Action": "sts:AssumeRole",
+				"Principal": map[string]any{"AWS": "arn:aws:iam::{{truthform|account|self|id}}:role/gone"}})
+			s.Objects[i] = snapshot.Object{Body: body}
+			changed = o.Key()
+		}
+	}
+	seen := false
+	for _, r := range awscc.Restore(context.Background(), awsNoWrites{CloudControl: f, t: t}, reg, s, awscc.RestoreOptions{DryRun: true, Update: true, Note: noNotes(t)}, awscc.Tuning{}) {
+		if r.Key == changed {
+			seen = true
+			if r.OK || !strings.Contains(r.Detail, "names role gone, which is neither in the account nor in the snapshot") {
+				t.Errorf("%v %s", r.OK, r.Detail)
+			}
+		} else if !r.OK && !strings.Contains(r.Detail, "which would not be created") {
+			t.Errorf("%s: %s", r.Key, r.Detail)
+		}
+	}
+	if !seen || f.Updates != 0 {
+		t.Errorf("seen %v; %d updates were sent", seen, f.Updates)
+	}
+}
+
+// gcpNoEtags answers every allow policy without its etag.
+type gcpNoEtags struct{ gcp.API }
+
+func (g gcpNoEtags) Call(ctx context.Context, method, url string, body any) (map[string]any, error) {
+	got, err := g.API.Call(ctx, method, url, body)
+	if strings.Contains(strings.ToLower(url), "iampolicy") || strings.HasSuffix(url, "/iam") || strings.Contains(url, "/iam?") {
+		delete(got, "etag")
+	}
+	return got, err
+}
+
+// A grant on a policy read without its etag is not written by a restore,
+// and a dry run says the same, not "would add".
+func TestAGCPDryRunRefusesAGrantWithoutAnEtagAsTheRestoreDoes(t *testing.T) {
+	docs := targets(t).GCP
+	s := runIdentity(t, identityFixture(), identityMaps()["gcp"]).Snapshots["gcp"]
+	f := gcp.NewWorld(docs).Project("target-project", "123456789")
+	f.EmailNames = true
+	gcp.Restore(context.Background(), f, docs, s, gcp.RestoreOptions{})
+	writes := f.PolicyWrites
+	var changed string
+	for i, o := range s.Objects {
+		if o.Kind() == gcp.BindingKind && changed == "" {
+			body := deepCopyAny(o.Body).(map[string]any)
+			b := body["spec"].(map[string]any)["bindings"].([]any)[0].(map[string]any)
+			b["members"] = append(b["members"].([]any), "user:extra@example.com")
+			s.Objects[i] = snapshot.Object{Body: body}
+			changed = o.Key()
+		}
+	}
+	for _, dry := range []bool{true, false} {
+		seen := false
+		api := gcp.API(gcpNoEtags{f})
+		if dry {
+			api = gcpNoEtags{gcpNoWrites{API: f, t: t, accounts: gcpNodeAccounts}}
+		}
+		for _, r := range gcp.Restore(context.Background(), api, docs, s, gcp.RestoreOptions{DryRun: dry, Note: func(string) {}}) {
+			if r.Key == changed {
+				seen = true
+				if r.OK || !strings.Contains(r.Detail, "came without an etag") {
+					t.Errorf("dry run %v: %v %s", dry, r.OK, r.Detail)
+				}
+			}
+		}
+		if !seen || f.PolicyWrites != writes {
+			t.Errorf("dry run %v: seen %v; %d policy writes", dry, seen, f.PolicyWrites-writes)
+		}
+	}
+}

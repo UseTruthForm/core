@@ -62,6 +62,37 @@ func TestRestoreLooksUpWhatCannotBeListed(t *testing.T) {
 	if n := f.Count()["AWS::SQS::QueueInlinePolicy"]; n != 1 {
 		t.Errorf("%d policies", n)
 	}
+	// In a dry run, one whose identifier is known is looked for even when
+	// another of its values names what would only then be created: said to
+	// be created, a policy that is there and differs went unreported.
+	dry := func(s snapshot.Snapshot) string {
+		for _, r := range Restore(context.Background(), f, reg, s, RestoreOptions{DryRun: true}, Tuning{}) {
+			if strings.Contains(r.Key, "QueueInlinePolicy") {
+				return r.Detail
+			}
+		}
+		return ""
+	}
+	later := doc("Allow")
+	later["Statement"].([]any)[0].(map[string]any)["Resource"] = "{{truthform|AWS::SQS::Queue|new|Arn}}"
+	partly := snap("Allow")
+	partly.Objects = append(partly.Objects, obj("AWS::SQS::Queue", "new", map[string]any{"QueueName": "new"}))
+	partly.Objects[1].Body["spec"].(map[string]any)["PolicyDocument"] = later
+	if d := dry(partly); !strings.Contains(d, "differs (PolicyDocument)") {
+		t.Errorf("identifier known, another value not: %s", d)
+	}
+	// When the identifier itself is not known yet, there is nothing to ask with.
+	unmade := snapshot.Snapshot{Platform: "aws", Objects: []snapshot.Object{
+		obj("AWS::SQS::Queue", "new", map[string]any{"QueueName": "new"}),
+		obj("AWS::SQS::QueueInlinePolicy", "new", map[string]any{"Queue": "{{truthform|AWS::SQS::Queue|new|QueueUrl}}", "PolicyDocument": doc("Allow")}),
+	}}
+	if d := dry(unmade); !strings.HasPrefix(d, "would create") {
+		t.Errorf("identifier not known: %s", d)
+	}
+	if n := f.Count()["AWS::SQS::Queue"]; n != 1 {
+		t.Errorf("a dry run made a queue: %d", n)
+	}
+
 	// With no queue to name it by, it cannot be looked for.
 	bare := snapshot.Snapshot{Platform: "aws", Objects: []snapshot.Object{obj("AWS::SQS::QueueInlinePolicy", "x", map[string]any{"PolicyDocument": doc("Allow")})}}
 	if d := detail(bare); !strings.Contains(d, "does not give its identifier") {

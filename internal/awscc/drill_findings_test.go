@@ -262,3 +262,31 @@ func TestAccountTokenIsStructural(t *testing.T) {
 		t.Errorf("prose rewritten: %v", r.spec["Description"])
 	}
 }
+
+// A generated ID that is a whole value inside a document kept as JSON text
+// (a policy naming a VPC in a condition) is a reference too: a translation
+// writes a token there, and a capture of what its restore made must read
+// the same. A chosen name inside such a document stays a word, and so does
+// an ID inside prose.
+func TestGeneratedIDInJSONTextIsAReference(t *testing.T) {
+	reg := fixtures(t)
+	vpc := normalize(reg.Types["AWS::EC2::VPC"], "vpc-0def5678", map[string]any{
+		"VpcId": "vpc-0def5678", "CidrBlock": "10.42.0.0/16",
+		"Tags": []any{map[string]any{"Key": "Name", "Value": "shop"}}})
+	repo := normalize(reg.Types["AWS::ECR::Repository"], "images", map[string]any{
+		"RepositoryName": "images", "Arn": "arn:aws:ecr:us-east-2:111111111111:repository/images"})
+	doc := normalize(reg.Types["AWS::SSM::Parameter"], "policy", map[string]any{
+		"Name": "policy", "Type": "String", "Value": `{"Condition":{"StringNotEquals":{"aws:SourceVpc":["vpc-0def5678"]}},"Note":"images"}`})
+	prose := normalize(reg.Types["AWS::SSM::Parameter"], "note", map[string]any{
+		"Name": "note", "Type": "String", "Value": `see "vpc-0def5678"`})
+	name([]*resource{vpc, repo, doc, prose}, "")
+	got, _ := doc.spec["Value"].(string)
+	a := `{"Condition":{"StringNotEquals":{"aws:SourceVpc":["` + refToken("AWS::EC2::VPC", "shop", "VpcId") + `"]}},"Note":"images"}`
+	b := `{"Condition":{"StringNotEquals":{"aws:SourceVpc":["` + refToken("AWS::EC2::VPC", "shop", "identifier") + `"]}},"Note":"images"}`
+	if got != a && got != b {
+		t.Errorf("JSON text: %s", got)
+	}
+	if v := prose.spec["Value"]; v != `see "vpc-0def5678"` {
+		t.Errorf("prose rewritten: %v", v)
+	}
+}

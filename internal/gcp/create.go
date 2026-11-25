@@ -112,8 +112,12 @@ func wrap(d *Doc, schema string, m *Method, spec map[string]any, id string) (map
 // secretId, metricId). requestId is not one: it is AIP-155's idempotency
 // token, a UUID, which Compute and many AIP APIs take on every write.
 // Read as the ID it would have sent the resource's name as the token and
-// dropped the name from the body.
-func idParam(p string) bool { return strings.HasSuffix(p, "Id") && p != "requestId" }
+// dropped the name from the body. Cloud DNS's clientOperationId is the
+// same kind of token: read as the ID, a managed zone was sent without the
+// name it is created by.
+func idParam(p string) bool {
+	return strings.HasSuffix(p, "Id") && p != "requestId" && p != "clientOperationId"
+}
 
 // unwrap is wrap's inverse, for the fake: the resource body and its ID.
 func unwrap(d *Doc, schema string, m *Method, body map[string]any) (map[string]any, string, error) {
@@ -138,6 +142,13 @@ func unwrap(d *Doc, schema string, m *Method, body map[string]any) (map[string]a
 			for _, f := range idFields(w) {
 				id, _ = body[f].(string)
 			}
+			if len(idFields(w)) == 0 {
+				// The resource names itself, by its short name (a GKE
+				// cluster's "shop").
+				if n, _ := res["name"].(string); n != "" && !strings.Contains(n, "/") {
+					id = n
+				}
+			}
 			if id == "" {
 				return nil, "", fmt.Errorf("INVALID_ARGUMENT: %s needs its ID field", m.Request.Ref)
 			}
@@ -148,11 +159,13 @@ func unwrap(d *Doc, schema string, m *Method, body map[string]any) (map[string]a
 }
 
 // idFields are a wrapper's string fields that carry the new resource's ID
-// (accountId, roleId).
+// (accountId, roleId). A deprecated one is not: GKE's CreateClusterRequest
+// keeps projectId from before it took a parent, and a cluster's ID is the
+// name in its body.
 func idFields(w *Schema) []string {
 	var out []string
 	for _, k := range sortedKeys(w.Properties) {
-		if strings.HasSuffix(k, "Id") && w.Properties[k].Type == "string" {
+		if strings.HasSuffix(k, "Id") && w.Properties[k].Type == "string" && !w.Properties[k].Deprecated {
 			out = append(out, k)
 		}
 	}

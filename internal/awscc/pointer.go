@@ -112,3 +112,23 @@ func walkStrings(v any, fn func(string) string) any {
 	}
 	return v
 }
+
+// walkKeyed is walkStrings that also gives the key of the map entry a
+// string is under (a list's strings are under their list's key).
+func walkKeyed(v any, key string, fn func(key, s string) string) any {
+	switch c := v.(type) {
+	case map[string]any:
+		for k, x := range c {
+			c[k] = walkKeyed(x, k, fn)
+		}
+		return c
+	case []any:
+		for i, x := range c {
+			c[i] = walkKeyed(x, key, fn)
+		}
+		return c
+	case string:
+		return fn(key, c)
+	}
+	return v
+}

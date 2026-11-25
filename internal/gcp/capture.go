@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -289,6 +290,13 @@ func read(ctx context.Context, api API, docs *Docs, a Asset, project, number str
 		return nil, ownedError{why: why, name: tokenizeString(canonical, project, number)}
 	}
 	spec, ro := doc.normalize(k.Schema, data)
+	for _, a := range appliedOf(doc.Name, k.Schema) {
+		// Each item's state goes to the status under the item's name, and
+		// the list is kept in the order of its names, whatever order the
+		// server lists it in.
+		a.itemStatus(doc, data, ro)
+		a.sort(spec)
+	}
 	rel := tokenizeString(canonical, project, number)
 	spec = tokenize(spec, project, number)
 	status := map[string]any{"name": rel}
@@ -364,7 +372,7 @@ func toObject(r *res) map[string]any {
 		annDiscovery:  r.doc.Name + "/" + r.doc.Version,
 		annSchema:     r.kind.Schema,
 		annCollection: r.kind.Collection,
-		annParent:     parentOf(r.rel),
+		annParent:     parentIn(r.rel, r.kind.Create),
 	}
 	return map[string]any{"apiVersion": APIVersion, "kind": r.asset.Type,
 		"metadata": map[string]any{"name": r.logical, "annotations": ann}, "spec": r.spec, "status": r.status}
@@ -383,6 +391,13 @@ func tokenizeString(s, project, number string) string {
 		s = strings.TrimSuffix(s, project) + tokProject
 	}
 	s = strings.ReplaceAll(s, "@"+project+".", "@"+tokProject+".")
+	// A project's workload identity pool is named after it
+	// (PROJECT_ID.svc.id.goog, in a GKE cluster's workloadPool and in the
+	// members of that pool): kept, a restored cluster asked for the source
+	// project's pool.
+	if pool := project + ".svc.id.goog"; strings.Contains(s, pool) {
+		s = poolRE(project).ReplaceAllString(s, "${1}"+tokProject+".svc.id.goog")
+	}
 	if number != "" {
 		s = strings.ReplaceAll(s, "projects/"+number+"/", "projects/"+tokNumber+"/")
 		if strings.HasSuffix(s, "projects/"+number) {
@@ -404,6 +419,23 @@ func parentOf(rel string) string {
 		return ""
 	}
 	return strings.Join(p[:len(p)-2], "/")
+}
+
+// parentIn is the resource a resource was created under. A name is
+// usually parent/collection/id; one named by several of its fields (a
+// Cloud DNS record set: rrsets/<name>/<type>) has a longer tail, so the
+// parent is as long as its create method's path says: everything before
+// the collection's word. Taken as two segments, a captured record set
+// named its parent ".../rrsets", and differed from every snapshot that
+// wrote its zone.
+func parentIn(rel string, create *Method) string {
+	if create != nil && !strings.Contains(create.Path, "{+") {
+		n := len(strings.Split(nameTemplate(create.Path), "/")) - 1
+		if segs := strings.Split(rel, "/"); n > 0 && n < len(segs) {
+			return strings.Join(segs[:n], "/")
+		}
+	}
+	return parentOf(rel)
 }
 
 func collLast(c string) string { return c[strings.LastIndex(c, ".")+1:] }
@@ -432,4 +464,10 @@ func dropUnder(v any, prefix string) {
 			dropUnder(x, prefix)
 		}
 	}
+}
+
+// poolRE finds a project's workload identity pool where the project ID is
+// a whole name, not the end of a longer one.
+func poolRE(project string) *regexp.Regexp {
+	return regexp.MustCompile(`(^|[^a-z0-9-])` + regexp.QuoteMeta(project) + `\.svc\.id\.goog`)
 }

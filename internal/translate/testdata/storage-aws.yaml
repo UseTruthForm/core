@@ -1,0 +1,748 @@
+report:
+  destinations:
+  - 'storage: buckets'
+  entries:
+  - losses:
+    - field: properties.networkAcls
+      why: 'its firewall denies by default and allows 2 address range(s) and 1 virtual
+        network subnet(s), and Azure''s trusted services passed it; its buckets''
+        objects are read, written and deleted only from 203.0.113.0/24, 198.51.100.7/32,
+        but their names can still be listed from elsewhere through an AWS service
+        that acts with the caller''s credentials (Athena), by a principal allowed
+        s3:ListBucket: Cloud Control reads a bucket with that permission, so that
+        path cannot be denied without locking out the restore'
+    - field: sku.name
+      why: Standard_RAGRS copies the account to a second region; an S3 bucket keeps
+        its objects in at least three availability zones of one region, and a copy
+        in another region (S3 Replication) is not translated
+    - field: properties.networkAcls.virtualNetworkRules
+      why: 1 virtual network subnet(s) were allowed by service endpoint; on S3 a subnet
+        reaches the buckets through its VPC's S3 endpoint, and only those written
+        for a private endpoint are let through
+    - field: properties.networkAcls.bypass
+      why: AzureServices passed the firewall; Azure's trusted services are not the
+        target's
+    reason: 'the account is not a bucket: its settings apply to each of its containers''
+      buckets'
+    source: Microsoft.Storage/storageAccounts shop/shopassets
+    state: mapped with losses
+    targets:
+    - AWS::S3::Bucket shopassets-images
+    - AWS::S3::Bucket shopassets-ledger
+    - AWS::S3::Bucket shopassets-records
+    - AWS::S3::BucketPolicy shopassets-images
+    - AWS::S3::BucketPolicy shopassets-ledger
+    - AWS::S3::BucketPolicy shopassets-records
+  - reason: 'it has no blob container in the snapshot that becomes a bucket, so nothing
+      is written: the account is not a bucket, and its settings apply only to its
+      containers'''
+    source: Microsoft.Storage/storageAccounts shop/shopempty
+    state: mapped
+  - losses:
+    - field: properties.isLocalUserEnabled
+      why: local users are identity, not translated (#32)
+    - field: properties.accessTier
+      why: 'Smart: S3 Intelligent-Tiering is chosen per object by the writer, or by
+        a lifecycle rule (not translated)'
+    - field: properties.isHnsEnabled
+      why: 'a hierarchical namespace (Data Lake Storage): a general purpose bucket''s
+        namespace is flat, so renaming a directory renames each object, and POSIX
+        ACLs on paths are identity and are not translated (#32)'
+    - field: properties.isSftpEnabled
+      why: 'SFTP access: a bucket has no SFTP endpoint until AWS Transfer Family serves
+        it (not translated)'
+    reason: 'the account is not a bucket: its settings apply to each of its containers''
+      buckets'
+    source: Microsoft.Storage/storageAccounts shop/shoplake
+    state: mapped with losses
+    targets:
+    - AWS::S3::Bucket shoplake-raw
+    - AWS::S3::BucketPolicy shoplake-raw
+  - losses:
+    - field: identity
+      why: 'the account''s managed identity is not translated (identity is a separate
+        design, #32)'
+    - field: properties.publicNetworkAccess
+      why: 'public network access is disabled: it answers only on private endpoints;
+        no private endpoint to it is translated, and it allowed no public address
+        range: there is no private path to lock it to. S3 answers on its public endpoint,
+        guarded by IAM alone'
+      widens: true
+    - field: properties.encryption.keySource
+      why: blobs are encrypted with the customer's own key; the buckets use S3's keys
+        until a KMS key is named (not translated yet)
+      widens: true
+    - field: properties.minimumTlsVersion
+      why: TLS 1.0 at least on the source; S3 takes TLS 1.2 at least, so older clients
+        cannot connect
+    - field: properties.accessTier
+      why: 'Cool: S3 has no default storage class per bucket; objects are written
+        STANDARD unless the writer names a class (STANDARD_IA, GLACIER_IR) or a lifecycle
+        rule moves them (not translated)'
+    reason: 'the account is not a bucket: its settings apply to each of its containers''
+      buckets'
+    source: Microsoft.Storage/storageAccounts shop/shopvault
+    state: mapped with losses
+    targets:
+    - AWS::S3::Bucket shopvault-backups
+    - AWS::S3::BucketPolicy shopvault-backups
+  - losses:
+    - field: properties.deleteRetentionPolicy
+      why: 'S3 has no soft delete: the bucket is versioned, so a deleted or overwritten
+        object is kept as a noncurrent version for 14 day(s), as Azure kept it; on
+        Azure nobody could delete it for good before then, and on S3 whoever may s3:DeleteObjectVersion
+        can: deny that in IAM'
+      widens: true
+    - field: properties.containerDeleteRetentionPolicy
+      why: a deleted container could be restored; S3 deletes only an empty bucket,
+        so its objects (and their versions) are deleted first, one by one
+    - field: properties.changeFeed
+      why: the change feed (a log of every change) is not translated; the nearest
+        equivalent is S3 Event Notifications or CloudTrail data events
+    - field: properties.staticWebsite
+      why: 'the static website is not translated: its content is public, and public
+        access is not written (its $web container is refused)'
+    - field: properties.cors.corsRules[0].allowedMethods
+      why: 'methods MERGE: an S3 CORS rule takes GET, PUT, HEAD, POST and DELETE;
+        they are not allowed'
+    reason: 'read with its account Microsoft.Storage/storageAccounts shop/shopassets:
+      its settings apply to each of the account''s buckets'
+    source: Microsoft.Storage/storageAccounts/blobServices shop/shopassets/default
+    state: mapped with losses
+  - losses:
+    - field: properties.deleteRetentionPolicy
+      why: 'S3 has no soft delete: the bucket is versioned, so a deleted or overwritten
+        object is kept as a noncurrent version, which versioning keeps until it is
+        deleted'
+    reason: 'read with its account Microsoft.Storage/storageAccounts shop/shopvault:
+      its settings apply to each of the account''s buckets'
+    source: Microsoft.Storage/storageAccounts/blobServices shop/shopvault/default
+    state: mapped with losses
+  - reason: 'it holds the account''s static website, which Azure serves to anyone:
+      a website bucket is public, and public access needs a bucket policy (AWS) or
+      allUsers on the bucket (GCP), which is identity and is not translated (#32)'
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/$web
+    state: refused
+  - reason: 'public read access (Blob): anyone may read its blobs without signing
+      in. Writing that needs a bucket policy granting everyone read (AWS) or allUsers
+      on the bucket''s IAM (GCP), which is identity and is not translated (#32); every
+      bucket written here blocks public access'
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/catalog
+    state: refused
+  - source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/images
+    state: mapped
+    targets:
+    - AWS::S3::Bucket shopassets-images
+    - AWS::S3::BucketPolicy shopassets-images
+  - losses:
+    - field: properties.metadata
+      why: '1 metadata pair(s) on the container: a bucket has no metadata (its tags
+        or labels come from the account''s)'
+    - field: properties.defaultEncryptionScope
+      why: its encryption scope tenantkey uses the customer's own key; the bucket
+        uses the cloud's managed keys until a key is named (not translated yet)
+      widens: true
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/ledger
+    state: mapped with losses
+    targets:
+    - AWS::S3::Bucket shopassets-ledger
+    - AWS::S3::BucketPolicy shopassets-ledger
+  - reason: 'its bucket name "shopassets-monthly-reconciliation-exports-for-the-finance-team-archive"
+      is not an S3 bucket name (3 to 63 lower-case letters, digits, dots and hyphens,
+      starting and ending with a letter or digit): give it one in the map''s names,
+      keyed shop/shopassets/monthly-reconciliation-exports-for-the-finance-team-archive
+      (bucket names are global, so it must also be free)'
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/monthly-reconciliation-exports-for-the-finance-team-archive
+    state: refused
+  - losses:
+    - field: properties.hasLegalHold
+      why: a legal hold keeps every blob from being changed or deleted; S3 holds an
+        object only once it is put under an Object Lock legal hold, so put each copied
+        object under one
+      widens: true
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopassets/default/records
+    state: mapped with losses
+    targets:
+    - AWS::S3::Bucket shopassets-records
+    - AWS::S3::BucketPolicy shopassets-records
+  - source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shoplake/default/raw
+    state: mapped
+    targets:
+    - AWS::S3::Bucket shoplake-raw
+    - AWS::S3::BucketPolicy shoplake-raw
+  - reason: 'its public access setting (Container) has no effect: the account forbids
+      public access'
+    source: Microsoft.Storage/storageAccounts/blobServices/containers shop/shopvault/default/backups
+    state: mapped
+    targets:
+    - AWS::S3::Bucket shopvault-backups
+    - AWS::S3::BucketPolicy shopvault-backups
+  - reason: read with its container Microsoft.Storage/storageAccounts/blobServices/containers
+      shop/shopassets/default/records
+    source: Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies
+      shop/shopassets/default/records/default
+    state: mapped
+  - losses:
+    - field: properties.source
+      why: the scope encrypts with the customer's own key; the buckets written here
+        use the cloud's managed keys until a key is named (not translated yet)
+      widens: true
+    reason: read with the containers that name it as their default; a blob that names
+      it itself is data, which is not copied
+    source: Microsoft.Storage/storageAccounts/encryptionScopes shop/shopassets/tenantkey
+    state: mapped with losses
+  - reason: 'a service with nothing of its own in the snapshot: its settings apply
+      to items there are none of, so nothing is written'
+    source: Microsoft.Storage/storageAccounts/fileServices shop/shopassets/default
+    state: mapped
+  - reason: 'a local user (SFTP or NFS, with its own keys or password): identity is
+      not translated (#32)'
+    source: Microsoft.Storage/storageAccounts/localUsers shop/shopassets/uploader
+    state: refused
+  - reason: 'no descriptor for Microsoft.Storage/storageAccounts/managementPolicies
+      yet: lifecycle rules are not translated (the nearest equivalents are an S3 lifecycle
+      configuration and Cloud Storage lifecycle rules)'
+    source: Microsoft.Storage/storageAccounts/managementPolicies shop/shopassets/default
+    state: not looked at
+  - reason: 'no descriptor for Microsoft.Storage/storageAccounts/queueServices yet:
+      storage queues are not buckets (the nearest equivalents are SQS and Pub/Sub)'
+    source: Microsoft.Storage/storageAccounts/queueServices shop/shopassets/default
+    state: not looked at
+  - reason: 'no descriptor for Microsoft.Storage/storageAccounts/queueServices/queues
+      yet: storage queues are not buckets (the nearest equivalents are SQS and Pub/Sub)'
+    source: Microsoft.Storage/storageAccounts/queueServices/queues shop/shopassets/default/jobs
+    state: not looked at
+  from: azure
+  requirements:
+  - 'Apps move from the Azure Blob SDK to the S3 API: each container is a bucket,
+    named <account>-<container> unless the map names it'
+  - Apps that sign in to Azure Storage with account keys, SAS tokens or connection
+    strings must move to the target's identity (IAM roles, workload identity); no
+    key or SAS is carried over
+  - 'Blobs are not copied: each bucket is written empty. Copy each container''s blobs
+    into its bucket (AWS DataSync or S3 Batch Operations; the Storage Transfer Service),
+    with their versions, metadata and per-blob tiers and holds, which this translation
+    does not carry'
+  - 'Buckets from a storage account that limited its network (Microsoft.Storage/storageAccounts
+    shop/shopvault) answer on S3''s public endpoint: add a VPC endpoint for S3 and
+    a bucket policy that denies requests not from it'
+  - 'Containers under a legal hold become buckets without one: put each copied object
+    under an Object Lock legal hold (S3) or a temporary hold (Cloud Storage) before
+    anything else can delete it'
+  - 'Local users of a storage account (SFTP, NFS) are identity and are not translated
+    (#32): give each client an IAM or workload identity on the target, or a managed
+    file transfer service (AWS Transfer Family)'
+  - 'Storage account shop/shopassets''s buckets answer only from 203.0.113.0/24, 198.51.100.7/32,
+    as on Azure: a resource policy denies the data actions to every other request,
+    whoever makes it. The settings can still be read and changed from anywhere IAM
+    allows, as Azure''s management plane could; apps and people that read or write
+    the data from elsewhere must come that way'
+  - 'Who may read and write each bucket is IAM. With destinations.identity: workload,
+    a managed identity''s Storage Blob Data role on the account or a container is
+    carried to its bucket; a person''s, a pipeline''s or a custom role''s is not:
+    grant those on the target'
+  to: aws
+snapshots:
+  aws:
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::BucketPolicy
+    metadata:
+      name: shopassets-images
+    spec:
+      Bucket: shopassets-images
+      PolicyDocument:
+        Statement:
+        - Action: s3:*
+          Condition:
+            Bool:
+              aws:SecureTransport: "false"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}/*'
+          Sid: DenyPlainHTTP
+        - Action: s3:*
+          Condition:
+            NumericLessThan:
+              s3:TlsVersion: "1.2"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}/*'
+          Sid: DenyOldTLS
+        - Action:
+          - s3:GetObject
+          - s3:GetObjectVersion
+          - s3:GetObjectAcl
+          - s3:GetObjectVersionAcl
+          - s3:GetObjectAttributes
+          - s3:GetObjectVersionAttributes
+          - s3:GetObjectTagging
+          - s3:GetObjectVersionTagging
+          - s3:GetObjectRetention
+          - s3:GetObjectLegalHold
+          - s3:PutObject
+          - s3:PutObjectTagging
+          - s3:PutObjectVersionTagging
+          - s3:PutObjectRetention
+          - s3:PutObjectLegalHold
+          - s3:DeleteObject
+          - s3:DeleteObjectVersion
+          - s3:DeleteObjectTagging
+          - s3:DeleteObjectVersionTagging
+          - s3:RestoreObject
+          - s3:AbortMultipartUpload
+          - s3:ListMultipartUploadParts
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}/*'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucketVersions
+          - s3:ListBucketMultipartUploads
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucket
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+              aws:ViaAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-images|Arn}}'
+          Sid: DenyOutsidePrivateAccessButThroughAWS
+        Version: "2012-10-17"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::BucketPolicy
+    metadata:
+      name: shopassets-ledger
+    spec:
+      Bucket: shopassets-ledger
+      PolicyDocument:
+        Statement:
+        - Action: s3:*
+          Condition:
+            Bool:
+              aws:SecureTransport: "false"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}/*'
+          Sid: DenyPlainHTTP
+        - Action: s3:*
+          Condition:
+            NumericLessThan:
+              s3:TlsVersion: "1.2"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}/*'
+          Sid: DenyOldTLS
+        - Action:
+          - s3:GetObject
+          - s3:GetObjectVersion
+          - s3:GetObjectAcl
+          - s3:GetObjectVersionAcl
+          - s3:GetObjectAttributes
+          - s3:GetObjectVersionAttributes
+          - s3:GetObjectTagging
+          - s3:GetObjectVersionTagging
+          - s3:GetObjectRetention
+          - s3:GetObjectLegalHold
+          - s3:PutObject
+          - s3:PutObjectTagging
+          - s3:PutObjectVersionTagging
+          - s3:PutObjectRetention
+          - s3:PutObjectLegalHold
+          - s3:DeleteObject
+          - s3:DeleteObjectVersion
+          - s3:DeleteObjectTagging
+          - s3:DeleteObjectVersionTagging
+          - s3:RestoreObject
+          - s3:AbortMultipartUpload
+          - s3:ListMultipartUploadParts
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}/*'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucketVersions
+          - s3:ListBucketMultipartUploads
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucket
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+              aws:ViaAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-ledger|Arn}}'
+          Sid: DenyOutsidePrivateAccessButThroughAWS
+        Version: "2012-10-17"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::BucketPolicy
+    metadata:
+      name: shopassets-records
+    spec:
+      Bucket: shopassets-records
+      PolicyDocument:
+        Statement:
+        - Action: s3:*
+          Condition:
+            Bool:
+              aws:SecureTransport: "false"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}/*'
+          Sid: DenyPlainHTTP
+        - Action: s3:*
+          Condition:
+            NumericLessThan:
+              s3:TlsVersion: "1.2"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}/*'
+          Sid: DenyOldTLS
+        - Action:
+          - s3:GetObject
+          - s3:GetObjectVersion
+          - s3:GetObjectAcl
+          - s3:GetObjectVersionAcl
+          - s3:GetObjectAttributes
+          - s3:GetObjectVersionAttributes
+          - s3:GetObjectTagging
+          - s3:GetObjectVersionTagging
+          - s3:GetObjectRetention
+          - s3:GetObjectLegalHold
+          - s3:PutObject
+          - s3:PutObjectTagging
+          - s3:PutObjectVersionTagging
+          - s3:PutObjectRetention
+          - s3:PutObjectLegalHold
+          - s3:DeleteObject
+          - s3:DeleteObjectVersion
+          - s3:DeleteObjectTagging
+          - s3:DeleteObjectVersionTagging
+          - s3:RestoreObject
+          - s3:AbortMultipartUpload
+          - s3:ListMultipartUploadParts
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}/*'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucketVersions
+          - s3:ListBucketMultipartUploads
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}'
+          Sid: DenyOutsidePrivateAccess
+        - Action:
+          - s3:ListBucket
+          Condition:
+            BoolIfExists:
+              aws:PrincipalIsAWSService: "false"
+              aws:ViaAWSService: "false"
+            NotIpAddress:
+              aws:SourceIp:
+              - 203.0.113.0/24
+              - 198.51.100.7/32
+          Effect: Deny
+          Principal: '*'
+          Resource: '{{truthform|AWS::S3::Bucket|shopassets-records|Arn}}'
+          Sid: DenyOutsidePrivateAccessButThroughAWS
+        Version: "2012-10-17"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::BucketPolicy
+    metadata:
+      name: shoplake-raw
+    spec:
+      Bucket: shoplake-raw
+      PolicyDocument:
+        Statement:
+        - Action: s3:*
+          Condition:
+            NumericLessThan:
+              s3:TlsVersion: "1.2"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shoplake-raw|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shoplake-raw|Arn}}/*'
+          Sid: DenyOldTLS
+        Version: "2012-10-17"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::BucketPolicy
+    metadata:
+      name: shopvault-backups
+    spec:
+      Bucket: shopvault-backups
+      PolicyDocument:
+        Statement:
+        - Action: s3:*
+          Condition:
+            Bool:
+              aws:SecureTransport: "false"
+          Effect: Deny
+          Principal: '*'
+          Resource:
+          - '{{truthform|AWS::S3::Bucket|shopvault-backups|Arn}}'
+          - '{{truthform|AWS::S3::Bucket|shopvault-backups|Arn}}/*'
+          Sid: DenyPlainHTTP
+        Version: "2012-10-17"
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::Bucket
+    metadata:
+      annotations:
+        truthform.org/write-only: AccessControl,BucketNamePrefix,BucketNamespace,LifecycleConfiguration.Rules[].ExpiredObjectDeleteMarker,LifecycleConfiguration.Rules[].NoncurrentVersionExpirationInDays,LifecycleConfiguration.Rules[].NoncurrentVersionTransition,LifecycleConfiguration.Rules[].Transition,MetadataConfiguration.AnnotationTableConfiguration.EncryptionConfiguration,MetadataConfiguration.InventoryTableConfiguration.EncryptionConfiguration,MetadataConfiguration.JournalTableConfiguration.EncryptionConfiguration,ReplicationConfiguration.Rules[].Prefix
+      name: shopassets-images
+    spec:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: aws:kms:dsse
+      BucketName: shopassets-images
+      CorsConfiguration:
+        CorsRules:
+        - AllowedHeaders:
+          - '*'
+          AllowedMethods:
+          - GET
+          - PUT
+          AllowedOrigins:
+          - https://shop.example
+          ExposedHeaders:
+          - '*'
+          MaxAge: 600
+      LifecycleConfiguration:
+        Rules:
+        - Id: soft-delete
+          NoncurrentVersionExpiration:
+            NoncurrentDays: 14
+          Status: Enabled
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+      - Key: Owner
+        Value: Shop Team
+      - Key: env
+        Value: prod
+      VersioningConfiguration:
+        Status: Enabled
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::Bucket
+    metadata:
+      annotations:
+        truthform.org/write-only: AccessControl,BucketNamePrefix,BucketNamespace,LifecycleConfiguration.Rules[].ExpiredObjectDeleteMarker,LifecycleConfiguration.Rules[].NoncurrentVersionExpirationInDays,LifecycleConfiguration.Rules[].NoncurrentVersionTransition,LifecycleConfiguration.Rules[].Transition,MetadataConfiguration.AnnotationTableConfiguration.EncryptionConfiguration,MetadataConfiguration.InventoryTableConfiguration.EncryptionConfiguration,MetadataConfiguration.JournalTableConfiguration.EncryptionConfiguration,ReplicationConfiguration.Rules[].Prefix
+      name: shopassets-ledger
+    spec:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: aws:kms:dsse
+      BucketName: shopassets-ledger
+      CorsConfiguration:
+        CorsRules:
+        - AllowedHeaders:
+          - '*'
+          AllowedMethods:
+          - GET
+          - PUT
+          AllowedOrigins:
+          - https://shop.example
+          ExposedHeaders:
+          - '*'
+          MaxAge: 600
+      LifecycleConfiguration:
+        Rules:
+        - Id: soft-delete
+          NoncurrentVersionExpiration:
+            NoncurrentDays: 14
+          Status: Enabled
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+      - Key: Owner
+        Value: Shop Team
+      - Key: env
+        Value: prod
+      VersioningConfiguration:
+        Status: Enabled
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::Bucket
+    metadata:
+      annotations:
+        truthform.org/write-only: AccessControl,BucketNamePrefix,BucketNamespace,LifecycleConfiguration.Rules[].ExpiredObjectDeleteMarker,LifecycleConfiguration.Rules[].NoncurrentVersionExpirationInDays,LifecycleConfiguration.Rules[].NoncurrentVersionTransition,LifecycleConfiguration.Rules[].Transition,MetadataConfiguration.AnnotationTableConfiguration.EncryptionConfiguration,MetadataConfiguration.InventoryTableConfiguration.EncryptionConfiguration,MetadataConfiguration.JournalTableConfiguration.EncryptionConfiguration,ReplicationConfiguration.Rules[].Prefix
+      name: shopassets-records
+    spec:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: aws:kms:dsse
+      BucketName: shopassets-records
+      CorsConfiguration:
+        CorsRules:
+        - AllowedHeaders:
+          - '*'
+          AllowedMethods:
+          - GET
+          - PUT
+          AllowedOrigins:
+          - https://shop.example
+          ExposedHeaders:
+          - '*'
+          MaxAge: 600
+      LifecycleConfiguration:
+        Rules:
+        - Id: soft-delete
+          NoncurrentVersionExpiration:
+            NoncurrentDays: 14
+          Status: Enabled
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule:
+          DefaultRetention:
+            Days: 365
+            Mode: COMPLIANCE
+      ObjectLockEnabled: true
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+      - Key: Owner
+        Value: Shop Team
+      - Key: env
+        Value: prod
+      VersioningConfiguration:
+        Status: Enabled
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::Bucket
+    metadata:
+      annotations:
+        truthform.org/write-only: AccessControl,BucketNamePrefix,BucketNamespace,LifecycleConfiguration.Rules[].ExpiredObjectDeleteMarker,LifecycleConfiguration.Rules[].NoncurrentVersionExpirationInDays,LifecycleConfiguration.Rules[].NoncurrentVersionTransition,LifecycleConfiguration.Rules[].Transition,MetadataConfiguration.AnnotationTableConfiguration.EncryptionConfiguration,MetadataConfiguration.InventoryTableConfiguration.EncryptionConfiguration,MetadataConfiguration.JournalTableConfiguration.EncryptionConfiguration,ReplicationConfiguration.Rules[].Prefix
+      name: shoplake-raw
+    spec:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      BucketName: shoplake-raw
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  - apiVersion: aws.truthform.org/v1
+    kind: AWS::S3::Bucket
+    metadata:
+      annotations:
+        truthform.org/write-only: AccessControl,BucketNamePrefix,BucketNamespace,LifecycleConfiguration.Rules[].ExpiredObjectDeleteMarker,LifecycleConfiguration.Rules[].NoncurrentVersionExpirationInDays,LifecycleConfiguration.Rules[].NoncurrentVersionTransition,LifecycleConfiguration.Rules[].Transition,MetadataConfiguration.AnnotationTableConfiguration.EncryptionConfiguration,MetadataConfiguration.InventoryTableConfiguration.EncryptionConfiguration,MetadataConfiguration.JournalTableConfiguration.EncryptionConfiguration,ReplicationConfiguration.Rules[].Prefix
+      name: shopvault-backups
+    spec:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      BucketName: shopvault-backups
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule:
+          DefaultRetention:
+            Days: 30
+            Mode: GOVERNANCE
+      ObjectLockEnabled: true
+      OwnershipControls:
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled

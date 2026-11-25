@@ -37,7 +37,7 @@ Kubernetes:
 
 AWS (Cloud Control, every type in the CloudFormation registry):
   truthform capture --platform aws --region <r> [--profile <p>] --out <dir> [--types <patterns>] [--baseline <dir>]
-  truthform restore --platform aws --region <r> [--profile <p>] --from <dir> [--values <file>] [--update]
+  truthform restore --platform aws --region <r> [--profile <p>] --from <dir> [--values <file>] [--update] [--dry-run]
   truthform diff    --platform aws --region <r> [--profile <p>] --from <dir> [--types <patterns>] [--baseline <dir>]
   truthform aws-coverage [--schemas <bundle.zip>]
 
@@ -48,7 +48,7 @@ Azure (ARM, every type with a published definition):
 
 GCP (Cloud Asset Inventory and each API's Discovery document):
   truthform capture --platform gcp --project <id> --out <dir> [--types <patterns>] [--baseline <dir>]
-  truthform restore --platform gcp --project <id> --from <dir> [--update]
+  truthform restore --platform gcp --project <id> --from <dir> [--update] [--dry-run]
   truthform diff    --platform gcp --project <id> --from <dir> [--types <patterns>] [--baseline <dir>]
 
 SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN, or Cloudflare's sign-in):
@@ -63,7 +63,7 @@ SaaS (OpenAPI descriptions; token from GITHUB_TOKEN / CLOUDFLARE_API_TOKEN, or C
       checks the zone first and stops on any conflict, before it writes
   truthform diff    --platform cloudflare --account <account-id> --from <dir> [--subdomain test.example.com [--address ...] [--target ...]]
 
-Machine-readable: add --json to capture, diff, restore, compare, check, permissions or plan; stdout is then
+Machine-readable: add --json to capture, diff, restore, compare, check, permissions, plan or translate; stdout is then
 one JSON document (everything else goes to stderr) and the exit code is unchanged.
 
 Access (what to grant, and what a grant can read):
@@ -76,6 +76,13 @@ As a graph (resources and their relationships, for an asset inventory or a secur
   truthform graph --from <dir> [--types security|none|<file>] [--subscription <id>] [--tenant <id>] [--out <file>]
       Azure; JSON nodes and edges from the snapshot alone, no request made
 
+To another cloud (offline: a snapshot and a map in, snapshots and a report out; exit 3 when anything is refused or less protected):
+  truthform translate --from <azure-snapshot> --map <file> --out <dir> [--schemas <bundle.zip|dir>] [--discovery <dir>]
+                      [--kube <kubernetes-snapshot>] [--gitops <checkout of the repository Flux reads>]
+      writes <dir>/aws/, <dir>/gcp/ or <dir>/kubernetes/ for restore, and <dir>/translation.yaml, every object's losses
+      --kube, --gitops: also lists what the cluster's workloads name that was renamed, by file and line (nothing in Git is changed)
+      beta: no translated snapshot has been restored into a real account or project yet; run restore --dry-run on what it writes first
+
 Before a rebuild (what the snapshot does not hold: what to install first, the secrets, the names):
   truthform plan rebuild --from <dir> [--scope <file>] [--leave-out <file>] [--out <file>] [--json]
   truthform plan scope --from <dir> [--out <file> | --check <file> [--json]]
@@ -84,6 +91,9 @@ Before a rebuild (what the snapshot does not hold: what to install first, the se
 
 For agents (MCP on stdin/stdout; every tool read-only, no restore tool):
   truthform mcp
+  truthform skills [<name> | --out <dir>]
+      the skills for what a translation leaves to people (data, access, machines, a TLS floor, flow logs, cost):
+      lists them, prints one, or writes each as <dir>/<name>/SKILL.md; the MCP server serves the same text
 
 A whole environment (several targets, read-only):
   truthform capture --config <env.yaml> --out <dir>
@@ -111,7 +121,7 @@ func main() {
 		// run quietly: "mcp --json" served the protocol on stderr and
 		// "version --json" printed nothing (review of #21).
 		if !jsonCommands[command] {
-			code := fail(fmt.Errorf("--json is supported by capture, diff, restore, compare, check, permissions and plan, not %s", command))
+			code := fail(fmt.Errorf("--json is supported by capture, diff, restore, compare, check, permissions, plan and translate, not %s", command))
 			emitError(code)
 			os.Exit(code)
 		}
@@ -137,6 +147,8 @@ func main() {
 		code = schemaDiff(args)
 	case "aws-coverage":
 		code = awsCoverage(args)
+	case "translate":
+		code = translateCmd(args)
 	case "report":
 		code = reportCmd(args)
 	case "graph":
@@ -145,6 +157,8 @@ func main() {
 		code = planCmd(args)
 	case "mcp":
 		code = mcpCmd(ctx, args)
+	case "skills":
+		code = skillsCmd(args)
 	case "check":
 		code = checkCmd(ctx, args)
 	case "permissions":
@@ -270,7 +284,7 @@ func restore(ctx context.Context, args []string) int {
 	leaveOut := fs.String("leave-out", "", leaveOutHelp)
 	scope := fs.String("scope", "", scopeHelp)
 	newRoleIDs := fs.Bool("new-role-assignment-ids", false, newRoleIDsHelp)
-	dryRun := fs.Bool("dry-run", false, "github, cloudflare: read the target and print every write the restore would make; make none")
+	dryRun := fs.Bool("dry-run", false, "aws, gcp, github, cloudflare: read the target and print every write the restore would make; make none")
 	var aws awsFlags
 	aws.register(fs)
 	var az azureFlags
@@ -353,13 +367,13 @@ func restore(ctx context.Context, args []string) int {
 	warnOtherSubscriptions(snap, *platform, az.subscription)
 	switch *platform {
 	case "aws":
-		return restoreAWS(ctx, &aws, snap, *values, *update)
+		return restoreAWS(ctx, &aws, snap, *values, *update, *dryRun)
 	case "azure":
 		az.from(&aws, "")
 		return restoreAzure(ctx, &az, snap, *values, *update, names)
 	case "gcp":
 		g.from(&aws, "")
-		return restoreGCP(ctx, &g, snap, *update)
+		return restoreGCP(ctx, &g, snap, *update, *dryRun)
 	case "github", "cloudflare":
 		return restoreSaaS(ctx, *platform, &sf, snap, *values, *update, *dryRun)
 	}
@@ -743,8 +757,12 @@ func warnGaps(s snapshot.Snapshot) {
 // dryRunAccepted refuses --dry-run where the restore would not honour it:
 // elsewhere it would apply everything it was meant to only list.
 func dryRunAccepted(platform string, dryRun bool) error {
-	if dryRun && platform != "github" && platform != "cloudflare" {
-		return fmt.Errorf("--dry-run is for --platform github or cloudflare; nothing was restored")
+	switch platform {
+	case "aws", "gcp", "github", "cloudflare":
+		return nil
+	}
+	if dryRun {
+		return fmt.Errorf("--dry-run is for --platform aws, gcp, github or cloudflare; nothing was restored")
 	}
 	return nil
 }

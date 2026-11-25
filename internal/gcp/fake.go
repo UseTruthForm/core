@@ -20,10 +20,28 @@ type World struct {
 	docs     *Docs
 	projects map[string]string // id -> number
 	seq      int
+	// outside are the resources that belong to no project (a service
+	// perimeter, in an access policy), by name: every project's caller
+	// reaches them, and no project's inventory lists them.
+	outside map[string]fakeRes
+	// parents are the things such resources are created under, which the
+	// fake does not create (an organization's access policy).
+	parents map[string]bool
+}
+
+// Parent adds something resources are created under outside any project:
+// an access policy (accessPolicies/1234), which is an organization's to
+// make.
+func (w *World) Parent(name string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.parents[name] = true
 }
 
 // NewWorld creates an empty world that serves the documents' types.
-func NewWorld(docs *Docs) *World { return &World{docs: docs, projects: map[string]string{}} }
+func NewWorld(docs *Docs) *World {
+	return &World{docs: docs, projects: map[string]string{}, outside: map[string]fakeRes{}, parents: map[string]bool{}}
+}
 
 // Fake is one project. It knows no Google type: it reads, creates and
 // validates through each type's Discovery document, the same way the real
@@ -43,9 +61,24 @@ type Fake struct {
 	InventoryName func(rel string, data map[string]any) string
 	// Updates counts applied patches and updates.
 	Updates int
+	// EmailNames makes the fake name a service account as IAM does, by
+	// its email (projects/p/serviceAccounts/id@p.iam.gserviceaccount.com),
+	// and set that email. Off, one is named by its account ID alone, as
+	// the first fixtures were written.
+	EmailNames bool
+	// iam holds the allow policies of resources that have one, and
+	// PolicyWrites counts the times one was written.
+	iam          map[string]*fakePolicy
+	PolicyWrites int
 	// WriteDelay makes each write take this long, outside the lock, so
 	// writes running at once overlap as Google's long-running ones do.
 	WriteDelay time.Duration
+	// Caller is the principal the calls are made as
+	// (serviceAccount:restore@ops.iam.gserviceaccount.com), and Inside
+	// says they come from one of the project's own networks: what a
+	// service perimeter around the project decides by.
+	Caller string
+	Inside bool
 }
 
 type fakeRes struct {
@@ -58,7 +91,7 @@ func (w *World) Project(id, number string) *Fake {
 	w.mu.Lock()
 	w.projects[id] = number
 	w.mu.Unlock()
-	return &Fake{w: w, id: id, number: number, res: map[string]fakeRes{}, Unavailable: map[string]bool{}}
+	return &Fake{w: w, id: id, number: number, res: map[string]fakeRes{}, Unavailable: map[string]bool{}, iam: map[string]*fakePolicy{}}
 }
 
 func (f *Fake) Project() string                               { return f.id }
@@ -92,8 +125,19 @@ func (f *Fake) Call(_ context.Context, method, url string, body any) (map[string
 	}
 	f.w.mu.Lock()
 	defer f.w.mu.Unlock()
+	if err := f.perimeterRefuses(method, url); err != nil {
+		return nil, err
+	}
+	if out, ok, err := f.iamCall(method, url, body); ok {
+		return out, err
+	}
 	switch method {
 	case "GET":
+		for rel, r := range f.w.outside {
+			if strings.HasSuffix(url, "/"+rel) {
+				return deepCopy(r.data), nil
+			}
+		}
 		for rel, r := range f.res {
 			alias := ""
 			if f.InventoryName != nil {
@@ -105,8 +149,19 @@ func (f *Fake) Call(_ context.Context, method, url string, body any) (map[string
 		}
 		return nil, fmt.Errorf("%s: %w", url, ErrNotFound)
 	case "POST":
+		if out, ok, err := f.applyItem(method, url, body.(map[string]any)); ok {
+			return out, err
+		}
 		return f.create(url, body.(map[string]any))
-	case "PATCH", "PUT":
+	case "PUT":
+		if out, ok, err := f.createAtName(url, body.(map[string]any)); ok {
+			return out, err
+		}
+		return f.update(method, url, body.(map[string]any))
+	case "PATCH":
+		if out, ok, err := f.applyItem(method, url, body.(map[string]any)); ok {
+			return out, err
+		}
 		return f.update(method, url, body.(map[string]any))
 	}
 	return nil, fmt.Errorf("fake: unsupported method %s", method)
@@ -136,6 +191,7 @@ func (f *Fake) Seed(api, ver, typ, schema, collection, parent string, body map[s
 func (f *Fake) create(url string, body map[string]any) (map[string]any, error) {
 	url, rawQuery, _ := strings.Cut(url, "?")
 	queryID := ""
+	query, _ := neturl.ParseQuery(rawQuery)
 	for _, kv := range strings.Split(rawQuery, "&") {
 		if k, v, ok := strings.Cut(kv, "="); ok && idParam(k) {
 			queryID = v
@@ -156,12 +212,56 @@ func (f *Fake) create(url string, body map[string]any) (map[string]any, error) {
 			if !ok {
 				continue
 			}
+			// A create that names no parent takes the project as a query
+			// parameter, and Google refuses one without it.
+			if p, ok := m.Parameters["project"]; ok && p.Location == "query" && p.Required && query.Get("project") != f.id {
+				return nil, fmt.Errorf("INVALID_ARGUMENT: %s needs project=%s, got %q", m.ID, f.id, query.Get("project"))
+			}
 			schema := c.schema
-			typ := d.Name + ".googleapis.com/" + schema
-			return f.createWith(d, typ, schema, c.path, m, parent, body, queryID)
+			return f.createWith(d, assetType(d, schema), schema, c.path, m, parent, body, queryID)
 		}
 	}
 	return nil, fmt.Errorf("fake: no create method matches %s", url)
+}
+
+// createAtName is a PUT create at the resource's own name (Pub/Sub's
+// PUT v1/{+name}), when nothing is there yet and a document declares one
+// whose path matches; ok is false otherwise, and the PUT is an update.
+func (f *Fake) createAtName(url string, body map[string]any) (map[string]any, bool, error) {
+	for r := range f.res {
+		if strings.HasSuffix(url, "/"+r) {
+			return nil, false, nil
+		}
+	}
+	for _, d := range f.w.docs.loaded() {
+		prefix := d.RootURL + d.ServicePath
+		path := strings.TrimPrefix(url, prefix)
+		if path == url {
+			continue
+		}
+		for _, c := range d.collections() {
+			m := c.methods["create"]
+			if m == nil || m.HTTPMethod != "PUT" {
+				continue
+			}
+			lead, _, _ := strings.Cut(m.Path, "{")
+			rel := strings.TrimPrefix(path, lead)
+			if !strings.HasPrefix(path, lead) || !matchesName(m, rel) {
+				continue
+			}
+			coll := c.path[strings.LastIndex(c.path, ".")+1:]
+			parent, id, ok := strings.Cut(rel, "/"+coll+"/")
+			if !ok {
+				continue
+			}
+			if n, _ := body["name"].(string); n != "" && n != rel {
+				return nil, true, fmt.Errorf("INVALID_ARGUMENT: the name in the body, %s, is not %s", n, rel)
+			}
+			out, err := f.createWith(d, assetType(d, c.schema), c.schema, c.path, m, parent, body, id)
+			return out, true, err
+		}
+	}
+	return nil, false, nil
 }
 
 func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, parent string, body map[string]any, queryID string) (map[string]any, error) {
@@ -199,18 +299,72 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 		f.w.seq++
 		id = fmt.Sprintf("%d%06d", 1000+len(f.w.projects), f.w.seq) // server-assigned, numeric
 	}
+	// A resource under another (a record set in its managed zone) needs
+	// that one to exist, as Google answers NOT_FOUND otherwise: restore
+	// order matters here too.
+	if ps := strings.Split(parent, "/"); len(ps) >= 4 && f.creatable(ps[len(ps)-2]) {
+		if _, ok := f.res[parent]; !ok {
+			return nil, fmt.Errorf("NOT_FOUND: The resource '%s' was not found", parent)
+		}
+	}
 	coll := collection[strings.LastIndex(collection, ".")+1:]
 	rel := parent + "/" + coll + "/" + id
+	if parent == "" {
+		rel = id // a resource with no parent in its name (a Cloud Storage bucket)
+	}
+	email := ""
+	if f.EmailNames && d.Name == "iam" && schema == "ServiceAccount" {
+		email = id + "@" + f.id + ".iam.gserviceaccount.com"
+		rel = parent + "/" + coll + "/" + email
+	}
+	item := itemParams(d, collection, m)
+	if len(item) > 2 {
+		// Named by several of its fields (a record set by its DNS name
+		// and type: rrsets/{name}/{type}), as its get method reads it.
+		var vals []string
+		for _, p := range item[1:] {
+			v, _ := res[p].(string)
+			if v == "" {
+				return nil, fmt.Errorf("INVALID_ARGUMENT: %s needs %s", schema, p)
+			}
+			vals = append(vals, v)
+		}
+		rel = parent + "/" + item[0] + "/" + strings.Join(vals, "/")
+	}
 	if _, dup := f.res[rel]; dup {
 		return nil, fmt.Errorf("ALREADY_EXISTS: %s", rel)
+	}
+	outside := parent != "" && !strings.HasPrefix(parent, "projects/")
+	if outside {
+		// Under something that is no project's: it must be there, the
+		// resource is named in full in its body, and is nobody's twice.
+		if !f.w.parents[parent] {
+			return nil, fmt.Errorf("NOT_FOUND: %s was not found, or the caller may not see it", parent)
+		}
+		if n, _ := res["name"].(string); n != rel {
+			return nil, fmt.Errorf("INVALID_ARGUMENT: the name in the body, %q, is not under %s", n, parent)
+		}
+		if _, dup := f.w.outside[rel]; dup {
+			return nil, fmt.Errorf("ALREADY_EXISTS: %s", rel)
+		}
+		if rule := fakeResourceRules[schema]; rule != nil {
+			if err := rule(f, rel, res); err != nil {
+				return nil, err
+			}
+		}
 	}
 	stored := deepCopy(res)
 	stored["name"] = rel
 	// Compute's resources, created through a template that names each
 	// segment, carry their short name and a selfLink, as Google returns
 	// them; storing the full name here hid an update that sent one.
-	if !strings.Contains(m.Path, "{+") {
+	if n, _ := res["name"].(string); !strings.Contains(m.Path, "{+") || (n == id && m.Request != nil && m.Request.Ref != schema) {
+		// So do resources a wrapped create names by the short name in
+		// their body (a GKE cluster).
 		stored["name"] = id
+	}
+	if len(item) > 2 {
+		stored["name"] = res["name"]
 	}
 	for k, p := range d.Schemas[schema].Properties {
 		if outputOnly(p) && (p.Type == "string" || p.Type == "") && k != "name" {
@@ -221,6 +375,9 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 			}
 		}
 	}
+	if email != "" {
+		stored["email"] = email
+	}
 	if _, ok := d.Schemas[schema].Properties["selfLink"]; ok {
 		stored["selfLink"] = d.RootURL + d.ServicePath + rel
 	}
@@ -229,8 +386,13 @@ func (f *Fake) createWith(d *Doc, typ, schema, collection string, m *Method, par
 	if f.AfterCreate != nil {
 		f.AfterCreate(schema, stored)
 	}
-	f.res[rel] = fakeRes{asset: Asset{Name: "//" + d.Name + ".googleapis.com/" + rel, Type: typ,
+	made := fakeRes{asset: Asset{Name: "//" + d.Name + ".googleapis.com/" + rel, Type: typ,
 		DiscoveryURI: docURL(d.Name, d.Version), Version: d.Version, DiscoveryName: schema}, data: stored}
+	if outside {
+		f.w.outside[rel] = made
+	} else {
+		f.res[rel] = made
+	}
 	return deepCopy(stored), nil
 }
 
@@ -246,10 +408,16 @@ func (f *Fake) update(method, u string, body map[string]any) (map[string]any, er
 			rel = r
 		}
 	}
+	held := f.res
+	for r := range f.w.outside {
+		if strings.HasSuffix(path, "/"+r) {
+			rel, held = r, f.w.outside
+		}
+	}
 	if rel == "" {
 		return nil, fmt.Errorf("%s: %w", path, ErrNotFound)
 	}
-	cur := f.res[rel]
+	cur := held[rel]
 	d, err := f.w.docs.Doc(cur.asset.DiscoveryURI, cur.asset.Version)
 	if err != nil {
 		return nil, err
@@ -344,11 +512,69 @@ func (f *Fake) update(method, u string, body map[string]any) (map[string]any, er
 			}
 		}
 	}
+	if rule := fakeResourceRules[schema]; rule != nil {
+		if err := rule(f, rel, next); err != nil {
+			return nil, err
+		}
+	}
 	f.w.seq++
 	next["etag"] = fmt.Sprintf("e%d", f.w.seq)
-	f.res[rel] = fakeRes{asset: cur.asset, data: next}
+	held[rel] = fakeRes{asset: cur.asset, data: next}
 	f.Updates++
 	return deepCopy(next), nil
+}
+
+// itemParams is how a collection's get names one item beyond its parent:
+// the word its create adds, then the parameters after it (rrsets, name,
+// type). Nil when the templates do not say.
+func itemParams(d *Doc, collection string, create *Method) []string {
+	get := d.collectionMethods(collection)["get"]
+	if get == nil || strings.Contains(get.Path, "{+") || strings.Contains(create.Path, "{+") {
+		return nil
+	}
+	gs := strings.Split(nameTemplate(get.Path), "/")
+	cs := strings.Split(nameTemplate(create.Path), "/")
+	if len(gs) <= len(cs) {
+		return nil
+	}
+	out := []string{cs[len(cs)-1]}
+	for _, seg := range gs[len(cs):] {
+		m := pathParamRE.FindStringSubmatch(seg)
+		if m == nil {
+			return nil
+		}
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// creatable reports a collection, by its last word, that some loaded
+// document can create in.
+func (f *Fake) creatable(word string) bool {
+	for _, d := range f.w.docs.loaded() {
+		for _, c := range d.collections() {
+			if collLast(c.path) == word && createMethod(c.methods) != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// assetType is the type Cloud Asset Inventory reports a resource of a
+// document's schema as: the API's host and the schema's name, but for
+// those it names otherwise (a Cloud SQL DatabaseInstance is an
+// sqladmin.googleapis.com/Instance).
+func assetType(d *Doc, schema string) string {
+	t := d.Name + ".googleapis.com/" + schema
+	if n, ok := inventoryTypes[t]; ok {
+		return n
+	}
+	return t
+}
+
+var inventoryTypes = map[string]string{
+	"sqladmin.googleapis.com/DatabaseInstance": "sqladmin.googleapis.com/Instance",
 }
 
 // createMethod is a collection's create, or Compute's insert.
@@ -367,6 +593,13 @@ func createMethod(ms map[string]*Method) *Method {
 // {+parent}, or, for a template naming each segment (Compute's
 // projects/{project}/global/networks), everything before the collection.
 func createParent(tmpl, path string) (string, bool) {
+	// What precedes the name in the template (Cloud DNS's dns/v1/) is
+	// not part of the parent.
+	lead := strings.TrimSuffix(tmpl, nameTemplate(tmpl))
+	if !strings.HasPrefix(path, lead) {
+		return "", false
+	}
+	tmpl, path = tmpl[len(lead):], path[len(lead):]
 	var b strings.Builder
 	last := 0
 	for _, loc := range pathParamRE.FindAllStringSubmatchIndex(tmpl, -1) {
@@ -387,6 +620,9 @@ func createParent(tmpl, path string) (string, bool) {
 	if strings.Contains(tmpl, "{+") {
 		return m[1], true
 	}
+	if !strings.Contains(path, "/") {
+		return "", true // the collection alone (Cloud Storage's b): no parent
+	}
 	return path[:strings.LastIndex(path, "/")], true
 }
 
@@ -402,7 +638,8 @@ func (f *Fake) missingRef(body map[string]any) string {
 	}
 	missing := ""
 	refs := deepCopy(body)
-	delete(refs, "name") // its own name, not a reference
+	delete(refs, "name")     // its own name, not a reference
+	delete(refs, "selfLink") // nor its own link (Cloud SQL's is not flagged output only)
 	walkStrings(refs, func(s string) string {
 		i := strings.Index(s, "projects/"+f.id+"/")
 		if i < 0 || missing != "" {

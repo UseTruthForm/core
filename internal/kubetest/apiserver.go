@@ -106,18 +106,11 @@ const readyTimeout = 60 * time.Second
 // parallel run on Windows) a start once failed only with "API server never
 // became ready" and empty logs, which told nothing of why.
 func start(name, etcdBin, apiBin, dir string, timeout time.Duration) (*Server, error) {
-	etcdClient, err := freePort()
+	ports, err := freePorts(3)
 	if err != nil {
 		return nil, err
 	}
-	etcdPeer, err := freePort()
-	if err != nil {
-		return nil, err
-	}
-	apiPort, err := freePort()
-	if err != nil {
-		return nil, err
-	}
+	etcdClient, etcdPeer, apiPort := ports[0], ports[1], ports[2]
 	saKey := filepath.Join(dir, "sa.key")
 	if err := writeKey(saKey); err != nil {
 		return nil, err
@@ -360,13 +353,44 @@ func httpOK(url, token string) func() error {
 	}
 }
 
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
+// handedOut are the ports this process has given a server, so two servers
+// started side by side are not given one.
+var (
+	portMu    sync.Mutex
+	handedOut = map[int]bool{}
+)
+
+// freePorts finds n ports nothing listens on, all different. Each is found
+// by listening on port 0, and all the listeners are held open until the
+// last is found: asked one at a time, each closed before the next was
+// opened, the system gave the same port twice now and then, and etcd
+// failed to start with "address already in use" on its own two listeners
+// (seen on a CI run).
+func freePorts(n int) ([]int, error) {
+	portMu.Lock()
+	defer portMu.Unlock()
+	var held []net.Listener
+	defer func() {
+		for _, l := range held {
+			l.Close()
+		}
+	}()
+	var ports []int
+	for tries := 0; len(ports) < n; tries++ {
+		if tries > n+100 {
+			return nil, fmt.Errorf("no %d free ports found in %d tries", n, tries)
+		}
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, err
+		}
+		held = append(held, l)
+		if p := l.Addr().(*net.TCPAddr).Port; !handedOut[p] {
+			handedOut[p] = true
+			ports = append(ports, p)
+		}
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
+	return ports, nil
 }
 
 func writeKey(path string) error {

@@ -27,7 +27,11 @@ against real AWS, Azure and GCP (each drill drifts resources by hand, then
 requires an empty diff). Agents get the same knowledge over MCP
 (`truthform mcp`): every field of a type, which are required, set by the
 platform, secret or fixed at creation, with the platform's docs, plus
-read-only capture and diff; restore is deliberately not a tool. See
+read-only capture and diff; restore is deliberately not a tool. An Azure
+snapshot can be rewritten for AWS or GCP (`truthform translate`, beta):
+what it writes restores into the fakes and has been through
+`restore --dry-run` against a real account and project, but no translated
+snapshot has been restored into a real one yet. See
 [AWS](docs/architecture.md#aws-cloud-control-driven-by-the-registry). Other
 platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
 Pulumi or Terraform dependency.
@@ -54,6 +58,9 @@ truthform aws-coverage   # offline: what the public registry lets TruthForm capt
 truthform capture --platform azure --subscription <id> --out snap/ [--types 'Microsoft.Network/*']
 truthform restore --platform azure --subscription <id> --from snap/ [--values secrets.yaml]
 
+truthform translate --from snap/azure --map map.yaml --out moved/   # offline: an Azure snapshot as AWS or GCP snapshots (beta)
+truthform restore --platform aws --region eu-west-1 --profile dr --from moved/aws --dry-run   # what a restore would write; writes nothing
+
 truthform permissions --platform aws --account 111122223333 --principal arn:aws:iam::111122223333:role/ops [--write dir/]
 truthform check --platform aws --region us-east-1 --profile truthform-reader
 ```
@@ -74,6 +81,13 @@ truthform check --platform aws --region us-east-1 --profile truthform-reader
 - **restore** applies a snapshot with server-side apply, in dependency order:
   CRDs first (and it waits until they are established), admission webhooks
   last. It never deletes anything.
+- **translate** rewrites an Azure snapshot as snapshots for AWS, GCP or
+  the cluster, offline, from a map that says where each service class goes.
+  It names every loss and refuses what it cannot carry; nothing gets a
+  default. It is a beta: see [To another cloud](docs/guide.md#to-another-cloud-azure-to-aws-or-gcp).
+- **restore --dry-run** (AWS, GCP, GitHub, Cloudflare) reads the target and
+  prints each write a restore would make, with a client that refuses every
+  write. Exit `3` when anything would not apply.
 - **diff** captures a live cluster under the same rules and reports missing,
   extra and changed objects, naming each changed field.
 

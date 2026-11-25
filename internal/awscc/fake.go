@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/netip"
 	"sort"
 	"strings"
 	"sync"
@@ -115,8 +116,11 @@ func (f *Fake) Create(_ context.Context, typeName string, desired map[string]any
 	if err := f.check(t, props); err != nil {
 		return "", err
 	}
+	if err := f.subnetInVPC(typeName, props); err != nil {
+		return "", err
+	}
 	f.generate(t, props)
-	id, ok := Identifier(t, props)
+	id, ok := fakeIdentifier(t, props)
 	if !ok {
 		return "", fmt.Errorf("%s: no primary identifier after create", typeName)
 	}
@@ -255,11 +259,33 @@ func (f *Fake) Seed(typeName string, props map[string]any) string {
 	return id
 }
 
+// fakeIdentifier is the identifier the fake files a resource under. One
+// part of a compound identifier can be absent: a Route 53 record set is
+// identified by name, zone, type and SetIdentifier, and a simple record
+// has no SetIdentifier. The part is then empty, and the identifier is
+// still the record's own.
+func fakeIdentifier(t *TypeInfo, props map[string]any) (string, bool) {
+	if id, ok := Identifier(t, props); ok || len(t.PrimaryIdentifier) < 2 {
+		return id, ok
+	}
+	parts := make([]string, len(t.PrimaryIdentifier))
+	have := 0
+	for i, p := range t.PrimaryIdentifier {
+		if v, ok := props[p].(string); ok && v != "" {
+			parts[i] = v
+			have++
+		}
+	}
+	return strings.Join(parts, "|"), have > 0
+}
+
 // generate fills read-only top-level properties, and a missing user-chosen
-// identifier (AWS names an unnamed bucket itself).
+// identifier (AWS names an unnamed bucket itself). Only a whole one: a
+// part of a compound identifier left out (a record set's SetIdentifier,
+// which only a routing policy sets) stays out, as AWS leaves it.
 func (f *Fake) generate(t *TypeInfo, props map[string]any) {
 	for _, p := range t.PrimaryIdentifier {
-		if _, ok := props[p]; !ok && !t.IsReadOnly(p) {
+		if _, ok := props[p]; !ok && !t.IsReadOnly(p) && len(t.PrimaryIdentifier) == 1 {
 			props[p] = f.newValue(t, p, props)
 		}
 	}
@@ -435,4 +461,39 @@ func sortedKeys[M ~map[string]V, V any](m M) []string {
 	}
 	sort.Strings(k)
 	return k
+}
+
+// subnetInVPC refuses a subnet whose range is in none of its VPC's blocks:
+// the one the VPC was created with, and those associated since. So a
+// subnet created before its block is associated fails here as on AWS
+// (InvalidSubnet.Range). A VPC this account does not hold is not checked.
+func (f *Fake) subnetInVPC(typeName string, props map[string]any) error {
+	if typeName != "AWS::EC2::Subnet" {
+		return nil
+	}
+	vpc, _ := props["VpcId"].(string)
+	sub, err := netip.ParsePrefix(fmt.Sprint(props["CidrBlock"]))
+	if err != nil {
+		return nil
+	}
+	var blocks []string
+	for _, v := range f.res["AWS::EC2::VPC"] {
+		if v["VpcId"] == vpc {
+			blocks = append(blocks, fmt.Sprint(v["CidrBlock"]))
+		}
+	}
+	if len(blocks) == 0 {
+		return nil
+	}
+	for _, b := range f.res["AWS::EC2::VPCCidrBlock"] {
+		if b["VpcId"] == vpc {
+			blocks = append(blocks, fmt.Sprint(b["CidrBlock"]))
+		}
+	}
+	for _, b := range blocks {
+		if p, err := netip.ParsePrefix(b); err == nil && p.Bits() <= sub.Bits() && p.Contains(sub.Addr()) {
+			return nil
+		}
+	}
+	return fmt.Errorf("InvalidSubnet.Range: The CIDR '%s' is invalid: it is in none of the VPC's blocks (%s)", sub, strings.Join(blocks, ", "))
 }

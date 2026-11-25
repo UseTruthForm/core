@@ -1,0 +1,63 @@
+# Written by truthform translate: the names on aws of what the Azure snapshot named.
+#
+# Optional. A Flux Kustomization reads it with spec.postBuild.substituteFrom
+# (kind: ConfigMap, name: truthform-translation), and a manifest then says
+# ${registry_shop}/api:1.0 where it said shop.azurecr.io/api:1.0. With one such
+# ConfigMap per cluster, holding each cloud's values under the same keys, one
+# repository serves both: the line above each key is its value on Azure.
+#
+# Before committing it:
+#  - give it the namespace of the Kustomization that reads it;
+#  - put the AWS account ID where {{truthform|account|self|id}} stands: it is not known offline;
+#  - mind that Flux then substitutes every ${name} in what that Kustomization
+#    applies, and an undefined one becomes empty: write $${name} where a script
+#    or a config file must keep its own ${name}, or label the object
+#    kustomize.toolkit.fluxcd.io/substitute: disabled.
+# Database addresses are not here: the target makes them up at creation.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: truthform-translation
+data:
+  cloud: "aws"
+  region: "eu-west-1"
+  # on Azure: secret token in Key Vault open
+  keyvault_open_secret_token: "open/token"
+  # on Azure: secret api-abc123 in Key Vault shop
+  keyvault_shop_secret_api_abc123: "shop/api-abc123"
+  # on Azure: secret db-password in Key Vault shop
+  keyvault_shop_secret_db_password: "shop/db-password"
+  # on Azure: secret legacy in Key Vault shop
+  keyvault_shop_secret_legacy: "shop/legacy"
+  # on Azure: 9lives.azurecr.io
+  registry_9lives: "{{truthform|account|self|id}}.dkr.ecr.eu-west-1.amazonaws.com/9lives"
+  # on Azure: pubimages.azurecr.io
+  registry_pubimages: "{{truthform|account|self|id}}.dkr.ecr.eu-west-1.amazonaws.com/pubimages"
+  # on Azure: shopacr.azurecr.io
+  registry_shopacr: "{{truthform|account|self|id}}.dkr.ecr.eu-west-1.amazonaws.com/shopacr"
+  # on Azure: queue legacy.feed in Service Bus namespace shop
+  servicebus_shop_queue_legacy_feed: "legacy-feed"
+  # on Azure: queue orders in Service Bus namespace shop
+  servicebus_shop_queue_orders: "orders"
+  # on Azure: queue payments in Service Bus namespace shop
+  servicebus_shop_queue_payments: "payments"
+  # on Azure: subscription events/audit in Service Bus namespace shop
+  servicebus_shop_subscription_events_audit: "events.audit"
+  # on Azure: subscription events/north in Service Bus namespace shop
+  servicebus_shop_subscription_events_north: "events.north"
+  # on Azure: subscription events/shipping in Service Bus namespace shop
+  servicebus_shop_subscription_events_shipping: "events.shipping"
+  # on Azure: subscription events/urgent in Service Bus namespace shop
+  servicebus_shop_subscription_events_urgent: "events.urgent"
+  # on Azure: topic events in Service Bus namespace shop
+  servicebus_shop_topic_events: "events"
+  # on Azure: https://shopassets.blob.core.windows.net/images
+  storage_shopassets_images: "shopassets-images"
+  # on Azure: https://shopassets.blob.core.windows.net/ledger
+  storage_shopassets_ledger: "shopassets-ledger"
+  # on Azure: https://shopassets.blob.core.windows.net/records
+  storage_shopassets_records: "shopassets-records"
+  # on Azure: https://shoplake.blob.core.windows.net/raw
+  storage_shoplake_raw: "shoplake-raw"
+  # on Azure: https://shopvault.blob.core.windows.net/backups
+  storage_shopvault_backups: "shopvault-backups"

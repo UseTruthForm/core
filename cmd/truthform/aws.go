@@ -210,13 +210,19 @@ func captureAWS(ctx context.Context, a *awsFlags, out string) int {
 }
 
 // restoreAWS reads write-only values from a file the operator controls; they
-// go to AWS and nowhere else.
-func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, valuesFile string, update bool) int {
-	ad, err := a.connect(ctx, captureOnly)
+// go to AWS and nowhere else. A dry run's client is the read-only one, which
+// refuses every write, whatever the restore would do.
+func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, valuesFile string, update, dryRun bool) int {
+	ad, err := a.connect(ctx, captureOnly || dryRun)
 	if err != nil {
 		return fail(err)
 	}
-	ad.Options.Update = update
+	ad.Options.Update, ad.Options.DryRun = update, dryRun
+	notes := dryNotes{}
+	ad.Options.Note = notes.add
+	if dryRun {
+		dryRunOut = &notes
+	}
 	if snap, err = retarget(ctx, ad, snap); err != nil {
 		return fail(err)
 	}
@@ -236,11 +242,30 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 	ok := 0
 	var partial []string
 	for _, r := range results {
+		if dryRun {
+			notes.count(r.Key, r.OK, r.Detail)
+		}
 		if !r.OK {
 			fmt.Printf("NOT APPLIED %s: %s\n", r.Key, r.Detail)
 			continue
 		}
 		ok++
+		if dryRun {
+			// Which write-only values a create would go without is the
+			// same for every resource of a type: said once per type,
+			// below, and not on each of hundreds of lines.
+			detail, without, _ := strings.Cut(r.Detail, "; write-only, not supplied: ")
+			// What a second pass would then set is this resource's own,
+			// and stays on its line.
+			if w, then, ok := strings.Cut(without, "; would then set "); ok {
+				detail, without = detail+"; would then set "+then, w
+			}
+			fmt.Printf("%s: %s\n", detail, r.Key)
+			if without != "" {
+				notes.without(kindOfKey(r.Key), without)
+			}
+			continue
+		}
 		// An update changed something live; each one is said.
 		if strings.HasPrefix(r.Detail, "updated") {
 			fmt.Printf("UPDATED %s: %s\n", r.Key, r.Detail)
@@ -259,7 +284,12 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 			fmt.Println("  ", p)
 		}
 	}
-	fmt.Printf("applied %d of %d resources to aws %s\n", ok, len(results), a.region)
+	if dryRun {
+		notes.print()
+		fmt.Printf("dry run: %d of %d resources would apply to aws %s; nothing was written\n", ok, len(results), a.region)
+	} else {
+		fmt.Printf("applied %d of %d resources to aws %s\n", ok, len(results), a.region)
+	}
 	if ok != len(results) {
 		return 3
 	}

@@ -387,6 +387,39 @@ func toObject(r *resource) map[string]any {
 	return map[string]any{"apiVersion": APIVersion, "kind": r.t.Name, "metadata": meta, "spec": r.spec, "status": r.stat}
 }
 
+// Object makes a snapshot object of a type as a capture writes one, write-only
+// annotation included, refusing a property the type's schema does not
+// declare, a read-only one, or a missing required one. A translation builds
+// what it writes with it, so a restore and a capture read it as their own.
+func (r *Registry) Object(typeName, name string, spec map[string]any) (snapshot.Object, error) {
+	t := r.Types[typeName]
+	if t == nil {
+		return snapshot.Object{}, fmt.Errorf("%s is not in the schema registry", typeName)
+	}
+	if !t.Handlers["create"] {
+		return snapshot.Object{}, fmt.Errorf("Cloud Control cannot create %s", typeName)
+	}
+	for _, k := range sortedKeys(spec) {
+		if _, ok := t.Properties[k]; !ok {
+			return snapshot.Object{}, fmt.Errorf("%s: %s is not a property in its schema", typeName, k)
+		}
+		if t.IsReadOnly(k) {
+			return snapshot.Object{}, fmt.Errorf("%s: %s is read-only", typeName, k)
+		}
+	}
+	for _, k := range t.Required {
+		if _, ok := spec[k]; !ok {
+			return snapshot.Object{}, fmt.Errorf("%s: required %s is missing", typeName, k)
+		}
+	}
+	// In the order a capture writes it: sets (rules, tags) sorted, so a
+	// restore of what it builds finds what an earlier one made identical.
+	sortSets(spec, map[string]any{"properties": t.Properties}, t.Definitions)
+	body := toObject(&resource{t: t, name: name, spec: spec})
+	delete(body, "status")
+	return snapshot.Object{Body: body}, nil
+}
+
 // writeOnlyFields names each write-only field in the schema's field-path
 // form. Only one field of a security group's ingress rules is write-only
 // (SourceSecurityGroupName); naming just the top-level property said the
@@ -496,9 +529,9 @@ func name(rs []*resource, account string) {
 	for _, r := range rs {
 		seen := map[*resource]bool{}
 		for _, k := range sortedKeys(r.spec) {
-			walkStrings(deepCopy(map[string]any{k: r.spec[k]}), func(s string) string {
+			walkKeyed(deepCopy(map[string]any{k: r.spec[k]}), k, func(key, s string) string {
 				for _, v := range values {
-					if o := owners[v]; o.r != r && !seen[o.r] && refersTo(r, k, o, s, v) {
+					if o := owners[v]; o.r != r && !seen[o.r] && (refersTo(r, k, key, o, s, v) || inJSONText(s, v, o)) {
 						seen[o.r] = true
 						deps[r] = append(deps[r], o.r)
 					}
@@ -542,6 +575,7 @@ func name(rs []*resource, account string) {
 			for _, r := range ready {
 				tokenize(r, values, owners)
 				accountize(r, account)
+				resort(r)
 			}
 		}
 		sort.SliceStable(ready, func(i, j int) bool {
@@ -557,7 +591,7 @@ func name(rs []*resource, account string) {
 		for _, r := range ready {
 			base := sanitize(r.base)
 			if base == "" {
-				base = "h-" + specHash(r)[:12]
+				base = SpecName(r.t.Name, r.spec)
 			}
 			n := base
 			for i := 2; used[r.t.Name+"|"+n]; i++ {
@@ -571,9 +605,18 @@ func name(rs []*resource, account string) {
 			for _, r := range ready {
 				tokenize(r, values, owners)
 				accountize(r, account)
+				resort(r)
 			}
 		}
 	}
+}
+
+// resort puts sets in order again once their references are tokens: sorted
+// by the IDs one account generated, a set of references (an EKS cluster's
+// SubnetIds) came out in a different order in each account, and a restore
+// found what it had made differing from its snapshot.
+func resort(r *resource) {
+	sortSets(r.spec, map[string]any{"properties": r.t.Properties}, r.t.Definitions)
 }
 
 type refTarget struct {
@@ -606,11 +649,24 @@ func chosenID(t *TypeInfo) bool {
 // "truthform-drill", as is its ECR repository, and its Name became a token
 // for the repository, a false dependency that would block restoring the API
 // without the repository (review, 2026-10-22).
-func refersTo(r *resource, prop string, o refTarget, s, v string) bool {
-	if o.chosen && (prop == "Tags" || (r.base != "" && s == r.base)) {
+//
+// A tag's value in a policy's condition (aws:RequestTag/kubernetes-namespace,
+// aws:PrincipalTag/team) is a label as much as one under Tags, and so is a
+// property that holds the name of something outside AWS: a pod identity
+// association's Kubernetes namespace "shop" became a token for the EKS
+// cluster of that name, the association was then named by another hash,
+// and a second restore made it again.
+func refersTo(r *resource, prop, key string, o refTarget, s, v string) bool {
+	if o.chosen && (prop == "Tags" || strings.Contains(key, "Tag/") || foreignNames[r.t.Name][prop] || (r.base != "" && s == r.base)) {
 		return false
 	}
 	return matches(s, v)
+}
+
+// foreignNames are properties that name something no AWS resource is: a
+// Kubernetes namespace, a Kubernetes service account.
+var foreignNames = map[string]map[string]bool{
+	"AWS::EKS::PodIdentityAssociation": {"Namespace": true, "ServiceAccount": true},
 }
 
 // refable limits reference sources to values that identify something: the
@@ -636,10 +692,16 @@ func matches(s, v string) bool {
 
 func tokenize(r *resource, values []string, owners map[string]refTarget) {
 	for k, x := range r.spec {
-		r.spec[k] = walkStrings(x, func(s string) string {
+		r.spec[k] = walkKeyed(x, k, func(key, s string) string {
 			for _, v := range values {
 				o := owners[v]
-				if o.r == r || o.r.name == "" || !refersTo(r, k, o, s, v) {
+				if o.r == r || o.r.name == "" {
+					continue
+				}
+				if !refersTo(r, k, key, o, s, v) {
+					if inJSONText(s, v, o) {
+						s = strings.ReplaceAll(s, `"`+v+`"`, `"`+refToken(o.r.t.Name, o.r.name, o.attr)+`"`)
+					}
 					continue
 				}
 				s = strings.ReplaceAll(s, v, refToken(o.r.t.Name, o.r.name, o.attr))
@@ -647,6 +709,15 @@ func tokenize(r *resource, values []string, owners map[string]refTarget) {
 			return s
 		})
 	}
+}
+
+// inJSONText reports a generated identifier that is a whole string value
+// inside a document kept as JSON text (an ECR repository policy naming a
+// VPC endpoint in a condition): there it is a reference as much as in a
+// document kept as an object, and differs per account. A chosen name is
+// left alone: inside a document it is as likely a word.
+func inJSONText(s, v string, o refTarget) bool {
+	return !o.chosen && strings.Contains(s, `"`+v+`"`) && (strings.HasPrefix(s, "{") || strings.HasPrefix(s, "[")) && json.Valid([]byte(s))
 }
 
 // accountToken stands for the account a snapshot is restored into. A
@@ -677,6 +748,15 @@ func accountize(r *resource, account string) {
 
 func refToken(kind, name, attr string) string {
 	return refPrefix + kind + "|" + name + "|" + attr + "}}"
+}
+
+// SpecName is the logical name of a resource no one named: a hash of its
+// type and its tokenized spec, the same in every account. A translation
+// names what it writes by it, so a restore of the translation finds what an
+// earlier one created.
+func SpecName(typeName string, spec map[string]any) string {
+	h := sha256.Sum256([]byte(typeName + "\x00" + canon(spec)))
+	return "h-" + hex.EncodeToString(h[:])[:12]
 }
 
 func specHash(r *resource) string {

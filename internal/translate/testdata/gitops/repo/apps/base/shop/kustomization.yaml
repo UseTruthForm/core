@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: shop
+resources:
+  - deployment.yaml
+  - scaling.yaml
+  - identity.yaml
+  - secrets.yaml
+  - network.yaml
+  - https://example.org/madeup/dashboards.yaml
+configMapGenerator:
+  - name: web-env
+    envs:
+      - web.env

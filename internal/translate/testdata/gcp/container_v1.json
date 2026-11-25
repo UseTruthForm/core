@@ -1,0 +1,5141 @@
+{
+ "baseUrl": "https://container.googleapis.com/",
+ "batchPath": "batch",
+ "discoveryVersion": "v1",
+ "documentationLink": "https://cloud.google.com/kubernetes-engine/docs/",
+ "id": "container:v1",
+ "kind": "discovery#restDescription",
+ "name": "container",
+ "protocol": "rest",
+ "resources": {
+  "projects": {
+   "resources": {
+    "locations": {
+     "resources": {
+      "clusters": {
+       "methods": {
+        "create": {
+         "flatPath": "v1/projects/{projectsId}/locations/{locationsId}/clusters",
+         "httpMethod": "POST",
+         "id": "container.projects.locations.clusters.create",
+         "parameterOrder": [
+          "parent"
+         ],
+         "parameters": {
+          "parent": {
+           "location": "path",
+           "pattern": "^projects/[^/]+/locations/[^/]+$",
+           "required": true,
+           "type": "string"
+          }
+         },
+         "path": "v1/{+parent}/clusters",
+         "request": {
+          "$ref": "CreateClusterRequest"
+         },
+         "response": {
+          "$ref": "Operation"
+         },
+         "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform",
+          "https://www.googleapis.com/auth/container"
+         ]
+        },
+        "delete": {
+         "flatPath": "v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}",
+         "httpMethod": "DELETE",
+         "id": "container.projects.locations.clusters.delete",
+         "parameterOrder": [
+          "name"
+         ],
+         "parameters": {
+          "clusterId": {
+           "deprecated": true,
+           "location": "query",
+           "type": "string"
+          },
+          "name": {
+           "location": "path",
+           "pattern": "^projects/[^/]+/locations/[^/]+/clusters/[^/]+$",
+           "required": true,
+           "type": "string"
+          },
+          "projectId": {
+           "deprecated": true,
+           "location": "query",
+           "type": "string"
+          },
+          "zone": {
+           "deprecated": true,
+           "location": "query",
+           "type": "string"
+          }
+         },
+         "path": "v1/{+name}",
+         "response": {
+          "$ref": "Operation"
+         },
+         "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform",
+          "https://www.googleapis.com/auth/container"
+         ]
+        },
+        "get": {
+         "flatPath": "v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}",
+         "httpMethod": "GET",
+         "id": "container.projects.locations.clusters.get",
+         "parameterOrder": [
+          "name"
+         ],
+         "parameters": {
+          "clusterId": {
+           "deprecated": true,
+           "location": "query",
+           "type": "string"
+          },
+          "name": {
+           "location": "path",
+           "pattern": "^projects/[^/]+/locations/[^/]+/clusters/[^/]+$",
+           "required": true,
+           "type": "string"
+          },
+          "projectId": {
+           "deprecated": true,
+           "location": "query",
+           "type": "string"
+          },
+          "zone": {
+           "deprecated": true,
+           "location": "query",
+           "type": "string"
+          }
+         },
+         "path": "v1/{+name}",
+         "response": {
+          "$ref": "Cluster"
+         },
+         "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform",
+          "https://www.googleapis.com/auth/container",
+          "https://www.googleapis.com/auth/container.read-only"
+         ]
+        },
+        "list": {
+         "flatPath": "v1/projects/{projectsId}/locations/{locationsId}/clusters",
+         "httpMethod": "GET",
+         "id": "container.projects.locations.clusters.list",
+         "parameterOrder": [
+          "parent"
+         ],
+         "parameters": {
+          "parent": {
+           "location": "path",
+           "pattern": "^projects/[^/]+/locations/[^/]+$",
+           "required": true,
+           "type": "string"
+          },
+          "projectId": {
+           "deprecated": true,
+           "location": "query",
+           "type": "string"
+          },
+          "zone": {
+           "deprecated": true,
+           "location": "query",
+           "type": "string"
+          }
+         },
+         "path": "v1/{+parent}/clusters",
+         "response": {
+          "$ref": "ListClustersResponse"
+         },
+         "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform",
+          "https://www.googleapis.com/auth/container",
+          "https://www.googleapis.com/auth/container.read-only"
+         ]
+        },
+        "update": {
+         "flatPath": "v1/projects/{projectsId}/locations/{locationsId}/clusters/{clustersId}",
+         "httpMethod": "PUT",
+         "id": "container.projects.locations.clusters.update",
+         "parameterOrder": [
+          "name"
+         ],
+         "parameters": {
+          "name": {
+           "location": "path",
+           "pattern": "^projects/[^/]+/locations/[^/]+/clusters/[^/]+$",
+           "required": true,
+           "type": "string"
+          }
+         },
+         "path": "v1/{+name}",
+         "request": {
+          "$ref": "UpdateClusterRequest"
+         },
+         "response": {
+          "$ref": "Operation"
+         },
+         "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform",
+          "https://www.googleapis.com/auth/container"
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "revision": "20261106",
+ "rootUrl": "https://container.googleapis.com/",
+ "schemas": {
+  "AcceleratorConfig": {
+   "id": "AcceleratorConfig",
+   "properties": {
+    "acceleratorCount": {
+     "format": "int64",
+     "type": "string"
+    },
+    "acceleratorType": {
+     "type": "string"
+    },
+    "gpuDriverInstallationConfig": {
+     "$ref": "GPUDriverInstallationConfig"
+    },
+    "gpuPartitionSize": {
+     "type": "string"
+    },
+    "gpuSharingConfig": {
+     "$ref": "GPUSharingConfig"
+    }
+   },
+   "type": "object"
+  },
+  "AccurateTimeConfig": {
+   "id": "AccurateTimeConfig",
+   "properties": {
+    "enablePtpKvmTimeSync": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "AdditionalIPRangesConfig": {
+   "id": "AdditionalIPRangesConfig",
+   "properties": {
+    "podIpv4RangeNames": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "status": {
+     "enum": [
+      "STATUS_UNSPECIFIED",
+      "ACTIVE",
+      "DRAINING"
+     ],
+     "type": "string"
+    },
+    "subnetwork": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "AdditionalNodeNetworkConfig": {
+   "id": "AdditionalNodeNetworkConfig",
+   "properties": {
+    "network": {
+     "type": "string"
+    },
+    "subnetwork": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "AdditionalPodNetworkConfig": {
+   "id": "AdditionalPodNetworkConfig",
+   "properties": {
+    "maxPodsPerNode": {
+     "$ref": "MaxPodsConstraint"
+    },
+    "networkAttachment": {
+     "type": "string"
+    },
+    "secondaryPodRange": {
+     "type": "string"
+    },
+    "subnetwork": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "AdditionalPodRangesConfig": {
+   "id": "AdditionalPodRangesConfig",
+   "properties": {
+    "podRangeInfo": {
+     "description": "Output only.",
+     "items": {
+      "$ref": "RangeInfo"
+     },
+     "readOnly": true,
+     "type": "array"
+    },
+    "podRangeNames": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "AddonsConfig": {
+   "id": "AddonsConfig",
+   "properties": {
+    "agentSandboxConfig": {
+     "$ref": "AgentSandboxConfig"
+    },
+    "cloudRunConfig": {
+     "$ref": "CloudRunConfig"
+    },
+    "configConnectorConfig": {
+     "$ref": "ConfigConnectorConfig"
+    },
+    "dnsCacheConfig": {
+     "$ref": "DnsCacheConfig"
+    },
+    "gcePersistentDiskCsiDriverConfig": {
+     "$ref": "GcePersistentDiskCsiDriverConfig"
+    },
+    "gcpFilestoreCsiDriverConfig": {
+     "$ref": "GcpFilestoreCsiDriverConfig"
+    },
+    "gcsFuseCsiDriverConfig": {
+     "$ref": "GcsFuseCsiDriverConfig"
+    },
+    "gkeBackupAgentConfig": {
+     "$ref": "GkeBackupAgentConfig"
+    },
+    "highScaleCheckpointingConfig": {
+     "$ref": "HighScaleCheckpointingConfig"
+    },
+    "horizontalPodAutoscaling": {
+     "$ref": "HorizontalPodAutoscaling"
+    },
+    "httpLoadBalancing": {
+     "$ref": "HttpLoadBalancing"
+    },
+    "kubernetesDashboard": {
+     "$ref": "KubernetesDashboard",
+     "deprecated": true
+    },
+    "lustreCsiDriverConfig": {
+     "$ref": "LustreCsiDriverConfig"
+    },
+    "networkPolicyConfig": {
+     "$ref": "NetworkPolicyConfig"
+    },
+    "nodeReadinessConfig": {
+     "$ref": "NodeReadinessConfig"
+    },
+    "parallelstoreCsiDriverConfig": {
+     "$ref": "ParallelstoreCsiDriverConfig",
+     "deprecated": true
+    },
+    "podSnapshotConfig": {
+     "$ref": "PodSnapshotConfig"
+    },
+    "rayOperatorConfig": {
+     "$ref": "RayOperatorConfig"
+    },
+    "sliceControllerConfig": {
+     "$ref": "SliceControllerConfig"
+    },
+    "slurmOperatorConfig": {
+     "$ref": "SlurmOperatorConfig"
+    },
+    "statefulHaConfig": {
+     "$ref": "StatefulHAConfig"
+    },
+    "wizSensorConfig": {
+     "$ref": "WizSensorConfig"
+    }
+   },
+   "type": "object"
+  },
+  "AdvancedDatapathObservabilityConfig": {
+   "id": "AdvancedDatapathObservabilityConfig",
+   "properties": {
+    "enableMetrics": {
+     "type": "boolean"
+    },
+    "enableRelay": {
+     "type": "boolean"
+    },
+    "relayMode": {
+     "enum": [
+      "RELAY_MODE_UNSPECIFIED",
+      "DISABLED",
+      "INTERNAL_VPC_LB",
+      "EXTERNAL_LB"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "AdvancedMachineFeatures": {
+   "id": "AdvancedMachineFeatures",
+   "properties": {
+    "enableNestedVirtualization": {
+     "type": "boolean"
+    },
+    "performanceMonitoringUnit": {
+     "enum": [
+      "PERFORMANCE_MONITORING_UNIT_UNSPECIFIED",
+      "ARCHITECTURAL",
+      "STANDARD",
+      "ENHANCED"
+     ],
+     "type": "string"
+    },
+    "threadsPerCore": {
+     "format": "int64",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "AgentSandboxConfig": {
+   "id": "AgentSandboxConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "AmbientNetworkingConfig": {
+   "id": "AmbientNetworkingConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "AnonymousAuthenticationConfig": {
+   "id": "AnonymousAuthenticationConfig",
+   "properties": {
+    "mode": {
+     "enum": [
+      "MODE_UNSPECIFIED",
+      "ENABLED",
+      "LIMITED"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "AuthenticatorGroupsConfig": {
+   "id": "AuthenticatorGroupsConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "securityGroup": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "AutoIpamConfig": {
+   "id": "AutoIpamConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "AutoMonitoringConfig": {
+   "id": "AutoMonitoringConfig",
+   "properties": {
+    "scope": {
+     "enum": [
+      "SCOPE_UNSPECIFIED",
+      "ALL",
+      "NONE"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "AutoUpgradeOptions": {
+   "id": "AutoUpgradeOptions",
+   "properties": {
+    "autoUpgradeStartTime": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "description": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "Autopilot": {
+   "id": "Autopilot",
+   "properties": {
+    "clusterPolicyConfig": {
+     "$ref": "ClusterPolicyConfig"
+    },
+    "enabled": {
+     "type": "boolean"
+    },
+    "privilegedAdmissionConfig": {
+     "$ref": "PrivilegedAdmissionConfig"
+    },
+    "workloadPolicyConfig": {
+     "$ref": "WorkloadPolicyConfig"
+    }
+   },
+   "type": "object"
+  },
+  "AutopilotConfig": {
+   "id": "AutopilotConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "AutoprovisioningNodePoolDefaults": {
+   "id": "AutoprovisioningNodePoolDefaults",
+   "properties": {
+    "bootDiskKmsKey": {
+     "type": "string"
+    },
+    "diskSizeGb": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "diskType": {
+     "type": "string"
+    },
+    "imageType": {
+     "type": "string"
+    },
+    "insecureKubeletReadonlyPortEnabled": {
+     "type": "boolean"
+    },
+    "management": {
+     "$ref": "NodeManagement"
+    },
+    "minCpuPlatform": {
+     "deprecated": true,
+     "type": "string"
+    },
+    "oauthScopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "serviceAccount": {
+     "type": "string"
+    },
+    "shieldedInstanceConfig": {
+     "$ref": "ShieldedInstanceConfig"
+    },
+    "upgradeSettings": {
+     "$ref": "UpgradeSettings"
+    }
+   },
+   "type": "object"
+  },
+  "AutoprovisioningRestrictionConfig": {
+   "id": "AutoprovisioningRestrictionConfig",
+   "properties": {
+    "authorizedServiceAccounts": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "serviceAccountPermissionCheck": {
+     "enum": [
+      "PERMISSION_CHECK_MODE_UNSPECIFIED",
+      "DISABLED",
+      "ENABLED"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "AutoscaledRolloutPolicy": {
+   "id": "AutoscaledRolloutPolicy",
+   "properties": {
+    "waitForDrainDuration": {
+     "format": "google-duration",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BestEffortProvisioning": {
+   "id": "BestEffortProvisioning",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "minProvisionNodes": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "BigQueryDestination": {
+   "id": "BigQueryDestination",
+   "properties": {
+    "datasetId": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BinaryAuthorization": {
+   "id": "BinaryAuthorization",
+   "properties": {
+    "enabled": {
+     "deprecated": true,
+     "type": "boolean"
+    },
+    "evaluationMode": {
+     "enum": [
+      "EVALUATION_MODE_UNSPECIFIED",
+      "DISABLED",
+      "PROJECT_SINGLETON_POLICY_ENFORCE"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BlueGreenInfo": {
+   "id": "BlueGreenInfo",
+   "properties": {
+    "blueInstanceGroupUrls": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "bluePoolDeletionStartTime": {
+     "type": "string"
+    },
+    "greenInstanceGroupUrls": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "greenPoolVersion": {
+     "type": "string"
+    },
+    "phase": {
+     "enum": [
+      "PHASE_UNSPECIFIED",
+      "UPDATE_STARTED",
+      "CREATING_GREEN_POOL",
+      "CORDONING_BLUE_POOL",
+      "DRAINING_BLUE_POOL",
+      "NODE_POOL_SOAKING",
+      "DELETING_BLUE_POOL",
+      "ROLLBACK_STARTED"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BlueGreenSettings": {
+   "id": "BlueGreenSettings",
+   "properties": {
+    "autoscaledRolloutPolicy": {
+     "$ref": "AutoscaledRolloutPolicy"
+    },
+    "nodePoolSoakDuration": {
+     "format": "google-duration",
+     "type": "string"
+    },
+    "standardRolloutPolicy": {
+     "$ref": "StandardRolloutPolicy"
+    }
+   },
+   "type": "object"
+  },
+  "BootDisk": {
+   "id": "BootDisk",
+   "properties": {
+    "diskType": {
+     "type": "string"
+    },
+    "provisionedIops": {
+     "format": "int64",
+     "type": "string"
+    },
+    "provisionedThroughput": {
+     "format": "int64",
+     "type": "string"
+    },
+    "sizeGb": {
+     "format": "int64",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "BootDiskProfile": {
+   "id": "BootDiskProfile",
+   "properties": {
+    "swapSizeGib": {
+     "format": "int64",
+     "type": "string"
+    },
+    "swapSizePercent": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "CertificateAuthorityDomainConfig": {
+   "id": "CertificateAuthorityDomainConfig",
+   "properties": {
+    "fqdns": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "gcpSecretManagerCertificateConfig": {
+     "$ref": "GCPSecretManagerCertificateConfig"
+    }
+   },
+   "type": "object"
+  },
+  "CertificateConfig": {
+   "id": "CertificateConfig",
+   "properties": {
+    "gcpSecretManagerSecretUri": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "CertificateConfigPair": {
+   "id": "CertificateConfigPair",
+   "properties": {
+    "cert": {
+     "$ref": "CertificateConfig"
+    },
+    "key": {
+     "$ref": "CertificateConfig"
+    }
+   },
+   "type": "object"
+  },
+  "CidrBlock": {
+   "id": "CidrBlock",
+   "properties": {
+    "cidrBlock": {
+     "type": "string"
+    },
+    "displayName": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ClientCertificateConfig": {
+   "id": "ClientCertificateConfig",
+   "properties": {
+    "issueClientCertificate": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "CloudRunConfig": {
+   "id": "CloudRunConfig",
+   "properties": {
+    "disabled": {
+     "type": "boolean"
+    },
+    "loadBalancerType": {
+     "enum": [
+      "LOAD_BALANCER_TYPE_UNSPECIFIED",
+      "LOAD_BALANCER_TYPE_EXTERNAL",
+      "LOAD_BALANCER_TYPE_INTERNAL"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "Cluster": {
+   "id": "Cluster",
+   "properties": {
+    "addonsConfig": {
+     "$ref": "AddonsConfig"
+    },
+    "alphaClusterFeatureGates": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "anonymousAuthenticationConfig": {
+     "$ref": "AnonymousAuthenticationConfig"
+    },
+    "authenticatorGroupsConfig": {
+     "$ref": "AuthenticatorGroupsConfig"
+    },
+    "autopilot": {
+     "$ref": "Autopilot"
+    },
+    "autoscaling": {
+     "$ref": "ClusterAutoscaling"
+    },
+    "binaryAuthorization": {
+     "$ref": "BinaryAuthorization"
+    },
+    "clusterIpv4Cidr": {
+     "type": "string"
+    },
+    "compliancePostureConfig": {
+     "$ref": "CompliancePostureConfig",
+     "deprecated": true
+    },
+    "conditions": {
+     "items": {
+      "$ref": "StatusCondition"
+     },
+     "type": "array"
+    },
+    "confidentialNodes": {
+     "$ref": "ConfidentialNodes"
+    },
+    "controlPlaneEgress": {
+     "$ref": "ControlPlaneEgress"
+    },
+    "controlPlaneEndpointsConfig": {
+     "$ref": "ControlPlaneEndpointsConfig"
+    },
+    "costManagementConfig": {
+     "$ref": "CostManagementConfig"
+    },
+    "createTime": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "currentEmulatedVersion": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "currentMasterVersion": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "currentNodeCount": {
+     "deprecated": true,
+     "description": "Output only.",
+     "format": "int32",
+     "readOnly": true,
+     "type": "integer"
+    },
+    "currentNodeVersion": {
+     "deprecated": true,
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "databaseEncryption": {
+     "$ref": "DatabaseEncryption"
+    },
+    "defaultMaxPodsConstraint": {
+     "$ref": "MaxPodsConstraint"
+    },
+    "description": {
+     "type": "string"
+    },
+    "enableK8sBetaApis": {
+     "$ref": "K8sBetaAPIConfig"
+    },
+    "enableKubernetesAlpha": {
+     "type": "boolean"
+    },
+    "enableTpu": {
+     "deprecated": true,
+     "type": "boolean"
+    },
+    "endpoint": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "enterpriseConfig": {
+     "$ref": "EnterpriseConfig",
+     "deprecated": true
+    },
+    "etag": {
+     "type": "string"
+    },
+    "expireTime": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "fleet": {
+     "$ref": "Fleet"
+    },
+    "gkeAutoUpgradeConfig": {
+     "$ref": "GkeAutoUpgradeConfig"
+    },
+    "id": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "identityServiceConfig": {
+     "$ref": "IdentityServiceConfig"
+    },
+    "initialClusterVersion": {
+     "type": "string"
+    },
+    "initialNodeCount": {
+     "deprecated": true,
+     "format": "int32",
+     "type": "integer"
+    },
+    "instanceGroupUrls": {
+     "deprecated": true,
+     "description": "Output only.",
+     "items": {
+      "type": "string"
+     },
+     "readOnly": true,
+     "type": "array"
+    },
+    "ipAllocationPolicy": {
+     "$ref": "IPAllocationPolicy"
+    },
+    "labelFingerprint": {
+     "type": "string"
+    },
+    "legacyAbac": {
+     "$ref": "LegacyAbac"
+    },
+    "location": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "locations": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "loggingConfig": {
+     "$ref": "LoggingConfig"
+    },
+    "loggingService": {
+     "type": "string"
+    },
+    "maintenancePolicy": {
+     "$ref": "MaintenancePolicy"
+    },
+    "managedMachineLearningDiagnosticsConfig": {
+     "$ref": "ManagedMachineLearningDiagnosticsConfig"
+    },
+    "managedOpentelemetryConfig": {
+     "$ref": "ManagedOpenTelemetryConfig"
+    },
+    "masterAuth": {
+     "$ref": "MasterAuth"
+    },
+    "masterAuthorizedNetworksConfig": {
+     "$ref": "MasterAuthorizedNetworksConfig",
+     "deprecated": true
+    },
+    "meshCertificates": {
+     "$ref": "MeshCertificates"
+    },
+    "monitoringConfig": {
+     "$ref": "MonitoringConfig"
+    },
+    "monitoringService": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "network": {
+     "type": "string"
+    },
+    "networkConfig": {
+     "$ref": "NetworkConfig"
+    },
+    "networkPolicy": {
+     "$ref": "NetworkPolicy"
+    },
+    "nodeConfig": {
+     "$ref": "NodeConfig",
+     "deprecated": true
+    },
+    "nodeCreationConfig": {
+     "$ref": "NodeCreationConfig"
+    },
+    "nodeIpv4CidrSize": {
+     "description": "Output only.",
+     "format": "int32",
+     "readOnly": true,
+     "type": "integer"
+    },
+    "nodePoolAutoConfig": {
+     "$ref": "NodePoolAutoConfig"
+    },
+    "nodePoolDefaults": {
+     "$ref": "NodePoolDefaults"
+    },
+    "nodePools": {
+     "items": {
+      "$ref": "NodePool"
+     },
+     "type": "array"
+    },
+    "notificationConfig": {
+     "$ref": "NotificationConfig"
+    },
+    "parentProductConfig": {
+     "$ref": "ParentProductConfig"
+    },
+    "podAutoscaling": {
+     "$ref": "PodAutoscaling"
+    },
+    "privateClusterConfig": {
+     "$ref": "PrivateClusterConfig"
+    },
+    "rbacBindingConfig": {
+     "$ref": "RBACBindingConfig"
+    },
+    "releaseChannel": {
+     "$ref": "ReleaseChannel"
+    },
+    "resourceLabels": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "type": "object"
+    },
+    "resourceUsageExportConfig": {
+     "$ref": "ResourceUsageExportConfig"
+    },
+    "rollbackSafeUpgrade": {
+     "$ref": "RollbackSafeUpgrade"
+    },
+    "satisfiesPzi": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "boolean"
+    },
+    "satisfiesPzs": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "boolean"
+    },
+    "scheduleUpgradeConfig": {
+     "$ref": "ScheduleUpgradeConfig"
+    },
+    "secretManagerConfig": {
+     "$ref": "SecretManagerConfig"
+    },
+    "secretSyncConfig": {
+     "$ref": "SecretSyncConfig"
+    },
+    "securityPostureConfig": {
+     "$ref": "SecurityPostureConfig"
+    },
+    "selfLink": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "servicesIpv4Cidr": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "shieldedNodes": {
+     "$ref": "ShieldedNodes"
+    },
+    "status": {
+     "description": "Output only.",
+     "enum": [
+      "STATUS_UNSPECIFIED",
+      "PROVISIONING",
+      "RUNNING",
+      "RECONCILING",
+      "STOPPING",
+      "ERROR",
+      "DEGRADED"
+     ],
+     "readOnly": true,
+     "type": "string"
+    },
+    "statusMessage": {
+     "deprecated": true,
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "subnetwork": {
+     "type": "string"
+    },
+    "tpuIpv4CidrBlock": {
+     "deprecated": true,
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "userManagedKeysConfig": {
+     "$ref": "UserManagedKeysConfig"
+    },
+    "verticalPodAutoscaling": {
+     "$ref": "VerticalPodAutoscaling"
+    },
+    "workloadIdentityConfig": {
+     "$ref": "WorkloadIdentityConfig"
+    },
+    "zone": {
+     "deprecated": true,
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ClusterAutoscaling": {
+   "id": "ClusterAutoscaling",
+   "properties": {
+    "autopilotGeneralProfile": {
+     "enum": [
+      "AUTOPILOT_GENERAL_PROFILE_UNSPECIFIED",
+      "NO_PERFORMANCE",
+      "NONE"
+     ],
+     "type": "string"
+    },
+    "autoprovisioningLocations": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "autoprovisioningNodePoolDefaults": {
+     "$ref": "AutoprovisioningNodePoolDefaults"
+    },
+    "autoprovisioningRestrictionConfig": {
+     "$ref": "AutoprovisioningRestrictionConfig"
+    },
+    "autoscalingProfile": {
+     "enum": [
+      "PROFILE_UNSPECIFIED",
+      "OPTIMIZE_UTILIZATION",
+      "BALANCED"
+     ],
+     "type": "string"
+    },
+    "defaultComputeClassConfig": {
+     "$ref": "DefaultComputeClassConfig"
+    },
+    "enableNodeAutoprovisioning": {
+     "type": "boolean"
+    },
+    "resourceLimits": {
+     "items": {
+      "$ref": "ResourceLimit"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "ClusterNetworkPerformanceConfig": {
+   "id": "ClusterNetworkPerformanceConfig",
+   "properties": {
+    "totalEgressBandwidthTier": {
+     "enum": [
+      "TIER_UNSPECIFIED",
+      "TIER_1"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ClusterPolicyConfig": {
+   "id": "ClusterPolicyConfig",
+   "properties": {
+    "noStandardNodePools": {
+     "type": "boolean"
+    },
+    "noSystemImpersonation": {
+     "type": "boolean"
+    },
+    "noSystemMutation": {
+     "type": "boolean"
+    },
+    "noUnsafeWebhooks": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ClusterUpdate": {
+   "id": "ClusterUpdate",
+   "properties": {
+    "additionalPodRangesConfig": {
+     "$ref": "AdditionalPodRangesConfig"
+    },
+    "desiredAdditionalIpRangesConfig": {
+     "$ref": "DesiredAdditionalIPRangesConfig"
+    },
+    "desiredAddonsConfig": {
+     "$ref": "AddonsConfig"
+    },
+    "desiredAmbientNetworkingConfig": {
+     "$ref": "AmbientNetworkingConfig"
+    },
+    "desiredAnonymousAuthenticationConfig": {
+     "$ref": "AnonymousAuthenticationConfig"
+    },
+    "desiredAuthenticatorGroupsConfig": {
+     "$ref": "AuthenticatorGroupsConfig"
+    },
+    "desiredAutoIpamConfig": {
+     "$ref": "AutoIpamConfig"
+    },
+    "desiredAutopilotClusterPolicyConfig": {
+     "$ref": "ClusterPolicyConfig"
+    },
+    "desiredAutopilotWorkloadPolicyConfig": {
+     "$ref": "WorkloadPolicyConfig"
+    },
+    "desiredBinaryAuthorization": {
+     "$ref": "BinaryAuthorization"
+    },
+    "desiredClusterAutoscaling": {
+     "$ref": "ClusterAutoscaling"
+    },
+    "desiredCompliancePostureConfig": {
+     "$ref": "CompliancePostureConfig",
+     "deprecated": true
+    },
+    "desiredContainerdConfig": {
+     "$ref": "ContainerdConfig"
+    },
+    "desiredControlPlaneEgress": {
+     "$ref": "ControlPlaneEgress"
+    },
+    "desiredControlPlaneEndpointsConfig": {
+     "$ref": "ControlPlaneEndpointsConfig"
+    },
+    "desiredCostManagementConfig": {
+     "$ref": "CostManagementConfig"
+    },
+    "desiredDatabaseEncryption": {
+     "$ref": "DatabaseEncryption"
+    },
+    "desiredDatapathProvider": {
+     "enum": [
+      "DATAPATH_PROVIDER_UNSPECIFIED",
+      "LEGACY_DATAPATH",
+      "ADVANCED_DATAPATH",
+      "MIGRATE_TO_ADVANCED_DATAPATH",
+      "MIGRATE_TO_LEGACY_DATAPATH"
+     ],
+     "type": "string"
+    },
+    "desiredDefaultEnablePrivateNodes": {
+     "type": "boolean"
+    },
+    "desiredDefaultSnatStatus": {
+     "$ref": "DefaultSnatStatus"
+    },
+    "desiredDisableL4LbFirewallReconciliation": {
+     "type": "boolean"
+    },
+    "desiredDnsConfig": {
+     "$ref": "DNSConfig"
+    },
+    "desiredEmulatedVersion": {
+     "type": "string"
+    },
+    "desiredEnableCiliumClusterwideNetworkPolicy": {
+     "type": "boolean"
+    },
+    "desiredEnableFqdnNetworkPolicy": {
+     "type": "boolean"
+    },
+    "desiredEnableMultiNetworking": {
+     "type": "boolean"
+    },
+    "desiredEnablePrivateEndpoint": {
+     "deprecated": true,
+     "type": "boolean"
+    },
+    "desiredEnterpriseConfig": {
+     "$ref": "DesiredEnterpriseConfig",
+     "deprecated": true
+    },
+    "desiredFleet": {
+     "$ref": "Fleet"
+    },
+    "desiredGatewayApiConfig": {
+     "$ref": "GatewayAPIConfig"
+    },
+    "desiredGcfsConfig": {
+     "$ref": "GcfsConfig"
+    },
+    "desiredIdentityServiceConfig": {
+     "$ref": "IdentityServiceConfig"
+    },
+    "desiredImage": {
+     "type": "string"
+    },
+    "desiredImageProject": {
+     "type": "string"
+    },
+    "desiredImageType": {
+     "type": "string"
+    },
+    "desiredInTransitEncryptionConfig": {
+     "enum": [
+      "IN_TRANSIT_ENCRYPTION_CONFIG_UNSPECIFIED",
+      "IN_TRANSIT_ENCRYPTION_DISABLED",
+      "IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT"
+     ],
+     "type": "string"
+    },
+    "desiredIntraNodeVisibilityConfig": {
+     "$ref": "IntraNodeVisibilityConfig"
+    },
+    "desiredK8sBetaApis": {
+     "$ref": "K8sBetaAPIConfig"
+    },
+    "desiredL4ilbSubsettingConfig": {
+     "$ref": "ILBSubsettingConfig"
+    },
+    "desiredLocations": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "desiredLoggingConfig": {
+     "$ref": "LoggingConfig"
+    },
+    "desiredLoggingService": {
+     "type": "string"
+    },
+    "desiredManagedMachineLearningDiagnosticsConfig": {
+     "$ref": "ManagedMachineLearningDiagnosticsConfig"
+    },
+    "desiredManagedOpentelemetryConfig": {
+     "$ref": "ManagedOpenTelemetryConfig"
+    },
+    "desiredMasterAuthorizedNetworksConfig": {
+     "$ref": "MasterAuthorizedNetworksConfig",
+     "deprecated": true
+    },
+    "desiredMasterVersion": {
+     "type": "string"
+    },
+    "desiredMeshCertificates": {
+     "$ref": "MeshCertificates"
+    },
+    "desiredMonitoringConfig": {
+     "$ref": "MonitoringConfig"
+    },
+    "desiredMonitoringService": {
+     "type": "string"
+    },
+    "desiredNetworkPerformanceConfig": {
+     "$ref": "ClusterNetworkPerformanceConfig"
+    },
+    "desiredNetworkTierConfig": {
+     "$ref": "NetworkTierConfig"
+    },
+    "desiredNodeCreationConfig": {
+     "$ref": "NodeCreationConfig"
+    },
+    "desiredNodeKubeletConfig": {
+     "$ref": "NodeKubeletConfig"
+    },
+    "desiredNodePoolAutoConfigKubeletConfig": {
+     "$ref": "NodeKubeletConfig"
+    },
+    "desiredNodePoolAutoConfigLinuxNodeConfig": {
+     "$ref": "LinuxNodeConfig"
+    },
+    "desiredNodePoolAutoConfigNetworkTags": {
+     "$ref": "NetworkTags"
+    },
+    "desiredNodePoolAutoConfigResourceManagerTags": {
+     "$ref": "ResourceManagerTags"
+    },
+    "desiredNodePoolAutoscaling": {
+     "$ref": "NodePoolAutoscaling"
+    },
+    "desiredNodePoolId": {
+     "type": "string"
+    },
+    "desiredNodePoolLoggingConfig": {
+     "$ref": "NodePoolLoggingConfig"
+    },
+    "desiredNodeVersion": {
+     "type": "string"
+    },
+    "desiredNotificationConfig": {
+     "$ref": "NotificationConfig"
+    },
+    "desiredParentProductConfig": {
+     "$ref": "ParentProductConfig"
+    },
+    "desiredPodAutoscaling": {
+     "$ref": "PodAutoscaling"
+    },
+    "desiredPrivateClusterConfig": {
+     "$ref": "PrivateClusterConfig",
+     "deprecated": true
+    },
+    "desiredPrivateIpv6GoogleAccess": {
+     "enum": [
+      "PRIVATE_IPV6_GOOGLE_ACCESS_UNSPECIFIED",
+      "PRIVATE_IPV6_GOOGLE_ACCESS_DISABLED",
+      "PRIVATE_IPV6_GOOGLE_ACCESS_TO_GOOGLE",
+      "PRIVATE_IPV6_GOOGLE_ACCESS_BIDIRECTIONAL"
+     ],
+     "type": "string"
+    },
+    "desiredPrivilegedAdmissionConfig": {
+     "$ref": "PrivilegedAdmissionConfig"
+    },
+    "desiredRbacBindingConfig": {
+     "$ref": "RBACBindingConfig"
+    },
+    "desiredReleaseChannel": {
+     "$ref": "ReleaseChannel"
+    },
+    "desiredResourceUsageExportConfig": {
+     "$ref": "ResourceUsageExportConfig"
+    },
+    "desiredRollbackSafeUpgrade": {
+     "$ref": "RollbackSafeUpgrade"
+    },
+    "desiredSecretManagerConfig": {
+     "$ref": "SecretManagerConfig"
+    },
+    "desiredSecretSyncConfig": {
+     "$ref": "SecretSyncConfig"
+    },
+    "desiredSecurityPostureConfig": {
+     "$ref": "SecurityPostureConfig"
+    },
+    "desiredServiceExternalIpsConfig": {
+     "$ref": "ServiceExternalIPsConfig"
+    },
+    "desiredShieldedNodes": {
+     "$ref": "ShieldedNodes"
+    },
+    "desiredStackType": {
+     "enum": [
+      "STACK_TYPE_UNSPECIFIED",
+      "IPV4",
+      "IPV4_IPV6"
+     ],
+     "type": "string"
+    },
+    "desiredUserManagedKeysConfig": {
+     "$ref": "UserManagedKeysConfig"
+    },
+    "desiredVerticalPodAutoscaling": {
+     "$ref": "VerticalPodAutoscaling"
+    },
+    "desiredWorkloadIdentityConfig": {
+     "$ref": "WorkloadIdentityConfig"
+    },
+    "enableK8sBetaApis": {
+     "$ref": "K8sBetaAPIConfig"
+    },
+    "etag": {
+     "type": "string"
+    },
+    "gkeAutoUpgradeConfig": {
+     "$ref": "GkeAutoUpgradeConfig"
+    },
+    "removedAdditionalPodRangesConfig": {
+     "$ref": "AdditionalPodRangesConfig"
+    },
+    "userManagedKeysConfig": {
+     "$ref": "UserManagedKeysConfig",
+     "deprecated": true
+    }
+   },
+   "type": "object"
+  },
+  "CompliancePostureConfig": {
+   "deprecated": true,
+   "id": "CompliancePostureConfig",
+   "properties": {
+    "complianceStandards": {
+     "items": {
+      "$ref": "ComplianceStandard"
+     },
+     "type": "array"
+    },
+    "mode": {
+     "enum": [
+      "MODE_UNSPECIFIED",
+      "DISABLED",
+      "ENABLED"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ComplianceStandard": {
+   "id": "ComplianceStandard",
+   "properties": {
+    "standard": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ConfidentialNodes": {
+   "id": "ConfidentialNodes",
+   "properties": {
+    "confidentialInstanceType": {
+     "enum": [
+      "CONFIDENTIAL_INSTANCE_TYPE_UNSPECIFIED",
+      "SEV",
+      "SEV_SNP",
+      "TDX"
+     ],
+     "type": "string"
+    },
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ConfigConnectorConfig": {
+   "id": "ConfigConnectorConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ConsumptionMeteringConfig": {
+   "id": "ConsumptionMeteringConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ContainerdConfig": {
+   "id": "ContainerdConfig",
+   "properties": {
+    "privateRegistryAccessConfig": {
+     "$ref": "PrivateRegistryAccessConfig"
+    },
+    "registryHosts": {
+     "items": {
+      "$ref": "RegistryHostConfig"
+     },
+     "type": "array"
+    },
+    "writableCgroups": {
+     "$ref": "WritableCgroups"
+    }
+   },
+   "type": "object"
+  },
+  "ControlPlaneEgress": {
+   "id": "ControlPlaneEgress",
+   "properties": {
+    "mode": {
+     "enum": [
+      "MODE_UNSPECIFIED",
+      "VIA_CONTROL_PLANE",
+      "NONE"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ControlPlaneEndpointsConfig": {
+   "id": "ControlPlaneEndpointsConfig",
+   "properties": {
+    "dnsEndpointConfig": {
+     "$ref": "DNSEndpointConfig"
+    },
+    "ipEndpointsConfig": {
+     "$ref": "IPEndpointsConfig"
+    }
+   },
+   "type": "object"
+  },
+  "CostManagementConfig": {
+   "id": "CostManagementConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "CrashLoopBackOffConfig": {
+   "id": "CrashLoopBackOffConfig",
+   "properties": {
+    "maxContainerRestartPeriod": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "CreateClusterRequest": {
+   "id": "CreateClusterRequest",
+   "properties": {
+    "cluster": {
+     "$ref": "Cluster"
+    },
+    "parent": {
+     "type": "string"
+    },
+    "projectId": {
+     "deprecated": true,
+     "type": "string"
+    },
+    "zone": {
+     "deprecated": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "CustomImageConfig": {
+   "id": "CustomImageConfig",
+   "properties": {
+    "image": {
+     "type": "string"
+    },
+    "imageProject": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "CustomNodeInit": {
+   "id": "CustomNodeInit",
+   "properties": {
+    "initScript": {
+     "$ref": "InitScript"
+    }
+   },
+   "type": "object"
+  },
+  "DNSConfig": {
+   "id": "DNSConfig",
+   "properties": {
+    "additiveVpcScopeDnsDomain": {
+     "type": "string"
+    },
+    "clusterDns": {
+     "enum": [
+      "PROVIDER_UNSPECIFIED",
+      "PLATFORM_DEFAULT",
+      "CLOUD_DNS",
+      "KUBE_DNS"
+     ],
+     "type": "string"
+    },
+    "clusterDnsDomain": {
+     "type": "string"
+    },
+    "clusterDnsScope": {
+     "enum": [
+      "DNS_SCOPE_UNSPECIFIED",
+      "CLUSTER_SCOPE",
+      "VPC_SCOPE"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DNSEndpointConfig": {
+   "id": "DNSEndpointConfig",
+   "properties": {
+    "allowExternalTraffic": {
+     "type": "boolean"
+    },
+    "enableK8sCertsViaDns": {
+     "type": "boolean"
+    },
+    "enableK8sTokensViaDns": {
+     "type": "boolean"
+    },
+    "endpoint": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DailyMaintenanceWindow": {
+   "id": "DailyMaintenanceWindow",
+   "properties": {
+    "duration": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "startTime": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DatabaseEncryption": {
+   "id": "DatabaseEncryption",
+   "properties": {
+    "currentState": {
+     "description": "Output only.",
+     "enum": [
+      "CURRENT_STATE_UNSPECIFIED",
+      "CURRENT_STATE_ENCRYPTED",
+      "CURRENT_STATE_DECRYPTED",
+      "CURRENT_STATE_ENCRYPTION_PENDING",
+      "CURRENT_STATE_ENCRYPTION_ERROR",
+      "CURRENT_STATE_DECRYPTION_PENDING",
+      "CURRENT_STATE_DECRYPTION_ERROR",
+      "CURRENT_STATE_ALL_OBJECTS_ENCRYPTION_ENABLED",
+      "CURRENT_STATE_ALL_OBJECTS_ENCRYPTION_PENDING",
+      "CURRENT_STATE_ALL_OBJECTS_ENCRYPTION_ERROR"
+     ],
+     "readOnly": true,
+     "type": "string"
+    },
+    "decryptionKeys": {
+     "description": "Output only.",
+     "items": {
+      "type": "string"
+     },
+     "readOnly": true,
+     "type": "array"
+    },
+    "keyName": {
+     "type": "string"
+    },
+    "lastOperationErrors": {
+     "description": "Output only.",
+     "items": {
+      "$ref": "OperationError"
+     },
+     "readOnly": true,
+     "type": "array"
+    },
+    "state": {
+     "enum": [
+      "UNKNOWN",
+      "ENCRYPTED",
+      "DECRYPTED",
+      "ALL_OBJECTS_ENCRYPTION_ENABLED"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DataplaneV2Config": {
+   "id": "DataplaneV2Config",
+   "properties": {
+    "scalabilityMode": {
+     "enum": [
+      "SCALABILITY_MODE_UNSPECIFIED",
+      "DISABLED",
+      "SCALE_OPTIMIZED"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "Date": {
+   "id": "Date",
+   "properties": {
+    "day": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "month": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "year": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "DedicatedLocalSsdProfile": {
+   "id": "DedicatedLocalSsdProfile",
+   "properties": {
+    "diskCount": {
+     "format": "int64",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DefaultComputeClassConfig": {
+   "id": "DefaultComputeClassConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "DefaultSnatStatus": {
+   "id": "DefaultSnatStatus",
+   "properties": {
+    "disabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "DesiredAdditionalIPRangesConfig": {
+   "id": "DesiredAdditionalIPRangesConfig",
+   "properties": {
+    "additionalIpRangesConfigs": {
+     "items": {
+      "$ref": "AdditionalIPRangesConfig"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "DesiredEnterpriseConfig": {
+   "deprecated": true,
+   "id": "DesiredEnterpriseConfig",
+   "properties": {
+    "desiredTier": {
+     "enum": [
+      "CLUSTER_TIER_UNSPECIFIED",
+      "STANDARD",
+      "ENTERPRISE"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DiskIoScheduler": {
+   "id": "DiskIoScheduler",
+   "properties": {
+    "nodeAttachedDiskIoScheduler": {
+     "type": "string"
+    },
+    "nodeSystemIoScheduler": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DisruptionBudget": {
+   "id": "DisruptionBudget",
+   "properties": {
+    "lastDisruptionTime": {
+     "description": "Output only.",
+     "format": "google-datetime",
+     "readOnly": true,
+     "type": "string"
+    },
+    "lastMinorVersionDisruptionTime": {
+     "description": "Output only.",
+     "format": "google-datetime",
+     "readOnly": true,
+     "type": "string"
+    },
+    "minorVersionDisruptionInterval": {
+     "format": "google-duration",
+     "type": "string"
+    },
+    "patchVersionDisruptionInterval": {
+     "format": "google-duration",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "DnsCacheConfig": {
+   "id": "DnsCacheConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "EncryptionConfig": {
+   "id": "EncryptionConfig",
+   "properties": {
+    "disabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "EnterpriseConfig": {
+   "deprecated": true,
+   "id": "EnterpriseConfig",
+   "properties": {
+    "clusterTier": {
+     "description": "Output only.",
+     "enum": [
+      "CLUSTER_TIER_UNSPECIFIED",
+      "STANDARD",
+      "ENTERPRISE"
+     ],
+     "readOnly": true,
+     "type": "string"
+    },
+    "desiredTier": {
+     "enum": [
+      "CLUSTER_TIER_UNSPECIFIED",
+      "STANDARD",
+      "ENTERPRISE"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "EphemeralLocalSsdProfile": {
+   "id": "EphemeralLocalSsdProfile",
+   "properties": {
+    "swapSizeGib": {
+     "format": "int64",
+     "type": "string"
+    },
+    "swapSizePercent": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "EphemeralStorageLocalSsdConfig": {
+   "id": "EphemeralStorageLocalSsdConfig",
+   "properties": {
+    "dataCacheCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "ephemeralCapacityGb": {
+     "format": "int64",
+     "type": "string"
+    },
+    "localSsdCount": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "EtcHostsEntry": {
+   "id": "EtcHostsEntry",
+   "properties": {
+    "host": {
+     "type": "string"
+    },
+    "ip": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "EvictionGracePeriod": {
+   "id": "EvictionGracePeriod",
+   "properties": {
+    "imagefsAvailable": {
+     "type": "string"
+    },
+    "imagefsInodesFree": {
+     "type": "string"
+    },
+    "memoryAvailable": {
+     "type": "string"
+    },
+    "nodefsAvailable": {
+     "type": "string"
+    },
+    "nodefsInodesFree": {
+     "type": "string"
+    },
+    "pidAvailable": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "EvictionMinimumReclaim": {
+   "id": "EvictionMinimumReclaim",
+   "properties": {
+    "imagefsAvailable": {
+     "type": "string"
+    },
+    "imagefsInodesFree": {
+     "type": "string"
+    },
+    "memoryAvailable": {
+     "type": "string"
+    },
+    "nodefsAvailable": {
+     "type": "string"
+    },
+    "nodefsInodesFree": {
+     "type": "string"
+    },
+    "pidAvailable": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "EvictionSignals": {
+   "id": "EvictionSignals",
+   "properties": {
+    "imagefsAvailable": {
+     "type": "string"
+    },
+    "imagefsInodesFree": {
+     "type": "string"
+    },
+    "memoryAvailable": {
+     "type": "string"
+    },
+    "nodefsAvailable": {
+     "type": "string"
+    },
+    "nodefsInodesFree": {
+     "type": "string"
+    },
+    "pidAvailable": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ExclusionUntilEndOfSupport": {
+   "id": "ExclusionUntilEndOfSupport",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "endTime": {
+     "description": "Output only.",
+     "format": "google-datetime",
+     "readOnly": true,
+     "type": "string"
+    },
+    "startTime": {
+     "description": "Output only.",
+     "format": "google-datetime",
+     "readOnly": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "FastSocket": {
+   "id": "FastSocket",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "Filter": {
+   "id": "Filter",
+   "properties": {
+    "eventType": {
+     "items": {
+      "enum": [
+       "EVENT_TYPE_UNSPECIFIED",
+       "UPGRADE_AVAILABLE_EVENT",
+       "UPGRADE_EVENT",
+       "SECURITY_BULLETIN_EVENT",
+       "UPGRADE_INFO_EVENT"
+      ],
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "Fleet": {
+   "id": "Fleet",
+   "properties": {
+    "membership": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "membershipType": {
+     "enum": [
+      "MEMBERSHIP_TYPE_UNSPECIFIED",
+      "LIGHTWEIGHT"
+     ],
+     "type": "string"
+    },
+    "preRegistered": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "boolean"
+    },
+    "project": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "GCPSecretManagerCertificateConfig": {
+   "id": "GCPSecretManagerCertificateConfig",
+   "properties": {
+    "secretUri": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "GPUDirectConfig": {
+   "id": "GPUDirectConfig",
+   "properties": {
+    "gpuDirectStrategy": {
+     "enum": [
+      "GPU_DIRECT_STRATEGY_UNSPECIFIED",
+      "RDMA"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "GPUDriverInstallationConfig": {
+   "id": "GPUDriverInstallationConfig",
+   "properties": {
+    "gpuDriverVersion": {
+     "enum": [
+      "GPU_DRIVER_VERSION_UNSPECIFIED",
+      "INSTALLATION_DISABLED",
+      "DEFAULT",
+      "LATEST",
+      "SPECIFIC"
+     ],
+     "type": "string"
+    },
+    "specificVersion": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "GPUSharingConfig": {
+   "id": "GPUSharingConfig",
+   "properties": {
+    "gpuSharingStrategy": {
+     "enum": [
+      "GPU_SHARING_STRATEGY_UNSPECIFIED",
+      "TIME_SHARING",
+      "MPS"
+     ],
+     "type": "string"
+    },
+    "maxSharedClientsPerGpu": {
+     "format": "int64",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "GatewayAPIConfig": {
+   "id": "GatewayAPIConfig",
+   "properties": {
+    "channel": {
+     "enum": [
+      "CHANNEL_UNSPECIFIED",
+      "CHANNEL_DISABLED",
+      "CHANNEL_EXPERIMENTAL",
+      "CHANNEL_STANDARD"
+     ],
+     "enumDeprecated": [
+      false,
+      false,
+      true,
+      false
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "GcePersistentDiskCsiDriverConfig": {
+   "id": "GcePersistentDiskCsiDriverConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "GcfsConfig": {
+   "id": "GcfsConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "GcpFilestoreCsiDriverConfig": {
+   "id": "GcpFilestoreCsiDriverConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "GcsFuseCsiDriverConfig": {
+   "id": "GcsFuseCsiDriverConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "GkeAutoUpgradeConfig": {
+   "id": "GkeAutoUpgradeConfig",
+   "properties": {
+    "patchMode": {
+     "enum": [
+      "PATCH_MODE_UNSPECIFIED",
+      "ACCELERATED"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "GkeBackupAgentConfig": {
+   "id": "GkeBackupAgentConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "HighScaleCheckpointingConfig": {
+   "id": "HighScaleCheckpointingConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "HorizontalPodAutoscaling": {
+   "id": "HorizontalPodAutoscaling",
+   "properties": {
+    "disabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "HostConfig": {
+   "id": "HostConfig",
+   "properties": {
+    "ca": {
+     "items": {
+      "$ref": "CertificateConfig"
+     },
+     "type": "array"
+    },
+    "capabilities": {
+     "items": {
+      "enum": [
+       "HOST_CAPABILITY_UNSPECIFIED",
+       "HOST_CAPABILITY_PULL",
+       "HOST_CAPABILITY_RESOLVE",
+       "HOST_CAPABILITY_PUSH"
+      ],
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "client": {
+     "items": {
+      "$ref": "CertificateConfigPair"
+     },
+     "type": "array"
+    },
+    "dialTimeout": {
+     "format": "google-duration",
+     "type": "string"
+    },
+    "header": {
+     "items": {
+      "$ref": "RegistryHeader"
+     },
+     "type": "array"
+    },
+    "host": {
+     "type": "string"
+    },
+    "overridePath": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "HttpLoadBalancing": {
+   "id": "HttpLoadBalancing",
+   "properties": {
+    "disabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "HugepagesConfig": {
+   "id": "HugepagesConfig",
+   "properties": {
+    "hugepageSize1g": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "hugepageSize2m": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "ILBSubsettingConfig": {
+   "id": "ILBSubsettingConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "IPAllocationPolicy": {
+   "id": "IPAllocationPolicy",
+   "properties": {
+    "additionalIpRangesConfigs": {
+     "description": "Output only.",
+     "items": {
+      "$ref": "AdditionalIPRangesConfig"
+     },
+     "readOnly": true,
+     "type": "array"
+    },
+    "additionalPodRangesConfig": {
+     "$ref": "AdditionalPodRangesConfig",
+     "description": "Output only.",
+     "readOnly": true
+    },
+    "autoIpamConfig": {
+     "$ref": "AutoIpamConfig"
+    },
+    "clusterIpv4Cidr": {
+     "deprecated": true,
+     "type": "string"
+    },
+    "clusterIpv4CidrBlock": {
+     "type": "string"
+    },
+    "clusterSecondaryRangeName": {
+     "type": "string"
+    },
+    "createSubnetwork": {
+     "type": "boolean"
+    },
+    "defaultPodIpv4RangeUtilization": {
+     "description": "Output only.",
+     "format": "double",
+     "readOnly": true,
+     "type": "number"
+    },
+    "ipv6AccessType": {
+     "enum": [
+      "IPV6_ACCESS_TYPE_UNSPECIFIED",
+      "INTERNAL",
+      "EXTERNAL"
+     ],
+     "type": "string"
+    },
+    "networkTierConfig": {
+     "$ref": "NetworkTierConfig"
+    },
+    "nodeIpv4Cidr": {
+     "deprecated": true,
+     "type": "string"
+    },
+    "nodeIpv4CidrBlock": {
+     "type": "string"
+    },
+    "podCidrOverprovisionConfig": {
+     "$ref": "PodCIDROverprovisionConfig"
+    },
+    "servicesIpv4Cidr": {
+     "deprecated": true,
+     "type": "string"
+    },
+    "servicesIpv4CidrBlock": {
+     "type": "string"
+    },
+    "servicesIpv6CidrBlock": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "servicesSecondaryRangeName": {
+     "type": "string"
+    },
+    "stackType": {
+     "enum": [
+      "STACK_TYPE_UNSPECIFIED",
+      "IPV4",
+      "IPV4_IPV6"
+     ],
+     "type": "string"
+    },
+    "subnetIpv6CidrBlock": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "subnetworkName": {
+     "type": "string"
+    },
+    "tpuIpv4CidrBlock": {
+     "deprecated": true,
+     "type": "string"
+    },
+    "useIpAliases": {
+     "type": "boolean"
+    },
+    "useRoutes": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "IPEndpointsConfig": {
+   "id": "IPEndpointsConfig",
+   "properties": {
+    "authorizedNetworksConfig": {
+     "$ref": "MasterAuthorizedNetworksConfig"
+    },
+    "enablePublicEndpoint": {
+     "type": "boolean"
+    },
+    "enabled": {
+     "type": "boolean"
+    },
+    "globalAccess": {
+     "type": "boolean"
+    },
+    "privateEndpoint": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "privateEndpointSubnetwork": {
+     "type": "string"
+    },
+    "publicEndpoint": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "IdentityServiceConfig": {
+   "id": "IdentityServiceConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "InitScript": {
+   "id": "InitScript",
+   "properties": {
+    "args": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "gcpSecretManagerSecretUri": {
+     "type": "string"
+    },
+    "gcsGeneration": {
+     "format": "int64",
+     "type": "string"
+    },
+    "gcsUri": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "IntraNodeVisibilityConfig": {
+   "id": "IntraNodeVisibilityConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "K8sBetaAPIConfig": {
+   "id": "K8sBetaAPIConfig",
+   "properties": {
+    "enabledApis": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "KernelCommandlineOverrides": {
+   "id": "KernelCommandlineOverrides",
+   "properties": {
+    "initOnAlloc": {
+     "enum": [
+      "INIT_ON_ALLOC_UNSPECIFIED",
+      "INIT_ON_ALLOC_OFF"
+     ],
+     "type": "string"
+    },
+    "specRstackOverflow": {
+     "enum": [
+      "SPEC_RSTACK_OVERFLOW_UNSPECIFIED",
+      "SPEC_RSTACK_OVERFLOW_OFF"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "KernelOverrides": {
+   "id": "KernelOverrides",
+   "properties": {
+    "kernelCommandlineOverrides": {
+     "$ref": "KernelCommandlineOverrides"
+    },
+    "lruGen": {
+     "$ref": "LRUGen"
+    }
+   },
+   "type": "object"
+  },
+  "KubeletCertInfo": {
+   "id": "KubeletCertInfo",
+   "properties": {
+    "nonTpmBootstrapCertExpireTime": {
+     "description": "Output only.",
+     "format": "google-datetime",
+     "readOnly": true,
+     "type": "string"
+    },
+    "tpmBootstrapCertExpireTime": {
+     "description": "Output only.",
+     "format": "google-datetime",
+     "readOnly": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "KubernetesDashboard": {
+   "id": "KubernetesDashboard",
+   "properties": {
+    "disabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "LRUGen": {
+   "id": "LRUGen",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "minTtlMs": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "LegacyAbac": {
+   "id": "LegacyAbac",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "LinuxNodeConfig": {
+   "id": "LinuxNodeConfig",
+   "properties": {
+    "accurateTimeConfig": {
+     "$ref": "AccurateTimeConfig"
+    },
+    "additionalEtcHosts": {
+     "items": {
+      "$ref": "EtcHostsEntry"
+     },
+     "type": "array"
+    },
+    "additionalEtcResolvConf": {
+     "items": {
+      "$ref": "ResolvedConfEntry"
+     },
+     "type": "array"
+    },
+    "additionalEtcSystemdResolvedConf": {
+     "items": {
+      "$ref": "ResolvedConfEntry"
+     },
+     "type": "array"
+    },
+    "cgroupMode": {
+     "enum": [
+      "CGROUP_MODE_UNSPECIFIED",
+      "CGROUP_MODE_V1",
+      "CGROUP_MODE_V2"
+     ],
+     "type": "string"
+    },
+    "customNodeInit": {
+     "$ref": "CustomNodeInit"
+    },
+    "diskIoScheduler": {
+     "$ref": "DiskIoScheduler"
+    },
+    "hugepages": {
+     "$ref": "HugepagesConfig"
+    },
+    "kernelOverrides": {
+     "$ref": "KernelOverrides"
+    },
+    "nodeKernelModuleLoading": {
+     "$ref": "NodeKernelModuleLoading"
+    },
+    "nodeVfioConfig": {
+     "$ref": "NodeVfioConfig"
+    },
+    "swapConfig": {
+     "$ref": "SwapConfig"
+    },
+    "sysctls": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "type": "object"
+    },
+    "timeZone": {
+     "type": "string"
+    },
+    "transparentHugepageDefrag": {
+     "enum": [
+      "TRANSPARENT_HUGEPAGE_DEFRAG_UNSPECIFIED",
+      "TRANSPARENT_HUGEPAGE_DEFRAG_ALWAYS",
+      "TRANSPARENT_HUGEPAGE_DEFRAG_DEFER",
+      "TRANSPARENT_HUGEPAGE_DEFRAG_DEFER_WITH_MADVISE",
+      "TRANSPARENT_HUGEPAGE_DEFRAG_MADVISE",
+      "TRANSPARENT_HUGEPAGE_DEFRAG_NEVER"
+     ],
+     "type": "string"
+    },
+    "transparentHugepageEnabled": {
+     "enum": [
+      "TRANSPARENT_HUGEPAGE_ENABLED_UNSPECIFIED",
+      "TRANSPARENT_HUGEPAGE_ENABLED_ALWAYS",
+      "TRANSPARENT_HUGEPAGE_ENABLED_MADVISE",
+      "TRANSPARENT_HUGEPAGE_ENABLED_NEVER"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ListClustersResponse": {
+   "id": "ListClustersResponse",
+   "properties": {
+    "clusters": {
+     "items": {
+      "$ref": "Cluster"
+     },
+     "type": "array"
+    },
+    "missingZones": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "LocalNvmeSsdBlockConfig": {
+   "id": "LocalNvmeSsdBlockConfig",
+   "properties": {
+    "localSsdCount": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "LoggingComponentConfig": {
+   "id": "LoggingComponentConfig",
+   "properties": {
+    "enableComponents": {
+     "items": {
+      "enum": [
+       "COMPONENT_UNSPECIFIED",
+       "SYSTEM_COMPONENTS",
+       "WORKLOADS",
+       "APISERVER",
+       "SCHEDULER",
+       "CONTROLLER_MANAGER",
+       "KCP_SSHD",
+       "KCP_CONNECTION",
+       "KCP_HPA",
+       "KCP_VPA"
+      ],
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "LoggingConfig": {
+   "id": "LoggingConfig",
+   "properties": {
+    "componentConfig": {
+     "$ref": "LoggingComponentConfig"
+    }
+   },
+   "type": "object"
+  },
+  "LoggingVariantConfig": {
+   "id": "LoggingVariantConfig",
+   "properties": {
+    "variant": {
+     "enum": [
+      "VARIANT_UNSPECIFIED",
+      "DEFAULT",
+      "MAX_THROUGHPUT"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "LustreCsiDriverConfig": {
+   "id": "LustreCsiDriverConfig",
+   "properties": {
+    "disableMultiNic": {
+     "type": "boolean"
+    },
+    "enableLegacyLustrePort": {
+     "deprecated": true,
+     "type": "boolean"
+    },
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "MaintenanceExclusionOptions": {
+   "id": "MaintenanceExclusionOptions",
+   "properties": {
+    "endTimeBehavior": {
+     "enum": [
+      "END_TIME_BEHAVIOR_UNSPECIFIED",
+      "UNTIL_END_OF_SUPPORT"
+     ],
+     "type": "string"
+    },
+    "scope": {
+     "enum": [
+      "NO_UPGRADES",
+      "NO_MINOR_UPGRADES",
+      "NO_MINOR_OR_NODE_UPGRADES"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "MaintenancePolicy": {
+   "id": "MaintenancePolicy",
+   "properties": {
+    "disruptionBudget": {
+     "$ref": "DisruptionBudget"
+    },
+    "resourceVersion": {
+     "type": "string"
+    },
+    "window": {
+     "$ref": "MaintenanceWindow"
+    }
+   },
+   "type": "object"
+  },
+  "MaintenanceWindow": {
+   "id": "MaintenanceWindow",
+   "properties": {
+    "dailyMaintenanceWindow": {
+     "$ref": "DailyMaintenanceWindow"
+    },
+    "maintenanceExclusions": {
+     "additionalProperties": {
+      "$ref": "TimeWindow"
+     },
+     "type": "object"
+    },
+    "recurringMaintenanceWindow": {
+     "$ref": "RecurringMaintenanceWindow"
+    },
+    "recurringWindow": {
+     "$ref": "RecurringTimeWindow"
+    }
+   },
+   "type": "object"
+  },
+  "ManagedMachineLearningDiagnosticsConfig": {
+   "id": "ManagedMachineLearningDiagnosticsConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ManagedOpenTelemetryConfig": {
+   "id": "ManagedOpenTelemetryConfig",
+   "properties": {
+    "scope": {
+     "enum": [
+      "SCOPE_UNSPECIFIED",
+      "NONE",
+      "COLLECTION_AND_INSTRUMENTATION_COMPONENTS"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ManagedPrometheusConfig": {
+   "id": "ManagedPrometheusConfig",
+   "properties": {
+    "autoMonitoringConfig": {
+     "$ref": "AutoMonitoringConfig"
+    },
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "MasterAuth": {
+   "id": "MasterAuth",
+   "properties": {
+    "clientCertificate": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "clientCertificateConfig": {
+     "$ref": "ClientCertificateConfig"
+    },
+    "clientKey": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "clusterCaCertificate": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "password": {
+     "deprecated": true,
+     "type": "string"
+    },
+    "username": {
+     "deprecated": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "MasterAuthorizedNetworksConfig": {
+   "id": "MasterAuthorizedNetworksConfig",
+   "properties": {
+    "cidrBlocks": {
+     "items": {
+      "$ref": "CidrBlock"
+     },
+     "type": "array"
+    },
+    "enabled": {
+     "type": "boolean"
+    },
+    "gcpPublicCidrsAccessEnabled": {
+     "type": "boolean"
+    },
+    "privateEndpointEnforcementEnabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "MaxPodsConstraint": {
+   "id": "MaxPodsConstraint",
+   "properties": {
+    "maxPodsPerNode": {
+     "format": "int64",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "MemoryManager": {
+   "id": "MemoryManager",
+   "properties": {
+    "policy": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "MeshCertificates": {
+   "id": "MeshCertificates",
+   "properties": {
+    "enableCertificates": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "Metric": {
+   "id": "Metric",
+   "properties": {
+    "doubleValue": {
+     "format": "double",
+     "type": "number"
+    },
+    "intValue": {
+     "format": "int64",
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "stringValue": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "MonitoringComponentConfig": {
+   "id": "MonitoringComponentConfig",
+   "properties": {
+    "enableComponents": {
+     "items": {
+      "enum": [
+       "COMPONENT_UNSPECIFIED",
+       "SYSTEM_COMPONENTS",
+       "APISERVER",
+       "SCHEDULER",
+       "CONTROLLER_MANAGER",
+       "STORAGE",
+       "HPA",
+       "POD",
+       "DAEMONSET",
+       "DEPLOYMENT",
+       "STATEFULSET",
+       "CADVISOR",
+       "KUBELET",
+       "DCGM",
+       "JOBSET"
+      ],
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "MonitoringConfig": {
+   "id": "MonitoringConfig",
+   "properties": {
+    "advancedDatapathObservabilityConfig": {
+     "$ref": "AdvancedDatapathObservabilityConfig"
+    },
+    "componentConfig": {
+     "$ref": "MonitoringComponentConfig"
+    },
+    "managedPrometheusConfig": {
+     "$ref": "ManagedPrometheusConfig"
+    }
+   },
+   "type": "object"
+  },
+  "NetworkConfig": {
+   "id": "NetworkConfig",
+   "properties": {
+    "ambientNetworkingConfig": {
+     "$ref": "AmbientNetworkingConfig"
+    },
+    "datapathProvider": {
+     "enum": [
+      "DATAPATH_PROVIDER_UNSPECIFIED",
+      "LEGACY_DATAPATH",
+      "ADVANCED_DATAPATH",
+      "MIGRATE_TO_ADVANCED_DATAPATH",
+      "MIGRATE_TO_LEGACY_DATAPATH"
+     ],
+     "type": "string"
+    },
+    "dataplaneV2Config": {
+     "$ref": "DataplaneV2Config"
+    },
+    "defaultEnablePrivateNodes": {
+     "type": "boolean"
+    },
+    "defaultSnatStatus": {
+     "$ref": "DefaultSnatStatus"
+    },
+    "disableL4LbFirewallReconciliation": {
+     "type": "boolean"
+    },
+    "dnsConfig": {
+     "$ref": "DNSConfig"
+    },
+    "enableCiliumClusterwideNetworkPolicy": {
+     "type": "boolean"
+    },
+    "enableFqdnNetworkPolicy": {
+     "type": "boolean"
+    },
+    "enableIntraNodeVisibility": {
+     "type": "boolean"
+    },
+    "enableL4ilbSubsetting": {
+     "type": "boolean"
+    },
+    "enableMultiNetworking": {
+     "type": "boolean"
+    },
+    "gatewayApiConfig": {
+     "$ref": "GatewayAPIConfig"
+    },
+    "inTransitEncryptionConfig": {
+     "enum": [
+      "IN_TRANSIT_ENCRYPTION_CONFIG_UNSPECIFIED",
+      "IN_TRANSIT_ENCRYPTION_DISABLED",
+      "IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT"
+     ],
+     "type": "string"
+    },
+    "network": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "networkPerformanceConfig": {
+     "$ref": "ClusterNetworkPerformanceConfig"
+    },
+    "privateIpv6GoogleAccess": {
+     "enum": [
+      "PRIVATE_IPV6_GOOGLE_ACCESS_UNSPECIFIED",
+      "PRIVATE_IPV6_GOOGLE_ACCESS_DISABLED",
+      "PRIVATE_IPV6_GOOGLE_ACCESS_TO_GOOGLE",
+      "PRIVATE_IPV6_GOOGLE_ACCESS_BIDIRECTIONAL"
+     ],
+     "type": "string"
+    },
+    "serviceExternalIpsConfig": {
+     "$ref": "ServiceExternalIPsConfig"
+    },
+    "subnetwork": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "NetworkPerformanceConfig": {
+   "id": "NetworkPerformanceConfig",
+   "properties": {
+    "totalEgressBandwidthTier": {
+     "enum": [
+      "TIER_UNSPECIFIED",
+      "TIER_1"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "NetworkPolicy": {
+   "id": "NetworkPolicy",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "provider": {
+     "enum": [
+      "PROVIDER_UNSPECIFIED",
+      "CALICO"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "NetworkPolicyConfig": {
+   "id": "NetworkPolicyConfig",
+   "properties": {
+    "disabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "NetworkTags": {
+   "id": "NetworkTags",
+   "properties": {
+    "tags": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "NetworkTierConfig": {
+   "id": "NetworkTierConfig",
+   "properties": {
+    "networkTier": {
+     "enum": [
+      "NETWORK_TIER_UNSPECIFIED",
+      "NETWORK_TIER_DEFAULT",
+      "NETWORK_TIER_PREMIUM",
+      "NETWORK_TIER_STANDARD"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "NodeAffinity": {
+   "id": "NodeAffinity",
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "operator": {
+     "enum": [
+      "OPERATOR_UNSPECIFIED",
+      "IN",
+      "NOT_IN"
+     ],
+     "type": "string"
+    },
+    "values": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "NodeConfig": {
+   "id": "NodeConfig",
+   "properties": {
+    "accelerators": {
+     "items": {
+      "$ref": "AcceleratorConfig"
+     },
+     "type": "array"
+    },
+    "advancedMachineFeatures": {
+     "$ref": "AdvancedMachineFeatures"
+    },
+    "bootDisk": {
+     "$ref": "BootDisk"
+    },
+    "bootDiskKmsKey": {
+     "type": "string"
+    },
+    "confidentialNodes": {
+     "$ref": "ConfidentialNodes"
+    },
+    "consolidationDelay": {
+     "format": "google-duration",
+     "type": "string"
+    },
+    "containerdConfig": {
+     "$ref": "ContainerdConfig"
+    },
+    "diskSizeGb": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "diskType": {
+     "type": "string"
+    },
+    "effectiveCgroupMode": {
+     "description": "Output only.",
+     "enum": [
+      "EFFECTIVE_CGROUP_MODE_UNSPECIFIED",
+      "EFFECTIVE_CGROUP_MODE_V1",
+      "EFFECTIVE_CGROUP_MODE_V2"
+     ],
+     "readOnly": true,
+     "type": "string"
+    },
+    "enableConfidentialStorage": {
+     "type": "boolean"
+    },
+    "ephemeralStorageLocalSsdConfig": {
+     "$ref": "EphemeralStorageLocalSsdConfig"
+    },
+    "fastSocket": {
+     "$ref": "FastSocket"
+    },
+    "flexStart": {
+     "type": "boolean"
+    },
+    "gcfsConfig": {
+     "$ref": "GcfsConfig"
+    },
+    "gpuDirectConfig": {
+     "$ref": "GPUDirectConfig"
+    },
+    "gvnic": {
+     "$ref": "VirtualNIC"
+    },
+    "imageType": {
+     "type": "string"
+    },
+    "kubeletConfig": {
+     "$ref": "NodeKubeletConfig"
+    },
+    "labels": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "type": "object"
+    },
+    "linuxNodeConfig": {
+     "$ref": "LinuxNodeConfig"
+    },
+    "localNvmeSsdBlockConfig": {
+     "$ref": "LocalNvmeSsdBlockConfig"
+    },
+    "localSsdCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "localSsdEncryptionMode": {
+     "enum": [
+      "LOCAL_SSD_ENCRYPTION_MODE_UNSPECIFIED",
+      "STANDARD_ENCRYPTION",
+      "EPHEMERAL_KEY_ENCRYPTION"
+     ],
+     "type": "string"
+    },
+    "loggingConfig": {
+     "$ref": "NodePoolLoggingConfig"
+    },
+    "machineType": {
+     "type": "string"
+    },
+    "maxRunDuration": {
+     "format": "google-duration",
+     "type": "string"
+    },
+    "metadata": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "type": "object"
+    },
+    "minCpuPlatform": {
+     "type": "string"
+    },
+    "nodeGroup": {
+     "type": "string"
+    },
+    "nodeImageConfig": {
+     "$ref": "CustomImageConfig"
+    },
+    "oauthScopes": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "preemptible": {
+     "type": "boolean"
+    },
+    "reservationAffinity": {
+     "$ref": "ReservationAffinity"
+    },
+    "resourceLabels": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "type": "object"
+    },
+    "resourceManagerTags": {
+     "$ref": "ResourceManagerTags"
+    },
+    "sandboxConfig": {
+     "$ref": "SandboxConfig"
+    },
+    "secondaryBootDiskUpdateStrategy": {
+     "$ref": "SecondaryBootDiskUpdateStrategy"
+    },
+    "secondaryBootDisks": {
+     "items": {
+      "$ref": "SecondaryBootDisk"
+     },
+     "type": "array"
+    },
+    "serviceAccount": {
+     "type": "string"
+    },
+    "shieldedInstanceConfig": {
+     "$ref": "ShieldedInstanceConfig"
+    },
+    "soleTenantConfig": {
+     "$ref": "SoleTenantConfig"
+    },
+    "spot": {
+     "type": "boolean"
+    },
+    "storagePools": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "tags": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "taintConfig": {
+     "$ref": "TaintConfig"
+    },
+    "taints": {
+     "items": {
+      "$ref": "NodeTaint"
+     },
+     "type": "array"
+    },
+    "windowsNodeConfig": {
+     "$ref": "WindowsNodeConfig"
+    },
+    "workloadMetadataConfig": {
+     "$ref": "WorkloadMetadataConfig"
+    }
+   },
+   "type": "object"
+  },
+  "NodeConfigDefaults": {
+   "id": "NodeConfigDefaults",
+   "properties": {
+    "containerdConfig": {
+     "$ref": "ContainerdConfig"
+    },
+    "gcfsConfig": {
+     "$ref": "GcfsConfig"
+    },
+    "loggingConfig": {
+     "$ref": "NodePoolLoggingConfig"
+    },
+    "nodeKubeletConfig": {
+     "$ref": "NodeKubeletConfig"
+    }
+   },
+   "type": "object"
+  },
+  "NodeCreationConfig": {
+   "id": "NodeCreationConfig",
+   "properties": {
+    "nodeCreationMode": {
+     "enum": [
+      "MODE_UNSPECIFIED",
+      "VIA_KUBELET",
+      "VIA_CONTROL_PLANE"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "NodeDrainConfig": {
+   "id": "NodeDrainConfig",
+   "properties": {
+    "graceTerminationDuration": {
+     "format": "google-duration",
+     "type": "string"
+    },
+    "pdbTimeoutDuration": {
+     "format": "google-duration",
+     "type": "string"
+    },
+    "respectPdbDuringNodePoolDeletion": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "NodeKernelModuleLoading": {
+   "id": "NodeKernelModuleLoading",
+   "properties": {
+    "policy": {
+     "enum": [
+      "POLICY_UNSPECIFIED",
+      "ENFORCE_SIGNED_MODULES",
+      "DO_NOT_ENFORCE_SIGNED_MODULES"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "NodeKubeletConfig": {
+   "id": "NodeKubeletConfig",
+   "properties": {
+    "allowedUnsafeSysctls": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "containerLogMaxFiles": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "containerLogMaxSize": {
+     "type": "string"
+    },
+    "containerLogMaxWorkers": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "containerLogMonitorInterval": {
+     "format": "google-duration",
+     "type": "string"
+    },
+    "cpuCfsQuota": {
+     "type": "boolean"
+    },
+    "cpuCfsQuotaPeriod": {
+     "type": "string"
+    },
+    "cpuManagerPolicy": {
+     "type": "string"
+    },
+    "crashLoopBackOff": {
+     "$ref": "CrashLoopBackOffConfig"
+    },
+    "evictionMaxPodGracePeriodSeconds": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "evictionMinimumReclaim": {
+     "$ref": "EvictionMinimumReclaim"
+    },
+    "evictionSoft": {
+     "$ref": "EvictionSignals"
+    },
+    "evictionSoftGracePeriod": {
+     "$ref": "EvictionGracePeriod"
+    },
+    "imageGcHighThresholdPercent": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "imageGcLowThresholdPercent": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "imageMaximumGcAge": {
+     "type": "string"
+    },
+    "imageMinimumGcAge": {
+     "type": "string"
+    },
+    "insecureKubeletReadonlyPortEnabled": {
+     "type": "boolean"
+    },
+    "maxParallelImagePulls": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "memoryManager": {
+     "$ref": "MemoryManager"
+    },
+    "podPidsLimit": {
+     "format": "int64",
+     "type": "string"
+    },
+    "reservedResourcesConfig": {
+     "$ref": "ReservedResourcesConfig"
+    },
+    "reservedSystemCpus": {
+     "type": "string"
+    },
+    "shutdownGracePeriodCriticalPodsSeconds": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "shutdownGracePeriodSeconds": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "singleProcessOomKill": {
+     "type": "boolean"
+    },
+    "topologyManager": {
+     "$ref": "TopologyManager"
+    }
+   },
+   "type": "object"
+  },
+  "NodeManagement": {
+   "id": "NodeManagement",
+   "properties": {
+    "autoRepair": {
+     "type": "boolean"
+    },
+    "autoUpgrade": {
+     "type": "boolean"
+    },
+    "upgradeOptions": {
+     "$ref": "AutoUpgradeOptions"
+    }
+   },
+   "type": "object"
+  },
+  "NodeNetworkConfig": {
+   "id": "NodeNetworkConfig",
+   "properties": {
+    "acceleratorNetworkProfile": {
+     "type": "string"
+    },
+    "additionalNodeNetworkConfigs": {
+     "items": {
+      "$ref": "AdditionalNodeNetworkConfig"
+     },
+     "type": "array"
+    },
+    "additionalPodNetworkConfigs": {
+     "items": {
+      "$ref": "AdditionalPodNetworkConfig"
+     },
+     "type": "array"
+    },
+    "createPodRange": {
+     "type": "boolean"
+    },
+    "datapathProvider": {
+     "enum": [
+      "DATAPATH_PROVIDER_UNSPECIFIED",
+      "LEGACY_DATAPATH",
+      "ADVANCED_DATAPATH",
+      "MIGRATE_TO_ADVANCED_DATAPATH",
+      "MIGRATE_TO_LEGACY_DATAPATH"
+     ],
+     "type": "string"
+    },
+    "enablePrivateNodes": {
+     "type": "boolean"
+    },
+    "network": {
+     "type": "string"
+    },
+    "networkPerformanceConfig": {
+     "$ref": "NetworkPerformanceConfig"
+    },
+    "networkTierConfig": {
+     "$ref": "NetworkTierConfig",
+     "description": "Output only.",
+     "readOnly": true
+    },
+    "podCidrOverprovisionConfig": {
+     "$ref": "PodCIDROverprovisionConfig"
+    },
+    "podIpv4CidrBlock": {
+     "type": "string"
+    },
+    "podIpv4RangeUtilization": {
+     "description": "Output only.",
+     "format": "double",
+     "readOnly": true,
+     "type": "number"
+    },
+    "podRange": {
+     "type": "string"
+    },
+    "subnetwork": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "NodePool": {
+   "id": "NodePool",
+   "properties": {
+    "autopilotConfig": {
+     "$ref": "AutopilotConfig"
+    },
+    "autoscaling": {
+     "$ref": "NodePoolAutoscaling"
+    },
+    "bestEffortProvisioning": {
+     "$ref": "BestEffortProvisioning"
+    },
+    "conditions": {
+     "description": "Output only.",
+     "items": {
+      "$ref": "StatusCondition"
+     },
+     "readOnly": true,
+     "type": "array"
+    },
+    "config": {
+     "$ref": "NodeConfig"
+    },
+    "etag": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "initialNodeCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "instanceGroupUrls": {
+     "description": "Output only.",
+     "items": {
+      "type": "string"
+     },
+     "readOnly": true,
+     "type": "array"
+    },
+    "kubeletCertInfo": {
+     "$ref": "KubeletCertInfo",
+     "description": "Output only.",
+     "readOnly": true
+    },
+    "locations": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "maintenancePolicy": {
+     "$ref": "NodePoolMaintenancePolicy"
+    },
+    "management": {
+     "$ref": "NodeManagement"
+    },
+    "maxPodsConstraint": {
+     "$ref": "MaxPodsConstraint"
+    },
+    "name": {
+     "type": "string"
+    },
+    "networkConfig": {
+     "$ref": "NodeNetworkConfig"
+    },
+    "nodeDrainConfig": {
+     "$ref": "NodeDrainConfig"
+    },
+    "placementPolicy": {
+     "$ref": "PlacementPolicy"
+    },
+    "podIpv4CidrSize": {
+     "description": "Output only.",
+     "format": "int32",
+     "readOnly": true,
+     "type": "integer"
+    },
+    "queuedProvisioning": {
+     "$ref": "QueuedProvisioning"
+    },
+    "selfLink": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "status": {
+     "description": "Output only.",
+     "enum": [
+      "STATUS_UNSPECIFIED",
+      "PROVISIONING",
+      "RUNNING",
+      "RUNNING_WITH_ERROR",
+      "RECONCILING",
+      "STOPPING",
+      "ERROR"
+     ],
+     "readOnly": true,
+     "type": "string"
+    },
+    "statusMessage": {
+     "deprecated": true,
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "updateInfo": {
+     "$ref": "UpdateInfo",
+     "description": "Output only.",
+     "readOnly": true
+    },
+    "upgradeSettings": {
+     "$ref": "UpgradeSettings"
+    },
+    "version": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "NodePoolAutoConfig": {
+   "id": "NodePoolAutoConfig",
+   "properties": {
+    "linuxNodeConfig": {
+     "$ref": "LinuxNodeConfig",
+     "description": "Output only.",
+     "readOnly": true
+    },
+    "networkTags": {
+     "$ref": "NetworkTags"
+    },
+    "nodeKubeletConfig": {
+     "$ref": "NodeKubeletConfig"
+    },
+    "resourceManagerTags": {
+     "$ref": "ResourceManagerTags"
+    }
+   },
+   "type": "object"
+  },
+  "NodePoolAutoscaling": {
+   "id": "NodePoolAutoscaling",
+   "properties": {
+    "autoprovisioned": {
+     "type": "boolean"
+    },
+    "enabled": {
+     "type": "boolean"
+    },
+    "locationPolicy": {
+     "enum": [
+      "LOCATION_POLICY_UNSPECIFIED",
+      "BALANCED",
+      "ANY"
+     ],
+     "type": "string"
+    },
+    "maxNodeCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "minNodeCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "totalMaxNodeCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "totalMinNodeCount": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "NodePoolDefaults": {
+   "id": "NodePoolDefaults",
+   "properties": {
+    "nodeConfigDefaults": {
+     "$ref": "NodeConfigDefaults"
+    }
+   },
+   "type": "object"
+  },
+  "NodePoolLoggingConfig": {
+   "id": "NodePoolLoggingConfig",
+   "properties": {
+    "variantConfig": {
+     "$ref": "LoggingVariantConfig"
+    }
+   },
+   "type": "object"
+  },
+  "NodePoolMaintenancePolicy": {
+   "id": "NodePoolMaintenancePolicy",
+   "properties": {
+    "exclusionUntilEndOfSupport": {
+     "$ref": "ExclusionUntilEndOfSupport"
+    }
+   },
+   "type": "object"
+  },
+  "NodeReadinessConfig": {
+   "id": "NodeReadinessConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "NodeTaint": {
+   "id": "NodeTaint",
+   "properties": {
+    "effect": {
+     "enum": [
+      "EFFECT_UNSPECIFIED",
+      "NO_SCHEDULE",
+      "PREFER_NO_SCHEDULE",
+      "NO_EXECUTE"
+     ],
+     "type": "string"
+    },
+    "key": {
+     "type": "string"
+    },
+    "value": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "NodeVfioConfig": {
+   "id": "NodeVfioConfig",
+   "properties": {
+    "dmaEntryLimit": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "NotificationConfig": {
+   "id": "NotificationConfig",
+   "properties": {
+    "pubsub": {
+     "$ref": "PubSub"
+    }
+   },
+   "type": "object"
+  },
+  "Operation": {
+   "id": "Operation",
+   "properties": {
+    "clusterConditions": {
+     "deprecated": true,
+     "items": {
+      "$ref": "StatusCondition"
+     },
+     "type": "array"
+    },
+    "detail": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "endTime": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "error": {
+     "$ref": "Status"
+    },
+    "location": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "name": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "nodepoolConditions": {
+     "deprecated": true,
+     "items": {
+      "$ref": "StatusCondition"
+     },
+     "type": "array"
+    },
+    "operationType": {
+     "description": "Output only.",
+     "enum": [
+      "TYPE_UNSPECIFIED",
+      "CREATE_CLUSTER",
+      "DELETE_CLUSTER",
+      "UPGRADE_MASTER",
+      "UPGRADE_NODES",
+      "REPAIR_CLUSTER",
+      "UPDATE_CLUSTER",
+      "CREATE_NODE_POOL",
+      "DELETE_NODE_POOL",
+      "SET_NODE_POOL_MANAGEMENT",
+      "AUTO_REPAIR_NODES",
+      "AUTO_UPGRADE_NODES",
+      "SET_LABELS",
+      "SET_MASTER_AUTH",
+      "SET_NODE_POOL_SIZE",
+      "SET_NETWORK_POLICY",
+      "SET_MAINTENANCE_POLICY",
+      "RESIZE_CLUSTER",
+      "FLEET_FEATURE_UPGRADE"
+     ],
+     "enumDeprecated": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false
+     ],
+     "readOnly": true,
+     "type": "string"
+    },
+    "progress": {
+     "$ref": "OperationProgress",
+     "description": "Output only.",
+     "readOnly": true
+    },
+    "selfLink": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "startTime": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "status": {
+     "description": "Output only.",
+     "enum": [
+      "STATUS_UNSPECIFIED",
+      "PENDING",
+      "RUNNING",
+      "DONE",
+      "ABORTING"
+     ],
+     "readOnly": true,
+     "type": "string"
+    },
+    "statusMessage": {
+     "deprecated": true,
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "targetLink": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "zone": {
+     "deprecated": true,
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "OperationError": {
+   "id": "OperationError",
+   "properties": {
+    "errorMessage": {
+     "type": "string"
+    },
+    "keyName": {
+     "type": "string"
+    },
+    "timestamp": {
+     "format": "google-datetime",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "OperationProgress": {
+   "id": "OperationProgress",
+   "properties": {
+    "metrics": {
+     "items": {
+      "$ref": "Metric"
+     },
+     "type": "array"
+    },
+    "name": {
+     "type": "string"
+    },
+    "stages": {
+     "items": {
+      "$ref": "OperationProgress"
+     },
+     "type": "array"
+    },
+    "status": {
+     "enum": [
+      "STATUS_UNSPECIFIED",
+      "PENDING",
+      "RUNNING",
+      "DONE",
+      "ABORTING"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ParallelstoreCsiDriverConfig": {
+   "deprecated": true,
+   "id": "ParallelstoreCsiDriverConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ParentProductConfig": {
+   "id": "ParentProductConfig",
+   "properties": {
+    "labels": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "type": "object"
+    },
+    "productName": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PlacementPolicy": {
+   "id": "PlacementPolicy",
+   "properties": {
+    "policyName": {
+     "type": "string"
+    },
+    "tpuTopology": {
+     "type": "string"
+    },
+    "type": {
+     "enum": [
+      "TYPE_UNSPECIFIED",
+      "COMPACT"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PodAutoscaling": {
+   "id": "PodAutoscaling",
+   "properties": {
+    "hpaProfile": {
+     "enum": [
+      "HPA_PROFILE_UNSPECIFIED",
+      "NONE",
+      "PERFORMANCE"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PodCIDROverprovisionConfig": {
+   "id": "PodCIDROverprovisionConfig",
+   "properties": {
+    "disable": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "PodSnapshotConfig": {
+   "id": "PodSnapshotConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "PrivateClusterConfig": {
+   "id": "PrivateClusterConfig",
+   "properties": {
+    "enablePrivateEndpoint": {
+     "deprecated": true,
+     "type": "boolean"
+    },
+    "enablePrivateNodes": {
+     "deprecated": true,
+     "type": "boolean"
+    },
+    "masterGlobalAccessConfig": {
+     "$ref": "PrivateClusterMasterGlobalAccessConfig",
+     "deprecated": true
+    },
+    "masterIpv4CidrBlock": {
+     "type": "string"
+    },
+    "peeringName": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "privateEndpoint": {
+     "deprecated": true,
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "privateEndpointSubnetwork": {
+     "deprecated": true,
+     "type": "string"
+    },
+    "publicEndpoint": {
+     "deprecated": true,
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "PrivateClusterMasterGlobalAccessConfig": {
+   "id": "PrivateClusterMasterGlobalAccessConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "PrivateRegistryAccessConfig": {
+   "id": "PrivateRegistryAccessConfig",
+   "properties": {
+    "certificateAuthorityDomainConfig": {
+     "items": {
+      "$ref": "CertificateAuthorityDomainConfig"
+     },
+     "type": "array"
+    },
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "PrivilegedAdmissionConfig": {
+   "id": "PrivilegedAdmissionConfig",
+   "properties": {
+    "allowlistPaths": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "PubSub": {
+   "id": "PubSub",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "filter": {
+     "$ref": "Filter"
+    },
+    "topic": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "QueuedProvisioning": {
+   "id": "QueuedProvisioning",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "RBACBindingConfig": {
+   "id": "RBACBindingConfig",
+   "properties": {
+    "enableInsecureBindingSystemAuthenticated": {
+     "type": "boolean"
+    },
+    "enableInsecureBindingSystemUnauthenticated": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "RangeInfo": {
+   "id": "RangeInfo",
+   "properties": {
+    "rangeName": {
+     "description": "Output only.",
+     "readOnly": true,
+     "type": "string"
+    },
+    "utilization": {
+     "description": "Output only.",
+     "format": "double",
+     "readOnly": true,
+     "type": "number"
+    }
+   },
+   "type": "object"
+  },
+  "RayClusterLoggingConfig": {
+   "id": "RayClusterLoggingConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "RayClusterMonitoringConfig": {
+   "id": "RayClusterMonitoringConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "RayOperatorConfig": {
+   "id": "RayOperatorConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "rayClusterLoggingConfig": {
+     "$ref": "RayClusterLoggingConfig"
+    },
+    "rayClusterMonitoringConfig": {
+     "$ref": "RayClusterMonitoringConfig"
+    }
+   },
+   "type": "object"
+  },
+  "RecurringMaintenanceWindow": {
+   "id": "RecurringMaintenanceWindow",
+   "properties": {
+    "delayUntil": {
+     "$ref": "Date"
+    },
+    "recurrence": {
+     "type": "string"
+    },
+    "windowDuration": {
+     "format": "google-duration",
+     "type": "string"
+    },
+    "windowStartTime": {
+     "$ref": "TimeOfDay"
+    }
+   },
+   "type": "object"
+  },
+  "RecurringTimeWindow": {
+   "id": "RecurringTimeWindow",
+   "properties": {
+    "recurrence": {
+     "type": "string"
+    },
+    "window": {
+     "$ref": "TimeWindow"
+    }
+   },
+   "type": "object"
+  },
+  "RegistryHeader": {
+   "id": "RegistryHeader",
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "value": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "RegistryHostConfig": {
+   "id": "RegistryHostConfig",
+   "properties": {
+    "hosts": {
+     "items": {
+      "$ref": "HostConfig"
+     },
+     "type": "array"
+    },
+    "server": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ReleaseChannel": {
+   "id": "ReleaseChannel",
+   "properties": {
+    "channel": {
+     "enum": [
+      "UNSPECIFIED",
+      "RAPID",
+      "REGULAR",
+      "STABLE",
+      "EXTENDED"
+     ],
+     "enumDeprecated": [
+      true,
+      false,
+      false,
+      false,
+      false
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ReservationAffinity": {
+   "id": "ReservationAffinity",
+   "properties": {
+    "consumeReservationType": {
+     "enum": [
+      "UNSPECIFIED",
+      "NO_RESERVATION",
+      "ANY_RESERVATION",
+      "SPECIFIC_RESERVATION",
+      "ANY_RESERVATION_THEN_FAIL"
+     ],
+     "type": "string"
+    },
+    "key": {
+     "type": "string"
+    },
+    "values": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "ReservedResourcesConfig": {
+   "id": "ReservedResourcesConfig",
+   "properties": {
+    "cpuReservedMillicore": {
+     "format": "int64",
+     "type": "string"
+    },
+    "effectiveCpuReservedMillicore": {
+     "description": "Output only.",
+     "format": "int64",
+     "readOnly": true,
+     "type": "string"
+    },
+    "effectiveMemoryReservedMib": {
+     "description": "Output only.",
+     "format": "int64",
+     "readOnly": true,
+     "type": "string"
+    },
+    "memoryReservedMib": {
+     "format": "int64",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ResolvedConfEntry": {
+   "id": "ResolvedConfEntry",
+   "properties": {
+    "key": {
+     "type": "string"
+    },
+    "value": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "ResourceLimit": {
+   "id": "ResourceLimit",
+   "properties": {
+    "maximum": {
+     "format": "int64",
+     "type": "string"
+    },
+    "minimum": {
+     "format": "int64",
+     "type": "string"
+    },
+    "resourceType": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ResourceManagerTags": {
+   "id": "ResourceManagerTags",
+   "properties": {
+    "tags": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "type": "object"
+    }
+   },
+   "type": "object"
+  },
+  "ResourceUsageExportConfig": {
+   "id": "ResourceUsageExportConfig",
+   "properties": {
+    "bigqueryDestination": {
+     "$ref": "BigQueryDestination"
+    },
+    "consumptionMeteringConfig": {
+     "$ref": "ConsumptionMeteringConfig"
+    },
+    "enableNetworkEgressMetering": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "RollbackSafeUpgrade": {
+   "id": "RollbackSafeUpgrade",
+   "properties": {
+    "controlPlaneSoakDuration": {
+     "format": "google-duration",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "RotationConfig": {
+   "id": "RotationConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "rotationInterval": {
+     "format": "google-duration",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "SandboxConfig": {
+   "id": "SandboxConfig",
+   "properties": {
+    "type": {
+     "enum": [
+      "UNSPECIFIED",
+      "GVISOR",
+      "MICROVM"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ScheduleUpgradeConfig": {
+   "id": "ScheduleUpgradeConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "SecondaryBootDisk": {
+   "id": "SecondaryBootDisk",
+   "properties": {
+    "diskImage": {
+     "type": "string"
+    },
+    "mode": {
+     "enum": [
+      "MODE_UNSPECIFIED",
+      "CONTAINER_IMAGE_CACHE"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "SecondaryBootDiskUpdateStrategy": {
+   "id": "SecondaryBootDiskUpdateStrategy",
+   "properties": {},
+   "type": "object"
+  },
+  "SecretManagerConfig": {
+   "id": "SecretManagerConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "rotationConfig": {
+     "$ref": "RotationConfig"
+    }
+   },
+   "type": "object"
+  },
+  "SecretSyncConfig": {
+   "id": "SecretSyncConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "rotationConfig": {
+     "$ref": "SyncRotationConfig"
+    }
+   },
+   "type": "object"
+  },
+  "SecurityPostureConfig": {
+   "id": "SecurityPostureConfig",
+   "properties": {
+    "mode": {
+     "enum": [
+      "MODE_UNSPECIFIED",
+      "DISABLED",
+      "BASIC",
+      "ENTERPRISE"
+     ],
+     "enumDeprecated": [
+      false,
+      false,
+      false,
+      true
+     ],
+     "type": "string"
+    },
+    "vulnerabilityMode": {
+     "deprecated": true,
+     "enum": [
+      "VULNERABILITY_MODE_UNSPECIFIED",
+      "VULNERABILITY_DISABLED",
+      "VULNERABILITY_BASIC",
+      "VULNERABILITY_ENTERPRISE"
+     ],
+     "enumDeprecated": [
+      false,
+      false,
+      true,
+      true
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ServiceExternalIPsConfig": {
+   "id": "ServiceExternalIPsConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ShieldedInstanceConfig": {
+   "id": "ShieldedInstanceConfig",
+   "properties": {
+    "enableIntegrityMonitoring": {
+     "type": "boolean"
+    },
+    "enableSecureBoot": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ShieldedNodes": {
+   "id": "ShieldedNodes",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "SliceControllerConfig": {
+   "id": "SliceControllerConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "SlurmOperatorConfig": {
+   "id": "SlurmOperatorConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "SoleTenantConfig": {
+   "id": "SoleTenantConfig",
+   "properties": {
+    "minNodeCpus": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "nodeAffinities": {
+     "items": {
+      "$ref": "NodeAffinity"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "StandardRolloutPolicy": {
+   "id": "StandardRolloutPolicy",
+   "properties": {
+    "batchNodeCount": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "batchPercentage": {
+     "format": "float",
+     "type": "number"
+    },
+    "batchSoakDuration": {
+     "format": "google-duration",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "StatefulHAConfig": {
+   "id": "StatefulHAConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "Status": {
+   "id": "Status",
+   "properties": {
+    "code": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "details": {
+     "items": {
+      "additionalProperties": {
+       "type": "any"
+      },
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "message": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "StatusCondition": {
+   "id": "StatusCondition",
+   "properties": {
+    "canonicalCode": {
+     "enum": [
+      "OK",
+      "CANCELLED",
+      "UNKNOWN",
+      "INVALID_ARGUMENT",
+      "DEADLINE_EXCEEDED",
+      "NOT_FOUND",
+      "ALREADY_EXISTS",
+      "PERMISSION_DENIED",
+      "UNAUTHENTICATED",
+      "RESOURCE_EXHAUSTED",
+      "FAILED_PRECONDITION",
+      "ABORTED",
+      "OUT_OF_RANGE",
+      "UNIMPLEMENTED",
+      "INTERNAL",
+      "UNAVAILABLE",
+      "DATA_LOSS"
+     ],
+     "type": "string"
+    },
+    "code": {
+     "deprecated": true,
+     "enum": [
+      "UNKNOWN",
+      "GCE_STOCKOUT",
+      "GKE_SERVICE_ACCOUNT_DELETED",
+      "GCE_QUOTA_EXCEEDED",
+      "SET_BY_OPERATOR",
+      "CLOUD_KMS_KEY_ERROR",
+      "CA_EXPIRING",
+      "NODE_SERVICE_ACCOUNT_MISSING_PERMISSIONS",
+      "CLOUD_KMS_KEY_DESTROYED"
+     ],
+     "type": "string"
+    },
+    "message": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "SwapConfig": {
+   "id": "SwapConfig",
+   "properties": {
+    "bootDiskProfile": {
+     "$ref": "BootDiskProfile"
+    },
+    "dedicatedLocalSsdProfile": {
+     "$ref": "DedicatedLocalSsdProfile"
+    },
+    "enabled": {
+     "type": "boolean"
+    },
+    "encryptionConfig": {
+     "$ref": "EncryptionConfig"
+    },
+    "ephemeralLocalSsdProfile": {
+     "$ref": "EphemeralLocalSsdProfile"
+    }
+   },
+   "type": "object"
+  },
+  "SyncRotationConfig": {
+   "id": "SyncRotationConfig",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    },
+    "rotationInterval": {
+     "format": "google-duration",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "TaintConfig": {
+   "id": "TaintConfig",
+   "properties": {
+    "architectureTaintBehavior": {
+     "enum": [
+      "ARCHITECTURE_TAINT_BEHAVIOR_UNSPECIFIED",
+      "NONE",
+      "ARM"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "TimeOfDay": {
+   "id": "TimeOfDay",
+   "properties": {
+    "hours": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "minutes": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "nanos": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "seconds": {
+     "format": "int32",
+     "type": "integer"
+    }
+   },
+   "type": "object"
+  },
+  "TimeWindow": {
+   "id": "TimeWindow",
+   "properties": {
+    "endTime": {
+     "format": "google-datetime",
+     "type": "string"
+    },
+    "maintenanceExclusionOptions": {
+     "$ref": "MaintenanceExclusionOptions"
+    },
+    "startTime": {
+     "format": "google-datetime",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "TopologyManager": {
+   "id": "TopologyManager",
+   "properties": {
+    "policy": {
+     "type": "string"
+    },
+    "scope": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "UpdateClusterRequest": {
+   "id": "UpdateClusterRequest",
+   "properties": {
+    "clusterId": {
+     "deprecated": true,
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "projectId": {
+     "deprecated": true,
+     "type": "string"
+    },
+    "update": {
+     "$ref": "ClusterUpdate"
+    },
+    "zone": {
+     "deprecated": true,
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "UpdateInfo": {
+   "id": "UpdateInfo",
+   "properties": {
+    "blueGreenInfo": {
+     "$ref": "BlueGreenInfo"
+    }
+   },
+   "type": "object"
+  },
+  "UpgradeSettings": {
+   "id": "UpgradeSettings",
+   "properties": {
+    "blueGreenSettings": {
+     "$ref": "BlueGreenSettings"
+    },
+    "maxSurge": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "maxUnavailable": {
+     "format": "int32",
+     "type": "integer"
+    },
+    "strategy": {
+     "enum": [
+      "NODE_POOL_UPDATE_STRATEGY_UNSPECIFIED",
+      "BLUE_GREEN",
+      "SURGE",
+      "SHORT_LIVED"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "UserManagedKeysConfig": {
+   "id": "UserManagedKeysConfig",
+   "properties": {
+    "aggregationCa": {
+     "type": "string"
+    },
+    "clusterCa": {
+     "type": "string"
+    },
+    "controlPlaneDiskEncryptionKey": {
+     "type": "string"
+    },
+    "controlPlaneDiskEncryptionKeyVersions": {
+     "description": "Output only.",
+     "items": {
+      "type": "string"
+     },
+     "readOnly": true,
+     "type": "array"
+    },
+    "etcdApiCa": {
+     "type": "string"
+    },
+    "etcdPeerCa": {
+     "type": "string"
+    },
+    "gkeopsEtcdBackupEncryptionKey": {
+     "type": "string"
+    },
+    "serviceAccountSigningKeys": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "serviceAccountVerificationKeys": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "VerticalPodAutoscaling": {
+   "id": "VerticalPodAutoscaling",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "VirtualNIC": {
+   "id": "VirtualNIC",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "WindowsNodeConfig": {
+   "id": "WindowsNodeConfig",
+   "properties": {
+    "osVersion": {
+     "enum": [
+      "OS_VERSION_UNSPECIFIED",
+      "OS_VERSION_LTSC2019",
+      "OS_VERSION_LTSC2022"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "WizSensorConfig": {
+   "id": "WizSensorConfig",
+   "properties": {
+    "apiKeySecretUri": {
+     "type": "string"
+    },
+    "enabled": {
+     "type": "boolean"
+    },
+    "proxySecretUri": {
+     "type": "string"
+    },
+    "registrySecretUri": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "WorkloadIdentityConfig": {
+   "id": "WorkloadIdentityConfig",
+   "properties": {
+    "workloadPool": {
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "WorkloadMetadataConfig": {
+   "id": "WorkloadMetadataConfig",
+   "properties": {
+    "mode": {
+     "enum": [
+      "MODE_UNSPECIFIED",
+      "GCE_METADATA",
+      "GKE_METADATA"
+     ],
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "WorkloadPolicyConfig": {
+   "id": "WorkloadPolicyConfig",
+   "properties": {
+    "allowNetAdmin": {
+     "type": "boolean"
+    },
+    "autopilotCompatibilityAuditingEnabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "WritableCgroups": {
+   "id": "WritableCgroups",
+   "properties": {
+    "enabled": {
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  }
+ },
+ "servicePath": "",
+ "version": "v1"
+}

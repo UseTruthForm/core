@@ -1,0 +1,60 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: web-orders
+  namespace: shop
+spec:
+  scaleTargetRef:
+    name: web
+  triggers:
+    - type: azure-servicebus
+      metadata:
+        queueName: orders
+        namespace: shop
+        messageCount: "20"
+        activationMessageCount: "2"
+      authenticationRef:
+        name: servicebus
+    - type: azure-servicebus
+      metadata:
+        topicName: events
+        subscriptionName: audit
+        connectionFromEnv: SERVICEBUS_CONNECTION
+    - type: azure-servicebus
+      metadata:
+        topicName: events
+        subscriptionName: fraud
+        namespace: shop
+    - type: azure-servicebus
+      metadata:
+        queueName: refunds
+        namespace: shop
+    - type: azure-servicebus
+      metadata:
+        queueName: orders-.*
+        namespace: shop
+        useRegex: "true"
+    - type: azure-queue
+      metadata:
+        queueName: jobs
+        accountName: shopassets
+    - type: cron
+      metadata:
+        timezone: Etc/UTC
+        start: 0 6 * * *
+        end: 0 20 * * *
+        desiredReplicas: "2"
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: servicebus
+  namespace: shop
+spec:
+  podIdentity:
+    provider: azure-workload
+  azureKeyVault:
+    vaultUri: https://shop.vault.azure.net/
+    secrets:
+      - parameter: connection
+        name: api-abc123

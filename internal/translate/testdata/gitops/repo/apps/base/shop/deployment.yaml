@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: web
+      containers:
+        - name: web
+          image: shopacr.azurecr.io/shop/web:1.4.2
+          env:
+            - name: SERVICEBUS_NAMESPACE
+              value: shop.servicebus.windows.net
+            - name: IMAGES_URL
+              value: https://shopassets.blob.core.windows.net/images
+            - name: ARCHIVE_URL
+              value: https://shopassets.blob.core.windows.net
+            - name: SHARE
+              value: shopassets.file.core.windows.net
+            - name: DB_HOST
+              value: shop-pg.postgres.database.azure.com
+            - name: OLD_DB_HOST
+              value: legacy-pg.postgres.database.azure.com
+            - name: CACHE
+              value: shopcache.redis.cache.windows.net:6380
+            - name: AUTHORITY
+              value: https://login.microsoftonline.com/
+            - name: DOCS
+              value: https://learn.microsoft.com/azure
+        - name: proxy
+          image: partner.azurecr.io/tools/proxy@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+        - name: static
+          image: pubimages.azurecr.io/static:latest
+        - name: odd
+          image: 9lives.azurecr.io/odd:1
+      volumes:
+        - name: secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: web
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: web-cache
+  namespace: shop
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: web-shared
+  namespace: shop
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: azurefile-csi
+  resources:
+    requests:
+      storage: 10Gi

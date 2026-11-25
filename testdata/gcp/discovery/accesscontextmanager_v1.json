@@ -1,0 +1,884 @@
+{
+ "name": "accesscontextmanager",
+ "resources": {
+  "accessPolicies": {
+   "resources": {
+    "servicePerimeters": {
+     "methods": {
+      "commit": {
+       "description": "Commits the dry-run specification for all the service perimeters in an access policy. A commit operation on a service perimeter involves copying its `spec` field to the `status` field of the service perimeter. Only service perimeters with `use_explicit_dry_run_spec` field set to true are affected by a commit operation. The long-running operation from this RPC has a successful status after the dry-run specifications for all the service perimeters have been committed. If a commit fails, it causes the long-running operation to return an error response and the entire commit operation is cancelled. When successful, the `Operation.response` field contains `CommitServicePerimetersResponse`. The `dry_run` and the `spec` fields are cleared after a successful commit operation.",
+       "flatPath": "v1/accessPolicies/{accessPoliciesId}/servicePerimeters:commit",
+       "httpMethod": "POST",
+       "id": "accesscontextmanager.accessPolicies.servicePerimeters.commit",
+       "parameterOrder": [
+        "parent"
+       ],
+       "parameters": {
+        "parent": {
+         "description": "Required. Resource name for the parent Access Policy which owns all Service Perimeters in scope for the commit operation. Format: `accessPolicies/{policy_id}`",
+         "location": "path",
+         "pattern": "^accessPolicies/[^/]+$",
+         "required": true,
+         "type": "string"
+        }
+       },
+       "path": "v1/{+parent}/servicePerimeters:commit",
+       "request": {
+        "$ref": "CommitServicePerimetersRequest"
+       },
+       "response": {
+        "$ref": "Operation"
+       },
+       "scopes": [
+        "https://www.googleapis.com/auth/cloud-platform"
+       ]
+      },
+      "create": {
+       "description": "Creates a service perimeter. The long-running operation from this RPC has a successful status after the service perimeter propagates to long-lasting storage. If a service perimeter contains errors, an error response is returned for the first error encountered.",
+       "flatPath": "v1/accessPolicies/{accessPoliciesId}/servicePerimeters",
+       "httpMethod": "POST",
+       "id": "accesscontextmanager.accessPolicies.servicePerimeters.create",
+       "parameterOrder": [
+        "parent"
+       ],
+       "parameters": {
+        "parent": {
+         "description": "Required. Resource name for the access policy which owns this Service Perimeter. Format: `accessPolicies/{policy_id}`",
+         "location": "path",
+         "pattern": "^accessPolicies/[^/]+$",
+         "required": true,
+         "type": "string"
+        }
+       },
+       "path": "v1/{+parent}/servicePerimeters",
+       "request": {
+        "$ref": "ServicePerimeter"
+       },
+       "response": {
+        "$ref": "Operation"
+       },
+       "scopes": [
+        "https://www.googleapis.com/auth/cloud-platform"
+       ]
+      },
+      "delete": {
+       "description": "Deletes a service perimeter based on the resource name. The long-running operation from this RPC has a successful status after the service perimeter is removed from long-lasting storage.",
+       "flatPath": "v1/accessPolicies/{accessPoliciesId}/servicePerimeters/{servicePerimetersId}",
+       "httpMethod": "DELETE",
+       "id": "accesscontextmanager.accessPolicies.servicePerimeters.delete",
+       "parameterOrder": [
+        "name"
+       ],
+       "parameters": {
+        "name": {
+         "description": "Required. Resource name for the Service Perimeter. Format: `accessPolicies/{policy_id}/servicePerimeters/{service_perimeter_id}`",
+         "location": "path",
+         "pattern": "^accessPolicies/[^/]+/servicePerimeters/[^/]+$",
+         "required": true,
+         "type": "string"
+        }
+       },
+       "path": "v1/{+name}",
+       "response": {
+        "$ref": "Operation"
+       },
+       "scopes": [
+        "https://www.googleapis.com/auth/cloud-platform"
+       ]
+      },
+      "get": {
+       "description": "Gets a service perimeter based on the resource name.",
+       "flatPath": "v1/accessPolicies/{accessPoliciesId}/servicePerimeters/{servicePerimetersId}",
+       "httpMethod": "GET",
+       "id": "accesscontextmanager.accessPolicies.servicePerimeters.get",
+       "parameterOrder": [
+        "name"
+       ],
+       "parameters": {
+        "deletedPrincipalSyntax": {
+         "description": "Optional. If true, the response will contain the deleted principal syntax for identities that support it.",
+         "enum": [
+          "DELETED_PRINCIPAL_SYNTAX_SUPPORT_UNSPECIFIED",
+          "DELETED_PRINCIPAL_SYNTAX_SUPPORT_DISABLED",
+          "DELETED_PRINCIPAL_SYNTAX_SUPPORT_ENABLED"
+         ],
+         "enumDescriptions": [
+          "Deleted principal syntax support was not specified.",
+          "Deleted principal syntax is disabled and no identities in the request or response will contain deleted principal syntax.",
+          "The request and response can contain identities with deleted IAM principal syntax."
+         ],
+         "location": "query",
+         "type": "string"
+        },
+        "name": {
+         "description": "Required. Resource name for the Service Perimeter. Format: `accessPolicies/{policy_id}/servicePerimeters/{service_perimeter_id}`",
+         "location": "path",
+         "pattern": "^accessPolicies/[^/]+/servicePerimeters/[^/]+$",
+         "required": true,
+         "type": "string"
+        }
+       },
+       "path": "v1/{+name}",
+       "response": {
+        "$ref": "ServicePerimeter"
+       },
+       "scopes": [
+        "https://www.googleapis.com/auth/cloud-platform"
+       ]
+      },
+      "list": {
+       "description": "Lists all service perimeters for an access policy.",
+       "flatPath": "v1/accessPolicies/{accessPoliciesId}/servicePerimeters",
+       "httpMethod": "GET",
+       "id": "accesscontextmanager.accessPolicies.servicePerimeters.list",
+       "parameterOrder": [
+        "parent"
+       ],
+       "parameters": {
+        "deletedPrincipalSyntax": {
+         "description": "Optional. If true, the response will contain the deleted principal syntax for identities that support it.",
+         "enum": [
+          "DELETED_PRINCIPAL_SYNTAX_SUPPORT_UNSPECIFIED",
+          "DELETED_PRINCIPAL_SYNTAX_SUPPORT_DISABLED",
+          "DELETED_PRINCIPAL_SYNTAX_SUPPORT_ENABLED"
+         ],
+         "enumDescriptions": [
+          "Deleted principal syntax support was not specified.",
+          "Deleted principal syntax is disabled and no identities in the request or response will contain deleted principal syntax.",
+          "The request and response can contain identities with deleted IAM principal syntax."
+         ],
+         "location": "query",
+         "type": "string"
+        },
+        "pageSize": {
+         "description": "Number of Service Perimeters to include in the list. Default 100.",
+         "format": "int32",
+         "location": "query",
+         "type": "integer"
+        },
+        "pageToken": {
+         "description": "Next page token for the next batch of Service Perimeter instances. Defaults to the first page of results.",
+         "location": "query",
+         "type": "string"
+        },
+        "parent": {
+         "description": "Required. Resource name for the access policy to list Service Perimeters from. Format: `accessPolicies/{policy_id}`",
+         "location": "path",
+         "pattern": "^accessPolicies/[^/]+$",
+         "required": true,
+         "type": "string"
+        }
+       },
+       "path": "v1/{+parent}/servicePerimeters",
+       "response": {
+        "$ref": "ListServicePerimetersResponse"
+       },
+       "scopes": [
+        "https://www.googleapis.com/auth/cloud-platform"
+       ]
+      },
+      "patch": {
+       "description": "Updates a service perimeter. The long-running operation from this RPC has a successful status after the service perimeter propagates to long-lasting storage. If a service perimeter contains errors, an error response is returned for the first error encountered.",
+       "flatPath": "v1/accessPolicies/{accessPoliciesId}/servicePerimeters/{servicePerimetersId}",
+       "httpMethod": "PATCH",
+       "id": "accesscontextmanager.accessPolicies.servicePerimeters.patch",
+       "parameterOrder": [
+        "name"
+       ],
+       "parameters": {
+        "deletedPrincipalSyntax": {
+         "description": "Optional. If true, the response will contain the deleted principal syntax for identities that support it and the request can contain identities with deleted principal syntax.",
+         "enum": [
+          "DELETED_PRINCIPAL_SYNTAX_SUPPORT_UNSPECIFIED",
+          "DELETED_PRINCIPAL_SYNTAX_SUPPORT_DISABLED",
+          "DELETED_PRINCIPAL_SYNTAX_SUPPORT_ENABLED"
+         ],
+         "enumDescriptions": [
+          "Deleted principal syntax support was not specified.",
+          "Deleted principal syntax is disabled and no identities in the request or response will contain deleted principal syntax.",
+          "The request and response can contain identities with deleted IAM principal syntax."
+         ],
+         "location": "query",
+         "type": "string"
+        },
+        "name": {
+         "description": "Identifier. Resource name for the `ServicePerimeter`. Format: `accessPolicies/{access_policy}/servicePerimeters/{service_perimeter}`. The `service_perimeter` component must begin with a letter, followed by alphanumeric characters or `_`. After you create a `ServicePerimeter`, you cannot change its `name`.",
+         "location": "path",
+         "pattern": "^accessPolicies/[^/]+/servicePerimeters/[^/]+$",
+         "required": true,
+         "type": "string"
+        },
+        "updateMask": {
+         "description": "Required. Mask to control which fields get updated. Must be non-empty.",
+         "format": "google-fieldmask",
+         "location": "query",
+         "type": "string"
+        }
+       },
+       "path": "v1/{+name}",
+       "request": {
+        "$ref": "ServicePerimeter"
+       },
+       "response": {
+        "$ref": "Operation"
+       },
+       "scopes": [
+        "https://www.googleapis.com/auth/cloud-platform"
+       ]
+      },
+      "replaceAll": {
+       "description": "Replaces all existing service perimeters in an access policy with the service perimeters provided. This is done atomically. The long-running operation from this RPC has a successful status after all replacements propagate to long-lasting storage. Replacements containing errors result in an error response for the first error encountered. Upon an error, replacements are cancelled and existing service perimeters are not affected. The `Operation.response` field contains `ReplaceServicePerimetersResponse`.",
+       "flatPath": "v1/accessPolicies/{accessPoliciesId}/servicePerimeters:replaceAll",
+       "httpMethod": "POST",
+       "id": "accesscontextmanager.accessPolicies.servicePerimeters.replaceAll",
+       "parameterOrder": [
+        "parent"
+       ],
+       "parameters": {
+        "parent": {
+         "description": "Required. Resource name for the access policy which owns these Service Perimeters. Format: `accessPolicies/{policy_id}`",
+         "location": "path",
+         "pattern": "^accessPolicies/[^/]+$",
+         "required": true,
+         "type": "string"
+        }
+       },
+       "path": "v1/{+parent}/servicePerimeters:replaceAll",
+       "request": {
+        "$ref": "ReplaceServicePerimetersRequest"
+       },
+       "response": {
+        "$ref": "Operation"
+       },
+       "scopes": [
+        "https://www.googleapis.com/auth/cloud-platform"
+       ]
+      },
+      "testIamPermissions": {
+       "description": "Returns the IAM permissions that the caller has on the specified Access Context Manager resource. The resource can be an AccessPolicy, AccessLevel, or ServicePerimeter. This method does not support other resources. **IAM Permissions**: No specific IAM permission is required to call this method. It returns the subset of the requested permissions that the caller possesses.",
+       "flatPath": "v1/accessPolicies/{accessPoliciesId}/servicePerimeters/{servicePerimetersId}:testIamPermissions",
+       "httpMethod": "POST",
+       "id": "accesscontextmanager.accessPolicies.servicePerimeters.testIamPermissions",
+       "parameterOrder": [
+        "resource"
+       ],
+       "parameters": {
+        "resource": {
+         "description": "REQUIRED: The resource for which the policy detail is being requested. See [Resource names](https://cloud.google.com/apis/design/resource_names) for the appropriate value for this field.",
+         "location": "path",
+         "pattern": "^accessPolicies/[^/]+/servicePerimeters/[^/]+$",
+         "required": true,
+         "type": "string"
+        }
+       },
+       "path": "v1/{+resource}:testIamPermissions",
+       "request": {
+        "$ref": "TestIamPermissionsRequest"
+       },
+       "response": {
+        "$ref": "TestIamPermissionsResponse"
+       },
+       "scopes": [
+        "https://www.googleapis.com/auth/cloud-platform"
+       ]
+      }
+     }
+    }
+   }
+  }
+ },
+ "rootUrl": "https://accesscontextmanager.googleapis.com/",
+ "schemas": {
+  "AddRequestHeader": {
+   "description": "Adds a request header to the API.",
+   "id": "AddRequestHeader",
+   "properties": {
+    "key": {
+     "description": "HTTP header key.",
+     "type": "string"
+    },
+    "value": {
+     "description": "HTTP header value.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ApiOperation": {
+   "description": "Identification for an API Operation.",
+   "id": "ApiOperation",
+   "properties": {
+    "methodSelectors": {
+     "description": "API methods or permissions to allow. Method or permission must belong to the service specified by `service_name` field. A single MethodSelector entry with `*` specified for the `method` field will allow all methods AND permissions for the service specified in `service_name`.",
+     "items": {
+      "$ref": "MethodSelector"
+     },
+     "type": "array"
+    },
+    "serviceName": {
+     "description": "The name of the API whose methods or permissions the IngressPolicy or EgressPolicy want to allow. A single ApiOperation with `service_name` field set to `*` will allow all methods AND permissions for all services.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "CommitServicePerimetersRequest": {
+   "description": "A request to commit dry-run specs in all Service Perimeters belonging to an Access Policy.",
+   "id": "CommitServicePerimetersRequest",
+   "properties": {
+    "etag": {
+     "description": "Optional. The etag for the version of the Access Policy that this commit operation is to be performed on. If, at the time of commit, the etag for the Access Policy stored in Access Context Manager is different from the specified etag, then the commit operation will not be performed and the call will fail. This field is not required. If etag is not provided, the operation will be performed as if a valid etag is provided.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "EgressFrom": {
+   "description": "Defines the conditions under which an EgressPolicy matches a request. Conditions are based on information about the source of the request. Note that if the destination of the request is also protected by a ServicePerimeter, then that ServicePerimeter must have an IngressPolicy which allows access in order for this request to succeed.",
+   "id": "EgressFrom",
+   "properties": {
+    "identities": {
+     "description": "A list of identities that are allowed access through [EgressPolicy]. Identities can be an individual user, service account, Google group, third-party identity, or agent identity. For the list of supported identity types, see https://docs.cloud.google.com/vpc-service-controls/docs/supported-identities.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "identityType": {
+     "description": "Specifies the type of identities that are allowed access to outside the perimeter. If left unspecified, then members of `identities` field will be allowed access.",
+     "enum": [
+      "IDENTITY_TYPE_UNSPECIFIED",
+      "ANY_IDENTITY",
+      "ANY_USER_ACCOUNT",
+      "ANY_SERVICE_ACCOUNT"
+     ],
+     "enumDescriptions": [
+      "No blanket identity group specified.",
+      "Authorize access from all identities outside the perimeter.",
+      "Authorize access from all human users outside the perimeter.",
+      "Authorize access from all service accounts outside the perimeter."
+     ],
+     "type": "string"
+    },
+    "sourceRestriction": {
+     "description": "Whether to enforce traffic restrictions based on `sources` field. If the `sources` field is not empty, then this field must be set to `SOURCE_RESTRICTION_ENABLED`.",
+     "enum": [
+      "SOURCE_RESTRICTION_UNSPECIFIED",
+      "SOURCE_RESTRICTION_ENABLED",
+      "SOURCE_RESTRICTION_DISABLED"
+     ],
+     "enumDescriptions": [
+      "Enforcement preference unspecified, will not enforce traffic restrictions based on `sources` in EgressFrom.",
+      "Enforcement preference enabled, traffic restrictions will be enforced based on `sources` in EgressFrom.",
+      "Enforcement preference disabled, will not enforce traffic restrictions based on `sources` in EgressFrom."
+     ],
+     "type": "string"
+    },
+    "sources": {
+     "description": "Sources that this EgressPolicy authorizes access from. If this field is not empty, then `source_restriction` must be set to `SOURCE_RESTRICTION_ENABLED`.",
+     "items": {
+      "$ref": "EgressSource"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "EgressPolicy": {
+   "description": "Policy for egress from perimeter. EgressPolicies match requests based on `egress_from` and `egress_to` stanzas. For an EgressPolicy to match, both `egress_from` and `egress_to` stanzas must be matched. If an EgressPolicy matches a request, the request is allowed to span the ServicePerimeter boundary. For example, an EgressPolicy can be used to allow VMs on networks within the ServicePerimeter to access a defined set of projects outside the perimeter in certain contexts (e.g. to read data from a Cloud Storage bucket or query against a BigQuery dataset). EgressPolicies are concerned with the *resources* that a request relates to, as well as the API services and API actions being used. They do not relate to the direction of data movement. More detailed documentation for this concept can be found in the descriptions of EgressFrom and EgressTo.",
+   "id": "EgressPolicy",
+   "properties": {
+    "egressFrom": {
+     "$ref": "EgressFrom",
+     "description": "Defines conditions on the source of a request causing this EgressPolicy to apply."
+    },
+    "egressTo": {
+     "$ref": "EgressTo",
+     "description": "Defines the conditions on the ApiOperation and destination resources that cause this EgressPolicy to apply."
+    },
+    "title": {
+     "description": "Optional. Human-readable title for the egress rule. The title must be unique within the perimeter and cannot exceed 100 characters. Within the access policy, the combined length of all rule titles must not exceed 240,000 characters.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "EgressSource": {
+   "description": "The source that EgressPolicy authorizes access from inside the ServicePerimeter to somewhere outside the ServicePerimeter boundaries.",
+   "id": "EgressSource",
+   "properties": {
+    "accessLevel": {
+     "description": "An AccessLevel resource name that allows protected resources inside the ServicePerimeters to access outside the ServicePerimeter boundaries. AccessLevels listed must be in the same policy as this ServicePerimeter. Referencing a nonexistent AccessLevel will cause an error. If an AccessLevel name is not specified, only resources within the perimeter can be accessed through Google Cloud calls with request origins within the perimeter. Example: `accessPolicies/MY_POLICY/accessLevels/MY_LEVEL`. If a single `*` is specified for `access_level`, then all EgressSources will be allowed.",
+     "type": "string"
+    },
+    "pscEndpoint": {
+     "$ref": "PrivateServiceConnectEndpoint",
+     "description": "A PrivateServiceConnectEndpoint that is allowed to access data outside the perimeter. The Private Service Connect endpoint may be in any organization, not just the organization that the perimeter is defined in."
+    },
+    "resource": {
+     "description": "A Google Cloud resource from the service perimeter that you want to allow to access data outside the perimeter. This field supports projects, folders, and organizations in the form `projects/{project_number}`, `folders/{folder_id}`, and `organizations/{organization_id}`. You can't use `*` in this field to allow all Google Cloud resources.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "EgressTo": {
+   "description": "Defines the conditions under which an EgressPolicy matches a request. Conditions are based on information about the ApiOperation intended to be performed on the `resources` specified. Note that if the destination of the request is also protected by a ServicePerimeter, then that ServicePerimeter must have an IngressPolicy which allows access in order for this request to succeed. The request must match `operations` AND `resources` fields in order to be allowed egress out of the perimeter.",
+   "id": "EgressTo",
+   "properties": {
+    "externalResources": {
+     "description": "A list of external resources that are allowed to be accessed. Only AWS and Azure resources are supported. For Amazon S3, the supported formats are `s3://BUCKET_NAME`, `s3a://BUCKET_NAME`, and `s3n://BUCKET_NAME`. For Azure Storage, the supported format is `azure://myaccount.blob.core.windows.net/CONTAINER_NAME`. A request matches if it contains an external resource in this list (Example: `s3://bucket/path`). Currently `'*'` is not allowed.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "operations": {
+     "description": "A list of ApiOperations allowed to be performed by the sources specified in the corresponding EgressFrom. A request matches if it uses an operation/service in this list.",
+     "items": {
+      "$ref": "ApiOperation"
+     },
+     "type": "array"
+    },
+    "resources": {
+     "description": "A list of resources, currently projects, folders, and organizations in the form `projects/{project_number}`, `folders/{folder_id}`, and `organizations/{organization_id}`, that are allowed to be accessed by sources defined in the corresponding EgressFrom. A request matches if it contains a resource in this list. If `*` is specified for `resources`, then this EgressTo rule will authorize access to all resources outside the perimeter.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "roles": {
+     "description": "IAM roles that represent the set of operations that the sources specified in the corresponding EgressFrom are allowed to perform in this ServicePerimeter.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "IngressFrom": {
+   "description": "Defines the conditions under which an IngressPolicy matches a request. Conditions are based on information about the source of the request. The request must satisfy what is defined in `sources` AND identity related fields in order to match.",
+   "id": "IngressFrom",
+   "properties": {
+    "identities": {
+     "description": "A list of identities that are allowed access through [IngressPolicy]. Identities can be an individual user, service account, Google group, third-party identity, or agent identity. For the list of supported identity types, see https://docs.cloud.google.com/vpc-service-controls/docs/supported-identities.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "identityType": {
+     "description": "Specifies the type of identities that are allowed access from outside the perimeter. If left unspecified, then members of `identities` field will be allowed access.",
+     "enum": [
+      "IDENTITY_TYPE_UNSPECIFIED",
+      "ANY_IDENTITY",
+      "ANY_USER_ACCOUNT",
+      "ANY_SERVICE_ACCOUNT"
+     ],
+     "enumDescriptions": [
+      "No blanket identity group specified.",
+      "Authorize access from all identities outside the perimeter.",
+      "Authorize access from all human users outside the perimeter.",
+      "Authorize access from all service accounts outside the perimeter."
+     ],
+     "type": "string"
+    },
+    "sources": {
+     "description": "Sources that this IngressPolicy authorizes access from.",
+     "items": {
+      "$ref": "IngressSource"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "IngressPolicy": {
+   "description": "Policy for ingress into ServicePerimeter. IngressPolicies match requests based on `ingress_from` and `ingress_to` stanzas. For an ingress policy to match, both the `ingress_from` and `ingress_to` stanzas must be matched. If an IngressPolicy matches a request, the request is allowed through the perimeter boundary from outside the perimeter. For example, access from the internet can be allowed either based on an AccessLevel or, for traffic hosted on Google Cloud, the project of the source network. For access from private networks, using the project of the hosting network is required. Individual ingress policies can be limited by restricting which services and/or actions they match using the `ingress_to` field.",
+   "id": "IngressPolicy",
+   "properties": {
+    "ingressFrom": {
+     "$ref": "IngressFrom",
+     "description": "Defines the conditions on the source of a request causing this IngressPolicy to apply."
+    },
+    "ingressTo": {
+     "$ref": "IngressTo",
+     "description": "Defines the conditions on the ApiOperation and request destination that cause this IngressPolicy to apply."
+    },
+    "title": {
+     "description": "Optional. Human-readable title for the ingress rule. The title must be unique within the perimeter and cannot exceed 100 characters. Within the access policy, the combined length of all rule titles must not exceed 240,000 characters.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "IngressSource": {
+   "description": "The source that IngressPolicy authorizes access from.",
+   "id": "IngressSource",
+   "properties": {
+    "accessLevel": {
+     "description": "An AccessLevel resource name that allows resources within the ServicePerimeters to be accessed from the internet. AccessLevels listed must be in the same policy as this ServicePerimeter. Referencing a nonexistent AccessLevel will cause an error. If no AccessLevel names are listed, resources within the perimeter can only be accessed via Google Cloud calls with request origins within the perimeter. Example: `accessPolicies/MY_POLICY/accessLevels/MY_LEVEL`. If a single `*` is specified for `access_level`, then all IngressSources will be allowed.",
+     "type": "string"
+    },
+    "pscEndpoint": {
+     "$ref": "PrivateServiceConnectEndpoint",
+     "description": "A PrivateServiceConnectEndpoint that is allowed to access the perimeter. The Private Service Connect endpoint may be in any organization, not just the organization that the perimeter is defined in."
+    },
+    "resource": {
+     "description": "A Google Cloud resource that is allowed to ingress the perimeter. Requests from these resources will be allowed to access perimeter data. Currently projects, folders, organizations, and VPCs are allowed. Project format: `projects/{project_number}` Folder format: `folders/{folder_id}` Organization format: `organizations/{organization_id}` VPC network format: `//compute.googleapis.com/projects/{PROJECT_ID}/global/networks/{NAME}`. The project may be in any Google Cloud organization, not just the organization that the perimeter is defined in. `*` is not allowed, the case of allowing all Google Cloud resources only is not supported.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "IngressTo": {
+   "description": "Defines the conditions under which an IngressPolicy matches a request. Conditions are based on information about the ApiOperation intended to be performed on the target resource of the request. The request must satisfy what is defined in `operations` AND `resources` in order to match.",
+   "id": "IngressTo",
+   "properties": {
+    "operations": {
+     "description": "A list of ApiOperations allowed to be performed by the sources specified in corresponding IngressFrom in this ServicePerimeter.",
+     "items": {
+      "$ref": "ApiOperation"
+     },
+     "type": "array"
+    },
+    "resources": {
+     "description": "A list of resources, currently projects, folders, and organizations in the form `projects/{project_number}`, `folders/{folder_id}`, and `organizations/{organization_id}`, protected by this ServicePerimeter that are allowed to be accessed by sources defined in the corresponding IngressFrom. If a single `*` is specified, then access to all resources inside the perimeter is allowed.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "roles": {
+     "description": "IAM roles that represent the set of operations that the sources specified in the corresponding IngressFrom are allowed to perform in this ServicePerimeter.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "ListServicePerimetersResponse": {
+   "description": "A response to `ListServicePerimetersRequest`.",
+   "id": "ListServicePerimetersResponse",
+   "properties": {
+    "nextPageToken": {
+     "description": "The pagination token to retrieve the next page of results. If the value is empty, no further results remain.",
+     "type": "string"
+    },
+    "servicePerimeters": {
+     "description": "List of the Service Perimeter instances.",
+     "items": {
+      "$ref": "ServicePerimeter"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "MethodSelector": {
+   "description": "An allowed method or permission of a service specified in ApiOperation.",
+   "id": "MethodSelector",
+   "properties": {
+    "method": {
+     "description": "A valid method name for the corresponding `service_name` in ApiOperation. If `*` is used as the value for the `method`, then ALL methods and permissions are allowed.",
+     "type": "string"
+    },
+    "permission": {
+     "description": "A valid Cloud IAM permission for the corresponding `service_name` in ApiOperation.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "Modifier": {
+   "description": "Modifier to apply to the API requests.",
+   "id": "Modifier",
+   "properties": {
+    "addRequestHeader": {
+     "$ref": "AddRequestHeader",
+     "description": "Adds an additional HTTP request header."
+    }
+   },
+   "type": "object"
+  },
+  "Operation": {
+   "description": "This resource represents a long-running operation that is the result of a network API call.",
+   "id": "Operation",
+   "properties": {
+    "done": {
+     "description": "If the value is `false`, it means the operation is still in progress. If `true`, the operation is completed, and either `error` or `response` is available.",
+     "type": "boolean"
+    },
+    "error": {
+     "$ref": "Status",
+     "description": "The error result of the operation in case of failure or cancellation."
+    },
+    "metadata": {
+     "additionalProperties": {
+      "description": "Properties of the object. Contains field @type with type URL.",
+      "type": "any"
+     },
+     "description": "Service-specific metadata associated with the operation. It typically contains progress information and common metadata such as create time. Some services might not provide such metadata. Any method that returns a long-running operation should document the metadata type, if any.",
+     "type": "object"
+    },
+    "name": {
+     "description": "The server-assigned name, which is only unique within the same service that originally returns it. If you use the default HTTP mapping, the `name` should be a resource name ending with `operations/{unique_id}`.",
+     "type": "string"
+    },
+    "response": {
+     "additionalProperties": {
+      "description": "Properties of the object. Contains field @type with type URL.",
+      "type": "any"
+     },
+     "description": "The normal, successful response of the operation. If the original method returns no data on success, such as `Delete`, the response is `google.protobuf.Empty`. If the original method is standard `Get`/`Create`/`Update`, the response should be the resource. For other methods, the response should have the type `XxxResponse`, where `Xxx` is the original method name. For example, if the original method name is `TakeSnapshot()`, the inferred response type is `TakeSnapshotResponse`.",
+     "type": "object"
+    }
+   },
+   "type": "object"
+  },
+  "PrivateServiceConnectEndpoint": {
+   "description": "Specifies the Private Service Connect endpoint that an API call refers to.",
+   "id": "PrivateServiceConnectEndpoint",
+   "properties": {
+    "forwardingRule": {
+     "description": "The full resource name of the global forwarding rule that identifies a Private Service Connect endpoint. Forwarding rule format: `//compute.googleapis.com/projects/{PROJECT_ID}/global/forwardingRules/{FORWARDING_RULE_ID}`.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ReplaceServicePerimetersRequest": {
+   "description": "A request to replace all existing Service Perimeters in an Access Policy with the Service Perimeters provided. This is done atomically.",
+   "id": "ReplaceServicePerimetersRequest",
+   "properties": {
+    "etag": {
+     "description": "Optional. The etag for the version of the Access Policy that this replace operation is to be performed on. If, at the time of replace, the etag for the Access Policy stored in Access Context Manager is different from the specified etag, then the replace operation will not be performed and the call will fail. This field is not required. If etag is not provided, the operation will be performed as if a valid etag is provided.",
+     "type": "string"
+    },
+    "servicePerimeters": {
+     "description": "Required. The desired Service Perimeters that should replace all existing Service Perimeters in the Access Policy.",
+     "items": {
+      "$ref": "ServicePerimeter"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "ServicePattern": {
+   "description": "Service patterns used to allow access.",
+   "id": "ServicePattern",
+   "properties": {
+    "modifiers": {
+     "description": "Modifiers to apply to the requests that match the URL pattern.",
+     "items": {
+      "$ref": "Modifier"
+     },
+     "type": "array"
+    },
+    "pattern": {
+     "description": "URL pattern to allow. Only patterns of `\".googleapis.com/*\"`, `\"www.googleapis.com//*\"`, and `\"*.appspot.com/*\"` forms are supported, where `` should be an alphanumeric name.",
+     "type": "string"
+    },
+    "service": {
+     "description": "Supported service to allow.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "ServicePerimeter": {
+   "description": "`ServicePerimeter` describes a set of Google Cloud resources which can freely import and export data amongst themselves, but not export outside of the `ServicePerimeter`. If a request with a source within this `ServicePerimeter` has a target outside of the `ServicePerimeter`, the request will be blocked. Otherwise the request is allowed. There are two types of Service Perimeter - Regular and Bridge. Regular Service Perimeters cannot overlap, a single Google Cloud project or VPC network can only belong to a single regular Service Perimeter. Service Perimeter Bridges can contain only Google Cloud projects as members, a single Google Cloud project may belong to multiple Service Perimeter Bridges.",
+   "id": "ServicePerimeter",
+   "properties": {
+    "description": {
+     "description": "Description of the `ServicePerimeter` and its use. Does not affect behavior.",
+     "type": "string"
+    },
+    "etag": {
+     "description": "Optional. An opaque identifier for the current version of the `ServicePerimeter`. This identifier does not follow any specific format. If an etag is not provided, the operation will be performed as if a valid etag is provided.",
+     "type": "string"
+    },
+    "name": {
+     "description": "Identifier. Resource name for the `ServicePerimeter`. Format: `accessPolicies/{access_policy}/servicePerimeters/{service_perimeter}`. The `service_perimeter` component must begin with a letter, followed by alphanumeric characters or `_`. After you create a `ServicePerimeter`, you cannot change its `name`.",
+     "type": "string"
+    },
+    "perimeterType": {
+     "description": "Perimeter type indicator. A single project or VPC network is allowed to be a member of a single regular perimeter, but multiple service perimeter bridges. A project cannot be included in a perimeter bridge without being included in a regular perimeter. For perimeter bridges, the restricted service list as well as access level lists must be empty.",
+     "enum": [
+      "PERIMETER_TYPE_REGULAR",
+      "PERIMETER_TYPE_BRIDGE"
+     ],
+     "enumDescriptions": [
+      "Regular Perimeter. When no value is specified, the perimeter uses this type.",
+      "Perimeter Bridge."
+     ],
+     "type": "string"
+    },
+    "spec": {
+     "$ref": "ServicePerimeterConfig",
+     "description": "Proposed (or dry run) ServicePerimeter configuration. This configuration allows you to specify and test ServicePerimeter configuration without enforcing actual access restrictions. Only allowed to be set when the `use_explicit_dry_run_spec` flag is set."
+    },
+    "status": {
+     "$ref": "ServicePerimeterConfig",
+     "description": "Current ServicePerimeter configuration. Specifies sets of resources, restricted services, and access levels that determine perimeter content and boundaries."
+    },
+    "title": {
+     "description": "Human readable title. Must be unique within the Policy.",
+     "type": "string"
+    },
+    "useExplicitDryRunSpec": {
+     "description": "Use explicit dry run spec flag. Ordinarily, a dry-run spec implicitly exists for all Service Perimeters, and that spec is identical to the status for those Service Perimeters. When this flag is set, it inhibits the generation of the implicit spec, thereby allowing the user to explicitly provide a configuration (\"spec\") to use in a dry-run version of the Service Perimeter. This allows the user to test changes to the enforced config (\"status\") without actually enforcing them. This testing is done through analyzing the differences between currently enforced and suggested restrictions. `use_explicit_dry_run_spec` must be set to `true` if any of the fields in the spec are set to non-default values.",
+     "type": "boolean"
+    }
+   },
+   "type": "object"
+  },
+  "ServicePerimeterConfig": {
+   "description": "`ServicePerimeterConfig` specifies a set of Google Cloud resources that describe specific Service Perimeter configuration.",
+   "id": "ServicePerimeterConfig",
+   "properties": {
+    "accessLevels": {
+     "description": "A list of `AccessLevel` resource names that allow resources within the `ServicePerimeter` to be accessed from the internet. `AccessLevels` listed must be in the same policy as this `ServicePerimeter`. Referencing a nonexistent `AccessLevel` is a syntax error. If no `AccessLevel` names are listed, resources within the perimeter can only be accessed via Google Cloud calls with request origins within the perimeter. Example: `\"accessPolicies/MY_POLICY/accessLevels/MY_LEVEL\"`. For Service Perimeter Bridge, must be empty.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "egressPolicies": {
+     "description": "List of EgressPolicies to apply to the perimeter. A perimeter may have multiple EgressPolicies, each of which is evaluated separately. Access is granted if any EgressPolicy grants it. Must be empty for a perimeter bridge.",
+     "items": {
+      "$ref": "EgressPolicy"
+     },
+     "type": "array"
+    },
+    "ingressPolicies": {
+     "description": "List of IngressPolicies to apply to the perimeter. A perimeter may have multiple IngressPolicies, each of which is evaluated separately. Access is granted if any Ingress Policy grants it. Must be empty for a perimeter bridge.",
+     "items": {
+      "$ref": "IngressPolicy"
+     },
+     "type": "array"
+    },
+    "resources": {
+     "description": "A list of Google Cloud resources that are inside of the service perimeter. Currently projects, folders, and VPCs are allowed. Project format: `projects/{project_number}` Folder format: `folders/{folder_id}` VPC network format: `//compute.googleapis.com/projects/{PROJECT_ID}/global/networks/{NAME}`.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "restrictedServices": {
+     "description": "Google Cloud services that are subject to the Service Perimeter restrictions. For example, if `storage.googleapis.com` is specified, access to the storage buckets inside the perimeter must meet the perimeter's access restrictions.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "vpcAccessibleServices": {
+     "$ref": "VpcAccessibleServices",
+     "description": "Configuration for APIs allowed within Perimeter."
+    }
+   },
+   "type": "object"
+  },
+  "Status": {
+   "description": "The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).",
+   "id": "Status",
+   "properties": {
+    "code": {
+     "description": "The status code, which should be an enum value of google.rpc.Code.",
+     "format": "int32",
+     "type": "integer"
+    },
+    "details": {
+     "description": "A list of messages that carry the error details. There is a common set of message types for APIs to use.",
+     "items": {
+      "additionalProperties": {
+       "description": "Properties of the object. Contains field @type with type URL.",
+       "type": "any"
+      },
+      "type": "object"
+     },
+     "type": "array"
+    },
+    "message": {
+     "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the google.rpc.Status.details field, or localized by the client.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "TestIamPermissionsRequest": {
+   "description": "Request message for `TestIamPermissions` method.",
+   "id": "TestIamPermissionsRequest",
+   "properties": {
+    "permissions": {
+     "description": "The set of permissions to check for the `resource`. Permissions with wildcards (such as `*` or `storage.*`) are not allowed. For more information see [IAM Overview](https://cloud.google.com/iam/docs/overview#permissions).",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "TestIamPermissionsResponse": {
+   "description": "Response message for `TestIamPermissions` method.",
+   "id": "TestIamPermissionsResponse",
+   "properties": {
+    "permissions": {
+     "description": "A subset of `TestPermissionsRequest.permissions` that the caller is allowed.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  },
+  "VpcAccessibleServices": {
+   "description": "Specifies how APIs are allowed to communicate within the Service Perimeter.",
+   "id": "VpcAccessibleServices",
+   "properties": {
+    "allowedServicePatterns": {
+     "description": "Specifies which Google services are allowed to be accessed from VPC networks in the service perimeter.",
+     "items": {
+      "$ref": "ServicePattern"
+     },
+     "type": "array"
+    },
+    "allowedServices": {
+     "description": "The list of APIs usable within the Service Perimeter. Must be empty unless `enable_restriction` is `true`. You can specify a list of individual services, as well as include the `'RESTRICTED-SERVICES'` value, which automatically includes all of the services protected by the perimeter.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "enableRestriction": {
+     "description": "Whether to restrict API calls within the Service Perimeter to the list of APIs specified in `allowed_services`.",
+     "type": "boolean"
+    },
+    "servicePatternsEnforcementScopes": {
+     "description": "Defines the enforcement scopes of service patterns.",
+     "items": {
+      "enum": [
+       "SERVICE_PATTERNS_ENFORCEMENT_SCOPE_UNSPECIFIED",
+       "GOOGLE_APIS_VIA_PRIVATE_PATH"
+      ],
+      "enumDescriptions": [
+       "Default value. This cannot be used.",
+       "Enables VPC Accessible Services enforcement for all APIs (including unsupported APIs) for Private Google Access configured with Private VIP and Private Service Connect Endpoint for Global Google APIs that use the `'all-apis'` bundle."
+      ],
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "type": "object"
+  }
+ },
+ "servicePath": "",
+ "version": "v1"
+}

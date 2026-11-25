@@ -16,12 +16,12 @@ import (
 
 // A dry run anywhere else would apply everything it was meant to list.
 func TestDryRunRefusedWhereARestoreWouldWrite(t *testing.T) {
-	for _, p := range []string{"aws", "azure", "gcp", "kubernetes"} {
+	for _, p := range []string{"azure", "kubernetes"} {
 		if dryRunAccepted(p, true) == nil {
 			t.Errorf("--dry-run accepted on %s", p)
 		}
 	}
-	for _, p := range []string{"github", "cloudflare"} {
+	for _, p := range []string{"aws", "gcp", "github", "cloudflare"} {
 		if err := dryRunAccepted(p, true); err != nil {
 			t.Errorf("%s: %v", p, err)
 		}

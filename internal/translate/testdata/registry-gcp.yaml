@@ -1,0 +1,168 @@
+report:
+  destinations:
+  - 'registry: artifact-registry'
+  entries:
+  - reason: '"9lives" is not a repository ID Artifact Registry takes (a lowercase
+      letter first, then lowercase letters, digits and dashes): give it one in the
+      map''s names (rg/9lives)'
+    source: Microsoft.ContainerRegistry/registries rg/9lives
+    state: refused
+  - losses:
+    - field: sku.name
+      why: 'Basic: a service tier (included storage, throughput, which features) has
+        no equivalent: the target bills by use'
+    - field: properties.anonymousPullEnabled
+      why: anyone could pull without signing in; the repository is private, so such
+        a pull fails until it signs in (granting allUsers read is not done here)
+    source: Microsoft.ContainerRegistry/registries rg/pubimages
+    state: mapped with losses
+    targets:
+    - artifactregistry.googleapis.com/Repository projects/{{truthform|project}}/locations/europe-west1/repositories/pubimages
+  - losses:
+    - field: identity
+      why: 'UserAssigned: identity is not translated (#32); the registry used it to
+        reach its customer-managed key and its tasks'' sources'
+    - field: sku.name
+      why: 'Premium: a service tier (included storage, throughput, which features)
+        has no equivalent: the target bills by use'
+    - field: properties.adminUserEnabled
+      why: 'the admin user is a shared user name and password; neither target has
+        one, and identity is not translated (#32): it is not carried over'
+    - field: properties.dataEndpointEnabled
+      why: 'dedicated data endpoints, for firewalls that name them, have no equivalent:
+        the target serves layers from its own storage endpoints'
+    - field: properties.zoneRedundancy
+      why: 'Enabled: there is no setting: the target keeps images across its region''s
+        zones itself'
+    - field: properties.policies.trustPolicy.status
+      why: 'content trust (Docker Content Trust, Notary v1): its signatures are not
+        on the target, so a client that requires them cannot pull until the images
+        are signed again (Notation, Sigstore)'
+    - field: properties.policies.retentionPolicy.status
+      why: untagged manifests were deleted 14 days after they lost their tag; on the
+        target they are kept (an ECR lifecycle policy or Artifact Registry cleanup
+        policy counts from the push, which would delete sooner, so none is written)
+    - field: properties.policies.exportPolicy.status
+      why: 'export was disabled: Azure would not copy its images to another registry
+        (import, transfer pipelines); a pull still could, on the source as on the
+        target, so who may pull decides who can copy'
+    - field: 'replications/northeurope: location'
+      why: 'its images were also kept and served in northeurope; the target keeps
+        them in the map''s region only (ECR replication, an Artifact Registry multi-region
+        location: not translated yet)'
+    - field: properties.networkRuleSet
+      why: 'its firewall denies by default, allowing 1 address range(s); Artifact
+        Registry answers on Google''s public endpoint to whoever IAM allows: it has
+        no network setting of its own, and the VPC Service Controls perimeter that
+        closes it (artifactregistry.googleapis.com, for the whole project) is written
+        only into an access policy the map names (privateAccess.accessPolicy)'
+      widens: true
+    - field: properties.encryption
+      why: 'its images were encrypted with the customer''s own key; the repository
+        uses Google''s encryption until a Cloud KMS key is named (kmsKeyName), which
+        Artifact Registry''s service agent must be granted (identity, not translated:
+        #32)'
+      widens: true
+    - field: properties.policies.quarantinePolicy.status
+      why: a pushed image could not be pulled until a scanner released it; Artifact
+        Registry lets every image be pulled as soon as it is pushed
+      widens: true
+    - field: tags.Cost Center
+      why: a GCP label takes lowercase letters, digits, _ and - only (a key starts
+        with a letter), so it is not carried over
+    source: Microsoft.ContainerRegistry/registries rg/shopacr
+    state: mapped with losses
+    targets:
+    - artifactregistry.googleapis.com/Repository projects/{{truthform|project}}/locations/europe-west1/repositories/shopacr
+  - reason: pull-through cache rules are not translated yet (ECR pull-through cache
+      rules, Artifact Registry remote repositories)
+    source: Microsoft.ContainerRegistry/registries/cacheRules rg/shopacr/dockerhub
+    state: not looked at
+  - reason: a connected registry is a registry on premises or at the edge that syncs
+      with this one; neither target has one
+    source: Microsoft.ContainerRegistry/registries/connectedRegistries rg/shopacr/edge
+    state: refused
+  - reason: 'identity is not translated (#32): a credential set holds the sign-in
+      to an upstream registry a cache rule pulls from'
+    source: Microsoft.ContainerRegistry/registries/credentialSets rg/shopacr/hub
+    state: refused
+  - reason: made when its private endpoint is created; private endpoints are not translated
+      yet
+    source: Microsoft.ContainerRegistry/registries/privateEndpointConnections rg/shopacr/pe-1
+    state: not looked at
+  - reason: its registry is not in the snapshot
+    source: Microsoft.ContainerRegistry/registries/replications rg/gone/eastus
+    state: refused
+  - reason: read with its registry Microsoft.ContainerRegistry/registries rg/shopacr
+    source: Microsoft.ContainerRegistry/registries/replications rg/shopacr/northeurope
+    state: mapped
+  - reason: 'identity is not translated (#32): a scope map says what a repository-scoped
+      token may do; who used one signs in with IAM on the target'
+    source: Microsoft.ContainerRegistry/registries/scopeMaps rg/shopacr/pull-only
+    state: refused
+  - reason: 'ACR Tasks build and run images in Azure; neither target''s registry does:
+      move the builds into the pipeline that pushes images (CodeBuild, Cloud Build)'
+    source: Microsoft.ContainerRegistry/registries/tasks rg/shopacr/build
+    state: refused
+  - reason: 'identity is not translated (#32): a token is a credential for some of
+      the registry''s repositories; who used one signs in with IAM on the target'
+    source: Microsoft.ContainerRegistry/registries/tokens rg/shopacr/ci
+    state: refused
+  - reason: 'webhooks are not translated yet: ECR sends push events to EventBridge,
+      Artifact Registry to Pub/Sub'
+    source: Microsoft.ContainerRegistry/registries/webhooks rg/shopacr/on-push
+    state: not looked at
+  from: azure
+  requirements:
+  - 'Images are not copied: copy each from pubimages.azurecr.io to europe-west1-docker.pkg.dev/<project>/pubimages/<repository>
+    (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
+    image references are not rewritten: the translation''s Kubernetes change list
+    names each one and what it becomes, for the repository''s owner to change'
+  - 'Images are not copied: copy each from shopacr.azurecr.io to europe-west1-docker.pkg.dev/<project>/shopacr/<repository>
+    (crane copy, skopeo copy) before a restore of what pulls them. The Kubernetes
+    image references are not rewritten: the translation''s Kubernetes change list
+    names each one and what it becomes, for the repository''s owner to change'
+  - 'Registry rg/pubimages let anyone pull without signing in; the target does not:
+    such clients sign in, or the images are published on purpose'
+  - 'Registry rg/shopacr had its admin user on: whoever pushed or pulled with that
+    user name and password signs in with IAM on the target'
+  - 'To close Artifact Registry to the internet as Registry rg/shopacr was, name an
+    existing access policy and a perimeter in the map (privateAccess.accessPolicy:
+    accessPolicies/<number>, privateAccess.perimeter: <name>) and how restores and
+    captures pass it (privateAccess.restoreIdentity: serviceAccount:<email>, or privateAccess.restoreFromInside:
+    true): a VPC Service Controls perimeter is then written that restricts artifactregistry.googleapis.com
+    for the whole target project. The access policy is the organization''s to create
+    (gcloud access-context-manager policies create, scoped to the project or not)'
+  to: gcp
+snapshots:
+  gcp:
+  - apiVersion: gcp.truthform.org/v1
+    kind: artifactregistry.googleapis.com/Repository
+    metadata:
+      annotations:
+        truthform.org/collection: projects.locations.repositories
+        truthform.org/discovery: artifactregistry/v1
+        truthform.org/parent: projects/{{truthform|project}}/locations/europe-west1
+        truthform.org/schema: Repository
+      name: projects/{{truthform|project}}/locations/europe-west1/repositories/pubimages
+    spec:
+      description: From Azure Container Registry rg/pubimages
+      format: DOCKER
+      mode: STANDARD_REPOSITORY
+      name: projects/{{truthform|project}}/locations/europe-west1/repositories/pubimages
+  - apiVersion: gcp.truthform.org/v1
+    kind: artifactregistry.googleapis.com/Repository
+    metadata:
+      annotations:
+        truthform.org/collection: projects.locations.repositories
+        truthform.org/discovery: artifactregistry/v1
+        truthform.org/parent: projects/{{truthform|project}}/locations/europe-west1
+        truthform.org/schema: Repository
+      name: projects/{{truthform|project}}/locations/europe-west1/repositories/shopacr
+    spec:
+      description: From Azure Container Registry rg/shopacr
+      format: DOCKER
+      labels:
+        team: platform
+      mode: STANDARD_REPOSITORY
+      name: projects/{{truthform|project}}/locations/europe-west1/repositories/shopacr

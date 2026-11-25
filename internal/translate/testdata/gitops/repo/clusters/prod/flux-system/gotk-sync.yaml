@@ -1,0 +1,25 @@
+# What flux bootstrap writes: the repository, and the Kustomization that applies itself.
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 1m
+  ref:
+    branch: main
+  url: ssh://git@ssh.dev.azure.com/v3/madeup/shop/fleet
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./clusters/prod
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

@@ -34,7 +34,7 @@ func TestUpdateComparesSetsSorted(t *testing.T) {
 	}
 	ex := normalize(reg.Types["AWS::SQS::Queue"], id, f.Stored("AWS::SQS::Queue", id))
 	desired := map[string]any{"QueueName": "q", "Tags": []any{map[string]any{"Key": "b", "Value": "2"}, map[string]any{"Key": "a", "Value": "1"}}}
-	ok, detail := update(context.Background(), f, reg.Types["AWS::SQS::Queue"], "AWS::SQS::Queue/q", ex, desired, &values{m: map[string]map[string]any{}})
+	ok, detail := update(context.Background(), f, reg.Types["AWS::SQS::Queue"], "AWS::SQS::Queue/q", ex, desired, &values{m: map[string]map[string]any{}}, false)
 	if !ok || f.Updates != 0 {
 		t.Errorf("reordered tags sent an update: ok=%v %s (%d updates)", ok, detail, f.Updates)
 	}

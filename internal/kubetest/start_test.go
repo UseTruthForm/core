@@ -1,8 +1,11 @@
 package kubetest
 
 import (
+	"net"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -120,5 +123,47 @@ func TestOutputTakesWritesAtOnce(t *testing.T) {
 	<-done
 	if n, _ := a.out.written(); n != 2000 {
 		t.Fatalf("%d bytes written, want 2000", n)
+	}
+}
+
+// Ports for one server, and for servers started side by side, are all
+// different: the same port given twice made etcd fail to start with
+// "address already in use" on a CI run.
+func TestFreePortsAreAllDifferent(t *testing.T) {
+	seen := map[int]bool{}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ports, err := freePorts(3)
+			if err != nil || len(ports) != 3 {
+				t.Errorf("%v %v", ports, err)
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			for _, p := range ports {
+				if seen[p] || p == 0 {
+					t.Errorf("port %d was given twice", p)
+				}
+				seen[p] = true
+			}
+		}()
+	}
+	wg.Wait()
+	// Each is free once handed over.
+	ports, err := freePorts(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range ports {
+		l, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(p))
+		if err != nil {
+			t.Errorf("port %d is not free: %v", p, err)
+			continue
+		}
+		l.Close()
 	}
 }

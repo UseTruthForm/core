@@ -1,0 +1,61 @@
+# Written by truthform translate: the names on gcp of what the Azure snapshot named.
+#
+# Optional. A Flux Kustomization reads it with spec.postBuild.substituteFrom
+# (kind: ConfigMap, name: truthform-translation), and a manifest then says
+# ${registry_shop}/api:1.0 where it said shop.azurecr.io/api:1.0. With one such
+# ConfigMap per cluster, holding each cloud's values under the same keys, one
+# repository serves both: the line above each key is its value on Azure.
+#
+# Before committing it:
+#  - give it the namespace of the Kustomization that reads it;
+#  - put the project ID where {{truthform|project}} stands: it is not known offline;
+#  - mind that Flux then substitutes every ${name} in what that Kustomization
+#    applies, and an undefined one becomes empty: write $${name} where a script
+#    or a config file must keep its own ${name}, or label the object
+#    kustomize.toolkit.fluxcd.io/substitute: disabled.
+# Database addresses are not here: the target makes them up at creation.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: truthform-translation
+data:
+  cloud: "gcp"
+  region: "europe-west1"
+  # on Azure: secret token in Key Vault open
+  keyvault_open_secret_token: "open_token"
+  # on Azure: secret api-abc123 in Key Vault shop
+  keyvault_shop_secret_api_abc123: "shop_api-abc123"
+  # on Azure: secret db-password in Key Vault shop
+  keyvault_shop_secret_db_password: "shop_db-password"
+  # on Azure: secret legacy in Key Vault shop
+  keyvault_shop_secret_legacy: "shop_legacy"
+  # on Azure: pubimages.azurecr.io
+  registry_pubimages: "europe-west1-docker.pkg.dev/{{truthform|project}}/pubimages"
+  # on Azure: shopacr.azurecr.io
+  registry_shopacr: "europe-west1-docker.pkg.dev/{{truthform|project}}/shopacr"
+  # on Azure: queue legacy.feed in Service Bus namespace shop
+  servicebus_shop_queue_legacy_feed: "projects/{{truthform|project}}/subscriptions/legacy.feed"
+  # on Azure: queue orders in Service Bus namespace shop
+  servicebus_shop_queue_orders: "projects/{{truthform|project}}/subscriptions/orders"
+  # on Azure: queue payments in Service Bus namespace shop
+  servicebus_shop_queue_payments: "projects/{{truthform|project}}/subscriptions/payments"
+  # on Azure: subscription events/audit in Service Bus namespace shop
+  servicebus_shop_subscription_events_audit: "projects/{{truthform|project}}/subscriptions/events-audit"
+  # on Azure: subscription events/north in Service Bus namespace shop
+  servicebus_shop_subscription_events_north: "projects/{{truthform|project}}/subscriptions/events-north"
+  # on Azure: subscription events/shipping in Service Bus namespace shop
+  servicebus_shop_subscription_events_shipping: "projects/{{truthform|project}}/subscriptions/events-shipping"
+  # on Azure: subscription events/urgent in Service Bus namespace shop
+  servicebus_shop_subscription_events_urgent: "projects/{{truthform|project}}/subscriptions/events-urgent"
+  # on Azure: topic events in Service Bus namespace shop
+  servicebus_shop_topic_events: "projects/{{truthform|project}}/topics/events"
+  # on Azure: https://shopassets.blob.core.windows.net/images
+  storage_shopassets_images: "shopassets-images"
+  # on Azure: https://shopassets.blob.core.windows.net/ledger
+  storage_shopassets_ledger: "shopassets-ledger"
+  # on Azure: https://shopassets.blob.core.windows.net/records
+  storage_shopassets_records: "shopassets-records"
+  # on Azure: https://shoplake.blob.core.windows.net/raw
+  storage_shoplake_raw: "shoplake-raw"
+  # on Azure: https://shopvault.blob.core.windows.net/backups
+  storage_shopvault_backups: "shopvault-backups"

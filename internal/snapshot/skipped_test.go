@@ -48,10 +48,10 @@ func noted(t *testing.T, want, got Snapshot, kind string) *SkippedOtherSide {
 func TestSkippedOtherSideIsNotedOnBothSides(t *testing.T) {
 	cfg := kobj("v1", "ConfigMap", "shop", "cfg")
 	skip := []Skip{{Resource: "core/v1/configmaps", Namespace: "shop", Name: "cfg", Reason: byFlux}}
-	if n := noted(t, kube(1, []Object{cfg}, nil), kube(1, nil, skip), "missing"); !reflect.DeepEqual(n, &SkippedOtherSide{Reason: byFlux}) {
+	if n := noted(t, kube(KubernetesCaptureRules, []Object{cfg}, nil), kube(KubernetesCaptureRules, nil, skip), "missing"); !reflect.DeepEqual(n, &SkippedOtherSide{Reason: byFlux}) {
 		t.Errorf("missing: %+v", n)
 	}
-	if n := noted(t, kube(1, nil, skip), kube(1, []Object{cfg}, nil), "extra"); !reflect.DeepEqual(n, &SkippedOtherSide{Reason: byFlux}) {
+	if n := noted(t, kube(KubernetesCaptureRules, nil, skip), kube(KubernetesCaptureRules, []Object{cfg}, nil), "extra"); !reflect.DeepEqual(n, &SkippedOtherSide{Reason: byFlux}) {
 		t.Errorf("extra: %+v", n)
 	}
 	if n := noted(t, kube(1, []Object{cfg}, nil), kube(1, nil, nil), "missing"); n != nil {
@@ -61,7 +61,8 @@ func TestSkippedOtherSideIsNotedOnBothSides(t *testing.T) {
 
 // The hint about a build before beta.23 is given only where the side that
 // left the object out does not say its rules, and every reason it gives is
-// a GitOps source's, on Kubernetes.
+// a GitOps source's, on Kubernetes. The one about a build before beta.25
+// is given for the same reasons under any rules before 3.
 func TestSkippedOtherSideOlderRules(t *testing.T) {
 	cfg := kobj("v1", "ConfigMap", "shop", "cfg")
 	for _, c := range []struct {
@@ -75,6 +76,9 @@ func TestSkippedOtherSideOlderRules(t *testing.T) {
 		{"Argo CD, no rules", 0, []string{ArgoCDReason("shop")}, true},
 		{"two GitOps reasons, no rules", 0, []string{byFlux, ArgoCDReason("shop")}, true},
 		{"under rules", 1, []string{byFlux}, false},
+		{"under rules 2", 2, []string{byFlux}, false},
+		{"under rules 3", 3, []string{byFlux}, false},
+		{"owned by a controller, under rules 2", 2, []string{OwnedReason("Deployment", "web")}, false},
 		{"owned by a controller", 0, []string{OwnedReason("Deployment", "web")}, false},
 		{"baseline", 0, []string{"identical to the distribution baseline; a new cluster provides it"}, false},
 		{"GitOps and baseline", 0, []string{byFlux, "identical to the distribution baseline; a new cluster provides it"}, false},
@@ -101,6 +105,12 @@ func TestSkippedOtherSideOlderRules(t *testing.T) {
 			if n == nil || n.OlderRules != c.older {
 				t.Errorf("%s, %s: %+v, want older %v", c.what, kind, n, c.older)
 			}
+			// The hint about a build before beta.25 goes with the same
+			// reasons, under any rules before 3.
+			noSource := c.older || (c.rules > 0 && c.rules < 3 && len(c.reasons) == 1 && c.reasons[0] == byFlux)
+			if n != nil && n.NoSourceRules != noSource {
+				t.Errorf("%s, %s: %+v, want no-source hint %v", c.what, kind, n, noSource)
+			}
 		}
 	}
 	// Only a Kubernetes capture gives a GitOps source's reason.
@@ -108,7 +118,7 @@ func TestSkippedOtherSideOlderRules(t *testing.T) {
 	cov := []Coverage{{Resource: "storage.googleapis.com/Bucket", Kind: "storage.googleapis.com/Bucket"}}
 	want := Snapshot{Platform: "gcp", Coverage: cov, Objects: []Object{gcp}}
 	got := Snapshot{Platform: "gcp", Coverage: cov, Skips: []Skip{{Resource: "storage.googleapis.com/Bucket", Name: "assets", Reason: byFlux}}}
-	if n := noted(t, want, got, "missing"); n == nil || n.OlderRules {
+	if n := noted(t, want, got, "missing"); n == nil || n.OlderRules || n.NoSourceRules {
 		t.Errorf("gcp: %+v", n)
 	}
 	// Off Kubernetes the resource is the kind itself: another resource the

@@ -135,6 +135,11 @@ type Policy struct {
 	// roots are what a source that applies itself reads from (a Flux
 	// GitRepository), as kind|namespace|name: see root. Capture finds them.
 	roots map[string]bool
+	// sources are the GitOps sources the cluster holds, which Capture
+	// finds: an object whose labels name one that is not there is
+	// captured (sourceMissing). Nil when they were not looked for, and
+	// every label is then taken at its word.
+	sources *clusterSources
 }
 
 // WithBaseline loads a baseline snapshot into the policy.
@@ -212,7 +217,12 @@ func (p Policy) skipReason(group, resource string, obj map[string]any) string {
 		// Where GitOps starts is kept, since nothing else recreates it. A
 		// credential written into it is withheld as any is, and supplied
 		// from a secret sources file.
-		if why := renderedBy(md); why != "" && !p.root(obj) {
+		// A label is a claim, and anyone who can create an object can
+		// write one: left out on its word alone, a ClusterRoleBinding
+		// labelled as some Kustomization's was in no snapshot and no drift
+		// report. One whose source is not in the cluster is captured, as
+		// nothing there recreates it.
+		if why := renderedBy(md); why != "" && !p.root(obj) && !p.sources.missing(md) {
 			return why
 		}
 	}
@@ -321,7 +331,7 @@ func aksOwn(md map[string]any) bool {
 // CaptureRules is the version of the rules for what a Kubernetes capture
 // leaves out and why, written to every snapshot (snapshot.Snapshot.Rules).
 // Raise snapshot.KubernetesCaptureRules with any change to what skipReason,
-// renderedBy, root or selfApplied decide: a build then refuses a snapshot
+// renderedBy, root, selfApplied or clusterSources.missing decide: a build then refuses a snapshot
 // under rules newer than its own, and compare can say where a difference
 // may come from an older build's.
 const CaptureRules = snapshot.KubernetesCaptureRules
@@ -385,6 +395,68 @@ func renderedBy(md map[string]any) string {
 		return "composed by Crossplane composite " + l("crossplane.io/composite") + "; restoring the composite recreates it"
 	}
 	return ""
+}
+
+// clusterSources are the GitOps sources a cluster holds, by kind: the Flux
+// Kustomizations and HelmReleases by namespace and name, the Argo CD
+// applications by the name their label gives them. A kind is listed when
+// the answer is known: its type was read whole, or the cluster does not
+// serve it. One that could not be read is not, and nothing is concluded
+// from it.
+type clusterSources struct {
+	listed map[string]bool
+	has    map[string]bool
+}
+
+const (
+	srcKustomization = "kustomization"
+	srcHelmRelease   = "helmrelease"
+	srcApplication   = "application"
+)
+
+// missing reports whether the labels on an object name a source the
+// cluster is known not to hold. A Crossplane composite is of any kind, and
+// is not looked for.
+func (s *clusterSources) missing(md map[string]any) bool {
+	if s == nil {
+		return false
+	}
+	labels, _ := md["labels"].(map[string]any)
+	l := func(k string) string { return strOf(labels[k]) }
+	flux := func(kind, ns, name string) bool {
+		if ns == "" {
+			ns = "*"
+		}
+		return s.listed[kind] && !s.has[kind+"|"+ns+"/"+name]
+	}
+	// In the order renderedBy reads them, so the source looked for is the
+	// one the reason would name.
+	switch {
+	case l("helm.toolkit.fluxcd.io/name") != "":
+		return flux(srcHelmRelease, l("helm.toolkit.fluxcd.io/namespace"), l("helm.toolkit.fluxcd.io/name"))
+	case l("kustomize.toolkit.fluxcd.io/name") != "":
+		return flux(srcKustomization, l("kustomize.toolkit.fluxcd.io/namespace"), l("kustomize.toolkit.fluxcd.io/name"))
+	case l("argocd.argoproj.io/instance") != "" || annotation(md, "argocd.argoproj.io/tracking-id") != "":
+		app := l("argocd.argoproj.io/instance")
+		if app == "" {
+			app = strings.SplitN(annotation(md, "argocd.argoproj.io/tracking-id"), ":", 2)[0]
+		}
+		return s.listed[srcApplication] && !s.has[srcApplication+"|"+app]
+	}
+	return false
+}
+
+// add records one source as the labels on what it applies name it.
+func (s *clusterSources) add(kind, ns, name string) {
+	if kind == srcApplication {
+		// By its name in Argo CD's own namespace, and by namespace_name
+		// outside it; which namespace is Argo CD's is not known here.
+		s.has[kind+"|"+name] = true
+		s.has[kind+"|"+ns+"_"+name] = true
+		return
+	}
+	s.has[kind+"|"+ns+"/"+name] = true
+	s.has[kind+"|*/"+name] = true
 }
 
 func annotation(md map[string]any, k string) string {

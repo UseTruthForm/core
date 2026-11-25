@@ -18,6 +18,12 @@ type SkippedOtherSide struct {
 	// self-applying root and the source it reads from, which later ones
 	// capture: the difference may be that, and not a change in the system.
 	OlderRules bool
+	// NoSourceRules: the snapshot that left it out is under Kubernetes
+	// capture rules before 3 (a build up to beta.24 wrote it), and every
+	// reason it gives is one a GitOps source gives. Such a build left out
+	// what is labelled as a source's where the cluster holds no such
+	// source, which later ones capture: the difference may be that.
+	NoSourceRules bool
 }
 
 // namesObjects says whether s's skips name objects as s keys them, so that
@@ -156,13 +162,13 @@ func (ix *skipIndex) note(o Object) *SkippedOtherSide {
 	}
 	sort.Strings(reasons)
 	reasons = compactStrings(reasons)
-	older := ix.rules == 0
+	older := ix.platform == "kubernetes" && ix.rules < 3
 	for _, r := range reasons {
 		if !appliedByGitOps(ix.platform, r) {
 			older = false
 		}
 	}
-	return &SkippedOtherSide{Reason: strings.Join(reasons, "; "), OlderRules: older}
+	return &SkippedOtherSide{Reason: strings.Join(reasons, "; "), OlderRules: older && ix.rules == 0, NoSourceRules: older}
 }
 
 func compactStrings(s []string) []string {

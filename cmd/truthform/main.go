@@ -623,6 +623,9 @@ func skippedNote(ch snapshot.Change) string {
 	if ch.Skipped.OlderRules {
 		note += "; a snapshot from a build before beta.23 left out a self-applying GitOps root and the source it reads from, so this may be one"
 	}
+	if ch.Skipped.NoSourceRules {
+		note += "; a snapshot from a build before beta.25 left out what is labelled as a GitOps source's where the cluster holds no such source, so this may be that"
+	}
 	return note + ")"
 }
 

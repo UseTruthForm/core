@@ -23,6 +23,10 @@ import (
 const (
 	leftOutNote = " (left out on the other side: "
 	olderHint   = "; a snapshot from a build before beta.23 left out a self-applying GitOps root and the source it reads from, so this may be one)"
+	// What a snapshot under Kubernetes rules before 3 adds for a GitOps
+	// source's reason, and what one without rules says in all.
+	noSourceHint = "; a snapshot from a build before beta.25 left out what is labelled as a GitOps source's where the cluster holds no such source, so this may be that)"
+	noRulesHint  = "; a snapshot from a build before beta.23 left out a self-applying GitOps root and the source it reads from, so this may be one" + noSourceHint
 )
 
 // serveCRD defines a namespaced kind on a real API server and waits until
@@ -193,7 +197,9 @@ var (
 // Through diff, diff --config and compare, text and --json, against a
 // baseline main wrote (no rules) and one this build wrote: an edit hidden
 // behind a skip is a difference in both directions. After a capture,
-// objects are edited and given the marks of a maker that does not exist:
+// objects are edited and given the marks of a maker that is in the cluster
+// and did not make them (one that is not there is captured, see
+// TestALabelNamingNoSourceIsCaptured):
 // Flux Kustomization labels (on a ConfigMap and on a ClusterRoleBinding
 // given a new subject), Flux HelmRelease labels, an Argo CD instance label,
 // an Argo CD tracking-id, and a controller reference to a real Deployment
@@ -205,8 +211,16 @@ var (
 func TestEditsBehindSkipsAreDifferences(t *testing.T) {
 	for _, asMain := range []bool{true, false} {
 		t.Run(map[bool]string{true: "baseline written by main", false: "baseline under this build's rules"}[asMain], func(t *testing.T) {
-			w := newSkipWorld(t, "skips", "shop")
-			flux := map[string]any{"kustomize.toolkit.fluxcd.io/name": "nope", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}
+			w := newSkipWorld(t, "skips", "shop", "gitops")
+			for _, c := range [][3]string{
+				{"kustomize.toolkit.fluxcd.io", "Kustomization", "kustomizations"},
+				{"helm.toolkit.fluxcd.io", "HelmRelease", "helmreleases"},
+				{"argoproj.io", "Application", "applications"},
+			} {
+				w.create(serveCRD(t, w.dyn, c[0], c[1], c[2]), map[string]any{"apiVersion": c[0] + "/v1", "kind": c[1],
+					"metadata": map[string]any{"name": "src", "namespace": "gitops"}, "spec": map[string]any{"path": "./x"}})
+			}
+			flux := map[string]any{"kustomize.toolkit.fluxcd.io/name": "src", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}
 			for _, n := range []string{"kustomized", "helmed", "instance", "tracked"} {
 				w.create(configMaps, map[string]any{"apiVersion": "v1", "kind": "ConfigMap", "metadata": map[string]any{"name": n, "namespace": "shop"}, "data": map[string]any{"a": "1"}})
 			}
@@ -243,9 +257,9 @@ func TestEditsBehindSkipsAreDifferences(t *testing.T) {
 				})
 			}
 			edit("kustomized", flux, nil)
-			edit("helmed", map[string]any{"helm.toolkit.fluxcd.io/name": "nope", "helm.toolkit.fluxcd.io/namespace": "gitops"}, nil)
-			edit("instance", map[string]any{"argocd.argoproj.io/instance": "nope"}, nil)
-			edit("tracked", nil, map[string]any{"argocd.argoproj.io/tracking-id": "nope:/ConfigMap:shop/tracked"})
+			edit("helmed", map[string]any{"helm.toolkit.fluxcd.io/name": "src", "helm.toolkit.fluxcd.io/namespace": "gitops"}, nil)
+			edit("instance", map[string]any{"argocd.argoproj.io/instance": "src"}, nil)
+			edit("tracked", nil, map[string]any{"argocd.argoproj.io/tracking-id": "src:/ConfigMap:shop/tracked"})
 			mallory := map[string]any{"kind": "User", "apiGroup": "rbac.authorization.k8s.io", "name": "mallory"}
 			w.update(bindings, "", "ops", func(o map[string]any) {
 				o["metadata"].(map[string]any)["labels"] = flux
@@ -265,17 +279,17 @@ func TestEditsBehindSkipsAreDifferences(t *testing.T) {
 				spec["selector"], spec["externalIPs"] = map[string]any{"app": "other"}, []any{"203.0.113.9"}
 			})
 
-			fluxNope := snapshot.FluxKustomizationReason("gitops", "nope")
-			synced := "extra    rbac.authorization.k8s.io/v1|ClusterRoleBinding||synced" + leftOutNote + fluxNope + ")"
+			fluxSrc := snapshot.FluxKustomizationReason("gitops", "src")
+			synced := "extra    rbac.authorization.k8s.io/v1|ClusterRoleBinding||synced" + leftOutNote + fluxSrc + ")"
 			if asMain {
-				synced = strings.TrimSuffix(synced, ")") + olderHint
+				synced = strings.TrimSuffix(synced, ")") + noRulesHint
 			}
 			w.wantDifferences([]string{
-				"missing  v1|ConfigMap|shop|kustomized" + leftOutNote + fluxNope + ")",
-				"missing  v1|ConfigMap|shop|helmed" + leftOutNote + snapshot.FluxHelmReleaseReason("gitops", "nope") + ")",
-				"missing  v1|ConfigMap|shop|instance" + leftOutNote + snapshot.ArgoCDReason("nope") + ")",
-				"missing  v1|ConfigMap|shop|tracked" + leftOutNote + snapshot.ArgoCDReason("nope") + ")",
-				"missing  rbac.authorization.k8s.io/v1|ClusterRoleBinding||ops" + leftOutNote + fluxNope + ")",
+				"missing  v1|ConfigMap|shop|kustomized" + leftOutNote + fluxSrc + ")",
+				"missing  v1|ConfigMap|shop|helmed" + leftOutNote + snapshot.FluxHelmReleaseReason("gitops", "src") + ")",
+				"missing  v1|ConfigMap|shop|instance" + leftOutNote + snapshot.ArgoCDReason("src") + ")",
+				"missing  v1|ConfigMap|shop|tracked" + leftOutNote + snapshot.ArgoCDReason("src") + ")",
+				"missing  rbac.authorization.k8s.io/v1|ClusterRoleBinding||ops" + leftOutNote + fluxSrc + ")",
 				"missing  v1|Service|shop|front" + leftOutNote + snapshot.OwnedReason("Deployment", "web") + ")",
 				synced,
 			}, 7)
@@ -315,7 +329,7 @@ func TestArgoRootFlipIsADifference(t *testing.T) {
 			byShop := snapshot.ArgoCDReason("shop")
 			child := "extra    argoproj.io/v1|Application|argocd|child" + leftOutNote + byShop + ")"
 			if asMain {
-				child = strings.TrimSuffix(child, ")") + olderHint
+				child = strings.TrimSuffix(child, ")") + noRulesHint
 			}
 			w.wantDifferences([]string{"missing  argoproj.io/v1|Application|argocd|shop" + leftOutNote + byShop + ")", child}, 2)
 		})
@@ -341,6 +355,11 @@ func TestFluxRootFlipIsADifference(t *testing.T) {
 			w.create(repos, map[string]any{"apiVersion": "source.toolkit.fluxcd.io/v1", "kind": "GitRepository",
 				"metadata": map[string]any{"name": "repo", "namespace": "gitops", "labels": by("helper")},
 				"spec":     map[string]any{"url": "https://git.example.com/good.git"}})
+			// The one the edit below names: there, or the edited one would be
+			// captured as naming no source.
+			w.create(ks, map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization",
+				"metadata": map[string]any{"name": "other", "namespace": "gitops"},
+				"spec":     map[string]any{"path": "./other", "sourceRef": map[string]any{"kind": "GitRepository", "name": "repo"}}})
 			w.captureBefore(asMain)
 			wantSkip(t, w.before, "kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|helper", false)
 			wantSkip(t, w.before, "source.toolkit.fluxcd.io/v1|GitRepository|gitops|repo", false)
@@ -393,7 +412,7 @@ func TestCompareNotesARootAnOlderBuildLeftOut(t *testing.T) {
 			code, stdout, _ := output(t, func() int { return compare(o.args) })
 			line := o.kind + " " + key + leftOutNote + why + ")"
 			if c.hint {
-				line = strings.TrimSuffix(line, ")") + olderHint
+				line = strings.TrimSuffix(line, ")") + noRulesHint
 			}
 			if code != 2 || !strings.Contains(stdout, line+"\n") || !strings.Contains(stdout, "1 difference between") {
 				t.Errorf("left out under rules %d, %s: exit %d, want 2 and %q\n%s", c.skippedRules, o.kind, code, line, stdout)
@@ -516,3 +535,35 @@ func TestHelmHistoryNotesOnlyWhatItNames(t *testing.T) {
 }
 
 func ctx() context.Context { return context.Background() }
+
+// Issue #28: a label is a claim anyone who can create an object can make. A
+// ClusterRoleBinding labelled from the start as a Flux Kustomization's, a
+// HelmRelease's or an Argo CD application's, where no such source is in the
+// cluster, is captured: left out on its label's word, it was in no snapshot
+// and no drift report. One whose source is there is left to it as before.
+func TestALabelNamingNoSourceIsCaptured(t *testing.T) {
+	w := newSkipWorld(t, "no-source", "gitops")
+	// Flux's Kustomizations are served and one is there; its HelmReleases
+	// and Argo CD's applications are not served at all.
+	ks := serveCRD(t, w.dyn, "kustomize.toolkit.fluxcd.io", "Kustomization", "kustomizations")
+	w.create(ks, map[string]any{"apiVersion": "kustomize.toolkit.fluxcd.io/v1", "kind": "Kustomization",
+		"metadata": map[string]any{"name": "apps", "namespace": "gitops"}, "spec": map[string]any{"path": "./apps"}})
+	for name, md := range map[string]map[string]any{
+		"by-apps":    {"labels": map[string]any{"kustomize.toolkit.fluxcd.io/name": "apps", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}},
+		"no-ks":      {"labels": map[string]any{"kustomize.toolkit.fluxcd.io/name": "anything", "kustomize.toolkit.fluxcd.io/namespace": "gitops"}},
+		"elsewhere":  {"labels": map[string]any{"kustomize.toolkit.fluxcd.io/name": "apps", "kustomize.toolkit.fluxcd.io/namespace": "other"}},
+		"no-release": {"labels": map[string]any{"helm.toolkit.fluxcd.io/name": "anything", "helm.toolkit.fluxcd.io/namespace": "gitops"}},
+		"no-app":     {"labels": map[string]any{"argocd.argoproj.io/instance": "anything"}},
+		"no-tracked": {"annotations": map[string]any{"argocd.argoproj.io/tracking-id": "anything:rbac.authorization.k8s.io/ClusterRoleBinding:/no-tracked"}},
+	} {
+		md["name"] = name
+		w.create(bindings, map[string]any{"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding", "metadata": md,
+			"roleRef":  map[string]any{"apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "cluster-admin"},
+			"subjects": []any{map[string]any{"kind": "User", "apiGroup": "rbac.authorization.k8s.io", "name": "mallory"}}})
+	}
+	w.captureBefore(false)
+	wantSkip(t, w.before, "rbac.authorization.k8s.io/v1|ClusterRoleBinding||by-apps", true)
+	for _, name := range []string{"no-ks", "elsewhere", "no-release", "no-app", "no-tracked"} {
+		wantSkip(t, w.before, "rbac.authorization.k8s.io/v1|ClusterRoleBinding||"+name, false)
+	}
+}

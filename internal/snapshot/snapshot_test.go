@@ -332,7 +332,7 @@ func TestRulesAreChecked(t *testing.T) {
 	}{
 		{"kubernetes", 0, ""},
 		{"kubernetes", KubernetesCaptureRules, ""},
-		{"kubernetes", KubernetesCaptureRules + 1, "captured under kubernetes capture rules 3, and this build knows up to 2: read it with a newer TruthForm"},
+		{"kubernetes", KubernetesCaptureRules + 1, fmt.Sprintf("captured under kubernetes capture rules %d, and this build knows up to %d: read it with a newer TruthForm", KubernetesCaptureRules+1, KubernetesCaptureRules)},
 		{"kubernetes", -1, "capture rules -1 is not a version"},
 		{"azure", 0, ""},
 		{"azure", AzureCaptureRules, ""},

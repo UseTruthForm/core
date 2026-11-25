@@ -87,6 +87,13 @@ func Capture(ctx context.Context, c *Clients, p Policy) (snapshot.Snapshot, erro
 	}
 
 	p.roots = fluxRoots(ctx, c, lists)
+	unread := map[string]bool{}
+	if groupErr != nil {
+		for gv := range groupErr.Groups {
+			unread[gv.Group] = true
+		}
+	}
+	p.sources = gitOpsSources(ctx, c, lists, unread)
 	own := newOwnership()
 	for _, rl := range lists {
 		gv, err := schema.ParseGroupVersion(rl.GroupVersion)
@@ -180,6 +187,52 @@ func fluxRoots(ctx context.Context, c *Clients, lists []*metav1.APIResourceList)
 		}
 	}
 	return roots
+}
+
+// gitOpsSources finds the GitOps sources the cluster holds: see clusterSources.
+// It lists each of the three types once more than the capture does. A type
+// the cluster does not serve has none, and that is known; one whose group
+// could not be discovered (unread), or whose list fails, is not known, and
+// what is labelled as its is left to it as before.
+func gitOpsSources(ctx context.Context, c *Clients, lists []*metav1.APIResourceList, unread map[string]bool) *clusterSources {
+	s := &clusterSources{listed: map[string]bool{}, has: map[string]bool{}}
+	for _, want := range []struct{ kind, group, resource string }{
+		{srcKustomization, "kustomize.toolkit.fluxcd.io", "kustomizations"},
+		{srcHelmRelease, "helm.toolkit.fluxcd.io", "helmreleases"},
+		{srcApplication, "argoproj.io", "applications"},
+	} {
+		s.listed[want.kind] = !unread[want.group]
+		for _, rl := range lists {
+			gv, err := schema.ParseGroupVersion(rl.GroupVersion)
+			if err != nil || gv.Group != want.group {
+				continue
+			}
+			for _, r := range rl.APIResources {
+				if r.Name != want.resource {
+					continue
+				}
+				if !has(r.Verbs, "list") {
+					s.listed[want.kind] = false
+					continue
+				}
+				cont := ""
+				for {
+					ul, err := c.Dynamic.Resource(gv.WithResource(r.Name)).List(ctx, metav1.ListOptions{Limit: 500, Continue: cont})
+					if err != nil {
+						s.listed[want.kind] = false
+						break
+					}
+					for i := range ul.Items {
+						s.add(want.kind, ul.Items[i].GetNamespace(), ul.Items[i].GetName())
+					}
+					if cont = ul.GetContinue(); cont == "" {
+						break
+					}
+				}
+			}
+		}
+	}
+	return s
 }
 
 func captureType(ctx context.Context, c *Clients, p Policy, gvr schema.GroupVersionResource, kind string, cov *snapshot.Coverage, snap *snapshot.Snapshot, own *ownership) error {

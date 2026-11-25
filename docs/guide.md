@@ -96,7 +96,16 @@ file is part of the digest.
 
 What a GitOps source renders (a Flux HelmRelease or Kustomization, an Argo
 CD application, a Crossplane composite) is left to its source: restoring
-the source recreates it, and `--capture-rendered` keeps it anyway. Where
+the source recreates it, and `--capture-rendered` keeps it anyway. A
+source is known by the labels it stamps on what it applies, and a label
+is only a claim: an object that names a Flux Kustomization, a Flux
+HelmRelease or an Argo CD application the cluster does not hold is
+captured, since nothing there recreates it. Where a cluster's sources run
+in another cluster (a Flux Kustomization or HelmRelease with a
+`kubeConfig`, an Argo CD that deploys to this one), none is held here and
+all they apply is captured. The source is not looked for where its type
+could not be read, nor for a Crossplane composite, and such an object is
+left to it. Where
 GitOps starts is captured, since nothing else recreates it: the Flux
 Kustomization that applies itself (the one `flux bootstrap` makes) with
 the repository object it reads from, and an Argo CD application that
@@ -285,12 +294,15 @@ rules it was taken under (`rules` in `snapshot.yaml`, outside the digest). A sna
 without one counts as 0: every build up to and including beta.23 wrote it so.
 Kubernetes version 1 captures a self-applying GitOps root, and the source a
 self-applying Kustomization reads from, which builds before beta.23 left
-out; version 2 lists Helm history families apart from Secrets listed by name.
-Where the side that left an object out has no rules and gave a GitOps
-source's reason, the line adds that this may be why:
+out; version 2 lists Helm history families apart from Secrets listed by name;
+version 3 captures what is labelled as a GitOps source's where the cluster
+holds no such source, which builds up to beta.24 left out.
+Where the side that left an object out is under older rules and gave a
+GitOps source's reason, the line adds that this may be why (for a snapshot
+under rules 1 or 2, the part about a build before beta.25 alone):
 
 ```text
-extra    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root (left out on the other side: applied by Flux Kustomization gitops/root; restoring it recreates this; a snapshot from a build before beta.23 left out a self-applying GitOps root and the source it reads from, so this may be one)
+extra    kustomize.toolkit.fluxcd.io/v1|Kustomization|gitops|root (left out on the other side: applied by Flux Kustomization gitops/root; restoring it recreates this; a snapshot from a build before beta.23 left out a self-applying GitOps root and the source it reads from, so this may be one; a snapshot from a build before beta.25 left out what is labelled as a GitOps source's where the cluster holds no such source, so this may be that)
 ```
 
 A snapshot under rules newer than the build reading it is refused, naming

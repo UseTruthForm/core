@@ -39,8 +39,10 @@ import (
 // than read it under rules it does not know. 1: a self-applying GitOps root,
 // and the source a self-applying Kustomization reads from, are captured.
 // 2: a release's Helm history is listed as a family, apart from a Secret
-// listed by its own name (HelmHistoryFamily).
-const KubernetesCaptureRules = 2
+// listed by its own name (HelmHistoryFamily). 3: an object whose labels name
+// a Flux Kustomization, a Flux HelmRelease or an Argo CD application that
+// the cluster does not hold is captured.
+const KubernetesCaptureRules = 3
 
 // AzureCaptureRules is the version of the rules for how an Azure capture
 // names what it leaves out. 1: a skip names a resource by its group and its

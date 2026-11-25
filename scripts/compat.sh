@@ -12,7 +12,10 @@
 #
 # A build that cannot read the other's snapshot fails the run (compare exits
 # 1). Differences are printed and do not fail it: a change of capture rules
-# may be meant, and belongs in the release notes. It makes no request and
+# may be meant, and belongs in the release notes. The last release refusing
+# a snapshot under capture rules newer than its own is by design: printed as
+# REFUSED, it does not fail the run, and the notes must say there is no
+# going back to that release with such a snapshot. It makes no request and
 # touches nothing but WORK. Usage:
 #   scripts/compat.sh                 # against the newest tag
 #   PREV=v0.1.0-beta.22 scripts/compat.sh
@@ -52,7 +55,15 @@ check() { # label binary theirs ours
   case $code in
     0) printf '   ok        %s\n' "$1" ;;
     2) printf '   DIFFERS   %s\n' "$1"; printf '%s\n' "$out" | sed 's/^/               /' | head -12 ;;
-    *) printf '   CANNOT READ  %s\n' "$1"; printf '%s\n' "$out" | sed 's/^/               /' | head -6; fail=1 ;;
+    *) # A snapshot under capture rules newer than a build's own is
+       # refused by design. It still means no going back to that build:
+       # the release notes must say so.
+       if [ "$2" = "$WORK/prev" ] && printf '%s' "$out" | grep -q 'read it with a newer TruthForm'; then
+         printf '   REFUSED   %s: newer capture rules, as designed; say in the notes that %s cannot read it\n' "$1" "$PREV"
+         refused=1
+       else
+         printf '   CANNOT READ  %s\n' "$1"; printf '%s\n' "$out" | sed 's/^/               /' | head -6; fail=1
+       fi ;;
   esac
 }
 for d in "$WORK"/snap-new/*/; do
@@ -67,5 +78,11 @@ for d in "$WORK"/snap-new/*/; do
   check "this build reads $PREV's $n ($platform)" "$WORK/new" "$WORK/snap-prev/$n" "$d"
   check "$PREV reads this build's $n ($platform)" "$WORK/prev" "$d" "$WORK/snap-prev/$n"
 done
-[ $fail = 0 ] && echo "== each build reads the other's snapshots" || echo "== NOT COMPATIBLE: see CANNOT READ above"
+if [ $fail != 0 ]; then
+  echo "== NOT COMPATIBLE: see CANNOT READ above"
+elif [ "${refused:-0}" = 1 ]; then
+  echo "== this build reads $PREV's snapshots; $PREV refuses those marked REFUSED above (newer capture rules)"
+else
+  echo "== each build reads the other's snapshots"
+fi
 exit $fail

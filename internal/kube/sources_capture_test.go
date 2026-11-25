@@ -51,12 +51,14 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		"Receiver imaging/hook", "ImagePolicy imaging/pick", "Kustomization flux2/flux2", "Kustomization gitops/decoy", "ApplicationSet argocd/rolling",
 		"ApplicationSet argo2/set2", "Application apps2/svc", "Deployment legacy2ns/svcapp",
 		"HelmRepository imaging/charts", "Bucket imaging/store",
-		"HelmRepository charts/ocirepo", "HelmRelease apprel/app", "HelmChart charts/manual"} {
+		"HelmRepository charts/ocirepo", "HelmRelease apprel/app", "HelmChart charts/manual",
+		"GitRepository built/parked", "HelmChart built/fromgit", "HelmChart built/idle", "HelmRelease built/rel"} {
 		if !have[k] {
 			t.Errorf("the capture did not take %s", k)
 		}
 	}
-	for _, k := range []string{"Application argocd/gen", "Application argo2/gen2", "ImageUpdateAutomation flux2/autobump", "Provider flux2/f2chat", "ImageUpdateAutomation botns/gitbump", "ApplicationSet argo2/decoy", "OCIRepository flux2/oci", "HelmChart charts/apprel-app"} {
+	for _, k := range []string{"Application argocd/gen", "Application argo2/gen2", "ImageUpdateAutomation flux2/autobump", "Provider flux2/f2chat", "ImageUpdateAutomation botns/gitbump", "ApplicationSet argo2/decoy", "OCIRepository flux2/oci", "HelmChart charts/apprel-app",
+		"HelmChart imaging/built-rel", "HelmRelease flux2/rel", "HelmChart imaging/flux2-rel"} {
 		if have[k] {
 			t.Errorf("the capture took %s, which it leaves to what makes it", k)
 		}
@@ -88,6 +90,9 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		"argo2/gen2 applications":               "owned by ApplicationSet/set2",
 		"setns2/genapp2 deployments":            "managed by Argo CD application gen2",
 		"argo2/decoy applicationsets":           "applied by Flux Kustomization gitops/decoy",
+		"imaging/built-rel helmcharts":          "rendered by Flux HelmRelease built/rel",
+		"flux2/rel helmreleases":                "applied by Flux Kustomization flux2/flux2",
+		"imaging/flux2-rel helmcharts":          "rendered by Flux HelmRelease flux2/rel",
 	} {
 		if !strings.HasPrefix(reasons[k], want) {
 			t.Errorf("the capture left %s as %q, want %q", k, reasons[k], want)
@@ -113,13 +118,21 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 	// ImagePolicy, which only chooses a tag.
 	const commits, sends = "it commits and pushes image updates to its Git repository", "it sends what it is given to its chat, webhook or Git host"
 	pulls := "it pulls its chart from the chart source's repository or registry with that source's credentials"
+	// Of a GitRepository or Bucket, a chart is built from the artifact in
+	// the cluster, and the build can fetch its dependencies. Made by a
+	// release the snapshot does not hold, the chart's source is not known.
+	builds := "it builds its chart from its source's artifact in the cluster, and the build can fetch the chart's dependencies from their repositories"
+	fetches := "it pulls its chart from the chart source's repository or registry with that source's credentials, or, from a GitRepository or Bucket, builds it from that source's artifact, and the build can fetch the chart's dependencies from their repositories"
 	appRelease := kube.ScopeSource{Source: "Flux HelmRelease apprel/app", Object: "HelmRelease apprel/app", Namespaces: []string{}, Outside: []string{"HelmChart charts/apprel-app (" + pulls + ")"}, Blocks: true}
 	manualChart := kube.ScopeSource{Source: "Flux HelmChart charts/manual", Object: "HelmChart charts/manual", Namespaces: []string{}, Reaches: pulls, Blocks: true}
 	outside := []kube.ScopeSource{
 		{Source: "Flux notification Alert imaging/alerts", Object: "Alert imaging/alerts", Namespaces: []string{}, Reaches: "it sends the cluster's events to its Provider", Blocks: true},
 		{Source: "Flux ImageUpdateAutomation imaging/bump", Object: "ImageUpdateAutomation imaging/bump", Namespaces: []string{}, Reaches: commits, Blocks: true},
 		{Source: "Flux ImageRepository imaging/scan", Object: "ImageRepository imaging/scan", Namespaces: []string{}, Reaches: "it scans its image registry with the registry's credentials", Blocks: true},
+		// The second root applies a HelmRelease, which makes a HelmChart:
+		// the root makes it through the release, and says so.
 		{Source: "Flux Kustomization flux2/flux2", Object: "Kustomization flux2/flux2", Namespaces: []string{}, Outside: []string{
+			"HelmChart imaging/flux2-rel (made by Flux HelmRelease flux2/rel: " + fetches + ")",
 			"ImageUpdateAutomation botns/gitbump (" + commits + ")", "ImageUpdateAutomation flux2/autobump (" + commits + ")",
 			"OCIRepository flux2/oci (it pulls its artifact from its OCI registry with the source's credentials)", "Provider flux2/f2chat (" + sends + ")"}, Blocks: true},
 		// Flux's sources that fetch, made by hand.
@@ -131,6 +144,11 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		// brought not held in every row, and is never refused:
 		// source-controller makes it static and never fetches with it.
 		appRelease, manualChart,
+		// Built, not pulled: a HelmChart of a GitRepository (suspended in
+		// the snapshot, as is the other HelmChart of it: neither is
+		// listed), and a release of a Bucket for the chart it makes.
+		{Source: "Flux HelmChart built/fromgit", Object: "HelmChart built/fromgit", Namespaces: []string{}, Reaches: builds, Blocks: true},
+		{Source: "Flux HelmRelease built/rel", Object: "HelmRelease built/rel", Namespaces: []string{}, Outside: []string{"HelmChart imaging/built-rel (" + builds + ")"}, Blocks: true},
 		{Source: "Flux notification Provider imaging/chat", Object: "Provider imaging/chat", Namespaces: []string{}, Reaches: sends, Blocks: true},
 		{Source: "Flux notification Receiver imaging/hook", Object: "Receiver imaging/hook", Namespaces: []string{}, Reaches: "it takes webhooks from outside, which have the sources it names reconcile", Blocks: true},
 	}
@@ -139,6 +157,7 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		{Namespaces: []string{"flux2"}, Hold: true, Objects: []string{"Kustomization/flux2"}},
 		{Namespaces: []string{"charts"}, Hold: true, Objects: []string{"HelmRepository/ocirepo", "HelmChart/manual"}},
 		{Namespaces: []string{"apprel"}, Hold: true, Objects: []string{"HelmRelease/app"}},
+		{Namespaces: []string{"built"}, Hold: true, Objects: []string{"HelmChart/fromgit", "HelmRelease/rel"}},
 	}
 	// drop is a list without the objects named, and with those given.
 	drop := func(l []kube.ScopeSource, objects []string, add ...kube.ScopeSource) []kube.ScopeSource {
@@ -304,6 +323,12 @@ func TestUnheldSourcesOfARealCapture(t *testing.T) {
 		// nothing to accept, and the error says why.
 		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"HelmRepository/charts/ocirepo"}}, "names \"HelmRepository/charts/ocirepo\", a HelmRepository of type oci: it fetches nothing (source-controller makes it static), so it is never refused and there is nothing to accept"},
 		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"ImageUpdateAutomation/flux2/auto"}}, "no such object is brought not held"},
+		// A HelmChart a root makes through the release it applies: the
+		// error names both, and the root as what to accept.
+		{kube.Scope{Narrow: shopHeld, SourcesRunning: []string{"HelmChart/imaging/flux2-rel"}}, "is not brought: it is made by Flux HelmRelease flux2/rel, which Flux Kustomization flux2/flux2 applies; the two make it again once it runs. Name that in sourcesRunning (Kustomization/flux2/flux2), or hold it"},
+		// A HelmRepository of the default type, held: there is nothing to
+		// accept because it is held, not because it is of type oci.
+		{kube.Scope{Narrow: append(entries(shopHeld...), holdOutside[0]), SourcesRunning: []string{"HelmRepository/imaging/charts"}}, "no such object is brought not held"},
 	} {
 		if _, _, err := kube.Narrow(snap, bad.sc); err == nil || !strings.Contains(err.Error(), bad.want) {
 			t.Errorf("sourcesRunning %q: %v, want %q", bad.sc.SourcesRunning, err, bad.want)

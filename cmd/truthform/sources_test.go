@@ -305,9 +305,9 @@ func TestAnOCIHelmRepositoryIsNotRefused(t *testing.T) {
 // as a Git path synced.
 func TestSourceNoteOfAHelmRelease(t *testing.T) {
 	rel := kube.ScopeSource{Source: "Flux HelmRelease apprel/app", Object: "HelmRelease apprel/app", Namespaces: []string{"shop"},
-		Outside: []string{"HelmChart charts/apprel-app (it pulls)"}, Blocks: true}
+		Outside: []string{"HelmChart charts/apprel-app (" + kube.ChartPulls + ")"}, Blocks: true}
 	n := sourceNote(rel)
-	for _, want := range []string{"installs into shop, which the scope narrows", "makes what acts outside the cluster, HelmChart charts/apprel-app (it pulls)", "installs its chart, whose HelmChart pulls from the chart source's repository or registry"} {
+	for _, want := range []string{"installs into shop, which the scope narrows", "makes what acts outside the cluster, HelmChart charts/apprel-app (it pulls", "installs its chart, whose HelmChart pulls from the chart source's repository or registry"} {
 		if !strings.Contains(n, want) {
 			t.Errorf("the note of a HelmRelease does not say %q: %s", want, n)
 		}
@@ -315,7 +315,7 @@ func TestSourceNoteOfAHelmRelease(t *testing.T) {
 	if strings.Contains(n, "Git path") || strings.Contains(n, "applies") {
 		t.Errorf("the note of a HelmRelease speaks of applying: %s", n)
 	}
-	if b := blockingSources([]kube.ScopeSource{rel}); len(b) != 1 || b[0] != "Flux HelmRelease apprel/app installs into shop and makes HelmChart charts/apprel-app (it pulls)" {
+	if b := blockingSources([]kube.ScopeSource{rel}); len(b) != 1 || b[0] != "Flux HelmRelease apprel/app installs into shop and makes HelmChart charts/apprel-app ("+kube.ChartPulls+")" {
 		t.Errorf("as the refusal lists a HelmRelease: %q", b)
 	}
 	was := scopeDone
@@ -347,6 +347,45 @@ func TestSourceNoteOfAHelmRelease(t *testing.T) {
 	scopeDone = &kube.ScopeReport{Sources: []kube.ScopeSource{{Source: "Flux Kustomization gitops/root", Object: "Kustomization gitops/root", Namespaces: []string{"shop"}, Blocks: true}}}
 	if err := refusedForSources("s.yaml"); err == nil || strings.Contains(err.Error(), "a HelmRelease") {
 		t.Errorf("the refusal of no HelmRelease speaks of one: %v", err)
+	}
+	// A chart of a GitRepository or Bucket is built from the artifact in
+	// the cluster, not pulled: refused because the build can fetch the
+	// chart's dependencies, even while its source is held. One whose
+	// source the snapshot does not say is said to do either.
+	built := rel
+	built.Outside = []string{"HelmChart built/rel (" + kube.ChartBuilds + ")"}
+	if n := sourceNote(built); strings.Contains(n, "whose HelmChart pulls") || !strings.Contains(n, "whose HelmChart builds it from the source's artifact once there is one (its source held, once that runs), and the build can fetch the chart's dependencies") {
+		t.Errorf("the note of a HelmRelease whose chart is built: %s", n)
+	}
+	unknown := rel
+	unknown.Outside = []string{"HelmChart x/rel (" + kube.ChartFetches + ")"}
+	if n := sourceNote(unknown); !strings.Contains(n, "whose HelmChart pulls it from the chart source's repository or registry, or builds it from the source's artifact") {
+		t.Errorf("the note of a HelmRelease whose chart's source is not known: %s", n)
+	}
+}
+
+// What a root applies through a HelmRelease (the HelmChart the release
+// makes) is said to be so, and apart from what it applies itself.
+func TestARootMakesChartsThroughItsReleases(t *testing.T) {
+	chart := "HelmChart imaging/flux2-rel (" + kube.MadeByRelease + "flux2/rel: " + kube.ChartFetches + ")"
+	bump := "ImageUpdateAutomation flux2/bump (it commits and pushes image updates to its Git repository)"
+	root := kube.ScopeSource{Source: "Flux Kustomization flux2/flux2", Object: "Kustomization flux2/flux2", Namespaces: []string{}, Outside: []string{chart, bump}, Blocks: true}
+	n := sourceNote(root)
+	if !strings.Contains(n, "applies what acts outside the cluster, "+bump+", which the restore does not bring and the source makes again, and applies, through its HelmReleases, what acts outside the cluster, "+chart+", which the restore does not bring and the source's HelmReleases make again") {
+		t.Errorf("the note of a root that makes a chart through its release: %s", n)
+	}
+	if b := blockingSources([]kube.ScopeSource{root}); len(b) != 1 || b[0] != "Flux Kustomization flux2/flux2 applies "+bump+" and applies, through its HelmReleases, "+chart {
+		t.Errorf("as the refusal lists it: %q", b)
+	}
+	// Only through its releases: "applies" is not said of the chart alone.
+	root.Outside = []string{chart}
+	if b := blockingSources([]kube.ScopeSource{root}); len(b) != 1 || b[0] != "Flux Kustomization flux2/flux2 applies, through its HelmReleases, "+chart {
+		t.Errorf("as the refusal lists one that makes a chart through its release only: %q", b)
+	}
+	// A HelmRelease's own chart is what it makes, not through anything.
+	rel := kube.ScopeSource{Source: "Flux HelmRelease built/rel", Object: "HelmRelease built/rel", Namespaces: []string{}, Outside: []string{chart}, Blocks: true}
+	if n := sourceNote(rel); strings.Contains(n, "through its HelmReleases") {
+		t.Errorf("a HelmRelease said to make its chart through its HelmReleases: %s", n)
 	}
 }
 

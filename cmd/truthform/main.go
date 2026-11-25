@@ -438,7 +438,7 @@ func restore(ctx context.Context, args []string) int {
 			}
 		}
 		if len(there) > 0 {
-			fmt.Printf("%d objects under hold: true were brought not held (see the NOTE above): %s\n", len(there), strings.Join(there, ", "))
+			fmt.Printf("%s under hold: true %s brought not held (see the NOTE above): %s\n", count(len(there), "object"), one(len(there), "was", "were"), strings.Join(there, ", "))
 		}
 	}
 	return code

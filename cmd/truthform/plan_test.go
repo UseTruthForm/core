@@ -69,7 +69,7 @@ func TestPlanRebuildCommand(t *testing.T) {
 		"| `shop/token` | `_a_`, `b`, `c`, and 1 more |  |  |", // a key is a code span, not emphasis
 		"**Kept encrypted: SOPS, read by Flux Kustomization flux-system/apps.** The key is in `flux-system/sops-age`, of step 3. A snapshot never holds",
 		"**Kept encrypted: SOPS, read by Flux Kustomization flux-system/kms.** No Secret in the snapshot is named as the key: it is outside the cluster (a cloud key service).",
-		"**Kept encrypted: Sealed Secrets, 1 objects.** The capture saw no Secret that holds the controller's key.",
+		"**Kept encrypted: Sealed Secrets, 1 object.** The capture saw no Secret that holds the controller's key.",
 		"Not for you to supply: 2 that something in the cluster makes again once it runs: `keda/kedaorg-certs` (KEDA); `shop/azure-storage-account-a\\|b-secret` (the Azure Files driver).",
 		"## 4. Secrets a store supplies: 2, from 2 items",
 		"| 1Password | (none named) | 1 | shop/bare |",                          // an item with no path is said, not an empty code span
@@ -125,7 +125,7 @@ func TestPlanRebuildCountsAKeyTheSnapshotDoesNotHold(t *testing.T) {
 	for _, want := range []string{
 		"| 3 | Supply by hand the secrets no store holds | 0 secrets, and 1 keys the snapshot does not hold |",
 		"No Secret in the snapshot is left for a person to supply:",
-		"**Kept encrypted: Sealed Secrets, 1 objects.** **The key is in `kube-system/sealed-secrets-keyab12c`, which the capture left out with its namespace: it is not in the snapshot, and no restore brings it back.**",
+		"**Kept encrypted: Sealed Secrets, 1 object.** **The key is in `kube-system/sealed-secrets-keyab12c`, which the capture left out with its namespace: it is not in the snapshot, and no restore brings it back.**",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the plan lacks %q:\n%s", want, text)
@@ -148,7 +148,7 @@ func TestPlanRebuildWhenEverySourceFollows(t *testing.T) {
 		"**Not in the snapshot: where the sources are read from.**":                     {root},
 	} {
 		text := planMarkdown(kube.RebuildPlan(snapshot.Snapshot{Platform: "kubernetes", Skips: skips, Objects: objects}), nil, nil, nil)
-		for _, line := range []string{"| 1 | Install what a GitOps source makes | 0 sources by hand, 1 follow |", "**Applied again by sources the snapshot holds: 1 sources, 1 objects.**", "Nothing else:", want} {
+		for _, line := range []string{"| 1 | Install what a GitOps source makes | 0 sources by hand, 1 follow |", "**Applied again by sources the snapshot holds: 1 source, 1 object.**", "Nothing else:", want} {
 			if !strings.Contains(text, line) {
 				t.Errorf("the plan lacks %q:\n%s", line, text)
 			}

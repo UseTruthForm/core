@@ -42,8 +42,46 @@ var runners = []struct{ group, kind, resource, name, reaches string }{
 	// none (helm-controller does not reconcile a suspended one). A
 	// HelmChart in the snapshot pulls for itself: with a HelmRepository of
 	// type oci, which source-controller does not reconcile, it is what
-	// fetches.
-	{"source.toolkit.fluxcd.io", "HelmChart", "helmcharts", "Flux HelmChart", "it pulls its chart from the chart source's repository or registry with that source's credentials"},
+	// fetches. What it does is by its source's kind (chartReaches); this
+	// is for one whose source the snapshot does not say.
+	{"source.toolkit.fluxcd.io", "HelmChart", "helmcharts", "Flux HelmChart", ChartFetches},
+}
+
+// What a HelmChart does outside the cluster, by the kind of its source.
+// From a HelmRepository it pulls the packaged chart. From a GitRepository
+// or a Bucket it builds the chart from the artifact source-controller
+// already holds in the cluster, and the build fetches the chart's
+// dependencies that name a repository. ChartFetches is for one whose
+// source's kind the snapshot does not say.
+const (
+	ChartPulls   = "it pulls its chart from the chart source's repository or registry with that source's credentials"
+	ChartBuilds  = "it builds its chart from its source's artifact in the cluster, and the build can fetch the chart's dependencies from their repositories"
+	ChartFetches = "it pulls its chart from the chart source's repository or registry with that source's credentials, or, from a GitRepository or Bucket, builds it from that source's artifact, and the build can fetch the chart's dependencies from their repositories"
+)
+
+// chartReaches is what a HelmChart does outside the cluster, for the
+// kind of its source.
+func chartReaches(sourceKind string) string {
+	switch sourceKind {
+	case "HelmRepository":
+		return ChartPulls
+	case "GitRepository", "Bucket":
+		return ChartBuilds
+	}
+	return ChartFetches
+}
+
+// chartSource is the kind of the source a HelmChart reads, or, for a
+// HelmRelease, the kind of the source of the HelmChart it makes: "" where
+// the object does not say (a release with chartRef makes none).
+func chartSource(o snapshot.Object) string {
+	spec, _ := o.Body["spec"].(map[string]any)
+	if o.Kind() == "HelmRelease" {
+		chart, _ := spec["chart"].(map[string]any)
+		spec, _ = chart["spec"].(map[string]any)
+	}
+	ref, _ := spec["sourceRef"].(map[string]any)
+	return strOf(ref["kind"])
 }
 
 // runner is what of an object brought not held runs under a hold: a
@@ -56,6 +94,9 @@ func runner(o snapshot.Object) (kind, reaches string, ok bool) {
 	}
 	for _, r := range runners {
 		if r.group == group && r.kind == o.Kind() {
+			if r.kind == "HelmChart" {
+				return r.name, chartReaches(chartSource(o)), true
+			}
 			return r.name, r.reaches, true
 		}
 	}
@@ -299,7 +340,7 @@ func sourcesNotHeld(s, out snapshot.Snapshot, narrowed map[string][]int) []Scope
 		w.seen = map[string]bool{}
 		w.maker(sk, func(o snapshot.Object) {
 			if f := entry(o); f != nil {
-				if what := kind + " " + sk.Namespace + "/" + sk.Name + " (" + reaches + ")"; !contains(f.Outside, what) {
+				if what := kind + " " + sk.Namespace + "/" + sk.Name + " (" + outsideWhat(sk, kind, reaches, o) + ")"; !contains(f.Outside, what) {
 					f.Outside = append(f.Outside, what)
 				}
 			}
@@ -339,6 +380,30 @@ func sourcesNotHeld(s, out snapshot.Snapshot, narrowed map[string][]int) []Scope
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].Object < list[j].Object })
 	return list
+}
+
+// MadeByRelease begins what an object acts outside the cluster does, in
+// Outside, where a HelmRelease the source applies makes it, not the
+// source itself: "made by Flux HelmRelease namespace/name: ...".
+const MadeByRelease = "made by Flux HelmRelease "
+
+// outsideWhat is what an object a source applies does outside the
+// cluster, as Outside says it, for the object brought that the walk
+// reached, by. A HelmChart is made by its HelmRelease: what it does is by
+// that release's source, which the snapshot says if the release is in it.
+// One made by a release that by applies is said to be.
+func outsideWhat(sk snapshot.Skip, kind, reaches string, by snapshot.Object) string {
+	if kind != "HelmChart" {
+		return reaches
+	}
+	srcKind, rel, ok := SourceOf(sk.Reason)
+	if !ok || srcKind != "Flux HelmRelease" {
+		return reaches
+	}
+	if by.Kind() == "HelmRelease" && by.Namespace()+"/"+by.Name() == rel {
+		return chartReaches(chartSource(by))
+	}
+	return MadeByRelease + rel + ": " + reaches
 }
 
 func contains(l []string, v string) bool {
@@ -382,11 +447,15 @@ func acceptSources(found []ScopeSource, accept []string, static map[string]bool)
 					if strings.HasPrefix(o, who+" (") {
 						// A HelmRelease makes its chart; a Kustomization or
 						// an application applies what it applies.
-						by := "applied"
-						if strings.HasPrefix(f.Source, "Flux HelmRelease ") {
-							by = "made"
+						by := "applied by " + f.Source + ", which makes"
+						switch {
+						case strings.HasPrefix(f.Source, "Flux HelmRelease "):
+							by = "made by " + f.Source + ", which makes"
+						case strings.HasPrefix(o, who+" ("+MadeByRelease):
+							rel, _, _ := strings.Cut(strings.TrimPrefix(o, who+" ("+MadeByRelease), ":")
+							by = "made by Flux HelmRelease " + rel + ", which " + f.Source + " applies; the two make"
 						}
-						return fmt.Errorf("sourcesRunning names %q, which is not brought: it is %s by %s, which makes it again once it runs. Name that in sourcesRunning (%s), or hold it", p, by, f.Source, strings.Replace(f.Object, " ", "/", 1))
+						return fmt.Errorf("sourcesRunning names %q, which is not brought: it is %s it again once it runs. Name that in sourcesRunning (%s), or hold it", p, by, strings.Replace(f.Object, " ", "/", 1))
 					}
 				}
 			}

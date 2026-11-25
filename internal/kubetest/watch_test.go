@@ -55,6 +55,17 @@ func TestMain(m *testing.M) {
 		}
 		time.Sleep(2 * time.Minute)
 		os.Exit(0)
+	case "api-exits":
+		// As kube-apiserver, named by its --etcd-servers, it says why and
+		// exits 1; as etcd it waits, silent, never answering /health.
+		for _, a := range os.Args[1:] {
+			if a == "--etcd-servers" {
+				fmt.Fprintln(os.Stderr, "fake kube-apiserver: cannot read its service account key")
+				os.Exit(1)
+			}
+		}
+		time.Sleep(2 * time.Minute)
+		os.Exit(0)
 	case "silent":
 		// Both binaries, started and never answering or writing: what a
 		// start under load looked like.

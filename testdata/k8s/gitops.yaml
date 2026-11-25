@@ -263,6 +263,10 @@ metadata: {name: apprel}
 ---
 apiVersion: v1
 kind: Namespace
+metadata: {name: built}
+---
+apiVersion: v1
+kind: Namespace
 metadata: {name: gitops}
 ---
 apiVersion: v1
@@ -832,3 +836,61 @@ apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmChart
 metadata: {name: manual, namespace: charts}
 spec: {chart: tool, version: 2.x, interval: 10m, sourceRef: {kind: HelmRepository, name: ocirepo}}
+---
+# Charts built from an artifact in the cluster, not pulled: a HelmChart
+# made by hand of a GitRepository that is suspended in the snapshot
+# itself, and a HelmRelease of a Bucket with the HelmChart helm-controller
+# made for it. Building can fetch the chart's dependencies, so both are
+# refused unheld. The GitRepository, and a second HelmChart of it, are
+# suspended as captured: they run nothing, and need no hold.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata: {name: parked, namespace: built}
+spec: {url: https://git.example.invalid/charts.git, interval: 1h, ref: {branch: main}, suspend: true}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmChart
+metadata: {name: fromgit, namespace: built}
+spec: {chart: ./charts/app, interval: 10m, sourceRef: {kind: GitRepository, name: parked}}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmChart
+metadata: {name: idle, namespace: built}
+spec: {chart: ./charts/tool, interval: 10m, sourceRef: {kind: GitRepository, name: parked}, suspend: true}
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata: {name: rel, namespace: built}
+spec:
+  interval: 10m
+  chart: {spec: {chart: ./charts/rel, sourceRef: {kind: Bucket, name: store, namespace: imaging}}}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmChart
+metadata:
+  name: built-rel
+  namespace: imaging
+  labels: {helm.toolkit.fluxcd.io/name: rel, helm.toolkit.fluxcd.io/namespace: built}
+spec: {chart: ./charts/rel, interval: 10m, sourceRef: {kind: Bucket, name: store}}
+---
+# A HelmRelease the second root's Git path applies, and the HelmChart
+# helm-controller made for it: the root makes that chart through the
+# release, and the snapshot holds neither, so how the chart fetches is
+# not known.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: rel
+  namespace: flux2
+  labels: {kustomize.toolkit.fluxcd.io/name: flux2, kustomize.toolkit.fluxcd.io/namespace: flux2}
+spec:
+  interval: 10m
+  chart: {spec: {chart: rel, sourceRef: {kind: HelmRepository, name: charts, namespace: imaging}}}
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmChart
+metadata:
+  name: flux2-rel
+  namespace: imaging
+  labels: {helm.toolkit.fluxcd.io/name: rel, helm.toolkit.fluxcd.io/namespace: flux2}
+spec: {chart: rel, interval: 10m, sourceRef: {kind: HelmRepository, name: charts}}

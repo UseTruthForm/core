@@ -106,7 +106,6 @@ const readyTimeout = 60 * time.Second
 // parallel run on Windows) a start once failed only with "API server never
 // became ready" and empty logs, which told nothing of why.
 func start(name, etcdBin, apiBin, dir string, timeout time.Duration) (*Server, error) {
-	deadline := time.Now().Add(timeout)
 	ports, err := freePorts(3)
 	if err != nil {
 		return nil, err
@@ -174,6 +173,9 @@ func start(name, etcdBin, apiBin, dir string, timeout time.Duration) (*Server, e
 		dismiss()
 	}
 
+	// The wait is for the two to become ready, from when both have
+	// started: what came before (the service account key) is not theirs.
+	deadline := time.Now().Add(timeout)
 	url := "https://127.0.0.1:" + strconv.Itoa(apiPort)
 	err = waitFor(deadline, "answered /health", httpOK(etcdURL+"/health", ""), etcd, api)
 	if err == nil {
@@ -223,10 +225,12 @@ func launch(ctx context.Context, name, bin string, args ...string) (*proc, error
 	p := &proc{name: name, done: make(chan struct{})}
 	p.cmd = exec.CommandContext(ctx, bin, args...)
 	p.cmd.Stdout, p.cmd.Stderr = &p.out, &p.out
+	// Taken before Start: the process can write before Start returns, and
+	// its first output would then come before it started.
+	p.started = time.Now()
 	if err := p.cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s: %w", name, err)
 	}
-	p.started = time.Now()
 	go func() {
 		err := p.cmd.Wait()
 		p.err, p.ended = err, time.Now()

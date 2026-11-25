@@ -120,7 +120,7 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks 
 	// A plan of a part says so, and says what the scope cannot stop: a
 	// person reads the plan, not what a command once wrote to a terminal.
 	if scope != nil {
-		w("**A part only.** A scope narrowed %s: %d of their %d objects are brought, and this plan is for those.\n\n", md(strings.Join(scope.Narrowed, ", ")), scope.Kept, scope.Of)
+		w("**A part only.** A scope narrowed %s: %d of their %s %s brought, and this plan is for %s.\n\n", md(strings.Join(scope.Narrowed, ", ")), scope.Kept, count(scope.Of, "object"), one(scope.Kept, "is", "are"), one(scope.Kept, "it", "those"))
 		for _, n := range scopeNotes(*scope) {
 			w("- **Note.** %s\n", md(n))
 		}
@@ -164,7 +164,7 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks 
 			made += s.Objects
 			names[i] = s.Kind + " " + code(s.Name)
 		}
-		w("**Applied again by sources the snapshot holds: %d sources, %d objects.** Install the GitOps tool's own controllers and restore: the sources in the snapshot then apply these, from where they read. %s.\n\n", len(p.Follows), made, strings.Join(names, ", "))
+		w("**Applied again by sources the snapshot holds: %s, %s.** Install the GitOps tool's own controllers and restore: the sources in the snapshot then apply these, from where they read. %s.\n\n", count(len(p.Follows), "source"), count(made, "object"), strings.Join(names, ", "))
 	}
 	if len(p.Sources) == 0 {
 		if len(p.Follows) > 0 {
@@ -227,7 +227,7 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks 
 	for _, e := range p.Encrypted {
 		w("**Kept encrypted: %s", md(e.By))
 		if e.Objects > 0 {
-			w(", %d objects", e.Objects)
+			w(", %s", count(e.Objects, "object"))
 		}
 		w(".** ")
 		switch {

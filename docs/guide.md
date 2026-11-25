@@ -1079,12 +1079,15 @@ runs as soon as it is there), and another API's workload with a pod
 template that does not count its pods.
 
 **What a hold does not know is named.** An object of another API with no
-`spec.replicas` and no `spec.suspend` is brought as it is, and the run
-lists it in a NOTE (`scope.broughtNotHeld` with `--json`). Some run
-nothing; some have a controller that runs something for them (a database
-operator's cluster, with its count under another name; a
-`SparkApplication`, whose group ends in `k8s.io` and is not Kubernetes'
-own); some act outside the cluster (a cert-manager `Certificate` asks an
+pod template, no `spec.replicas` and no `spec.suspend` is brought as it
+is, and the run lists it in a NOTE (`scope.broughtNotHeld` with
+`--json`); one with a pod template that does not count its pods is
+refused, as above. What the table says runs nothing (an `ExternalSecret`,
+a `OnePasswordItem`, Traefik and Istio routes) is brought as it is and
+not named. Of the rest, some run nothing; some have a controller that
+runs something for them (a database operator's cluster, with its count
+under another name; a `SparkApplication`, whose group ends in `k8s.io`
+and is not Kubernetes' own); some act outside the cluster (a cert-manager `Certificate` asks an
 authority for a certificate for the source's host names, a `PushSecret`
 writes to a store, an external-dns `DNSEndpoint` writes DNS). The run
 then says "stopped", not "nothing running", and does not end 0:
@@ -1177,29 +1180,38 @@ registry or bucket with the source's credentials, every interval. The
 brings it too, as the example below does. An `ImagePolicy` only chooses
 a tag from what an `ImageRepository` found, and is not refused.
 
-**A `HelmChart` is what pulls a chart.** helm-controller makes one for
+**A `HelmChart` is what fetches a chart.** helm-controller makes one for
 each `HelmRelease` with a chart source (`spec.chart`), in the chart
-source's namespace, and source-controller pulls with it from the chart
-source's repository or registry, with that source's credentials. A
-`HelmRelease` with `chartRef` makes no `HelmChart`: helm-controller reads
-the artifact of the `OCIRepository` or `HelmChart` it names, which is
-refused or held for itself. Brought not held, such a release is still
+source's namespace. Of a `HelmRepository`, source-controller pulls the
+chart with it from the repository or registry, with that source's
+credentials. Of a `GitRepository` or `Bucket`, it builds the chart from
+the artifact that source fetched into the cluster, and the build can
+fetch the chart's dependencies from their repositories: such a release
+is refused unheld even while its source is held, and the refusal says
+why. A `HelmRelease` with `chartRef` makes no `HelmChart`: helm-controller
+reads the artifact of the `OCIRepository` or `HelmChart` it names, which
+is refused or held for itself. Brought not held, such a release is still
 refused, for what it installs, and its refusal speaks of no `HelmChart`.
-**A `HelmRepository` of `type: oci` fetches
-nothing**: source-controller makes it static and never reads from it, and
-its `HelmChart`s do the pulling. So one that is brought not held is not
-refused, and there is nothing to accept under `sourcesRunning`. Held, it
-is suspended and listed as held, with a word that this stops nothing:
-hold its `HelmChart`s, or the `HelmRelease`s that make them. One the
-capture left to a source (applied by a Kustomization) is not in the
-snapshot, and its type with it: it counts as one that fetches, and the
-source that applies it is refused for it. So:
+
+**A `HelmRepository` of `type: oci` fetches nothing**: source-controller
+makes it static and never reads from it, and its `HelmChart`s do the
+pulling. So one that is brought not held is not refused, and there is
+nothing to accept under `sourcesRunning`. Held, it is suspended and
+listed as held, with a word that this stops nothing: hold its
+`HelmChart`s, or the `HelmRelease`s that make them. One the capture left
+to a source (applied by a Kustomization) is not in the snapshot, and its
+type with it: it counts as one that fetches, and the source that applies
+it is refused for it. So:
 
 - the `HelmChart` helm-controller made is skipped by the capture
   (rendered by its `HelmRelease`), and a restore does not bring it: the
   release makes it again once it runs, so **a `HelmRelease` brought not
   held is refused for its chart**, wherever either is, and the refusal
   names both;
+- a root that applies a `HelmRelease` (the capture left the release to
+  it) is refused for the release's chart: the refusal says the root
+  applies it **through its HelmReleases**, and, the release not being in
+  the snapshot, that the chart pulls or builds;
 - **a held `HelmRelease` makes no chart in a new cluster**:
   helm-controller does not reconcile a suspended release, and it makes
   the chart only when it does. It is not refused;

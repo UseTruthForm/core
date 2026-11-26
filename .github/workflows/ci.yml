@@ -52,6 +52,9 @@ jobs:
           echo "TRUTHFORM_KUBE_ASSETS=$assets" >> "$GITHUB_ENV"
       - run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "gofmt needed"; exit 1; }
       - run: go vet ./...
+      # A new module under a licence outside the list is caught on the
+      # pull request that adds it, not at the release.
+      - run: bash scripts/third-party.sh
       - run: go test -count=1 ./...
       # The inventories read, and restores write, with many goroutines; the race
       # detector needs cgo, which the Windows dev machines lack, so it runs

@@ -33,11 +33,11 @@ jobs:
       TRUTHFORM_REQUIRE_KUBE_ASSETS: "1" # a missing API server fails CI instead of skipping
       TRUTHFORM_REQUIRE_BOOTSTRAP_TOOLS: "1" # and so does a missing bash, jq or cmp for the bootstrap script's test
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/truthform/envtest
           key: envtest-1.37.0
@@ -65,12 +65,12 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
-      - uses: helm/kind-action@v1
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           install_only: true
-      - run: pip install pyyaml
+      - run: pip install pyyaml==6.0.2
       - run: KEEP=0 bash scripts/drill-kind.sh

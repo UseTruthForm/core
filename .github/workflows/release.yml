@@ -16,10 +16,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the ancestry check below needs main's history
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       # Only what main holds is released: a tag on a side branch would ship
@@ -29,7 +29,7 @@ jobs:
       # Everything CI runs, on the exact commit released: main is not
       # protected (a private repo on GitHub Free), so that a commit is on
       # main does not prove its checks passed (review of #20).
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/truthform/envtest
           key: envtest-1.37.0

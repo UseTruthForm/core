@@ -10,6 +10,8 @@ on:
     tags: ["v*"]
 permissions:
   contents: write # creating the draft release
+  id-token: write # signing the attestation as this workflow run
+  attestations: write # storing it
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -62,6 +64,17 @@ jobs:
           # out of the source. Unset, the build signs in to Cloudflare by
           # token only.
           TRUTHFORM_CLOUDFLARE_CLIENT_ID: ${{ vars.TRUTHFORM_CLOUDFLARE_CLIENT_ID }}
+      # A signed record that this run built each archive from this commit:
+      # `gh attestation verify <archive> --repo <owner>/<repo>` checks a
+      # download against it, where SHA256SUMS only shows the file is the
+      # one the release page holds. GitHub stores attestations for public
+      # repositories only on this plan, so the step is skipped while the
+      # repository is private and starts by itself once it is public.
+      - name: Attest the archives
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/SHA256SUMS
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -62,6 +62,11 @@ The `docs` folder beside this file:
 incomplete: something could not be read or applied, and the output says
 what.
 
+## Other people's software
+
+TruthForm is built with Go and open-source modules. Their licences are in
+`THIRD_PARTY_NOTICES.txt`, beside this file.
+
 ## Verifying this download
 
     sha256sum -c SHA256SUMS --ignore-missing

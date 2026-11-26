@@ -10,7 +10,9 @@
 # Each binary is stamped with the version, commit and build time (truthform
 # version prints them), stripped, and built without cgo, so it is one file
 # with nothing to install. Archives (zip for Windows, tar.gz elsewhere) and
-# SHA256SUMS go in dist/.
+# SHA256SUMS go in dist/. Each archive carries THIRD_PARTY_NOTICES.txt, the
+# licences of Go and of every module in the binary, which those licences
+# ask to travel with it.
 #
 #   scripts/build-release.sh v0.1.0
 #   NO_ARCHIVE=1 scripts/build-release.sh v0.1.0-test   # binaries only
@@ -34,6 +36,14 @@ if [ -z "${TRUTHFORM_CLOUDFLARE_CLIENT_ID:-}" ]; then
   echo "WARNING: TRUTHFORM_CLOUDFLARE_CLIENT_ID is not set: these binaries will have no Cloudflare sign-in" >&2
 fi
 
+# Before anything is built: a module under a licence nobody has read stops
+# the release. Binaries-only test builds are handed to nobody and skip it.
+NOTICES=""
+if [ -z "${NO_ARCHIVE:-}" ]; then
+  NOTICES="$(mktemp)"
+  bash "$(dirname "$0")/third-party.sh" "$NOTICES"
+fi
+
 TARGETS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64"
 for target in $TARGETS; do
   os="${target%/*}"; arch="${target#*/}"
@@ -53,6 +63,7 @@ for target in $TARGETS; do
     # one is for TruthForm's developers (the dev loop, Tilt ports, internal
     # drills), and a customer cannot reach the private repository's docs.
     cp packaging/README.md "$OUT/$name/README.md"
+    [ -n "$NOTICES" ] && cp "$NOTICES" "$OUT/$name/THIRD_PARTY_NOTICES.txt"
     mkdir -p "$OUT/$name/docs"
     cp docs/guide.md docs/permissions.md docs/agents.md "$OUT/$name/docs/"
     [ -n "${NO_ARCHIVE:-}" ] && continue
@@ -71,5 +82,6 @@ for target in $TARGETS; do
 done
 if [ -z "${NO_ARCHIVE:-}" ]; then
   (cd "$OUT" && sha256sum -- *.zip *.tar.gz > SHA256SUMS)
+  rm -f "$NOTICES"
 fi
 ls -l "$OUT"

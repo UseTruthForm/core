@@ -45,6 +45,8 @@ jobs:
       - run: go test -race -count=1 ./internal/awscc/ ./internal/azarm/ ./internal/gcp/ ./internal/saas/ ./internal/schedule/
       # The capture-only edition is what a client is handed.
       - run: go test -tags captureonly -count=1 ./cmd/truthform/
+      # No release with a known vulnerability in Go or a module.
+      - run: bash scripts/vulncheck.sh
       # A release without it builds and passes, and its docs describe a
       # Cloudflare sign-in it cannot make: refuse it instead.
       - run: |

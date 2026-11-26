@@ -60,6 +60,8 @@ jobs:
       # The capture-only build (handed to clients for information
       # gathering) must refuse restore; it is a separate build, so test it.
       - run: go test -tags captureonly -count=1 ./cmd/truthform/
+      # Known vulnerabilities in Go or a module, in the binary as built.
+      - run: bash scripts/vulncheck.sh
   drill-kind:
     if: (github.event_name == 'workflow_dispatch' && inputs.full-drill) || contains(github.event.pull_request.labels.*.name, 'full-drill')
     needs: test

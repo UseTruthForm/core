@@ -48,17 +48,19 @@ tar -xzf truthform_<version>_linux_amd64.tar.gz
 ./truthform_<version>_linux_amd64/truthform version
 ```
 
-Or with Go 1.27 or later:
+Or with Go (the version in `go.mod`, currently 1.27.4; Go downloads it
+itself unless `GOTOOLCHAIN=local`):
 
 ```sh
-go install github.com/usetruthform/core/cmd/truthform@latest
+go install github.com/usetruthform/core/cmd/truthform@latest   # or, from a clone:
+go build ./cmd/truthform
 ```
 
 Every release comes in two editions. **Full** captures, diffs and restores.
 **Capture-only** has no restore, and every request it makes goes through a
 read-only guard, so it cannot change anything it reaches: build it with
-`go build -tags captureonly ./cmd/truthform`. `truthform version` says which
-you have.
+`go build -tags captureonly -o truthform-capture-only ./cmd/truthform`.
+`truthform version` says which you have.
 
 ## Try it in five minutes
 
@@ -94,6 +96,12 @@ truthform diff --context kind-tf-try --baseline base/ --from snap/     # exit 2:
 truthform restore --context kind-tf-try --from snap/ --secrets-from-context kind-tf-try
 truthform diff --context kind-tf-try --baseline base/ --from snap/     # no differences
 ```
+
+Each line of `diff` names an object as `apiVersion|Kind|namespace|name`
+and the field that differs. A snapshot captured with `--baseline` is diffed
+with the same one: TruthForm refuses to compare under different rules.
+Secret values are never stored, so `diff` sees a Secret's keys but not a
+change to a value.
 
 Restore needs the Secret's value from somewhere. Here it is read live from
 the cluster itself (`--secrets-from-context`), straight from one API to the

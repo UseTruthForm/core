@@ -64,7 +64,8 @@ what.
 
 ## Licence
 
-TruthForm is under the Apache License 2.0, in `LICENSE` beside this file.
+TruthForm is under the Apache License 2.0, in `LICENSE` beside this file,
+with its copyright notice in `NOTICE`.
 It is built with Go and open-source modules; their licences are in
 `THIRD_PARTY_NOTICES.txt`.
 

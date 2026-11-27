@@ -148,11 +148,11 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks 
 		keysOut += len(e.KeysNotHeld)
 	}
 	if keysOut > 0 {
-		w("| 3 | Supply by hand the secrets no store holds | %d secrets%s, and %d keys the snapshot does not hold |\n", len(p.ByHand), seen, keysOut)
+		w("| 3 | Supply by hand the secrets no store holds | %s%s, and %s the snapshot does not hold |\n", count(len(p.ByHand), "secret"), seen, count(keysOut, "key"))
 	} else {
-		w("| 3 | Supply by hand the secrets no store holds | %d secrets%s |\n", len(p.ByHand), seen)
+		w("| 3 | Supply by hand the secrets no store holds | %s%s |\n", count(len(p.ByHand), "secret"), seen)
 	}
-	w("| 4 | Make the secret store reachable | %d items feed %d secrets%s |\n", len(p.FromStore), fromStore, seen)
+	w("| 4 | Make the secret store reachable | %s feed %s%s |\n", count(len(p.FromStore), "item"), count(fromStore, "secret"), seen)
 	w("| 5 | Restore the snapshot | |\n")
 	w("| 6 | Point the names at the rebuilt cluster | %d hosts%s |\n\n", len(p.Hosts), seen)
 

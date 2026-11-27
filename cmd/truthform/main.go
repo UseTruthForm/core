@@ -16,6 +16,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -247,8 +248,8 @@ func capture(ctx context.Context, args []string) int {
 	}
 	d, _ := snapshot.Digest(*out)
 	read, notCaptured, failed := summarize(snap)
-	fmt.Printf("captured %d objects across %d types into %s (%s)\n", len(snap.Objects), read, *out, d)
-	fmt.Printf("%d types not captured by design, %d skipped objects; see %s/coverage.yaml\n", notCaptured, len(snap.Skips), *out)
+	fmt.Printf("captured %s across %s into %s (%s)\n", count(len(snap.Objects), "object"), count(read, "type"), *out, d)
+	fmt.Printf("%s not captured by design, %s; see %s\n", count(notCaptured, "type"), count(len(snap.Skips), "skipped object"), filepath.Join(*out, "coverage.yaml"))
 	for _, r := range topReasons(snap.Skips, 8) {
 		fmt.Println("  skipped:", r)
 	}
@@ -414,7 +415,7 @@ func restore(ctx context.Context, args []string) int {
 	if l := scopeLine(); l != "" {
 		fmt.Println(l)
 	}
-	fmt.Printf("applied %d of %d objects to %s\n", ok, len(results), *kctx)
+	fmt.Printf("applied %d of %s to %s\n", ok, count(len(results), "object"), *kctx)
 	code := 0
 	if ok != len(results) {
 		code = 3
@@ -643,7 +644,7 @@ func report(changes []snapshot.Change, want, got string) int {
 	}
 	held := ""
 	if len(heldBack) > 0 {
-		held = fmt.Sprintf(", leaving out %d objects (--leave-out): %s", len(heldBack), strings.Join(heldBack, ", "))
+		held = fmt.Sprintf(", leaving out %s (--leave-out): %s", count(len(heldBack), "object"), strings.Join(heldBack, ", "))
 	}
 	if l := scopeLine(); l != "" {
 		held += "; " + l

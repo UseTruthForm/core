@@ -174,7 +174,7 @@ func TestCaptureSaysWhatAzureMakesAndWhatWaitsForIt(t *testing.T) {
 		t.Errorf("no CHECK line:\n%s%s", stdout, errOut)
 	}
 	rep, _ := os.ReadFile(filepath.Join(out, "REPORT.md"))
-	for _, want := range []string{"## Check before relying on a restore: 1 resources", "rg/law/AzureDiagnostics", "## Made by Azure, with nothing set on them: 1", "rg/plain/AzureDiagnostics"} {
+	for _, want := range []string{"## Check before relying on a restore: 1 resource\n", "rg/law/AzureDiagnostics", "## Made by Azure, with nothing set on them: 1", "rg/plain/AzureDiagnostics"} {
 		if !strings.Contains(string(rep), want) {
 			t.Errorf("REPORT.md lacks %q:\n%s", want, rep)
 		}
@@ -263,7 +263,7 @@ func TestReportSaysAnOlderDiagnosticsTableIsTakenAsSet(t *testing.T) {
 		t.Fatal(err)
 	}
 	rep, _ := os.ReadFile(filepath.Join(dir, "REPORT.md"))
-	for _, want := range []string{"## Check before relying on a restore: 1 resources", "rg/law/AzureDiagnostics (this snapshot predates", "capture the source again with this version"} {
+	for _, want := range []string{"## Check before relying on a restore: 1 resource\n", "rg/law/AzureDiagnostics (this snapshot predates", "capture the source again with this version"} {
 		if !strings.Contains(string(rep), want) {
 			t.Errorf("REPORT.md lacks %q:\n%s", want, rep)
 		}

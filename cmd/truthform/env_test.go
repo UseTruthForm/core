@@ -321,7 +321,7 @@ func TestReportListsPlainCredentials(t *testing.T) {
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "REPORT.md"))
 	txt := string(b)
-	if !strings.Contains(txt, "## Credentials in plain configuration: 1 objects") || !strings.Contains(txt, "| Deployment shop/api | api/DB_PASSWORD, api/PAYMENT_API_KEY |") || !strings.Contains(txt, "secretKeyRef") {
+	if !strings.Contains(txt, "## Credentials in plain configuration: 1 object\n") || !strings.Contains(txt, "| Deployment shop/api | api/DB_PASSWORD, api/PAYMENT_API_KEY |") || !strings.Contains(txt, "secretKeyRef") {
 		t.Errorf("report:\n%s", txt)
 	}
 }

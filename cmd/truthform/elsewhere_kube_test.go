@@ -103,7 +103,7 @@ func TestKubernetesRestoreElsewhere(t *testing.T) {
 	// A fresh API server has an object of its own that no snapshot of this
 	// test holds (its ServiceCIDR): of what the restore wrote, nothing differs.
 	_, stdout, stderr = output(t, func() int { return diff(ctx, append(base, "--leave-out", leave, "--rename", names)) })
-	if strings.Contains(stdout, "|shop|") || strings.Contains(stdout, "CustomResourceDefinition") || !strings.Contains(stdout, "leaving out 1 objects (--leave-out): ConfigMap/shop/root") {
+	if strings.Contains(stdout, "|shop|") || strings.Contains(stdout, "CustomResourceDefinition") || !strings.Contains(stdout, "leaving out 1 object (--leave-out): ConfigMap/shop/root") {
 		t.Errorf("a diff given the same files finds what the restore wrote to differ:\n%s\n%s", stdout, stderr)
 	}
 	code, stdout, _ = output(t, func() int { return diff(ctx, base) })
@@ -163,7 +163,7 @@ func TestKubernetesDiffElsewhere(t *testing.T) {
 	code, stdout, stderr := output(t, func() int {
 		return diff(ctx, append(base, "--leave-out", leave, "--rename", names, "--keep-source-stores"))
 	})
-	if code != 2 || strings.Contains(stdout, "ConfigMap|shop|root") || !strings.Contains(stdout, "ConfigMap|shop|kept") || !strings.Contains(stdout, "leaving out 1 objects (--leave-out): ConfigMap/shop/root") {
+	if code != 2 || strings.Contains(stdout, "ConfigMap|shop|root") || !strings.Contains(stdout, "ConfigMap|shop|kept") || !strings.Contains(stdout, "leaving out 1 object (--leave-out): ConfigMap/shop/root") {
 		t.Errorf("diff: exit %d\n%s", code, stdout)
 	}
 	if !strings.Contains(stderr, "OnePasswordItem shop/db spec.itemPath: vaults/apps/items/db -> vaults/apps-test/items/db") {

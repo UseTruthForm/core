@@ -97,7 +97,7 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 	}
 	d, _ := snapshot.Digest(out)
 	read, notCaptured, _ := summarize(snap)
-	fmt.Printf("captured %d resources across %d types into %s (%s)\n", len(snap.Objects), read, out, d)
+	fmt.Printf("captured %s across %s into %s (%s)\n", count(len(snap.Objects), "resource"), count(read, "type"), out, d)
 	var skips, unreadable []snapshot.Skip
 	for _, s := range snap.Skips {
 		if strings.HasPrefix(s.Reason, azarm.Unreadable) {
@@ -106,12 +106,12 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 			skips = append(skips, s)
 		}
 	}
-	fmt.Printf("%d types not captured, %d skipped resources; see %s/coverage.yaml\n", notCaptured, len(skips), out)
+	fmt.Printf("%s not captured, %s; see %s\n", count(notCaptured, "type"), count(len(skips), "skipped resource"), filepath.Join(out, "coverage.yaml"))
 	if line := checkLine(skips, out); line != "" {
 		fmt.Println(line)
 	}
 	if later, _ := azarm.KeptOnceAzureMakesIt(snap); len(later) > 0 {
-		fmt.Printf("CHECK: %d resources Azure makes itself are kept only once it has (their retention, plan and custom columns); see %s/REPORT.md\n", len(later), out)
+		fmt.Printf("CHECK: %d resources Azure makes itself are kept only once it has (their retention, plan and custom columns); see %s\n", len(later), filepath.Join(out, "REPORT.md"))
 	}
 	for _, r := range topReasons(skips, 8) {
 		fmt.Println("  skipped:", r)
@@ -152,7 +152,7 @@ func checkLine(skips []snapshot.Skip, out string) string {
 	if check == 0 {
 		return ""
 	}
-	return fmt.Sprintf("CHECK: %d skipped resources may not come back on a restore; see %s/REPORT.md", check, out)
+	return fmt.Sprintf("CHECK: %s may not come back on a restore; see %s", count(check, "skipped resource"), filepath.Join(out, "REPORT.md"))
 }
 
 // restoreAzure reads secrets from a file the operator controls; they go to
@@ -209,7 +209,7 @@ func restoreAzure(ctx context.Context, a *azureFlags, snap snapshot.Snapshot, va
 			fmt.Println("  ", p)
 		}
 	}
-	fmt.Printf("applied %d of %d resources to subscription %s\n", ok, len(results), a.subscription)
+	fmt.Printf("applied %d of %s to subscription %s\n", ok, count(len(results), "resource"), a.subscription)
 	// Counted as applied, since Azure makes them; said, so applied is not read
 	// as sent. One whose settings wait for Azure leaves the restore unfinished.
 	if notSent > 0 {

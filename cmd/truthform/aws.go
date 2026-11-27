@@ -162,7 +162,7 @@ func captureAWS(ctx context.Context, a *awsFlags, out string) int {
 	}
 	d, _ := snapshot.Digest(out)
 	read, notCaptured, failed := summarize(snap)
-	fmt.Printf("captured %d resources across %d types into %s (%s)\n", len(snap.Objects), read, out, d)
+	fmt.Printf("captured %s across %s into %s (%s)\n", count(len(snap.Objects), "resource"), count(read, "type"), out, d)
 	var notSetUp, needsInput int
 	for _, c := range snap.Coverage {
 		switch {
@@ -180,7 +180,7 @@ func captureAWS(ctx context.Context, a *awsFlags, out string) int {
 			skips = append(skips, s)
 		}
 	}
-	fmt.Printf("%d types not captured by design, %d skipped resources; see %s/coverage.yaml\n", notCaptured, len(skips), out)
+	fmt.Printf("%s not captured by design, %s; see %s\n", count(notCaptured, "type"), count(len(skips), "skipped resource"), filepath.Join(out, "coverage.yaml"))
 	for _, r := range topReasons(skips, 8) {
 		fmt.Println("  skipped:", r)
 	}
@@ -286,9 +286,9 @@ func restoreAWS(ctx context.Context, a *awsFlags, snap snapshot.Snapshot, values
 	}
 	if dryRun {
 		notes.print()
-		fmt.Printf("dry run: %d of %d resources would apply to aws %s; nothing was written\n", ok, len(results), a.region)
+		fmt.Printf("dry run: %d of %s would apply to aws %s; nothing was written\n", ok, count(len(results), "resource"), a.region)
 	} else {
-		fmt.Printf("applied %d of %d resources to aws %s\n", ok, len(results), a.region)
+		fmt.Printf("applied %d of %s to aws %s\n", ok, count(len(results), "resource"), a.region)
 	}
 	if ok != len(results) {
 		return 3

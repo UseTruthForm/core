@@ -126,7 +126,7 @@ func TestLeaveOutReachesRestoreAndDiff(t *testing.T) {
 
 	// Against the empty target, the record left out is not expected.
 	code, out, errOut = output(t, func() int { return diff(ctx, append(target, "--leave-out", leave)) })
-	if code != 2 || strings.Contains(out, "privateDnsZones/A|") || !strings.Contains(out, "leaving out 1 objects (--leave-out): "+leaveKey) {
+	if code != 2 || strings.Contains(out, "privateDnsZones/A|") || !strings.Contains(out, "leaving out 1 object (--leave-out): "+leaveKey) {
 		t.Errorf("diff with --leave-out of an empty target: exit %d\n%s%s", code, out, errOut)
 	}
 
@@ -161,7 +161,7 @@ func TestLeaveOutReachesRestoreAndDiff(t *testing.T) {
 
 	// Left out, the record is not expected; the diff is clean and says why.
 	code, out, errOut = output(t, func() int { return diff(ctx, append(target, "--leave-out", leave)) })
-	if code != 0 || !strings.Contains(out, "no differences") || !strings.Contains(out, "leaving out 1 objects (--leave-out): "+leaveKey) {
+	if code != 0 || !strings.Contains(out, "no differences") || !strings.Contains(out, "leaving out 1 object (--leave-out): "+leaveKey) {
 		t.Errorf("diff with --leave-out: exit %d\n%s%s", code, out, errOut)
 	}
 	d := asJSON(t, func() { diff(ctx, append(target, "--leave-out", leave)) })

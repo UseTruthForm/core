@@ -189,14 +189,14 @@ func planSecrets(ctx context.Context, args []string) int {
 		}
 		switch {
 		case len(problems) > 0:
-			fmt.Printf("%d problems: a rebuild from %s would lack these (%d Secrets to supply, %d objects with settings withheld)\n", len(problems), *from, len(needed), len(settings))
+			fmt.Printf("%s: a rebuild from %s would lack these (%s to supply, %s with settings withheld)\n", count(len(problems), "problem"), *from, count(len(needed), "Secret"), count(len(settings), "object"))
 		case *resolve:
-			fmt.Printf("every one of the %d Secrets to supply has a source, and %d values were read from theirs (none printed)\n", len(needed), read)
+			fmt.Printf("every Secret to supply has a source (%s), and %s read from them (none printed)\n", count(len(needed), "Secret"), count(read, "value"))
 		case len(s.Coverage) == 0:
 			// Not the line of a snapshot known to be whole.
-			fmt.Printf("every one of the %d Secrets to supply that the snapshot holds has a source; the snapshot does not record whether its capture read every Secret\n", len(needed))
+			fmt.Printf("every Secret to supply that the snapshot holds has a source (%s); the snapshot does not record whether its capture read every Secret\n", count(len(needed), "Secret"))
 		default:
-			fmt.Printf("every one of the %d Secrets to supply has a source; --resolve reads each to prove it answers\n", len(needed))
+			fmt.Printf("every Secret to supply has a source (%s); --resolve reads each to prove it answers\n", count(len(needed), "Secret"))
 		}
 	}
 	if !jsonOut && len(settings) > 0 && len(problems) == 0 {

@@ -2,13 +2,15 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"runtime"
 	"runtime/debug"
+	"time"
 )
 
 // Set by the release build: -ldflags "-X main.version=v0.1.0 -X
-// main.commit=<sha> -X main.built=<UTC time>". A plain go build leaves
-// them empty and reads the commit from the build's own VCS stamp, so a
+// main.commit=<sha> -X main.built=<UTC time>". A build without them
+// takes what Go recorded in the binary instead (see versionFrom), so a
 // binary handed to someone can always be traced to its source.
 var (
 	version = "dev"
@@ -17,11 +19,36 @@ var (
 )
 
 func versionInfo() (ver, rev, date string, dirty bool) {
-	ver, rev, date = version, commit, built
-	if bi, ok := debug.ReadBuildInfo(); ok {
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		bi = nil
+	}
+	return versionFrom(version, commit, built, bi)
+}
+
+// pseudo is the tail of a Go pseudo-version, such as
+// v0.1.0-beta.26.0.20261128010203-3cb06a9a97bc: the commit's UTC time, then
+// the first 12 characters of its hash.
+var pseudo = regexp.MustCompile(`[.-](\d{14})-([0-9a-f]{12})$`)
+
+// versionFrom names a build from what the release stamped (ver, rev, date)
+// and what Go recorded in it (bi, nil when it recorded nothing):
+//
+//   - A release archive was stamped: that wins.
+//   - "go build" in a clone: Go records the commit (vcs.revision). The
+//     version stays "dev", so a local build never reads as a release.
+//   - "go install ...@v0.1.0-beta.26": Go records the module's version,
+//     and no commit. The version is the release's own name.
+//   - "go install ...@main" or "@<commit>": a pseudo-version, which ends
+//     in the commit's time and hash, so both are known.
+func versionFrom(ver, rev, date string, bi *debug.BuildInfo) (string, string, string, bool) {
+	dirty := false
+	if bi != nil {
+		vcs := false
 		for _, s := range bi.Settings {
 			switch s.Key {
 			case "vcs.revision":
+				vcs = true
 				if rev == "" {
 					rev = s.Value
 				}
@@ -31,6 +58,17 @@ func versionInfo() (ver, rev, date string, dirty bool) {
 				}
 			case "vcs.modified":
 				dirty = s.Value == "true"
+			}
+		}
+		if m := bi.Main.Version; ver == "dev" && !vcs && m != "" && m != "(devel)" {
+			ver = m
+			if p := pseudo.FindStringSubmatch(m); p != nil {
+				if rev == "" {
+					rev = p[2]
+				}
+				if t, err := time.Parse("20060102150405", p[1]); err == nil && date == "" {
+					date = t.UTC().Format(time.RFC3339)
+				}
 			}
 		}
 	}

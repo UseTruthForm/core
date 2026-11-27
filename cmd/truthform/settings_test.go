@@ -88,7 +88,7 @@ func TestPlanSecretsListsWithheldSettings(t *testing.T) {
 
 	filled := writeFile(t, t.TempDir(), "filled.yaml", settingsFile)
 	code, stdout, _ = output(t, func() int { return planCmd([]string{"secrets", "--from", dir, "--check", filled}) })
-	if code != 0 || !strings.Contains(stdout, "each of the 2 objects with credentials withheld from its settings has a source") {
+	if code != 0 || !strings.Contains(stdout, "each object with credentials withheld from its settings (2 objects) has a source") {
 		t.Errorf("a filled file: exit %d\n%s", code, stdout)
 	}
 	// --resolve reads each, and prints none.

@@ -71,7 +71,7 @@ func TestDiffAndRestoreSayASizeTheTargetCannotHave(t *testing.T) {
 	target := []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--from", dir}
 	want := "Microsoft.Compute/virtualMachines/rg/vm uses Standard_Old_v1 in eastus, where this subscription cannot have it"
 	_, _, errOut := output(t, func() int { return diff(ctx, target) })
-	if !strings.Contains(errOut, "WARNING: 1 VM sizes") || !strings.Contains(errOut, want) || !strings.Contains(errOut, "VM sizes: checked 1 in 1 regions") {
+	if !strings.Contains(errOut, "WARNING: 1 VM size this") || !strings.Contains(errOut, want) || !strings.Contains(errOut, "VM sizes: checked 1 in 1 region\n") {
 		t.Errorf("diff does not say it:\n%s", errOut)
 	}
 	d := asJSON(t, func() { diff(ctx, target) })
@@ -170,7 +170,7 @@ func TestCaptureSaysWhatAzureMakesAndWhatWaitsForIt(t *testing.T) {
 	_, stdout, errOut := output(t, func() int {
 		return capture(ctx, []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--out", out})
 	})
-	if !strings.Contains(stdout, "CHECK: 1 resources Azure makes itself are kept only once it has") {
+	if !strings.Contains(stdout, "CHECK: 1 resource Azure makes itself is kept only once it has (its retention") {
 		t.Errorf("no CHECK line:\n%s%s", stdout, errOut)
 	}
 	rep, _ := os.ReadFile(filepath.Join(out, "REPORT.md"))

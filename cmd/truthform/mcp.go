@@ -252,7 +252,7 @@ func listTypes(_ context.Context, a map[string]any) (string, error) {
 		note = fmt.Sprintf("\n... and %d more; narrow with filter", len(keep)-most)
 		keep = keep[:most]
 	}
-	return fmt.Sprintf("%d types\n%s%s", len(keep), strings.Join(keep, "\n"), note), nil
+	return fmt.Sprintf("%s\n%s%s", count(len(keep), "type"), strings.Join(keep, "\n"), note), nil
 }
 
 func describeType(_ context.Context, a map[string]any) (string, error) {

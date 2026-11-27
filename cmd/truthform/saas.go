@@ -210,7 +210,7 @@ func restoreSaaS(ctx context.Context, platform string, s *saasFlags, snap snapsh
 			fmt.Println("CONFLICT:", c)
 		}
 		if len(conflicts) > 0 && !dryRun {
-			fmt.Printf("stopped: %d conflicts, nothing was written\n", len(conflicts))
+			fmt.Printf("stopped: %s, nothing was written\n", count(len(conflicts), "conflict"))
 			return 3
 		}
 	} else {
@@ -235,7 +235,7 @@ func restoreSaaS(ctx context.Context, platform string, s *saasFlags, snap snapsh
 	if dryRun {
 		fmt.Printf("dry run: %d of %s would apply to %s %s; nothing was written\n", ok, count(len(results), "item"), platform, s.account)
 		if len(conflicts) > 0 {
-			fmt.Printf("%d conflicts: the restore would stop before writing\n", len(conflicts))
+			fmt.Printf("%s: the restore would stop before writing\n", count(len(conflicts), "conflict"))
 			return 3
 		}
 	} else {

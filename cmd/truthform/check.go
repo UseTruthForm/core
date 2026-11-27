@@ -97,13 +97,13 @@ func checkCmd(ctx context.Context, args []string) int {
 	printReads(rc)
 	switch {
 	case len(rc.Denied) > 0 || len(rc.Failed) > 0:
-		fmt.Printf("\nRESULT: incomplete: %d types refused for want of permission, %d throttled, %d failed otherwise. A capture now would not hold them.\n", len(rc.Denied), len(rc.Throttled), len(rc.Failed))
+		fmt.Printf("\nRESULT: incomplete: %s refused for want of permission, %d throttled, %d failed otherwise. A capture now would not hold them.\n", count(len(rc.Denied), "type"), len(rc.Throttled), len(rc.Failed))
 		return 3
 	case len(rc.Throttled) > 0:
-		fmt.Printf("\nRESULT: incomplete only because %d types were throttled: nothing was refused. Run it again later, or with a lower --parallel.\n", len(rc.Throttled))
+		fmt.Printf("\nRESULT: incomplete only because %s %s throttled: nothing was refused. Run it again later, or with a lower --parallel.\n", count(len(rc.Throttled), "type"), verb(len(rc.Throttled), "was", "were"))
 		return 3
 	case len(id.Warnings) > 0:
-		fmt.Printf("\nRESULT: can read every type it was asked to; %d warnings above.\n", len(id.Warnings))
+		fmt.Printf("\nRESULT: can read every type it was asked to; %s above.\n", count(len(id.Warnings), "warning"))
 	default:
 		fmt.Println("\nRESULT: can read every type it was asked to.")
 	}
@@ -300,12 +300,12 @@ func printReads(rc readCheck) {
 		fmt.Println("  UNSURE: recorded as not there or not set up, which a missing permission can look like too:")
 		list("unsure", rc.Unsure)
 	}
-	fmt.Printf("  read     %d types holding %d resources", rc.WithObjects, rc.Objects)
+	fmt.Printf("  read     %s holding %s", count(rc.WithObjects, "type"), count(rc.Objects, "resource"))
 	if rc.Skipped > 0 {
 		fmt.Printf(", and %d more read and skipped on purpose (made by the platform or a service; a capture's REPORT.md lists them)", rc.Skipped)
 	}
 	fmt.Println()
-	fmt.Printf("  empty    %d types read and holding nothing\n", rc.Empty)
+	fmt.Printf("  empty    %s read and holding nothing\n", count(rc.Empty, "type"))
 	var keys []string
 	n := 0
 	for k, v := range rc.ByDesign {
@@ -313,7 +313,7 @@ func printReads(rc readCheck) {
 		n += v
 	}
 	sort.Strings(keys)
-	fmt.Printf("  not read %d types, by design:\n", n)
+	fmt.Printf("  not read %s, by design:\n", count(n, "type"))
 	for _, k := range keys {
 		fmt.Printf("           %d %s\n", rc.ByDesign[k], k)
 	}

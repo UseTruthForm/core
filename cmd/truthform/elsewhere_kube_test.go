@@ -74,7 +74,7 @@ func TestKubernetesRestoreElsewhere(t *testing.T) {
 			t.Errorf("the restore does not say %q:\n%s", want, stdout)
 		}
 	}
-	if !strings.Contains(stderr, "rename: 1 store references point elsewhere") || !strings.Contains(stderr, "OnePasswordItem shop/db spec.itemPath: vaults/apps/items/db -> vaults/apps-test/items/db") {
+	if !strings.Contains(stderr, "rename: 1 store reference points elsewhere") || !strings.Contains(stderr, "OnePasswordItem shop/db spec.itemPath: vaults/apps/items/db -> vaults/apps-test/items/db") {
 		t.Errorf("stderr:\n%s", stderr)
 	}
 
@@ -220,7 +220,7 @@ func TestElsewhereFilesAreRefusedBeforeTheCluster(t *testing.T) {
 		"already set in map":                                                        {append(base, "--rename"), "vaults/apps/: vaults/a/\nvaults/apps/: vaults/b/\n"},
 		"want a list of":                                                            {append(base, "--leave-out"), "ConfigMap/shop/root: yes\n"},
 		"2 objects would use the source's secret store":                             {append(wider, "--rename"), "vaults/apps/: vaults/apps-test/\n"},
-		"1 objects would use the source's secret store":                             {append(wider, "--rename"), "vaults/apps/: vaults/apps-test/\nvaults/shared/: vaults/shared/\n"},
+		"1 object would use the source's secret store":                              {append(wider, "--rename"), "vaults/apps/: vaults/apps-test/\nvaults/shared/: vaults/shared/\n"},
 		"--keep-source-stores is for a kubernetes restore with --rename;":           {append(base, "--keep-source-stores", "--leave-out"), "- ConfigMap/shop/root\n"},
 	} {
 		file := writeFile(t, t.TempDir(), "file.yaml", c.file)

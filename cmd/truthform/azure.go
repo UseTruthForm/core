@@ -111,7 +111,7 @@ func captureAzure(ctx context.Context, a *azureFlags, out string) int {
 		fmt.Println(line)
 	}
 	if later, _ := azarm.KeptOnceAzureMakesIt(snap); len(later) > 0 {
-		fmt.Printf("CHECK: %d resources Azure makes itself are kept only once it has (their retention, plan and custom columns); see %s\n", len(later), filepath.Join(out, "REPORT.md"))
+		fmt.Printf("CHECK: %s Azure makes itself %s kept only once it has (%s retention, plan and custom columns); see %s\n", count(len(later), "resource"), verb(len(later), "is", "are"), verb(len(later), "its", "their"), filepath.Join(out, "REPORT.md"))
 	}
 	for _, r := range topReasons(skips, 8) {
 		fmt.Println("  skipped:", r)
@@ -311,7 +311,7 @@ func warnHeld(ctx context.Context, api azarm.ARM, s snapshot.Snapshot) {
 	held, unread := azarm.NamesHeld(ctx, api, s)
 	namesHeld = &heldJSON{Held: append([]string{}, held...), Unread: append([]string{}, unread...)}
 	if len(held) > 0 {
-		fmt.Fprintf(os.Stderr, "WARNING: %d names are held by deleted resources, and Azure will refuse them:\n", len(held))
+		fmt.Fprintf(os.Stderr, "WARNING: %s %s held by deleted resources, and Azure will refuse %s:\n", count(len(held), "name"), verb(len(held), "is", "are"), verb(len(held), "it", "them"))
 		for _, x := range held {
 			fmt.Fprintln(os.Stderr, "  ", x)
 		}
@@ -332,16 +332,16 @@ func warnSizes(ctx context.Context, api azarm.ARM, s snapshot.Snapshot, values m
 	c := azarm.SizesRefused(ctx, api, s, values)
 	sizeCheck = &c
 	if len(c.Refused) > 0 {
-		fmt.Fprintf(os.Stderr, "WARNING: %d VM sizes this subscription cannot have:\n", len(c.Refused))
+		fmt.Fprintf(os.Stderr, "WARNING: %s this subscription cannot have:\n", count(len(c.Refused), "VM size"))
 		for _, x := range c.Refused {
 			fmt.Fprintln(os.Stderr, "  ", x)
 		}
 	}
 	if len(c.NotChecked) > 0 {
-		fmt.Fprintf(os.Stderr, "NOTE: %d VM sizes were not checked:\n", len(c.NotChecked))
+		fmt.Fprintf(os.Stderr, "NOTE: %s %s not checked:\n", count(len(c.NotChecked), "VM size"), verb(len(c.NotChecked), "was", "were"))
 		for _, x := range c.NotChecked {
 			fmt.Fprintln(os.Stderr, "  ", x)
 		}
 	}
-	fmt.Fprintf(os.Stderr, "VM sizes: checked %d in %d regions\n", c.Sizes, c.Regions)
+	fmt.Fprintf(os.Stderr, "VM sizes: checked %d in %s\n", c.Sizes, count(c.Regions, "region"))
 }

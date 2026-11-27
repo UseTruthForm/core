@@ -92,7 +92,7 @@ func planSecrets(ctx context.Context, args []string) int {
 	notRead := gaps(s)
 	if *check == "" {
 		if len(notRead) > 0 {
-			fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the file lists no Secret that is in them; see REPORT.md\n", len(notRead))
+			fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %s, and the file lists no Secret that is in them; see REPORT.md\n", count(len(notRead), "thing"))
 		}
 		text := append(sources.Skeleton(needed), sources.SettingsSkeleton(settings)...)
 		if *out == "" {
@@ -200,7 +200,7 @@ func planSecrets(ctx context.Context, args []string) int {
 		}
 	}
 	if !jsonOut && len(settings) > 0 && len(problems) == 0 {
-		fmt.Printf("and each of the %d objects with credentials withheld from its settings has a source for every one\n", len(settings))
+		fmt.Printf("and each object with credentials withheld from its settings (%s) has a source for every one\n", count(len(settings), "object"))
 	}
 	if len(problems) > 0 {
 		return 2
@@ -380,7 +380,7 @@ func withSecretSources(ctx context.Context, snap snapshot.Snapshot, path string,
 		}
 	}
 	if len(failed) > 0 {
-		return snap, opt, nil, fmt.Errorf("--secrets-from %s: %d values could not be read; nothing was restored:\n   %s", path, len(failed), strings.Join(failed, "\n   "))
+		return snap, opt, nil, fmt.Errorf("--secrets-from %s: %s could not be read; nothing was restored:\n   %s", path, count(len(failed), "value"), strings.Join(failed, "\n   "))
 	}
 
 	out := snap

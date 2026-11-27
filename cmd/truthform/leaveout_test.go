@@ -120,7 +120,7 @@ func TestLeaveOutReachesRestoreAndDiff(t *testing.T) {
 	if code != 2 || !strings.Contains(out, "corp.example/www") {
 		t.Fatalf("diff of an empty target: exit %d\n%s%s", code, out, errOut)
 	}
-	if !strings.Contains(errOut, "NOTE: 1 objects name another subscription") || !strings.Contains(errOut, leaveOther) {
+	if !strings.Contains(errOut, "NOTE: 1 object names another subscription") || !strings.Contains(errOut, leaveOther) {
 		t.Errorf("diff does not say a zone names another subscription:\n%s", errOut)
 	}
 
@@ -155,7 +155,7 @@ func TestLeaveOutReachesRestoreAndDiff(t *testing.T) {
 	if !strings.Contains(errOut, "   "+leaveKey) || !strings.Contains(out, "left out 1 (--leave-out): "+leaveKey) {
 		t.Errorf("restore does not name what it left out:\n%s%s", out, errOut)
 	}
-	if !strings.Contains(errOut, "NOTE: 1 objects name another subscription") {
+	if !strings.Contains(errOut, "NOTE: 1 object names another subscription") {
 		t.Errorf("restore does not say a zone names another subscription:\n%s", errOut)
 	}
 

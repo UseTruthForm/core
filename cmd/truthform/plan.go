@@ -62,7 +62,7 @@ func planCmd(args []string) int {
 	// lists nothing is then no proof there is nothing.
 	notRead := gaps(s)
 	if len(notRead) > 0 {
-		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %d things, and the plan cannot count what is in them; it lists them first\n", len(notRead))
+		fmt.Fprintf(os.Stderr, "INCOMPLETE SNAPSHOT: its capture could not read %s, and the plan cannot count what is in them; it lists them first\n", count(len(notRead), "thing"))
 	}
 	// With no scope, a webhook whose Service will not answer is said
 	// here too: a restore of the whole is refused for one that fails
@@ -111,7 +111,7 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks 
 	w("# Rebuild plan\n\n")
 	w("What rebuilding a cluster from this snapshot needs that the snapshot does not hold. Read from the snapshot alone: nothing was contacted, and no secret value is in it or here.\n\n")
 	if len(notRead) > 0 {
-		w("**INCOMPLETE SNAPSHOT.** Its capture could not read %d things. This plan counts only what was read: a step may be missing sources, secrets or hosts that are in these.\n\n", len(notRead))
+		w("**INCOMPLETE SNAPSHOT.** Its capture could not read %s. This plan counts only what was read: a step may be missing sources, secrets or hosts that are in these.\n\n", count(len(notRead), "thing"))
 		for _, g := range notRead {
 			w("- %s\n", md(g))
 		}
@@ -141,8 +141,8 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks 
 		seen = " seen"
 	}
 	w("| Step | | |\n|---|---|---:|\n")
-	w("| 1 | Install what a GitOps source makes | %d sources by hand, %d follow%s |\n", len(p.Sources), len(p.Follows), seen)
-	w("| 2 | Have these APIs served before the restore | %d groups%s |\n", len(p.Operators), seen)
+	w("| 1 | Install what a GitOps source makes | %s by hand, %d follow%s |\n", count(len(p.Sources), "source"), len(p.Follows), seen)
+	w("| 2 | Have these APIs served before the restore | %s%s |\n", count(len(p.Operators), "group"), seen)
 	keysOut := 0
 	for _, e := range p.Encrypted {
 		keysOut += len(e.KeysNotHeld)
@@ -154,9 +154,9 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks 
 	}
 	w("| 4 | Make the secret store reachable | %s feed %s%s |\n", count(len(p.FromStore), "item"), count(fromStore, "secret"), seen)
 	w("| 5 | Restore the snapshot | |\n")
-	w("| 6 | Point the names at the rebuilt cluster | %d hosts%s |\n\n", len(p.Hosts), seen)
+	w("| 6 | Point the names at the rebuilt cluster | %s%s |\n\n", count(len(p.Hosts), "host"), seen)
 
-	w("## 1. Install first: %d sources%s\n\n", len(p.Sources), seen)
+	w("## 1. Install first: %s%s\n\n", count(len(p.Sources), "source"), seen)
 	if len(p.Follows) > 0 {
 		made := 0
 		names := make([]string, len(p.Follows))
@@ -192,7 +192,7 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks 
 		}
 	}
 
-	w("## 2. APIs to have served: %d groups%s\n\n", len(p.Operators), seen)
+	w("## 2. APIs to have served: %s%s\n\n", count(len(p.Operators), "group"), seen)
 	if len(p.Operators) == 0 {
 		none("Every type in the snapshot is built in, or its definition is in the snapshot.")
 	} else {
@@ -261,7 +261,7 @@ func planMarkdown(p kube.Plan, notRead []string, scope *kube.ScopeReport, hooks 
 		w("Not for you to supply: %d that something in the cluster makes again once it runs: %s.\n\n", len(p.Reissued), strings.Join(parts, "; "))
 	}
 
-	w("## 4. Secrets a store supplies: %d, from %d items%s\n\n", fromStore, len(p.FromStore), seen)
+	w("## 4. Secrets a store supplies: %d, from %s%s\n\n", fromStore, count(len(p.FromStore), "item"), seen)
 	if len(p.FromStore) == 0 {
 		none("The snapshot has no object that reads a secret store.")
 	} else {

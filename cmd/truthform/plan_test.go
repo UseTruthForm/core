@@ -59,7 +59,7 @@ func TestPlanRebuildCommand(t *testing.T) {
 	for _, want := range []string{
 		"# Rebuild plan",
 		"| 4 | Make the secret store reachable | 2 items feed 2 secrets |",
-		"## 1. Install first: 1 sources",
+		"## 1. Install first: 1 source",
 		"| Flux HelmRelease `ingress/proxy` | 1 |  |",
 		"**Not in the snapshot: where the sources are read from.**",
 		"## 2. APIs to have served: 3 groups",

@@ -137,7 +137,7 @@ func TestADiffSaysWhichNamesAreHeld(t *testing.T) {
 	code, out, errOut := output(t, func() int {
 		return diff(ctx, []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--from", dir})
 	})
-	if !strings.Contains(errOut, "WARNING: 1 names are held by deleted resources") || !strings.Contains(errOut, "Microsoft.KeyVault/vaults/rg/kv1") || !strings.Contains(errOut, "only deleted resources in this subscription are seen") {
+	if !strings.Contains(errOut, "WARNING: 1 name is held by deleted resources") || !strings.Contains(errOut, "Microsoft.KeyVault/vaults/rg/kv1") || !strings.Contains(errOut, "only deleted resources in this subscription are seen") {
 		t.Errorf("diff: exit %d\n%s%s", code, out, errOut)
 	}
 	d := asJSON(t, func() {

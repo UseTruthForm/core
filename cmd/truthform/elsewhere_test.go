@@ -60,7 +60,7 @@ func TestWhatARestoreNeedsElsewhereIsSaid(t *testing.T) {
 	t.Cleanup(func() { azureAPI = old; needElsewhere = nil })
 	args := []string{"--platform", "azure", "--subscription", leaveDst, "--definitions", leaveDefs, "--from", dir}
 	_, _, errOut := output(t, func() int { return diff(ctx, args) })
-	if !strings.Contains(errOut, "NOTE: a restore needs 1 actions outside its target") || !strings.Contains(errOut, need) {
+	if !strings.Contains(errOut, "NOTE: a restore needs 1 action outside its target; grant it to") || !strings.Contains(errOut, need) {
 		t.Errorf("no note before the diff:\n%s", errOut)
 	}
 	d := asJSON(t, func() { diff(ctx, args) })

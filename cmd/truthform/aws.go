@@ -139,8 +139,8 @@ func progressPrinter() func(awscc.Progress) {
 			return
 		}
 		last = time.Now()
-		fmt.Fprintf(os.Stderr, "  read %d/%d types, %d resources, %s (last: %s)\n",
-			p.Types, p.TotalTypes, p.Resources, time.Since(start).Round(time.Second), p.Type)
+		fmt.Fprintf(os.Stderr, "  read %d/%d types, %s, %s (last: %s)\n",
+			p.Types, p.TotalTypes, count(p.Resources, "resource"), time.Since(start).Round(time.Second), p.Type)
 	}
 }
 
@@ -357,7 +357,7 @@ func awsCoverage(args []string) int {
 		}
 	}
 	pct := func(n int) string { return fmt.Sprintf("%d (%.0f%%)", n, 100*float64(n)/float64(total)) }
-	fmt.Printf("AWS registry %s: %d types\n", reg.Digest, total)
+	fmt.Printf("AWS registry %s: %s\n", reg.Digest, count(total, "type"))
 	fmt.Printf("  capturable:            %s\n", pct(direct+enumerated+parented))
 	fmt.Printf("    listed directly:     %d\n", direct)
 	fmt.Printf("    listed per enum:     %d (values from the schema, e.g. WAFv2 Scope)\n", enumerated)

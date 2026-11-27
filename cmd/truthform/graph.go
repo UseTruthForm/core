@@ -64,7 +64,7 @@ func graphCmd(args []string) int {
 		return fail(err)
 	}
 	if *out != "" {
-		fmt.Fprintf(os.Stderr, "wrote %s: %d nodes, %d edges\n", *out, len(g.Nodes), len(g.Edges))
+		fmt.Fprintf(os.Stderr, "wrote %s: %s, %s\n", *out, count(len(g.Nodes), "node"), count(len(g.Edges), "edge"))
 	}
 	return 0
 }

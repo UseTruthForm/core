@@ -170,6 +170,10 @@ func main() {
 		code = logoutCmd(args)
 	case "version", "--version", "-version":
 		fmt.Println(versionString())
+	case "help", "-h", "-help", "--help":
+		// Asked for, so it is the answer: stdout and exit 0. Only a command
+		// it does not know is an error.
+		fmt.Print(usage)
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		code = 1
@@ -256,7 +260,7 @@ func capture(ctx context.Context, args []string) int {
 	// Said on every capture that has claims, because a restored claim with an
 	// empty volume looks exactly like a restored claim with its data.
 	if n := countKind(snap, "PersistentVolumeClaim"); n > 0 {
-		fmt.Printf("NOTE: %d PersistentVolumeClaims captured as configuration only; the data in their volumes is NOT in this snapshot\n", n)
+		fmt.Printf("NOTE: %s captured as configuration only; the data in %s NOT in this snapshot\n", count(n, "PersistentVolumeClaim"), verb(n, "its volume is", "their volumes is"))
 	}
 	if len(failed) > 0 {
 		fmt.Println("INCOMPLETE: these types could not be read and are NOT in the snapshot:")
@@ -389,7 +393,7 @@ func restore(ctx context.Context, args []string) int {
 			return fail(err)
 		}
 		if len(left) > 0 {
-			fmt.Printf("left %d Secrets to what makes them (--secrets-from): %s\n", len(left), strings.Join(left, ", "))
+			fmt.Printf("left %s to what makes %s (--secrets-from): %s\n", count(len(left), "Secret"), verb(len(left), "it", "them"), strings.Join(left, ", "))
 		}
 	}
 	if *secretsFrom != "" {
@@ -598,7 +602,7 @@ func schemaDiff(args []string) int {
 	}
 	changes := snapshot.CompareSchemas(a, b)
 	if len(changes) == 0 {
-		fmt.Printf("no schema changes across %d types\n", len(b.Schemas))
+		fmt.Printf("no schema changes across %s\n", count(len(b.Schemas), "type"))
 		return 0
 	}
 	for _, c := range changes {
@@ -636,6 +640,15 @@ func count(n int, thing string) string {
 		return "1 " + thing
 	}
 	return fmt.Sprintf("%d %ss", n, thing)
+}
+
+// verb is the word that agrees with a count of n: one for 1, many otherwise,
+// as in count(n, "object") + " " + verb(n, "names", "name").
+func verb(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 func report(changes []snapshot.Change, want, got string) int {
@@ -754,7 +767,7 @@ func withNewRoleIDs(on bool, platform, subscription string, s snapshot.Snapshot)
 // and a diff no differences, of a snapshot that does not hold the whole system.
 func warnGaps(s snapshot.Snapshot) {
 	if g := gaps(s); len(g) > 0 {
-		fmt.Printf("INCOMPLETE SNAPSHOT: its capture could not read %d things, and neither restore nor diff can see them; see REPORT.md\n", len(g))
+		fmt.Printf("INCOMPLETE SNAPSHOT: its capture could not read %s, and neither restore nor diff can see them; see REPORT.md\n", count(len(g), "thing"))
 	}
 }
 
@@ -864,7 +877,7 @@ func leftOut(file, platform string, s snapshot.Snapshot) (snapshot.Snapshot, err
 		}
 	}
 	sort.Strings(heldBack)
-	fmt.Fprintf(os.Stderr, "leave out: %d objects, as %s asks:\n", len(heldBack), file)
+	fmt.Fprintf(os.Stderr, "leave out: %s, as %s asks:\n", count(len(heldBack), "object"), file)
 	for _, k := range heldBack {
 		fmt.Fprintln(os.Stderr, "  ", k)
 	}
@@ -881,13 +894,13 @@ func warnOtherSubscriptions(s snapshot.Snapshot, platform, target string) {
 	}
 	if need := azarm.AccessElsewhere(s, target); len(need) > 0 {
 		needElsewhere = need
-		fmt.Fprintf(os.Stderr, "NOTE: a restore needs %d actions outside its target; grant them to the identity that restores, or --leave-out the object:\n", len(need))
+		fmt.Fprintf(os.Stderr, "NOTE: a restore needs %s outside its target; grant %s to the identity that restores, or --leave-out the object:\n", count(len(need), "action"), verb(len(need), "it", "them"))
 		for _, x := range need {
 			fmt.Fprintln(os.Stderr, "  ", x)
 		}
 	}
 	if other := azarm.OtherSubscriptions(s); len(other) > 0 {
-		fmt.Fprintf(os.Stderr, "NOTE: %d objects name another subscription; a restore sends those IDs as they are, needs access there, and what it makes reaches there (--leave-out holds one back):\n", len(other))
+		fmt.Fprintf(os.Stderr, "NOTE: %s %s another subscription; a restore sends those IDs as they are, needs access there, and what it makes reaches there (--leave-out holds one back):\n", count(len(other), "object"), verb(len(other), "names", "name"))
 		for _, x := range other {
 			fmt.Fprintln(os.Stderr, "  ", x)
 		}
@@ -926,24 +939,24 @@ func renamed(file, platform string, s snapshot.Snapshot, strict bool) (map[strin
 		}
 		// Each one, changed or not: a restore that still read the source's
 		// secrets would otherwise look like one that did not.
-		fmt.Fprintf(os.Stderr, "rename: %d store references point elsewhere, as %s asks:\n", len(rep.Changed), file)
+		fmt.Fprintf(os.Stderr, "rename: %s %s elsewhere, as %s asks:\n", count(len(rep.Changed), "store reference"), verb(len(rep.Changed), "points", "point"), file)
 		for _, r := range rep.Changed {
 			fmt.Fprintf(os.Stderr, "   %s %s: %s -> %s\n", r.Object, r.Field, r.From, r.To)
 		}
 		if len(rep.Kept) > 0 {
-			fmt.Fprintf(os.Stderr, "rename: %d store references are as the source's, as %s asks:\n", len(rep.Kept), file)
+			fmt.Fprintf(os.Stderr, "rename: %s %s as the source's, as %s asks:\n", count(len(rep.Kept), "store reference"), verb(len(rep.Kept), "is", "are"), file)
 			for _, r := range rep.Kept {
 				fmt.Fprintf(os.Stderr, "   %s %s: %s\n", r.Object, r.Field, r.From)
 			}
 		}
 		if len(rep.Within) > 0 {
-			fmt.Fprintf(os.Stderr, "rename: %d references name an item in a store and no start fits them: each reads the same name, from the store its store object says:\n", len(rep.Within))
+			fmt.Fprintf(os.Stderr, "rename: %s %s an item in a store and no start fits %s: each reads the same name, from the store its store object says:\n", count(len(rep.Within), "reference"), verb(len(rep.Within), "names", "name"), verb(len(rep.Within), "it", "them"))
 			for _, r := range rep.Within {
 				fmt.Fprintf(os.Stderr, "   %s %s: %s\n", r.Object, r.Field, r.From)
 			}
 		}
 		if len(rep.Unnamed) > 0 {
-			fmt.Fprintf(os.Stderr, "rename: %d references say which store, and no start fits them: they are the source's:\n", len(rep.Unnamed))
+			fmt.Fprintf(os.Stderr, "rename: %s %s which store, and no start fits %s: %s the source's:\n", count(len(rep.Unnamed), "reference"), verb(len(rep.Unnamed), "says", "say"), verb(len(rep.Unnamed), "it", "them"), verb(len(rep.Unnamed), "it is", "they are"))
 			for _, r := range rep.Unnamed {
 				fmt.Fprintf(os.Stderr, "   %s %s: %s\n", r.Object, r.Field, r.From)
 			}
@@ -979,14 +992,14 @@ func renamed(file, platform string, s snapshot.Snapshot, strict bool) (map[strin
 			}
 		}
 		if writes > 0 {
-			fmt.Fprintf(os.Stderr, "rename: %d of those are what a PushSecret WRITES to. Restored as they are, the new cluster writes the source's items, and deletes them where its deletionPolicy says Delete.\n", writes)
+			fmt.Fprintf(os.Stderr, "rename: %d of those %s what a PushSecret WRITES to. Restored as they are, the new cluster writes the source's items, and deletes them where its deletionPolicy says Delete.\n", writes, verb(writes, "is", "are"))
 		}
 		storeRefs = &rep
 		// What was not looked at, so that nothing listed does not read as
 		// nothing there.
 		fmt.Fprintf(os.Stderr, "rename: a use of a secret store was looked for in these kinds, and the 1Password operator's annotation on any object: %s. One named anywhere else (a workload's own settings, another operator's objects) is not seen.\n", strings.Join(kube.StoreKinds(), ", "))
 		if n := len(rep.Unnamed) + len(rep.Unreached); strict && n > 0 {
-			return nil, s, fmt.Errorf("%s: %d objects would use the source's secret store (listed above: a store, or what a PushSecret writes, that no start fits, or a use --rename does not reach), and what reads or writes through them would read or write the source's; nothing was restored. Give each a start (replaced by itself, if it is the same in both), leave the object out, or pass --keep-source-stores", file, n)
+			return nil, s, fmt.Errorf("%s: %s would use the source's secret store (listed above: a store, or what a PushSecret writes, that no start fits, or a use --rename does not reach), and what reads or writes through them would read or write the source's; nothing was restored. Give each a start (replaced by itself, if it is the same in both), leave the object out, or pass --keep-source-stores", file, count(n, "object"))
 		}
 		return nil, out, nil
 	}

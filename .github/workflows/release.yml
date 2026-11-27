@@ -1,8 +1,7 @@
 name: release
 # Builds the release binaries when a version tag is pushed (git tag v0.1.0
 # && git push origin v0.1.0) and attaches them to a DRAFT release: nothing
-# reaches anyone until a person reads the draft and publishes it. The repo
-# is private, so its releases are too.
+# reaches anyone until a person reads the draft and publishes it.
 #
 # Cost: one job per tag, a few minutes of build; nothing runs on branches.
 on:
@@ -26,9 +25,10 @@ jobs:
       # code no pull request's checks ran on.
       - name: Refuse a tag that is not on main
         run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "$GITHUB_REF_NAME is not on main"; exit 1; }
-      # Everything CI runs, on the exact commit released: main is not
-      # protected (a private repo on GitHub Free), so that a commit is on
-      # main does not prove its checks passed (review of #20).
+      # Everything CI runs, on the exact commit released. CI runs on pull
+      # requests, and a commit on main need not have come through one (an
+      # admin can push), so that it is on main does not prove its checks
+      # passed (review of #20).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/truthform/envtest
@@ -68,8 +68,8 @@ jobs:
       # `gh attestation verify <archive> --repo <owner>/<repo>` checks a
       # download against it, where SHA256SUMS only shows the file is the
       # one the release page holds. GitHub stores attestations for public
-      # repositories only on this plan, so the step is skipped while the
-      # repository is private and starts by itself once it is public.
+      # repositories only on this plan, so the step is skipped if the
+      # repository is ever private.
       - name: Attest the archives
         if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2

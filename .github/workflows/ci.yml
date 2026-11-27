@@ -1,5 +1,5 @@
 name: ci
-# Cost-minimised (private repo, GitHub Free minutes):
+# Kept lean, so a pull request hears back quickly and runners are not wasted:
 # - only on pull requests, and only when code, tests or scripts change
 # - a newer push cancels the run still going for the same PR
 # - one job: vet, gofmt, unit tests and the API-server restore drill

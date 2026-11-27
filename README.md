@@ -1,49 +1,137 @@
 # TruthForm
 
-Capture what is running, so it can be recreated.
+**Capture what is running, so it can be recreated.**
 
-TruthForm is infrastructure-as-code in reverse. You don't write IaC and then manage
-state files. Instead, TruthForm reads the live system through the platform's own
-APIs and writes a normalised snapshot that can recreate it. The live system is
-the source of truth, so there is no state to manage. The snapshot is plain YAML
-that you can review, commit and diff.
+TruthForm is infrastructure-as-code in reverse. Instead of writing IaC and
+keeping state files in step with reality, you point TruthForm at what is
+running: a Kubernetes cluster, an AWS account, an Azure subscription, a GCP
+project, a GitHub or Cloudflare organisation. It reads it through the
+platform's own APIs and writes a **snapshot**: plain YAML you can review,
+commit and diff. From a snapshot it can:
 
-**Status: early development.** Kubernetes works end to end. AWS (every
-Cloud Control type in the CloudFormation registry) passes its restore drill
-against a schema-driven fake. It also passed the disaster drill against a
-real account (`scripts/drill-aws.sh`: 21 resources across 17 types, an
-IAM role, a managed policy and a Lambda function among them, all free
-while empty, deleted and restored with no diff), but most types haven't met real AWS yet. Azure (every
-type with a published definition) passes its drill against a fake, and the
-disaster drill against a real subscription (`scripts/drill-azure.sh`: 7
-free resources, from the resource group to role assignments and a lock,
-deleted and restored with no diff). GCP (Cloud Asset Inventory
-plus Discovery documents) passes its drill against a fake, and the disaster
-drill against a real project (`scripts/drill-gcp.sh`). SaaS providers run on
-one OpenAPI-driven engine: GitHub (a real read-only capture works) and
-Cloudflare (fake only so far). A restore only creates what is missing;
-`restore --update` also brings drifted resources back in line, and passed
-against real AWS, Azure and GCP (each drill drifts resources by hand, then
-requires an empty diff). Agents get the same knowledge over MCP
-(`truthform mcp`): every field of a type, which are required, set by the
-platform, secret or fixed at creation, with the platform's docs, plus
-read-only capture and diff; restore is deliberately not a tool. An Azure
-snapshot can be rewritten for AWS or GCP (`truthform translate`, beta):
-what it writes restores into the fakes and has been through
-`restore --dry-run` against a real account and project, but no translated
-snapshot has been restored into a real one yet. See
-[AWS](docs/architecture.md#aws-cloud-control-driven-by-the-registry). Other
-platforms are on the [roadmap](docs/architecture.md#roadmap). It is a single Go binary, with no
-Pulumi or Terraform dependency.
+- **diff** what is running now against what was captured, field by field;
+- **restore** what is missing, into the same place or a fresh one;
+- **translate** an Azure environment into AWS or GCP terms (beta).
 
-**Using TruthForm:** the [user guide](docs/guide.md) and the
-[permissions](docs/permissions.md) to grant on each platform.
+There is no state to manage: the live system is the source of truth. It is
+one Go binary, with no Terraform or Pulumi underneath, and it sends nothing
+anywhere except to the platforms you point it at.
+
+## Status
+
+**Beta.** Snapshots are format 2, and every release reads snapshots from
+earlier ones. What has been proven, and where:
+
+| Platform | Captures | Proven against |
+|---|---|---|
+| Kubernetes | every type the cluster serves, custom resources included | capture, restore and diff on two real API servers in every CI run, and on two kind clusters with running controllers; real clusters read-only every day |
+| AWS | every Cloud Control type in the CloudFormation registry | a fake driven by the registry's schemas; a real account deleted and restored with no diff (21 resources across 17 types, IAM included) |
+| Azure | every type with a published API definition | a fake; a real subscription deleted and restored with no diff (7 resources, role assignments and a lock among them); an environment of 2,000+ resources captured read-only every day |
+| GCP | every Cloud Asset Inventory type with a Discovery document | a fake; a real project deleted and restored with no diff |
+| GitHub, Cloudflare | from each one's OpenAPI description | GitHub: a real read-only capture. Cloudflare: a fake only |
+
+`restore --update`, which brings drifted resources back in line, passed on
+real AWS, Azure and GCP. **Translate** (Azure to AWS or GCP) is newer: what
+it writes restores into the fakes and has passed `restore --dry-run`
+against a real AWS account and GCP project, but no translated snapshot has
+been restored into a real one yet. What is not handled is listed in
+[Known limits](docs/guide.md#known-limits).
+
+## Install
+
+From a [release](https://github.com/UseTruthForm/core/releases): download
+the archive for your platform, check it, and put `truthform` on your `PATH`.
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+tar -xzf truthform_<version>_linux_amd64.tar.gz
+./truthform_<version>_linux_amd64/truthform version
+```
+
+Or with Go 1.27 or later:
+
+```sh
+go install github.com/usetruthform/core/cmd/truthform@latest
+```
+
+Every release comes in two editions. **Full** captures, diffs and restores.
+**Capture-only** has no restore, and every request it makes goes through a
+read-only guard, so it cannot change anything it reaches: build it with
+`go build -tags captureonly ./cmd/truthform`. `truthform version` says which
+you have.
+
+## Try it in five minutes
+
+No cloud account needed: [kind](https://kind.sigs.k8s.io/) and Docker are
+enough.
+
+```sh
+kind create cluster --name tf-try --wait 2m
+truthform capture --context kind-tf-try --out base/      # the empty cluster: what kind itself provides
+
+kubectl --context kind-tf-try create namespace shop
+kubectl --context kind-tf-try -n shop create deployment web --image=nginx
+kubectl --context kind-tf-try -n shop create configmap settings --from-literal=colour=blue
+kubectl --context kind-tf-try -n shop create secret generic db --from-literal=password=hunter2
+
+truthform capture --context kind-tf-try --baseline base/ --out snap/
+```
+
+`snap/` holds four objects: the namespace, the Deployment, the ConfigMap
+and the Secret. `snap/REPORT.md` says what was captured, what was skipped
+and why. The ReplicaSet and Pods are skipped because the Deployment
+recreates them; kind's own objects are skipped because they match the
+baseline. The Secret holds its key names only: its value never reaches the
+snapshot.
+
+Now break something, and bring it back:
+
+```sh
+kubectl --context kind-tf-try -n shop delete configmap settings
+kubectl --context kind-tf-try -n shop scale deployment/web --replicas=3
+
+truthform diff --context kind-tf-try --baseline base/ --from snap/     # exit 2: one missing, one changed
+truthform restore --context kind-tf-try --from snap/ --secrets-from-context kind-tf-try
+truthform diff --context kind-tf-try --baseline base/ --from snap/     # no differences
+```
+
+Restore needs the Secret's value from somewhere. Here it is read live from
+the cluster itself (`--secrets-from-context`), straight from one API to the
+other and never written to disk; without it, restore applies everything
+else and says which Secret it could not. The same snapshot rebuilds the app
+in a new cluster:
+
+```sh
+kind create cluster --name tf-new --wait 2m
+truthform restore --context kind-tf-new --from snap/ --secrets-from-context kind-tf-try
+truthform diff --context kind-tf-new --baseline base/ --from snap/     # no differences
+
+kind delete cluster --name tf-new; kind delete cluster --name tf-try
+```
+
+A restore never deletes. On Kubernetes it re-applies what the snapshot
+holds, and leaves alone fields that another tool added, which `diff`
+still reports. For a cloud platform, start with `truthform permissions`
+and `truthform check` in the [user guide](docs/guide.md).
+
+## Documentation
+
+- [User guide](docs/guide.md): every command, what a snapshot holds and
+  what it never holds, restore, whole environments, translation, exit
+  codes, known limits.
+- [Permissions](docs/permissions.md): what to grant on each platform, and
+  which grants have been verified against real accounts.
+- [AI agents](docs/agents.md): TruthForm over MCP (`truthform mcp`). Agents
+  get capture, diff and every type's fields; restore is deliberately not a
+  tool.
+- [Architecture](docs/architecture.md): how each platform adapter works,
+  and the roadmap.
+- [Development](docs/development.md): the restore drills and the local dev
+  loop.
 
 ## Commands
 
 ```bash
-go build -o bin/truthform ./cmd/truthform
-
 truthform capture --context kind-src --out snap/ [--baseline base/] [--include-system]
 truthform restore --context kind-dst --from snap/ [--secrets-from-context kind-src]
 truthform diff    --context kind-dst --from snap/ [--baseline base/]
@@ -119,7 +207,7 @@ types weren't captured and why, and what is never in a snapshot by design
 `truthform report <dir>` regenerates one. Reports carry no timestamps, so an
 unchanged system gives an unchanged report.
 
-A capture of four sandboxes (kind-tiltdev, AWS, Azure, GCP), from one
+A capture of four sandboxes (a kind cluster, AWS, Azure, GCP), from one
 config, took 29s and was complete.
 
 ## API fields keep up by themselves
@@ -152,8 +240,8 @@ ships. TruthForm keeps no field list in its code:
   credential exchanges *before it leaves the machine*. It's an allow-list,
   so an unrecognised request is refused, never let through. `go build
   -tags captureonly` produces a binary with no working restore, in which
-  every client sits behind the guard. That is the build to hand a client
-  for information gathering.
+  every client sits behind the guard. That is the build to hand to someone
+  else for an assessment.
 - **Deterministic.** An unchanged system captures to byte-identical files, so CI
   can regenerate snapshots and the diff shows only real change. The snapshot
   stores no capture time or machine details.
@@ -175,56 +263,16 @@ ships. TruthForm keeps no field list in its code:
 
 ## Proof: the restore drill
 
-The drill is written once, in `internal/drilltest`, against the platform
-contract (`internal/platform`), so every adapter must pass the same test. It
-runs at two levels:
+Every adapter passes the same drill: capture, restore into an empty target,
+and require `diff` to find nothing. It runs against fakes and real API
+servers on every pull request, and against real accounts on demand. See
+[docs/development.md](docs/development.md).
 
-| Level | Where | Time | What runs |
-|---|---|---|---|
-| API server | `go test ./...` (every save, every PR) | ~20s | Two real etcd and kube-apiserver pairs (`internal/kubetest`); no nodes or Docker |
-| Full fidelity | `scripts/drill-kind.sh` (on demand; the `full-drill` PR label) | ~2 min | Two kind clusters with running controllers |
+## Contributing
 
-Get the API-server binaries once with
-`export TRUTHFORM_KUBE_ASSETS="$(scripts/envtest-assets.sh)"`. Without them the
-drill is skipped with a message locally, and fails in CI.
-
-### The kind drill
-
-```bash
-scripts/drill-kind.sh
-```
-
-This builds two kind clusters. It loads a realistic app (`testdata/k8s`: a
-Deployment, Service, ConfigMap, Secret, RBAC, PVC, NetworkPolicy and Ingress, plus
-a CRD and a custom resource) into the source, then:
-
-1. captures it twice and requires identical digests;
-2. requires the snapshot to be exactly the 13 fixture objects;
-3. restores into the fresh destination and requires `diff` to find nothing;
-4. checks the secret values arrived intact, comparing them by hash.
-
-CI runs it on pull requests labelled `full-drill`, or when started by
-hand. Every pull request runs the same capture, restore and diff against
-two real API servers instead (`TestDrillOnAPIServer`, no Docker, seconds).
-
-## Local dev loop
-
-```bash
-tilt up --port 10352   # 10350 belongs to a platform Tilt
-```
-
-| Resource | When it runs | What it does |
-|---|---|---|
-| `build`, `unit-tests` | Every save | Build and test in about 14 seconds warm |
-| `restore-drill` | On click | The full kind round trip above, about 2 minutes |
-| `capture-platform` | On click | A read-only capture of the platform cluster (`kind-tiltdev`). It compares with the previous capture, and `schema-diff` shows which API fields a platform or operator upgrade added or removed |
-
-All of it is local and free. Snapshots of real clusters go to `.truthform/`,
-which is gitignored. Resources for other platforms are added along with their
-adapters, never before.
+Issues and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Licence
 
-TruthForm is under the [Apache License 2.0](LICENSE). To contribute, see
-[CONTRIBUTING.md](CONTRIBUTING.md); to report a vulnerability, see
-[SECURITY.md](SECURITY.md).
+TruthForm is under the [Apache License 2.0](LICENSE).

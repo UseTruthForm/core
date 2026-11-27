@@ -15,6 +15,15 @@ TruthForm is maintained by Sallux, which started it. The maintainers are in
   maintainers vote, with a simple majority. Until there are three
   maintainers, Sallux decides.
 
+## Low-effort contributions
+
+[CONTRIBUTING.md](CONTRIBUTING.md#what-is-closed-without-a-full-review) lists
+what a maintainer may close without a full review. Close it with a short
+note naming which item applies, so the author knows what would change the
+answer. For a flood (many pull requests or issues from new accounts at
+once), a maintainer may limit interactions on the repository to prior
+contributors for up to a week, and says so in an issue.
+
 ## Becoming a maintainer
 
 Anyone who has contributed steadily for a few months (code, reviews,

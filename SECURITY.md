@@ -10,6 +10,11 @@ Say what an attacker could do and how: the command, the input, and the
 release (`truthform version`). Leave out credentials and snapshots of real
 environments.
 
+A report needs a reproduction against a real build: what you ran, and what
+it printed. One without, or about code that is not in TruthForm, is closed,
+whatever tool wrote it; a scanner's or an AI's finding is welcome once you
+have shown it happens.
+
 We aim to reply within three working days, and to agree with you when the
 fix and the advisory are published.
 

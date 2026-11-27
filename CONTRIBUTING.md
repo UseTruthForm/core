@@ -1,6 +1,8 @@
 # Contributing to TruthForm
 
-Thank you for helping. Issues and pull requests are welcome.
+Thank you for helping. Issues and pull requests are welcome. Everyone taking
+part follows the [Code of Conduct](CODE_OF_CONDUCT.md), and how decisions are
+made is in [GOVERNANCE.md](GOVERNANCE.md).
 
 ## Before you start
 

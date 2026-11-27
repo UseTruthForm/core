@@ -6,3 +6,5 @@ bin/
 # untracked and `git add -A` would commit them.
 .stackdna/
 dist/
+# Your own Tilt settings, such as which cluster capture-platform reads.
+tilt_config.json

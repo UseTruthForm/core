@@ -40,18 +40,37 @@ two real API servers instead (`TestDrillOnAPIServer`, no Docker, seconds).
 ## Local dev loop
 
 ```bash
-tilt up --port 10352   # 10350 belongs to a platform Tilt
+tilt up --port 10352   # any free port; 10352 stays clear of a Tilt on 10350
 ```
+
+You need Go, [Tilt](https://docs.tilt.dev/install.html), and for the drill,
+Docker and [kind](https://kind.sigs.k8s.io/). The first start fetches the API
+server binaries into `~/.cache/truthform/envtest`.
 
 | Resource | When it runs | What it does |
 |---|---|---|
-| `build`, `unit-tests` | Every save | Build and test in about 14 seconds warm |
+| `build`, `unit-tests` | Every save | Build, then the tests of the packages the save affects (Go's test cache skips the rest). Nothing changed: seconds. A change in `cmd/truthform`: about 2½ minutes, its tests run one after another on real API servers. The first run, with an empty cache, is about the same |
 | `restore-drill` | On click | The full kind round trip above, about 2 minutes |
-| `capture-platform` | On click | A read-only capture of the platform cluster (`kind-tiltdev`). It compares with the previous capture, and `schema-diff` shows which API fields a platform or operator upgrade added or removed |
+| `aws-coverage` | On click | What the AWS adapter can capture, measured from AWS's public schema bundle. It downloads the bundle and touches no account |
+| `capture-platform` | On click, when you name a cluster | A read-only capture of a cluster you already run, compared with the previous capture. `schema-diff` shows which API fields a platform or operator upgrade added or removed |
 
-All of it is local and free. Snapshots of real clusters go to `.truthform/`,
-which is gitignored. Resources for other platforms are added along with their
-adapters, never before.
+`capture-platform` appears only when you give it a context, so the list never
+shows a resource that would fail for a cluster you don't have:
+
+```bash
+tilt up --port 10352 -- --platform-context=kind-mycluster
+```
+
+To keep the setting, put `{"platform-context": "kind-mycluster"}` in
+`tilt_config.json` at the repository root. The file is gitignored, and Tilt
+reads it on every start.
+
+All of it is local and free. The drill touches only the two kind clusters it
+creates (`truthform-src`, `truthform-dst`) and keeps them for a re-run;
+`kind delete cluster --name truthform-src` (and `truthform-dst`) removes them.
+Snapshots of real clusters go to `.truthform/`, which is gitignored: secret
+values are withheld, but key names are not. Resources for other platforms are
+added along with their adapters, never before.
 
 
 ## Drills against real accounts

@@ -123,7 +123,7 @@ func TestPlanRebuildCountsAKeyTheSnapshotDoesNotHold(t *testing.T) {
 	}}
 	text := planMarkdown(kube.RebuildPlan(s), nil, nil, nil)
 	for _, want := range []string{
-		"| 3 | Supply by hand the secrets no store holds | 0 secrets, and 1 keys the snapshot does not hold |",
+		"| 3 | Supply by hand the secrets no store holds | 0 secrets, and 1 key the snapshot does not hold |",
 		"No Secret in the snapshot is left for a person to supply:",
 		"**Kept encrypted: Sealed Secrets, 1 object.** **The key is in `kube-system/sealed-secrets-keyab12c`, which the capture left out with its namespace: it is not in the snapshot, and no restore brings it back.**",
 	} {

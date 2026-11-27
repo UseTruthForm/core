@@ -155,7 +155,7 @@ func captureSaaS(ctx context.Context, platform string, s *saasFlags, out string)
 	}
 	d, _ := snapshot.Digest(out)
 	read, _, failed := summarize(snap)
-	fmt.Printf("captured %d items across %d collections into %s (%s)\n", len(snap.Objects), read, out, d)
+	fmt.Printf("captured %s across %s into %s (%s)\n", count(len(snap.Objects), "item"), count(read, "collection"), out, d)
 	fmt.Println("NOTE: configuration only. Content (code, issues, DNS query data) and secret values are NOT in this snapshot")
 	if len(failed) > 0 {
 		fmt.Println("INCOMPLETE: these collections could not be read:")
@@ -233,13 +233,13 @@ func restoreSaaS(ctx context.Context, platform string, s *saasFlags, snap snapsh
 		fmt.Printf("NOT APPLIED %s: %s\n", r.Key, r.Detail)
 	}
 	if dryRun {
-		fmt.Printf("dry run: %d of %d items would apply to %s %s; nothing was written\n", ok, len(results), platform, s.account)
+		fmt.Printf("dry run: %d of %s would apply to %s %s; nothing was written\n", ok, count(len(results), "item"), platform, s.account)
 		if len(conflicts) > 0 {
 			fmt.Printf("%d conflicts: the restore would stop before writing\n", len(conflicts))
 			return 3
 		}
 	} else {
-		fmt.Printf("applied %d of %d items to %s %s\n", ok, len(results), platform, s.account)
+		fmt.Printf("applied %d of %s to %s %s\n", ok, count(len(results), "item"), platform, s.account)
 	}
 	if ok != len(results) {
 		return 3

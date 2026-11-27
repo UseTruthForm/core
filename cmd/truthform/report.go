@@ -26,7 +26,7 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 	w("# %s: capture report\n\n", title)
 	w("| | |\n|---|---|\n")
 	w("| Platform | %s |\n| Capture rules | `%s` |\n| Snapshot digest | `%s` |\n", s.Platform, md(s.Policy), digest)
-	w("| Captured | **%d resources** across %d types |\n", len(s.Objects), read)
+	w("| Captured | **%s** across %s |\n", count(len(s.Objects), "resource"), count(read, "type"))
 	perOwner := ""
 	for _, sk := range s.Skips {
 		if sk.Name == "*" {
@@ -34,7 +34,7 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 			break
 		}
 	}
-	w("| Skipped on purpose | %d resources%s |\n| Types not captured | %d |\n\n", len(s.Skips)+countedSkips(s), perOwner, notCaptured+len(failed))
+	w("| Skipped on purpose | %s%s |\n| Types not captured | %d |\n\n", count(len(s.Skips)+countedSkips(s), "resource"), perOwner, notCaptured+len(failed))
 
 	if len(g) > 0 {
 		var throttled, other []string
@@ -46,7 +46,7 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 				other = append(other, x)
 			}
 		}
-		w("## Incomplete: %d gaps\n\n", len(g))
+		w("## Incomplete: %s\n\n", count(len(g), "gap"))
 		w("These are **not in the snapshot**, and restoring it will not recreate them.\n\n")
 		for _, x := range other {
 			w("- %s\n", md(x))
@@ -72,12 +72,12 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 		w("- **Azure's built-in roles:** the same in every tenant, so a target has them already.\n")
 	}
 	if n := withAnnotation(s, "secret", "write-only", "withheld"); n > 0 {
-		w("- **%d objects** in this snapshot name values that were withheld or that the platform never returns; restore will say which it was not given.\n", n)
+		w("- **%s** in this snapshot name values that were withheld or that the platform never returns; restore will say which it was not given.\n", count(n, "object"))
 	}
 	w("\n")
 
 	if rows := plainCredentials(s); len(rows) > 0 {
-		w("## Credentials in plain configuration: %d objects\n\n", len(rows))
+		w("## Credentials in plain configuration: %s\n\n", count(len(rows), "object"))
 		w("These values are named like credentials, or are URLs with a password in them, and are set as plain configuration (a workload's environment, a ConfigMap) rather than in a Secret. ")
 		w("Their values were withheld from this snapshot, but anyone who can read the workload can read them, and they are usually in its source too (Helm values, manifests). ")
 		w("Move each into a Secret and reference it with `valueFrom.secretKeyRef`. A restore needs them supplied (`--secrets-from-context`).\n\n")
@@ -101,7 +101,7 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 		later, defaults := azarm.KeptOnceAzureMakesIt(s)
 		if len(check)+len(later) > 0 {
 			sort.Strings(check)
-			w("## Check before relying on a restore: %d resources\n\n", len(check)+len(later))
+			w("## Check before relying on a restore: %s\n\n", count(len(check)+len(later), "resource"))
 			if len(check) > 0 {
 				w("These were left out because something else manages them, and nothing shows it will recreate them. Something a person put there, or a data disk attached to a VM, will not come back. `--capture-managed` reads them.\n\n")
 				for _, x := range check {
@@ -150,7 +150,7 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 			w("\n")
 		}
 		if kept := azarm.KeptInManagedGroups(s); len(kept) > 0 {
-			w("## Captured from a managed resource group: %d resources\n\n", len(kept))
+			w("## Captured from a managed resource group: %s\n\n", count(len(kept), "resource"))
 			w("Nothing shows the manager made these, so they are in this snapshot and a restore applies them after it. If it did make one, a restore creates it beside the manager's own, and with `--update` sets it over one of the same name.\n\n")
 			for _, x := range kept {
 				w("- %s\n", md(x))
@@ -181,7 +181,7 @@ func writeReport(dir string, s snapshot.Snapshot, title string) error {
 	}
 	if len(taken) > 0 {
 		sort.Strings(taken)
-		w("## Taken as the platform's: %d resources\n\n", len(taken))
+		w("## Taken as the platform's: %s\n\n", count(len(taken), "resource"))
 		w("Left out because they look like AKS's own, by marks a person's object could also carry. If one is yours, capture with `--capture-platform`.\n\n")
 		for _, x := range taken {
 			w("- %s\n", md(x))

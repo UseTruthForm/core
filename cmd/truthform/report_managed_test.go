@@ -39,9 +39,13 @@ func TestReportNamesWhatMayNotComeBack(t *testing.T) {
 	}
 	r := string(b)
 	for _, want := range []string{
-		"## Check before relying on a restore: 1 resources",
+		// One of each, in the singular: a report that says "1 resources"
+		// reads as unchecked.
+		"| Captured | **1 resource** across",
+		"| Skipped on purpose | 2 resources |",
+		"## Check before relying on a restore: 1 resource\n",
 		"- Microsoft.Compute/disks rg/data",
-		"## Captured from a managed resource group: 1 resources",
+		"## Captured from a managed resource group: 1 resource\n",
 		"- Microsoft.Storage/storageAccounts MC_x/placed",
 	} {
 		if !strings.Contains(r, want) {
@@ -93,7 +97,7 @@ func TestReportNamesWhatWasTakenAsThePlatforms(t *testing.T) {
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, "REPORT.md"))
 	r := string(b)
-	for _, want := range []string{"## Taken as the platform's: 1 resources", "- validatingadmissionpolicies.admissionregistration.k8s.io aks-managed-x: taken as AKS", "`--capture-platform`"} {
+	for _, want := range []string{"## Taken as the platform's: 1 resource\n", "- validatingadmissionpolicies.admissionregistration.k8s.io aks-managed-x: taken as AKS", "`--capture-platform`"} {
 		if !strings.Contains(r, strings.ReplaceAll(want, "taken as AKS", "applied by Eno")) && !strings.Contains(r, want) {
 			t.Errorf("no %q in:\n%s", want, r)
 		}

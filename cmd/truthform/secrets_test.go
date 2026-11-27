@@ -112,7 +112,7 @@ func TestPlanSecretsCommand(t *testing.T) {
 	}
 	t.Setenv("TF_TEST_USER_UNSET", "now-set-user")
 	code, stdout, stderr := output(t, func() int { return planCmd([]string{"secrets", "--from", dir, "--check", filled, "--resolve"}) })
-	if code != 0 || !strings.Contains(stdout, "2 values were read from theirs (none printed)") || strings.Contains(stdout+stderr, "s3cr3t-value") || strings.Contains(stdout+stderr, "now-set-user") {
+	if code != 0 || !strings.Contains(stdout, "2 values read from them (none printed)") || strings.Contains(stdout+stderr, "s3cr3t-value") || strings.Contains(stdout+stderr, "now-set-user") {
 		t.Errorf("--resolve: exit %d\n%s\n%s", code, stdout, stderr)
 	}
 	for _, args := range [][]string{

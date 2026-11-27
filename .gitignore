@@ -1,4 +1,8 @@
 bin/
+# What `go build ./cmd/truthform` leaves in the root. A 68 MB build was once
+# committed by `git add -A`; build to bin/ instead.
+/truthform
+/truthform.exe
 *.exe
 .truthform/
 # Where captures went before the tool was renamed. They describe a real

@@ -59,9 +59,9 @@ for target in $TARGETS; do
     CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath ${tags[@]+"${tags[@]}"} \
       -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.built=$BUILT -X github.com/usetruthform/core/internal/saas.CloudflareClientID=${TRUTHFORM_CLOUDFLARE_CLIENT_ID:-}" \
       -o "$OUT/$name/$exe" ./cmd/truthform
-    # The customer's README and guides, not the repository's README: that
-    # one is for TruthForm's developers (the dev loop, Tilt ports, internal
-    # drills), and a customer cannot reach the private repository's docs.
+    # The user's README and guides, not the repository's README: that one
+    # is for people building TruthForm (the dev loop, drills), and an
+    # archive should explain itself without a trip to the repository.
     cp packaging/README.md "$OUT/$name/README.md"
     cp LICENSE NOTICE "$OUT/$name/"
     [ -n "$NOTICES" ] && cp "$NOTICES" "$OUT/$name/THIRD_PARTY_NOTICES.txt"

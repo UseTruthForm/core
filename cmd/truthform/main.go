@@ -962,19 +962,19 @@ func renamed(file, platform string, s snapshot.Snapshot, strict bool) (map[strin
 			}
 		}
 		if len(rep.Unreached) > 0 {
-			fmt.Fprintf(os.Stderr, "rename: %d objects use a store in a way --rename does not reach; they are as the source's:\n", len(rep.Unreached))
+			fmt.Fprintf(os.Stderr, "rename: %s %s a store in a way --rename does not reach; %s as the source's:\n", count(len(rep.Unreached), "object"), verb(len(rep.Unreached), "uses", "use"), verb(len(rep.Unreached), "it is", "they are"))
 			for _, u := range rep.Unreached {
 				fmt.Fprintln(os.Stderr, "  ", u)
 			}
 		}
 		if len(rep.Images) > 0 {
-			fmt.Fprintf(os.Stderr, "rename: %d images are pulled from elsewhere, as %s asks (they have to be there: built again, or copied):\n", len(rep.Images), file)
+			fmt.Fprintf(os.Stderr, "rename: %s %s pulled from elsewhere, as %s asks (%s to be there: built again, or copied):\n", count(len(rep.Images), "image"), verb(len(rep.Images), "is", "are"), file, verb(len(rep.Images), "it has", "they have"))
 			for _, r := range rep.Images {
 				fmt.Fprintf(os.Stderr, "   %s %s: %s -> %s\n", r.Object, r.Field, r.From, r.To)
 			}
 		}
 		if len(rep.ImagesKept) > 0 {
-			fmt.Fprintf(os.Stderr, "rename: %d images are pulled from where the source pulls them, as %s asks\n", len(rep.ImagesKept), file)
+			fmt.Fprintf(os.Stderr, "rename: %s %s pulled from where the source pulls %s, as %s asks\n", count(len(rep.ImagesKept), "image"), verb(len(rep.ImagesKept), "is", "are"), verb(len(rep.ImagesKept), "it", "them"), file)
 		}
 		if len(rep.ImagesLeft) > 0 {
 			var l []string

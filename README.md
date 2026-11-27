@@ -222,3 +222,9 @@ tilt up --port 10352   # 10350 belongs to a platform Tilt
 All of it is local and free. Snapshots of real clusters go to `.truthform/`,
 which is gitignored. Resources for other platforms are added along with their
 adapters, never before.
+
+## Licence
+
+TruthForm is under the [Apache License 2.0](LICENSE). To contribute, see
+[CONTRIBUTING.md](CONTRIBUTING.md); to report a vulnerability, see
+[SECURITY.md](SECURITY.md).

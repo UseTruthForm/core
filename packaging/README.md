@@ -62,10 +62,11 @@ The `docs` folder beside this file:
 incomplete: something could not be read or applied, and the output says
 what.
 
-## Other people's software
+## Licence
 
-TruthForm is built with Go and open-source modules. Their licences are in
-`THIRD_PARTY_NOTICES.txt`, beside this file.
+TruthForm is under the Apache License 2.0, in `LICENSE` beside this file.
+It is built with Go and open-source modules; their licences are in
+`THIRD_PARTY_NOTICES.txt`.
 
 ## Verifying this download
 

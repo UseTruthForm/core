@@ -10,9 +10,9 @@
 # Each binary is stamped with the version, commit and build time (truthform
 # version prints them), stripped, and built without cgo, so it is one file
 # with nothing to install. Archives (zip for Windows, tar.gz elsewhere) and
-# SHA256SUMS go in dist/. Each archive carries THIRD_PARTY_NOTICES.txt, the
-# licences of Go and of every module in the binary, which those licences
-# ask to travel with it.
+# SHA256SUMS go in dist/. Each archive carries TruthForm's LICENSE and
+# THIRD_PARTY_NOTICES.txt, the licences of Go and of every module in the
+# binary, which those licences ask to travel with it.
 #
 #   scripts/build-release.sh v0.1.0
 #   NO_ARCHIVE=1 scripts/build-release.sh v0.1.0-test   # binaries only
@@ -63,6 +63,7 @@ for target in $TARGETS; do
     # one is for TruthForm's developers (the dev loop, Tilt ports, internal
     # drills), and a customer cannot reach the private repository's docs.
     cp packaging/README.md "$OUT/$name/README.md"
+    cp LICENSE "$OUT/$name/LICENSE"
     [ -n "$NOTICES" ] && cp "$NOTICES" "$OUT/$name/THIRD_PARTY_NOTICES.txt"
     mkdir -p "$OUT/$name/docs"
     cp docs/guide.md docs/permissions.md docs/agents.md "$OUT/$name/docs/"

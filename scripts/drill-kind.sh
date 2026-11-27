@@ -63,7 +63,10 @@ networking.k8s.io/v1/Ingress/shop/shop
 networking.k8s.io/v1/NetworkPolicy/shop/shop-api-ingress
 rbac.authorization.k8s.io/v1/Role/shop/read-config
 rbac.authorization.k8s.io/v1/RoleBinding/shop/shop-api-read-config"
-actual=$(cd "$WORK/snap-a/objects" && find . -name '*.yaml' | sed 's|^\./||; s|\.yaml$||' | sort)
+# Byte order, as the list above is written. A locale such as en_US.UTF-8
+# ignores "/" when sorting, puts ServiceAccount before Service/shop/..., and
+# failed the drill on a laptop while CI (C locale) passed.
+actual=$(cd "$WORK/snap-a/objects" && find . -name '*.yaml' | sed 's|^\./||; s|\.yaml$||' | LC_ALL=C sort)
 if [ "$actual" != "$expected" ]; then
   echo "FAIL: captured set differs from the fixture"; diff <(echo "$expected") <(echo "$actual") || true; exit 1
 fi

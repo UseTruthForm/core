@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Read-only capture of a real cluster (default: a platform
-# on kind-tiltdev), compared with the previous capture. Nothing on the
+# Read-only capture of a real cluster (CONTEXT, required), compared with the
+# previous capture. Nothing on the
 # cluster is changed: capture only lists and reads.
 #
 # Output goes to .truthform/<context>/ (gitignored). The previous capture is
@@ -11,7 +11,7 @@
 #     after upgrading the platform or an operator on it
 set -euo pipefail
 
-CONTEXT=${CONTEXT:-kind-tiltdev}
+CONTEXT=${CONTEXT:?set CONTEXT to the kube context to capture, e.g. CONTEXT=kind-mycluster}
 BIN=${BIN:-bin/truthform}
 cd "$(dirname "$0")/.."
 
